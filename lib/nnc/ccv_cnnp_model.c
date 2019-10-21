@@ -342,8 +342,6 @@ static void _ccv_cnnp_model_graph_symbol_exec_set_for_graph_exec_arena(const ccv
 	for (i = 1; i < parallel_count; i++)
 	{
 		ccv_nnc_graph_exec_symbol_t copy_symbol = ccv_nnc_graph_exec_symbol_copy(symbolic_graph, exec_symbol, i);
-		if (copy_symbol.graph)
-			ccv_nnc_graph_exec_symbol_set(symbolic_graph, copy_symbol, cmd);
 		const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, copy_symbol);
 		if (!CCV_NO_GRAPH_EXEC(copy))
 			ccv_nnc_graph_exec_set(copy.graph, copy, cmd);
@@ -358,6 +356,13 @@ static void _ccv_cnnp_model_graph_exec_symbol_set(ccv_cnnp_model_t* const model,
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
 	assert(symbolic_graph);
 	ccv_nnc_graph_exec_symbol_set(symbolic_graph, exec_symbol, cmd);
+	int i;
+	for (i = 1; i < parallel_count; i++)
+	{
+		ccv_nnc_graph_exec_symbol_t copy_symbol = ccv_nnc_graph_exec_symbol_copy(symbolic_graph, exec_symbol, i);
+		if (copy_symbol.graph)
+			ccv_nnc_graph_exec_symbol_set(symbolic_graph, copy_symbol, cmd);
+	}
 	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = compiled_data->graph_exec_arena;
 	if (graph_exec_arena)
 		_ccv_cnnp_model_graph_symbol_exec_set_for_graph_exec_arena(graph_exec_arena, parallel_count, exec_symbol, cmd, symbolic_graph);
@@ -403,6 +408,7 @@ static void _ccv_cnnp_model_set_minimizer_setter(ccv_cnnp_model_t* const model, 
 	{
 		ccv_array_t* const trainable_indexes = trainable_pos[((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d];
 		const ccv_nnc_cmd_t cmd = minimizer_setter(model, (ccv_cnnp_trainable_index_t*)ccv_array_get(trainable_indexes, 0), trainable_indexes->rnum, context);
+		assert(cmd.cmd == compiled_data->minimize.minimizer.cmd); // It has to be the same, just different configurations.
 		_ccv_cnnp_model_graph_exec_symbol_set(model, update_nodes[i], cmd);
 		ccv_array_free(trainable_indexes);
 	}
@@ -1252,12 +1258,14 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
+	const int old_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimize.minimizer);
+	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	compiled_data->minimize.minimizer = minimizer;
 	compiled_data->minimize.setter = minimizer_setter;
 	compiled_data->minimize.context = context;
 	if (!compiled_data->update_nodes)
 		return;
-	int i;
+	int i, j;
 	const int trainable_size = compiled_data->trainables->rnum;
 	ccv_nnc_graph_exec_symbol_t* const update_nodes = compiled_data->update_nodes;
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
@@ -1265,9 +1273,69 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	for (i = 0; i < trainable_size; i++)
 		_ccv_cnnp_model_graph_exec_symbol_set(model, update_nodes[i], minimizer);
 	// Use the minimizer to update.
-	if (!minimizer_setter)
-		return;
-	_ccv_cnnp_model_set_minimizer_setter(model, minimizer_setter, context);
+	if (minimizer_setter)
+		_ccv_cnnp_model_set_minimizer_setter(model, minimizer_setter, context);
+	if (saved_aux_size != old_saved_aux_size)
+	{
+		// To handle this properly, I need to dig into the data parallel array. Possibly add a new ccv_nnc_tensor_symbol_set_copy method.
+		assert(compiled_data->parallel_count <= 1);
+		// If saved_aux_size doesn't match, we need to remove / add new saved_aux to the graph. But first, free up apply gradients graph.
+		if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_FIT_MODE)
+			_ccv_cnnp_compiled_data_graph_free(compiled_data);
+		_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
+		assert(compiled_data->updated_trainables);
+		if (saved_aux_size > old_saved_aux_size)
+		{
+			// Reallocate first, move them around later.
+			compiled_data->updated_trainables = (ccv_nnc_tensor_symbol_t*)ccrealloc(compiled_data->updated_trainables, sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size + sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size);
+			compiled_data->update_nodes = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->updated_trainables + trainable_size);
+			compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)(compiled_data->update_nodes + trainable_size);
+			// We need to do this from back to front because saved_aux_size > old_saved_aux_size, it could overlap.
+			for (i = trainable_size - 1; i >= 0; i--)
+				for (j = saved_aux_size - 1; j >= 0; j--)
+					compiled_data->saved_aux[i * saved_aux_size + j] = compiled_data->saved_aux[i * old_saved_aux_size + j];
+			// Allocate new tensor symbols.
+			for (i = 0; i < trainable_size; i++)
+			{
+				const ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(model->graph, compiled_data->updated_trainables[i]);
+				for (j = old_saved_aux_size; j < saved_aux_size; j++)
+				{
+					compiled_data->saved_aux[i * saved_aux_size + j].source = ccv_nnc_tensor_symbol_new(model->graph, info, 0);
+					compiled_data->saved_aux[i * saved_aux_size + j].destination = ccv_nnc_tensor_symbol_new(model->graph, info, 0);
+				}
+			}
+		} else {
+			// Move around first, reallocate later.
+			// We need to do this from front to back because saved_aux_size < old_saved_aux_size, it could overlap.
+			for (i = 0; i < trainable_size; i++)
+			{
+				for (j = saved_aux_size; j < old_saved_aux_size; j++)
+				{
+					ccv_nnc_tensor_symbol_free(model->graph, compiled_data->saved_aux[i * old_saved_aux_size + j].source);
+					ccv_nnc_tensor_symbol_free(model->graph, compiled_data->saved_aux[i * old_saved_aux_size + j].destination);
+				}
+				for (j = 0; j < saved_aux_size; j++)
+					compiled_data->saved_aux[i * saved_aux_size + j] = compiled_data->saved_aux[i * old_saved_aux_size + j];
+			}
+			compiled_data->updated_trainables = (ccv_nnc_tensor_symbol_t*)ccrealloc(compiled_data->updated_trainables, sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size + sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size);
+			compiled_data->update_nodes = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->updated_trainables + trainable_size);
+			compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)(compiled_data->update_nodes + trainable_size);
+		}
+		ccv_nnc_tensor_symbol_t update_inputs[saved_aux_size + 2];
+		ccv_nnc_tensor_symbol_t update_outputs[saved_aux_size + 1];
+		for (i = 0; i < trainable_size; i++)
+		{
+			update_inputs[0] = compiled_data->gradients[i];
+			update_inputs[1] = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i);
+			update_outputs[0] = compiled_data->updated_trainables[i];
+			for (j = 0; j < saved_aux_size; j++)
+			{
+				update_inputs[j + 2] = compiled_data->saved_aux[i * saved_aux_size + j].source;
+				update_outputs[j + 1] = compiled_data->saved_aux[i * saved_aux_size + j].destination;
+			}
+			ccv_nnc_graph_exec_symbol_set_io(model->graph, compiled_data->update_nodes[i], update_inputs, saved_aux_size + 2, update_outputs, saved_aux_size + 1);
+		}
+	}
 }
 
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE** const outs, const int out_size)

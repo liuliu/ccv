@@ -60,8 +60,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		int i;
 		for (i = 0; i < input_size; i++)
 			input_params[i] = inputs[i]->info;
-		// TODO: when I switch minimizer, the saved_aux will be wrong. Need to reconstruct the graph, re-allocate saved_aux to correct this.
-		ccv_cnnp_model_compile(model, input_params, input_size, CMD_SGD_FORWARD(0, 0, 0, 0, 0, 0), CMD_NOOP());
+		ccv_cnnp_model_compile(model, input_params, input_size, CMD_NOOP(), CMD_NOOP());
 	}
 	const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size);
 	int ret;
