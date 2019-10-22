@@ -2084,6 +2084,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 /**
  * Apply gradients to the set of parameters to update them with appropriate minimizer.
  * @param dynamic_graph The dynamic graph.
+ * @param minimizer The wrapped command that represents a particular optimization strategy.
  * @param gradients The computed gradients to be applied.
  * @param gradient_size The size of gradients array.
  * @param parameters The parameters to update.
