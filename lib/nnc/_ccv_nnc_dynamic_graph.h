@@ -51,7 +51,12 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 	ccv_nnc_tensor_view_t* tensor_view; // Transfer ownership of the tensor view to here.
 } ccv_nnc_tensor_variable_graph_bind_t;
 
-KHASH_SET_INIT_INT(stateful_exec)
+typedef struct {
+	ccv_nnc_tensor_tape_t* tensor_tape;
+	void* data;
+} ccv_nnc_stateful_exec_t;
+
+KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)
 
 struct ccv_nnc_dynamic_graph_s {
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
@@ -233,6 +238,6 @@ static inline void ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol(void* c
 	ccv_array_push(stack, &tape_symbol);
 }
 
-ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
+ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 
 #endif

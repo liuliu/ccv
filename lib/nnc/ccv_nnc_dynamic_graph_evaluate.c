@@ -10,7 +10,8 @@
 
 static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)cmd.data;
+	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
+	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD)
 	{
 		ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){
@@ -30,13 +31,15 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 
 static void _ccv_cnnp_model_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)cmd.data;
+	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
+	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
 	ccv_cnnp_model_tensor_auto(model, outputs, output_size);
 }
 
 static void _ccv_cnnp_model_apply_gradients(const ccv_nnc_cmd_t cmd, const ccv_nnc_cmd_t minimizer, ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)cmd.data;
+	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
+	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
 	ccv_cnnp_model_set_minimizer(model, minimizer, 0, 0);
 	ccv_cnnp_model_apply_gradients(model, stream_context);
 }
@@ -49,10 +52,13 @@ static ccv_nnc_stateful_cmd_vtab_t ccv_cnnp_model_exec_isa = {
 	.apply_gradients = _ccv_cnnp_model_apply_gradients,
 };
 
-void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape)
+void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_model_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
-	cmd.data = model;
+	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
+	stateful_exec->tensor_tape = tensor_tape;
+	stateful_exec->data = model;
+	cmd.data = stateful_exec;
 	assert(input_size > 0);
 	if (!model->graph)
 	{
@@ -62,8 +68,9 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			input_params[i] = inputs[i]->info;
 		ccv_cnnp_model_compile(model, input_params, input_size, CMD_NOOP(), CMD_NOOP());
 	}
-	const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size);
+	const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
 	int ret;
-	kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
+	khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
+	kh_val(dynamic_graph->stateful_execs, k) = stateful_exec;
 }
 

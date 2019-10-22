@@ -7,7 +7,7 @@
 
 #pragma mark - Level-4.5 API
 
-void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux)
+void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(gradient_size == parameter_size);
 	// Call apply gradients to stateful execs first.
@@ -83,7 +83,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_array_free(tensor_binds);
-	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);

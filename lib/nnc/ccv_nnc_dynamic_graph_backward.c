@@ -7,7 +7,7 @@
 
 #pragma mark - Level-4.5 API
 
-void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size)
+void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int d, i, j, k;
 	assert(input_size == output_size);
@@ -206,7 +206,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_array_free(destinations);
 	ccv_array_free(tensor_binds);
 	// TODO: Should apply static schedule before run the graph.
-	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);
