@@ -44,16 +44,14 @@ static void _ccv_nnc_softmax_crossentropy_tensor_auto_forw(const ccv_nnc_cmd_par
 	assert(input_size == 2);
 	assert(output_size >= 1);
 	outputs[0] = inputs[0];
+	// The output should have the same dimentionality of the label data.
+	memcpy(outputs[0].dim, inputs[1].dim, sizeof(outputs[0].dim));
+	const int nd = ccv_nnc_tensor_nd(outputs[0].dim);
+	// Set channel to 1 if it is not..
+	if (nd > 1 && ccv_nnc_tensor_get_c(outputs[0]) > 1)
+		ccv_nnc_tensor_set_c(&outputs[0], nd, 1);
 	if (output_size > 1)
-	{
 		outputs[1] = inputs[0];
-		// The output should have the same dimentionality of the label data.
-		memcpy(outputs[1].dim, inputs[1].dim, sizeof(outputs[1].dim));
-		const int nd = ccv_nnc_tensor_nd(outputs[1].dim);
-		// Set channel to 1 if it is not..
-		if (nd > 1 && ccv_nnc_tensor_get_c(outputs[1]) > 1)
-			ccv_nnc_tensor_set_c(&outputs[1], nd, 1);
-	}
 }
 
 static void _ccv_nnc_softmax_crossentropy_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)

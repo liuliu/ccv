@@ -734,7 +734,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	compiled_data->is_test = 0;
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimize.minimizer);
 	// No need to set because it is default to training mode.
-	// ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+	// ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, &update);
 	for (i = 0; i < saved_aux_size * trainable_size; i++)
 	{
 		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, compiled_data->saved_aux[i].source);
@@ -964,7 +964,12 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 		ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, &tensor_init_states);
 	}
 	compiled_data->is_test = is_test;
-	ccv_cnnp_model_set_is_test(model, is_test, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+	ccv_nnc_graph_exec_update_t update = {
+		.parallel_count = parallel_count,
+		.graph = model->graph,
+		.graph_exec_arena = compiled_data->graph_exec_arena,
+	};
+	ccv_cnnp_model_set_is_test(model, is_test, _ccv_cnnp_cmd_update_for_execs, &update);
 	const int evaluate_to_size = compiled_data->evaluate.to_size;
 	compiled_data->evaluate.to_op_size = 0;
 	ccv_array_t* const backward_from = ccv_array_new(sizeof(int), 0, 0);
