@@ -343,6 +343,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph
 	for (i = 0; i < output_size; i++)
 		output_tensors[i] = outputs[i] ? ccv_nnc_tensor_from_variable(graph, outputs[i]) : 0;
 	ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, input_size, output_tensors, output_size, stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_graph_exec_symbol_t graph_exec = {};
 	if (input_size > 0) // No need to record the execution if there is no input.
 	{

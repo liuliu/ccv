@@ -23,10 +23,13 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		});
 		const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
 		if (isa->apply_gradients)
-			isa->apply_gradients(cmd, minimizer, 0);
+			isa->apply_gradients(cmd, minimizer, stream_context);
 	}
 	if (parameter_size == 0)
+	{
+		ccv_nnc_stream_context_wait(stream_context);
 		return;
+	}
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	const int saved_aux_size = parameter_size * aux_size;
 	int i, j;
@@ -83,7 +86,10 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_array_free(tensor_binds);
+	if (stream_context)
+		ccv_nnc_graph_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
 	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);

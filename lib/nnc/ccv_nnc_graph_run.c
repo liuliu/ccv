@@ -604,6 +604,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 {
 	const ccv_nnc_graph_topsorted_run_coro_t* const params = (ccv_nnc_graph_topsorted_run_coro_t*)userdata;
 	ccv_nnc_graph_t* const graph = params->graph;
+	assert(graph->stream_size > 0);
 	const int exec_idx = params->exec_idx;
 	ccv_nnc_graph_exec_info_t* const exec = params->exec;
 	ccv_nnc_tensor_tape_t* const tensor_tape = params->tensor_tape;
@@ -963,7 +964,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
-	if (stream_context && graph->topsorted && source_size == 0 && destination_size == 0)
+	if (stream_context && graph->topsorted && graph->stream_size > 0 && source_size == 0 && destination_size == 0)
 	{
 		ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
 		ccv_nnc_graph_topsorted_run_coro_t params = {

@@ -206,8 +206,10 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	}
 	ccv_array_free(destinations);
 	ccv_array_free(tensor_binds);
-	// TODO: Should apply static schedule before run the graph.
+	if (stream_context)
+		ccv_nnc_graph_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
 	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);

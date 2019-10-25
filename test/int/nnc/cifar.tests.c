@@ -626,7 +626,7 @@ static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int bat
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	for (i = 0; epoch < 2; i++)
+	for (i = 0; epoch < 10; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
@@ -646,13 +646,13 @@ static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int bat
 		ccv_nnc_tensor_variable_set(graph, input, input_fit_inputs[0]);
 		ccv_nnc_tensor_variable_t const output = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, output, outputs[0]);
-		ccv_nnc_dynamic_graph_evaluate(graph, cifar_10, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(output), 0, 0);
+		ccv_nnc_dynamic_graph_evaluate(graph, cifar_10, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(output), 0, stream_contexts[q]);
 		ccv_nnc_tensor_variable_t const fit = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, fit, input_fit_fits[0]);
 		ccv_nnc_tensor_variable_t const softmax = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(output, fit), TENSOR_VARIABLE_LIST(0, softmax), 0);
-		ccv_nnc_dynamic_graph_backward(graph, softmax, 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), 0);
-		ccv_nnc_dynamic_graph_apply_gradients(graph, sgd, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(output, fit), TENSOR_VARIABLE_LIST(0, softmax), stream_contexts[q]);
+		ccv_nnc_dynamic_graph_backward(graph, softmax, 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), stream_contexts[q]);
+		ccv_nnc_dynamic_graph_apply_gradients(graph, sgd, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, stream_contexts[q]);
 		ccv_nnc_tensor_variable_free(graph, input);
 		ccv_nnc_tensor_variable_free(graph, output);
 		ccv_nnc_tensor_variable_free(graph, fit);
@@ -720,7 +720,7 @@ static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int bat
 	return correct;
 }
 
-TEST_CASE("cifar-10 with dawnnet to > 40% after 2 epoch (fp16) use dynamic graph")
+TEST_CASE("cifar-10 with dawnnet to > 65% after 10 epoch (fp16) use dynamic graph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
 			ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
@@ -790,7 +790,7 @@ TEST_CASE("cifar-10 with dawnnet to > 40% after 2 epoch (fp16) use dynamic graph
 	int correct = train_cifar_10_fp16_dy(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 4000, "accuracy %.2f after 2 epoch should be higher than 40%%", (float)correct / 10000);
+	REQUIRE(correct > 6500, "accuracy %.2f after 10 epoch should be higher than 65%%", (float)correct / 10000);
 }
 
 #include "case_main.h"
