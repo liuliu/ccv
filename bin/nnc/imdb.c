@@ -75,6 +75,43 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 	return categorizeds;
 }
 
+static ccv_cnnp_model_t* _self_attention_new(const int k, const int h, const int b, const int t)
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_t* const tokeys = ccv_cnnp_dense(k * h, (ccv_cnnp_param_t){}, "tokeys");
+	ccv_cnnp_model_t* const toqueries = ccv_cnnp_dense(k * h, (ccv_cnnp_param_t){}, "toqueries");
+	ccv_cnnp_model_t* const tovalues = ccv_cnnp_dense(k * h, (ccv_cnnp_param_t){}, "tovalues");
+	ccv_cnnp_model_io_t keys = ccv_cnnp_model_apply(tokeys, MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t queries = ccv_cnnp_model_apply(toqueries, MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t values = ccv_cnnp_model_apply(tovalues, MODEL_IO_LIST(x));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), 0), MODEL_IO_LIST(values));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(values));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), 0), MODEL_IO_LIST(values));
+	const float scale = 1. / powf(k, 0.25);
+	queries = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_SCALAR_MUL_FORWARD(scale), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_SCALAR_MUL_FORWARD(scale), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
+	ccv_cnnp_model_io_t keys_t = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
+	ccv_cnnp_model_io_t dot = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries, keys_t));
+	dot = ccv_cnnp_model_apply(ccv_cnnp_identity((ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
+	}, 0), MODEL_IO_LIST(dot));
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(dot, values));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, h, t, k), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h * k), 0), MODEL_IO_LIST(out));
+	ccv_cnnp_model_t* const unifyheads = ccv_cnnp_dense(k, (ccv_cnnp_param_t){
+		.no_bias = 1,
+	}, "unifyheads");
+	out = ccv_cnnp_model_apply(unifyheads, MODEL_IO_LIST(out));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(out), "self-attention");
+}
+
 static void _vocab_init(const char* const vocab_file, khash_t(vocab_map)** const vocab_ref, int* const vocab_size_ref)
 {
 	FILE* const vocab_ptr = fopen(vocab_file, "r");
@@ -101,16 +138,27 @@ static void _vocab_destroy(khash_t(vocab_map)* const vocab)
 	kh_destroy(vocab_map, vocab);
 }
 
-static void train_imdb(const int batch_size, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
+static void train_imdb(const int vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
 	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_categorized_t, matrix));
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(tensor_idx));
 	ccv_nnc_tensor_t* tensor;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
-	int i;
-	for (i = 0; i < 512; i++)
-		printf("%d ", tensor->data.i32[i]);
-	printf("\n");
+	ccv_nnc_tensor_t* const vocab_vec = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, vocab_size, embedding_size), 0);
+	ccv_nnc_cmd_exec(CMD_RANDOM_UNIFORM_FORWARD(-1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(vocab_vec), 0);
+	ccv_nnc_tensor_t* const vec = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, max_length, embedding_size), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(vocab_vec, tensor), TENSOR_LIST(vec), 0);
+	ccv_cnnp_model_t* const self_attention = _self_attention_new(embedding_size, 8, 1, max_length);
+	ccv_cnnp_model_compile(self_attention, TENSOR_PARAM_LIST(vec->info), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, max_length, embedding_size), 0);
+	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+	ccv_cnnp_model_evaluate(self_attention, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(vec), TENSOR_LIST(out), 0, 0);
+	ccv_cnnp_model_free(self_attention);
+	ccv_nnc_tensor_free(vocab_vec);
+	ccv_nnc_tensor_free(vec);
+	ccv_nnc_tensor_free(out);
 	ccv_cnnp_dataframe_iter_free(iter);
 }
 
@@ -161,7 +209,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir, vocab, vocab_size, max_length);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imdb(128, 128, train_data, test_data, test_set);
+	train_imdb(vocab_size, 128, max_length, 128, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;

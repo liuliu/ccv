@@ -69,9 +69,9 @@
 // CCV_NNC_MUL_BACKWARD
 #define CMD_MUL_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
 // CCV_NNC_SCALAR_MUL_FORWARD
-#define CMD_SCALAR_MUL_FORWARD(...) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, CMD_BLAS(_a), 0)
 // CCV_NNC_SCALAR_MUL_BACKWARD
-#define CMD_SCALAR_MUL_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, CMD_BLAS(_a), 0)
 // CCV_NNC_BATCH_NORM_FORWARD
 #define CMD_BATCH_NORM_FORWARD(_epsilon, _is_test, _momentum, ...) ccv_nnc_cmd(CCV_NNC_BATCH_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.bnorm={.epsilon=_epsilon,.is_test=_is_test,.momentum=_momentum,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_BATCH_NORM_BACKWARD

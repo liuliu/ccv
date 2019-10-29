@@ -218,7 +218,9 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	ccv_array_resize(reverse_top, output_size);
 	memcpy(ccv_array_get(reverse_top, 0), outputs, sizeof(ccv_cnnp_model_io_t) * output_size);
 	// Go from the output, until we meet inputs.
-	int i, j, input_count = 0;
+	int i, j, k;
+	uint64_t input_bitmask[((input_size - 1) >> 6) + 1];
+	memset(input_bitmask, 0, sizeof(uint64_t) * (((input_size - 1) >> 6) + 1));
 	int tensor_output_size = 0; // io can be mapped to multiple tensor outputs, therefore, need to compute the exact tensor output size.
 	for (i = 0; i < output_size; i++)
 		tensor_output_size += outputs[i]->model->output_size;
@@ -236,8 +238,13 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 					continue;
 				if (!CCV_CNNP_IS_MODEL_INPUT(input->model))
 					ccv_array_push(reverse_top, &input);
-				else
-					++input_count;
+				else {
+					for (k = 0; k < input_size; k++)
+						if (input == inputs[k])
+							break;
+					assert(k < input_size);
+					input_bitmask[k >> 6] |= ((uint64_t)1 << (k & 63));
+				}
 			}
 	}
 	for (i = 0; i < reverse_top->rnum; i++)
@@ -247,7 +254,8 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	}
 	for (i = 0; i < input_size; i++)
 		inputs[i]->visit = 0; // Clean the visit back.
-	assert(input_count == input_size); // Assuming they all match.
+	for (i = 0; i < input_size; i++)
+		{ assert((input_bitmask[i >> 6] & ((uint64_t)1 << (i & 63)))); } // Assuming they all match.
 	const int sequence_size = reverse_top->rnum + input_size;
 	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * tensor_output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
@@ -794,7 +802,7 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	ccv_nnc_tensor_param_t weights_params = params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
 	weights_params.dim[0] = self->count;
-	weights_params.dim[1] = ccv_nnc_tensor_get_c(params);
+	weights_params.dim[1] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
 	if (!self->weights.graph)
 		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, 0);
 	assert(self->weights.graph == graph);
