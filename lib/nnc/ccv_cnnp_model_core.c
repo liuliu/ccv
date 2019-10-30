@@ -349,6 +349,8 @@ typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ofs[CCV_NNC_MAX_DIM_ALLOC];
+	int inc[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_cnnp_model_reshape_t;
 
 static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -358,14 +360,14 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	ccv_cnnp_model_reshape_t* const self = (ccv_cnnp_model_reshape_t*)super;
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	memcpy(params.dim, self->dim, sizeof(params.dim));
-	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], DIM_ALLOC(), self->dim, params, 0);
+	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, self->inc, params, 0);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_reshape_isa = {
 	.build = _ccv_cnnp_reshape_build,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
 {
 	ccv_cnnp_model_reshape_t* const model_reshape = (ccv_cnnp_model_reshape_t*)cccalloc(1, sizeof(ccv_cnnp_model_reshape_t));
 	model_reshape->super.isa = &ccv_cnnp_reshape_isa;
@@ -374,6 +376,11 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const c
 	model_reshape->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_reshape->super, name);
 	memcpy(model_reshape->dim, dim, sizeof(model_reshape->dim));
+	memcpy(model_reshape->ofs, ofs, sizeof(model_reshape->ofs));
+	int i, flag = 0;
+	for (i = 0; !flag && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		flag = (inc[i] != 0);
+	memcpy(model_reshape->inc, flag ? inc : dim, sizeof(model_reshape->inc));
 	return (ccv_cnnp_model_t*)model_reshape;
 }
 

@@ -2831,10 +2831,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_
 /**
  * Reshape an input into a different dimension.
  * @param dim The new dimension for the input.
+ * @param ofs The offset on each of the dimension.
+ * @param inc The line size of each dimension.
  * @param name The unique name of the model.
  * @return A reshape layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
 /**
  * Flatten an input tensor into a one dimensional array.
  * @param name The unique name of the model.
