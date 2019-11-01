@@ -459,7 +459,7 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 			for (j = 0; j < input_tuple_size; j++)
 			{
 				ccv_nnc_tensor_param_t params = inputs[j]->info;
-				assert(params.datatype == CCV_32F || params.datatype == CCV_16F); // Only support 32 bit float yet.
+				assert(params.datatype == CCV_32F || params.datatype == CCV_32S || params.datatype == CCV_16F); // Only support 32 bit float yet.
 				assert(params.format == CCV_TENSOR_FORMAT_NHWC || params.format == CCV_TENSOR_FORMAT_NCHW);
 				params.format = batch->format;
 				// Special-case for dim count is 3 and 1, in these two cases, the N is not provided.
@@ -509,6 +509,27 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 					float* const bp = output->data.f32 + k * tensor_count;
 					if (input->info.format == output->info.format)
 						memcpy(bp, ap, sizeof(float) * tensor_count);
+					else {
+						// Do a simple format conversion.
+						const int c = ccv_nnc_tensor_get_c(input->info);
+						assert(c > 0);
+						const size_t hw_count = tensor_count / c;
+						size_t x;
+						int y;
+						if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[y * hw_count + x] = ap[x * c + y];
+						else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[x * c + y] = ap[y * hw_count + x];
+					}
+				} else if (input->info.datatype == CCV_32S) {
+					int* const ap = input->data.i32;
+					int* const bp = output->data.i32 + k * tensor_count;
+					if (input->info.format == output->info.format)
+						memcpy(bp, ap, sizeof(int) * tensor_count);
 					else {
 						// Do a simple format conversion.
 						const int c = ccv_nnc_tensor_get_c(input->info);

@@ -1096,6 +1096,8 @@ static void _ccv_cnnp_cmd_exec_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	for (i = 0, j = 0; i < self->output_size; i++)
 		if (self->outputs[i] == CCV_CNNP_IO)
 			self->output_symbols[i] = outputs[j++] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
+		else if (self->outputs[i] == CCV_CNNP_TENSOR_NOT_OUTPUT)
+			self->output_symbols[i] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
 		else
 			self->output_symbols[i] = NO_TENSOR_SYMBOL;
 	ccv_nnc_graph_exec_symbol_new(graph, self->cmd, self->input_symbols, self->input_size, self->output_symbols, self->output_size, 0);
@@ -1178,7 +1180,7 @@ ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		if (outputs[i] == CCV_CNNP_IO)
 			++io_output_size;
 		else {
-			assert(outputs[i] == CCV_CNNP_NO_TENSOR);
+			assert(outputs[i] == CCV_CNNP_TENSOR_NOT_OUTPUT || outputs[i] == CCV_CNNP_NO_TENSOR);
 		}
 	assert(io_output_size > 0);
 	ccv_cnnp_model_cmd_exec_t* const model_cmd_exec = (ccv_cnnp_model_cmd_exec_t*)cccalloc(1, sizeof(ccv_cnnp_model_cmd_exec_t) + sizeof(ccv_nnc_tensor_symbol_t) * (io_output_size + input_size + output_size) + sizeof(ccv_cnnp_cmd_exec_io_t) * input_size + sizeof(int) * output_size);

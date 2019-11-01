@@ -2847,6 +2847,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
 	CCV_CNNP_NO_TENSOR, /**< The parameter is not used. */
+	CCV_CNNP_TENSOR_NOT_OUTPUT, /**< This parameter indicates this is a tensor parameter, but it is not an output reflected as ccv_cnnp_io_t */
 	CCV_CNNP_INIT_SHARED_TENSOR, /**< The parameter is a provided tensor for initialization. */
 	CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, /**< The parameter is a provided tensor that can be updated. */
 };
