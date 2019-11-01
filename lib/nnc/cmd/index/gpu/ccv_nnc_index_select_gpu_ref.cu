@@ -32,7 +32,6 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	assert(b_nd <= 2);
 	const int a_cols = a_nd < 2 ? 1 : a->info.dim[1];
 	const int a_cols_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd < 2 ? 1 : a->inc[1]) : a_cols;
-	const int a_rows = a->info.dim[0];
 	const int b_cols = b_nd < 2 ? 1 : b->info.dim[1];
 	const int b_cols_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd < 2 ? 1 : b->inc[1]) : b_cols;
 	const int b_rows = b->info.dim[0];
