@@ -122,7 +122,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	ccv_cnnp_model_t* const self_attention = _self_attention_new(k, h, b, t);
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(self_attention, MODEL_IO_LIST(x));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-4, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, b, t, 1))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, b, t, 1)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-4, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, b, t, 1))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, b, t, 1)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(ff, (ccv_cnnp_param_t){
 		.activation = CCV_CNNP_ACTIVATION_RELU,
@@ -130,7 +130,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-4, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, b, t, 1))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, b, t, 1)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-4, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, b, t, 1))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, b, t, 1)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(out), "transformer");
 }
 
@@ -185,20 +185,23 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	ccv_nnc_tensor_free(word_indices);
 	ccv_nnc_tensor_view_free(word_vec);
 	ccv_nnc_tensor_view_free(pos_vec);
+	ccv_nnc_tensor_t* const gpu_vec = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, embedding_size * 2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(vec), TENSOR_LIST(gpu_vec), 0);
 	ccv_cnnp_model_t* const transformer = _transformer_block_new(embedding_size * 2, 8, batch_size, max_length, embedding_size * 8);
-	ccv_cnnp_model_compile(transformer, TENSOR_PARAM_LIST(vec->info), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_compile(transformer, TENSOR_PARAM_LIST(gpu_vec->info), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_param_t out_params;
 	ccv_cnnp_model_tensor_auto(transformer, &out_params, 1);
 	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, out_params, 0);
 	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_cnnp_model_evaluate(transformer, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 1,
-	}, TENSOR_LIST(vec), TENSOR_LIST(out), 0, 0);
+	}, TENSOR_LIST(gpu_vec), TENSOR_LIST(out), 0, 0);
 	ccv_cnnp_model_free(transformer);
 	ccv_nnc_tensor_free(seq_indices);
 	ccv_nnc_tensor_free(seq_vec);
 	ccv_nnc_tensor_free(vocab_vec);
 	ccv_nnc_tensor_free(vec);
+	ccv_nnc_tensor_free(gpu_vec);
 	ccv_nnc_tensor_free(out);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batched_data);

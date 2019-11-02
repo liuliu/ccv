@@ -25,6 +25,13 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	const float q = cmd.info.blas.a[1];
+	int adim[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], adim);
+	int bdim[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], bdim);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM + 2; i++)
+		{ assert(bdim[i] <= adim[i]); }
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
@@ -72,7 +79,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	ccv_nnc_tensor_view_t* const b = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	ccv_nnc_cudnn_tensor_view_descriptor_t bcu;
 	if (b)
-		 bcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, b);
+		bcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, b);
 	const int reduce_b_dim = b ? !ccv_nnc_tensor_view_check_dim(b, gdim) : 0;
 	cudnnReduceTensorDescriptor_t reduce_sum;
 	if ((a && reduce_a_dim) || (b && reduce_b_dim))
