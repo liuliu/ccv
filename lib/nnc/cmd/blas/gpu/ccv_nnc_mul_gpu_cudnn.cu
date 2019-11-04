@@ -262,7 +262,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		if (b_workspace_size > workspace_size)
 			workspace_size = b_workspace_size;
 	}
-	if (reduce_a_dim || reduce_b_dim)
+	if ((reduce_a_dim && a_broadcast_b) || (reduce_b_dim && b_broadcast_a))
 		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + ccv_nnc_tensor_data_size(g->info), CCV_TENSOR_GPU_MEMORY);
 	else if (workspace_size)
 		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
