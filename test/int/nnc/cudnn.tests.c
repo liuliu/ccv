@@ -2887,4 +2887,222 @@ TEST_CASE("scalar mul [[1, 2, 3], [4, 5, 6]] * 0.3")
 	ccv_nnc_tensor_free(gc);
 }
 
+TEST_CASE("broadcasting semantics for add backward")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_ADD_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	b->data.f32[0] = 5;
+	b->data.f32[1] = 6;
+	float ctp[] = {
+		6, 7,
+		7, 8,
+		8, 9,
+		9, 10
+	};
+	memcpy(c->data.f32, ctp, sizeof(ctp));
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b, c), TENSOR_LIST(ga, gb, gc), 0);
+	ccv_nnc_cmd_exec(CMD_ADD_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(gc, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
+	ccv_nnc_cmd_exec(CMD_ADD_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(c, a, b), TENSOR_LIST(dat, dbt), 0);
+	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
+	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(gda);
+	ccv_nnc_tensor_free(gdb);
+}
+
+TEST_CASE("broadcasting semantics for mul backward")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	b->data.f32[0] = 5;
+	b->data.f32[1] = 6;
+	float ctp[] = {
+		6, 7,
+		7, 8,
+		8, 9,
+		9, 10
+	};
+	memcpy(c->data.f32, ctp, sizeof(ctp));
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b, c), TENSOR_LIST(ga, gb, gc), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(gc, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(c, a, b), TENSOR_LIST(dat, dbt), 0);
+	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
+	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(gda);
+	ccv_nnc_tensor_free(gdb);
+}
+
+TEST_CASE("broadcasting semantics for mul backward (no input grad)")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	b->data.f32[0] = 5;
+	b->data.f32[1] = 6;
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
+	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gda);
+	ccv_nnc_tensor_free(gdb);
+}
+
+TEST_CASE("broadcasting semantics for mul backward (no input grad) for b")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	a->data.f32[4] = 5;
+	a->data.f32[5] = 6;
+	b->data.f32[0] = 7;
+	b->data.f32[1] = 8;
+	b->data.f32[2] = 9;
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
+	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
+	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gda);
+	ccv_nnc_tensor_free(gdb);
+}
+
+TEST_CASE("broadcasting semantics for mul backward (no input grad) for a")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	b->data.f32[0] = 1;
+	b->data.f32[1] = 2;
+	b->data.f32[2] = 3;
+	b->data.f32[3] = 4;
+	b->data.f32[4] = 5;
+	b->data.f32[5] = 6;
+	a->data.f32[0] = 7;
+	a->data.f32[1] = 8;
+	a->data.f32[2] = 9;
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
+	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
+	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gda);
+	ccv_nnc_tensor_free(gdb);
+}
+
 #include "case_main.h"

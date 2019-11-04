@@ -91,19 +91,33 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	int gdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_get_dim(g, gdim);
+	ccv_nnc_tensor_view_t g = ccv_nnc_get_tensor_view(inputs[0]);
+	ccv_nnc_tensor_view_get_dim(&g, gdim);
 	static const float zero = 0;
-	const ccv_nnc_cudnn_tensor_view_descriptor_t gcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, g);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t gcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &g);
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_cudnn_tensor_view_descriptor_t acu;
 	if (a)
-		acu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, a);
+	{
+		ccv_nnc_tensor_view_t atv = ccv_nnc_get_tensor_view(outputs[0]);
+		ccv_nnc_tensor_view_t* tvs[] = {
+			&atv, &g
+		};
+		ccv_nnc_tensor_view_alignment(tvs, 2);
+		acu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
+	}
 	const int reduce_a_dim = a ? !ccv_nnc_tensor_view_check_dim(a, gdim) : 0;
 	ccv_nnc_tensor_view_t* const b = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	ccv_nnc_cudnn_tensor_view_descriptor_t bcu;
 	if (b)
-		bcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, b);
+	{
+		ccv_nnc_tensor_view_t btv = ccv_nnc_get_tensor_view(outputs[1]);
+		ccv_nnc_tensor_view_t* tvs[] = {
+			&btv, &g
+		};
+		ccv_nnc_tensor_view_alignment(tvs, 2);
+		bcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &btv);
+	}
 	const int reduce_b_dim = b ? !ccv_nnc_tensor_view_check_dim(b, gdim) : 0;
 	cudnnReduceTensorDescriptor_t reduce_sum;
 	if ((a && reduce_a_dim) || (b && reduce_b_dim))
