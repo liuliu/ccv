@@ -25,8 +25,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	// Assuming this is float 32.
-	int adim[CCV_NNC_MAX_DIM + 2];
-	int rdim[CCV_NNC_MAX_DIM + 2];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int rdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(scale, rdim);
 	assert(ccv_nnc_tensor_view_check_dim(bias, rdim));
@@ -34,18 +34,18 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
 	assert(ccv_nnc_tensor_view_check_dim(b, adim));
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int scale_inc[CCV_NNC_MAX_DIM + 2];
-	int bias_inc[CCV_NNC_MAX_DIM + 2];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int scale_inc[CCV_NNC_MAX_DIM_ALLOC];
+	int bias_inc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_inc(a, ainc);
 	ccv_nnc_tensor_view_get_inc(scale, scale_inc);
 	ccv_nnc_tensor_view_get_inc(bias, bias_inc);
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	// The epsilon is used a little bit differently from batch norm, it is outside of the sqrt in this case.
 	const float epsilon = cmd.info.lnorm.epsilon;
-	int saved_mean_inc[CCV_NNC_MAX_DIM + 2];
-	int saved_inv_std_inc[CCV_NNC_MAX_DIM + 2];
+	int saved_mean_inc[CCV_NNC_MAX_DIM_ALLOC];
+	int saved_inv_std_inc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_inc(saved_mean, saved_mean_inc);
 	ccv_nnc_tensor_view_get_inc(saved_inv_std, saved_inv_std_inc);
 	int x;
@@ -238,8 +238,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(h->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	// Assuming this is float 32.
-	int gdim[CCV_NNC_MAX_DIM + 2];
-	int rdim[CCV_NNC_MAX_DIM + 2];
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
+	int rdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(g, gdim);
 	ccv_nnc_tensor_view_get_dim(scale, rdim);
 	assert(ccv_nnc_tensor_view_check_dim(saved_mean, rdim));
@@ -249,13 +249,13 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_view_check_dim(a, gdim));
 	assert(ccv_nnc_tensor_view_check_dim(h, gdim));
 	_ccv_nnc_reduce_sum_forw_cpu_ref(g, dbias);
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int ginc[CCV_NNC_MAX_DIM + 2];
-	int hinc[CCV_NNC_MAX_DIM + 2];
-	int mean_inc[CCV_NNC_MAX_DIM + 2];
-	int inv_std_inc[CCV_NNC_MAX_DIM + 2];
-	int dscale_inc[CCV_NNC_MAX_DIM + 2];
-	int dbias_inc[CCV_NNC_MAX_DIM + 2];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
+	int hinc[CCV_NNC_MAX_DIM_ALLOC];
+	int mean_inc[CCV_NNC_MAX_DIM_ALLOC];
+	int inv_std_inc[CCV_NNC_MAX_DIM_ALLOC];
+	int dscale_inc[CCV_NNC_MAX_DIM_ALLOC];
+	int dbias_inc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_inc(a, ainc);
 	ccv_nnc_tensor_view_get_inc(g, ginc);
 	ccv_nnc_tensor_view_get_inc(h, hinc);

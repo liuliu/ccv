@@ -24,19 +24,43 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
-	const float q = cmd.info.blas.a[1];
-	int adim[CCV_NNC_MAX_DIM + 2];
-	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], adim);
-	int bdim[CCV_NNC_MAX_DIM + 2];
-	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], bdim);
-	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM + 2; i++)
-		{ assert(bdim[i] <= adim[i]); }
-	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
+	ccv_nnc_tensor_view_t atv = ccv_nnc_get_tensor_view(inputs[0]);
+	ccv_nnc_tensor_view_t btv = ccv_nnc_get_tensor_view(inputs[1]);
+	ccv_nnc_tensor_view_t* tvs[] = {
+		&atv, &btv
+	};
+	ccv_nnc_tensor_view_alignment(tvs, 2);
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(&atv, adim);
+	int bdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(&btv, bdim);
+	// If the input a doesn't match the output. We can do two things:
+	// 1. If b matches, we switch;
+	// 2. Otherwise, we change a's dimension and stride.
 	cudnnOpTensorDescriptor_t add = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
 	cudnnSetOpTensorDescriptor(add, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+	ccv_nnc_cudnn_tensor_view_descriptor_t a;
+	if (!ccv_nnc_tensor_view_check_dim((const ccv_nnc_tensor_view_t*)outputs[0], adim))
+	{
+		if (ccv_nnc_tensor_view_check_dim((const ccv_nnc_tensor_view_t*)outputs[0], bdim))
+		{
+			ccv_nnc_tensor_view_t t;
+			CCV_SWAP(atv, btv, t);
+			a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
+		} else {
+			const ccv_nnc_cudnn_tensor_view_descriptor_t old_a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
+			void* const workspace = ccv_nnc_stream_context_get_workspace(stream_context, ccv_nnc_tensor_data_size(outputs[0]->info), CCV_TENSOR_GPU_MEMORY);
+			ccv_nnc_tensor_t tensor = ccv_nnc_tensor(workspace, outputs[0]->info, 0);
+			a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&tensor);
+			static const float one = 1;
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &zero, a.descriptor, a.data.u8, &one, old_a.descriptor, old_a.data.u8, &zero, a.descriptor, a.data.u8));
+			ccv_nnc_cudnn_deinit_tensor_view_descriptor(old_a);
+		}
+	} else
+		a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
+	const float q = cmd.info.blas.a[1];
+	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &btv);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &p, a.descriptor, a.data.u8, &q, b.descriptor, b.data.u8, &zero, c.descriptor, c.data.u8));
 	ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, add);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
@@ -66,7 +90,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
-	int gdim[CCV_NNC_MAX_DIM + 2];
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_get_dim(g, gdim);
 	static const float zero = 0;

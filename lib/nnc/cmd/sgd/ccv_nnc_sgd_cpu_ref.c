@@ -25,18 +25,18 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	// Assuming this is float 32.
-	int adim[CCV_NNC_MAX_DIM + 2];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	assert(ccv_nnc_tensor_view_check_dim(g, adim));
 	assert(ccv_nnc_tensor_view_check_dim(m, adim));
 	assert(ccv_nnc_tensor_view_check_dim(b, adim));
 	assert(ccv_nnc_tensor_view_check_dim(n, adim));
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	int ginc[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int minc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int ninc[CCV_NNC_MAX_DIM + 2];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int minc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int ninc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_inc(g, ginc);
 	ccv_nnc_tensor_view_get_inc(a, ainc);
 	ccv_nnc_tensor_view_get_inc(m, minc);

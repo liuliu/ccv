@@ -21,9 +21,9 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 		memcpy(b->data.u8, a->data.u8, ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype));
 		return;
 	}
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	ccv_nnc_tensor_view_get_inc(a, ainc);
@@ -70,8 +70,8 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{

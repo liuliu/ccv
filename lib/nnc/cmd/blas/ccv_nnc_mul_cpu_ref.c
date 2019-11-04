@@ -26,9 +26,9 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 			return;
 		}
 		// Assuming this is float 32.
-		int dim[CCV_NNC_MAX_DIM + 2];
-		int ainc[CCV_NNC_MAX_DIM + 2];
-		int cinc[CCV_NNC_MAX_DIM + 2];
+		int dim[CCV_NNC_MAX_DIM_ALLOC];
+		int ainc[CCV_NNC_MAX_DIM_ALLOC];
+		int cinc[CCV_NNC_MAX_DIM_ALLOC];
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(a, dim);
@@ -86,7 +86,7 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 		}
 		return;
 	}
-	int cdim[CCV_NNC_MAX_DIM + 2];
+	int cdim[CCV_NNC_MAX_DIM_ALLOC];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	ccv_nnc_tensor_view_get_dim(a, cdim); // Fill in cdim first.
@@ -106,13 +106,13 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 		return;
 	}
 	// Assuming this is float 32.
-	int adim[CCV_NNC_MAX_DIM + 2];
-	int bdim[CCV_NNC_MAX_DIM + 2];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int cinc[CCV_NNC_MAX_DIM + 2];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
 	assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(ccv_nnc_tensor_view_check_dim(c, cdim));
 	int x;
@@ -191,7 +191,7 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 
 static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	int gdim[CCV_NNC_MAX_DIM + 2];
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
 	int no_broadcasting = 1;
 	if (outputs[0])
 	{
@@ -225,10 +225,10 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
-	int adim[CCV_NNC_MAX_DIM + 2];
-	int bdim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int bdim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	int i[CCV_NNC_MAX_DIM + 2];
 	int x;
 	const float p = cmd.info.blas.a[0];
@@ -309,7 +309,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
-	int ginc[CCV_NNC_MAX_DIM + 2];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_get_dim(g, gdim);
 	ccv_nnc_tensor_view_get_inc(g, ginc);

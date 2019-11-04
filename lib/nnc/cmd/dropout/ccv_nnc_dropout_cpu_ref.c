@@ -20,9 +20,9 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const float inv_p = 1. / (1. - p);
 	assert(output_size >= 2);
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -99,9 +99,9 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const float inv_p = 1. / (1. - p);
 	uint8_t* const maskdata = inputs[4]->data.u8;
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ginc[CCV_NNC_MAX_DIM + 2];
-	int hinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
+	int hinc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(g->info.dim[CCV_NNC_MAX_DIM + 2] == 0);

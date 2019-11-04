@@ -38,8 +38,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(!CCV_IS_TENSOR_VIEW(outputs[2]));
 	assert(outputs[2]->info.datatype == CCV_32F);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t saved_inv_std = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-	int adim[CCV_NNC_MAX_DIM + 2];
-	int rdim[CCV_NNC_MAX_DIM + 2];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int rdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[0], adim);
 	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], rdim);
 	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[2], rdim));
@@ -114,8 +114,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	const ccv_nnc_cudnn_tensor_view_descriptor_t dscale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
 	assert(!CCV_IS_TENSOR_VIEW(outputs[2]));
 	const ccv_nnc_cudnn_tensor_view_descriptor_t dbias = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-	int gdim[CCV_NNC_MAX_DIM + 2];
-	int rdim[CCV_NNC_MAX_DIM + 2];
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
+	int rdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[0], gdim);
 	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[4], rdim);
 	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[7], rdim));

@@ -20,10 +20,10 @@ void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, con
 		return;
 	}
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int cinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
 	int x, z;
 	int k = 0;
 	// Bad, I promised this can be inplace operation. Need to first find out if there are share the same pointer first.
@@ -141,10 +141,10 @@ void _ccv_nnc_ewprod_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, co
 		return;
 	}
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int cinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
 	int x, z;
 	int k = 0;
 	// Bad, I promised this can be inplace operation. Need to first find out if there are share the same pointer first.
@@ -239,11 +239,11 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	// D[x * y * z, x] = y * z
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ginc[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int hinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int hinc[CCV_NNC_MAX_DIM_ALLOC];
 	int x, z;
 	ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[output_size + 1];
@@ -402,10 +402,10 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 static void _ccv_nnc_ewdiv_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b, ccv_nnc_tensor_view_t* const c)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int cinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
 	if (a == 0) // Take 0 as all ones tensor.
 	{
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -546,12 +546,12 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		_ccv_nnc_ewdiv_forw_cpu_ref(1, (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ginc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	int cinc[CCV_NNC_MAX_DIM + 2];
-	int hainc[CCV_NNC_MAX_DIM + 2];
-	int hbinc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ginc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
+	int hainc[CCV_NNC_MAX_DIM_ALLOC];
+	int hbinc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)inputs[3];
@@ -875,9 +875,9 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -953,9 +953,9 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -1026,9 +1026,9 @@ static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static int _ccv_nnc_ewsqrt_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);

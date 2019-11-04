@@ -353,6 +353,37 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	*cols_inc_ref = cols_inc;
 }
 
+static inline CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_get_tensor_view(const ccv_nnc_tensor_t* const tensor)
+{
+	if (CCV_IS_TENSOR_VIEW(tensor))
+		return (ccv_nnc_tensor_view_t)*(ccv_nnc_tensor_view_t*)tensor;
+	ccv_nnc_tensor_view_t tv;
+	memcpy(&tv, tensor, sizeof(ccv_nnc_tensor_t));
+	return tv;
+}
+
+static inline void ccv_nnc_tensor_view_alignment(ccv_nnc_tensor_view_t** const tvs, const int tv_size)
+{
+	int i, j;
+	int max_nd = 0;
+	for (i = 0; i < tv_size; i++)
+		max_nd = ccv_max(ccv_nnc_tensor_nd(tvs[i]->info.dim), max_nd);
+	for (i = 0; i < tv_size; i++)
+	{
+		const int nd = ccv_nnc_tensor_nd(tvs[i]->info.dim);
+		for (j = max_nd - 1; j >= max_nd - nd; j--)
+			tvs[i]->info.dim[j] = tvs[i]->info.dim[j - max_nd + nd];
+		for (j = 0; j < max_nd - nd; j++)
+			tvs[i]->info.dim[j] = 1;
+		if (!CCV_IS_TENSOR_VIEW(tvs[i]))
+			continue;
+		for (j = max_nd - 1; j >= max_nd - nd; j--)
+			tvs[i]->inc[j] = tvs[i]->inc[j - max_nd + nd];
+		for (j = 0; j < max_nd - nd; j++)
+			tvs[i]->inc[j] = 1;
+	}
+}
+
 
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
 #define TRANSPOSE(_X, _Y) ((_X), (_Y))
