@@ -101,7 +101,6 @@ static int _ccv_nnc_index_select_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const int h_cols_inc = CCV_IS_TENSOR_VIEW(h) ? (h_nd < 2 ? 1 : h->inc[1]) : h_cols;
 	const int h_rows = h->info.dim[0];
 	assert(g_rows == indices->info.dim[0]);
-	assert(g_rows <= h_rows);
 	assert(g_cols == h_cols);
 	assert(indices->info.datatype == CCV_32S);
 	assert(g->info.datatype == h->info.datatype);
@@ -110,10 +109,10 @@ static int _ccv_nnc_index_select_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	if (g->info.datatype == CCV_16F)
 	{
 		_ccv_nnc_index_select_zero_kernel<<<CUDA_GET_BLOCKS(h_count), CUDA_NUM_THREADS, 0, stream>>>(h_count, h_cols, (__half*)h->data.f16, h_cols_inc);
-		_ccv_nnc_index_select_back_kernel<<<CUDA_GET_BLOCKS(g_rows), CUDA_NUM_THREADS, 0, stream>>>(g_rows, g_cols, (__half*)g->data.f16, g_cols_inc, indices->data.i32, (__half*)h->data.f16, h_cols_inc);
+		_ccv_nnc_index_select_back_kernel<<<CUDA_GET_BLOCKS(g_cols), CUDA_NUM_THREADS, 0, stream>>>(g_rows, g_cols, (__half*)g->data.f16, g_cols_inc, indices->data.i32, (__half*)h->data.f16, h_cols_inc);
 	} else {
 		_ccv_nnc_index_select_zero_kernel<<<CUDA_GET_BLOCKS(h_count), CUDA_NUM_THREADS, 0, stream>>>(h_count, h_cols, h->data.f32, h_cols_inc);
-		_ccv_nnc_index_select_back_kernel<<<CUDA_GET_BLOCKS(g_rows), CUDA_NUM_THREADS, 0, stream>>>(g_rows, g_cols, g->data.f32, g_cols_inc, indices->data.i32, h->data.f32, h_cols_inc);
+		_ccv_nnc_index_select_back_kernel<<<CUDA_GET_BLOCKS(g_cols), CUDA_NUM_THREADS, 0, stream>>>(g_rows, g_cols, g->data.f32, g_cols_inc, indices->data.i32, h->data.f32, h_cols_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

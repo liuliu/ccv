@@ -66,7 +66,6 @@ static int _ccv_nnc_index_select_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const int h_cols_inc = CCV_IS_TENSOR_VIEW(h) ? (h_nd < 2 ? 1 : h->inc[1]) : h_cols;
 	const int h_rows = h->info.dim[0];
 	assert(g_rows == indices->info.dim[0]);
-	assert(g_rows <= h_rows);
 	assert(g_cols == h_cols);
 	assert(indices->info.datatype == CCV_32S);
 	assert(g->info.datatype == h->info.datatype);
