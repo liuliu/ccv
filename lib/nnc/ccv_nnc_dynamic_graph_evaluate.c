@@ -55,10 +55,6 @@ static ccv_nnc_stateful_cmd_vtab_t ccv_cnnp_model_exec_isa = {
 void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_model_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
-	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
-	stateful_exec->tensor_tape = tensor_tape;
-	stateful_exec->data = model;
-	cmd.data = stateful_exec;
 	assert(input_size > 0);
 	if (!model->graph)
 	{
@@ -68,9 +64,24 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			input_params[i] = inputs[i]->info;
 		ccv_cnnp_model_compile(model, input_params, input_size, CMD_NOOP(), CMD_NOOP());
 	}
-	const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
-	int ret;
-	khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
-	kh_val(dynamic_graph->stateful_execs, k) = stateful_exec;
+	if (dynamic_graph->no_grad)
+	{
+		ccv_nnc_stateful_exec_t stateful_exec = {
+			.tensor_tape = tensor_tape,
+			.data = model
+		};
+		cmd.data = &stateful_exec;
+		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
+	} else {
+		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
+		stateful_exec->tensor_tape = tensor_tape;
+		stateful_exec->data = model;
+		cmd.data = stateful_exec;
+		const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
+		assert(symbol.graph);
+		int ret;
+		khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
+		kh_val(dynamic_graph->stateful_execs, k) = stateful_exec;
+	}
 }
 

@@ -59,6 +59,7 @@ typedef struct {
 KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)
 
 struct ccv_nnc_dynamic_graph_s {
+	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
 	ccv_array_t* vars; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.

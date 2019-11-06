@@ -126,7 +126,7 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	memcpy(tv->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	uint8_t* const p = tensor->data.u8;
-	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv, ofs);
+	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, tv->inc, ofs);
 	tv->data.u8 = p + off;
 }
 

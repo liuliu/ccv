@@ -2126,6 +2126,12 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
  */
 void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * Enable or disable gradient computation on a dynamic graph.
+ * @param dynamic_graph The dynamic graph.
+ * @param no_grad If it is 1, disable gradient computation on the dynamic graph.
+ */
+void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad);
+/**
  * Dispose a tensor variable. You cannot do any computation against this tensor variable afterwards.
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable to be disposed.

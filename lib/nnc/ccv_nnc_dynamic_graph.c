@@ -10,6 +10,7 @@
 ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 {
 	ccv_nnc_dynamic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_dynamic_graph_t));
+	graph->no_grad = 0;
 	graph->reuse_var = -1;
 	graph->vars = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
@@ -267,6 +268,11 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_exchange_new(ccv_nnc_dynamic_g
 	return new_variable;
 }
 
+void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad)
+{
+	dynamic_graph->no_grad = no_grad;
+}
+
 ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i, j;
@@ -345,7 +351,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph
 	ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, input_size, output_tensors, output_size, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_graph_exec_symbol_t graph_exec = {};
-	if (input_size > 0) // No need to record the execution if there is no input.
+	if (input_size > 0 && !graph->no_grad) // No need to record the execution if there is no input or we disabled gradient computation.
 	{
 		ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
 		for (i = 0; i < output_size; i++)

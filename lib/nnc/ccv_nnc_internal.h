@@ -88,16 +88,16 @@ void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t c
 void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, int* const device_ids, const int max_device_id_size);
 
-static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* const tv, const int ofs[CCV_NNC_MAX_DIM_ALLOC])
+static inline off_t ccv_nnc_tensor_view_offset(const int datatype, const int inc[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int i;
 	off_t offset = 0;
-	size_t inc = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
-	const int nd = ccv_nnc_tensor_nd(tv->inc);
+	size_t step = CCV_GET_DATA_TYPE_SIZE(datatype);
+	const int nd = ccv_nnc_tensor_nd(inc);
 	for (i = nd - 1; i >= 0; i--)
 	{
-		offset += ofs[i] * inc;
-		inc *= tv->inc[i];
+		offset += ofs[i] * step;
+		step *= inc[i];
 	}
 	return offset;
 }

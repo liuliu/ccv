@@ -169,6 +169,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 	assert(tensor_symbol_info[autograd->d].alias_ref == 0);
 	const int* tensor_dim = tensor_symbol_info[autograd->d].info.dim;
+	const int tensor_count = ccv_nnc_dimension_count(tensor_dim);
 	int i, j;
 	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
 	{
@@ -177,6 +178,11 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
 		assert(tensor_symbol_info[autograd->d].alias_ref);
 		const int* inc = tensor_symbol_info[autograd->d].inc;
+		// If this is just reshaped (i.e., dimension is the same, and inc covers the whole). We have fully assigned.
+		if (memcmp(inc, tensor_symbol_info[autograd->d].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0 &&
+			ccv_nnc_dimension_count(inc) == tensor_count)
+			return 1;
+		// Otherwise if inc doesn't match original dim, it is not covered.
 		if (memcmp(inc, tensor_dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
 			return 0;
 	}
