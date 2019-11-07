@@ -910,6 +910,7 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 #ifdef HAVE_NCCL
 static void _ccv_nnc_nccl_redo_comms(ncclComm_t* const comms, const int comm_count, const int device_count)
 {
+	printf("redo comm %d %d\n", comm_count, device_count);
 	int i;
 	for (i = 0; i < comm_count; i++)
 		NCCL_ENFORCE(ncclCommDestroy(comms[i]));

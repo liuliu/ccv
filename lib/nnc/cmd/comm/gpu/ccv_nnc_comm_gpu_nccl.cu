@@ -11,11 +11,11 @@ extern "C" {
 
 static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == output_size);
+	assert(input_size >= output_size);
 	int i, device_count = 0;
 	assert(input_size > 0);
 	const size_t tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
-	for (i = 0; i < input_size; i++)
+	for (i = 0; i < output_size; i++)
 	{
 		assert(!CCV_IS_TENSOR_VIEW(inputs[i]));
 		assert(ccv_nnc_tensor_count(inputs[i]->info) == tensor_count);
@@ -25,13 +25,20 @@ static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);
 		device_count = ccv_max(device_id + 1, device_count);
 	}
+	ncclComm_t comms[output_size];
+	for (i = 0; i < output_size; i++)
+	{
+		ccv_nnc_tensor_t* const a = inputs[i];
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
+		comms[i] = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
+	}
 	NCCL_ENFORCE(ncclGroupStart());
-	for (i = 0; i < input_size; i++)
+	for (i = 0; i < output_size; i++)
 	{
 		ccv_nnc_tensor_t* const a = inputs[i];
 		const int datatype = a->info.datatype;
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
-		ncclComm_t comm = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
+		ncclComm_t comm = comms[i];
 		ccv_nnc_stream_context_t* const neighbor_context = stream_context ? ccv_nnc_stream_context_find_neighbor(stream_context, device_id) : 0;
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(neighbor_context);
 		ccv_nnc_tensor_t* const b = outputs[i];
