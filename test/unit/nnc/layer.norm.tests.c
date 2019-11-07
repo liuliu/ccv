@@ -53,8 +53,8 @@ TEST_CASE("implement layer norm with other symbolic graph")
 	ccv_nnc_symbolic_graph_t* const layer_norm_symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t bx = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 4, 4, 10), "x");
 	ccv_nnc_tensor_symbol_t by = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 4, 4, 10), "y");
-	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "scale");
-	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "bias");
+	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 4, 4, 10), "scale");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 4, 4, 10), "bias");
 	ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "saved_mean");
 	ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "saved_inv_std");
 	ccv_nnc_graph_exec_symbol_new(layer_norm_symbolic_graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(scale), "set_scale");
@@ -128,8 +128,8 @@ TEST_CASE("compare layer norm gradient with other symbolic graph")
 	ccv_nnc_symbolic_graph_t* const layer_norm_symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t bx = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 4, 4, 10), "x");
 	ccv_nnc_tensor_symbol_t by = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 4, 4, 10), "y");
-	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "scale");
-	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "bias");
+	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 4, 4, 10), "scale");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 4, 4, 10), "bias");
 	ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "saved_mean");
 	ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(layer_norm_symbolic_graph, CPU_TENSOR_NHWC(32F, 8, 1, 1, 1), "saved_inv_std");
 	ccv_nnc_graph_exec_symbol_new(layer_norm_symbolic_graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(scale), "set_scale");
