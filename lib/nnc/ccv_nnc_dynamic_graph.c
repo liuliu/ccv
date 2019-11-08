@@ -199,7 +199,19 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 	assert(!variable_to->alias_ref);
 	if (!variable_to->tensor_view)
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(0, variable_to->info, 0);
-	tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info.dim, tensor_variable->ofs, tensor_variable->inc);
+	int no_ofs = 1;
+	int i;
+	for (i = 0; no_ofs && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		no_ofs = (tensor_variable->ofs[i] == 0);
+	int no_inc = 1;
+	for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		no_inc = (tensor_variable->inc[i] == 0);
+	if (!no_inc)
+		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
+	if (no_ofs && no_inc)
+		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(variable_to->tensor_view->data.u8, tensor_variable->info, 0);
+	else
+		tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info.dim, tensor_variable->ofs, no_inc ? tensor_variable->info.dim : tensor_variable->inc);
 	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 }
 
@@ -239,7 +251,11 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_tensor_symbol_from_variable(ccv_nnc_dyna
 	assert(alias_ref >= 0);
 	ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_ref);
 	assert(!variable_to->alias_ref);
-	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->tape, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, tensor_variable->inc, tensor_variable->info, 0);
+	int no_inc = 1;
+	int i;
+	for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		no_inc = (tensor_variable->inc[i] == 0);
+	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->tape, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->info, 0);
 	_ccv_nnc_tensor_symbol_extra_new(graph, tensor_variable, symbol);
 	return symbol;
 }
@@ -292,7 +308,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph
 		input_sources[i] = input_symbols[i].d != CCV_NNC_NO_TENSOR_SYMBOL ? ((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, input_symbols[i].d))->sources : 0;
 		if (inputs[i] && inputs[i]->alias_ref)
 		{
-			const int alias_ref = outputs[i]->alias_ref - 1;
+			const int alias_ref = inputs[i]->alias_ref - 1;
 			assert(alias_ref >= 0);
 			ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_ref);
 			input_alias_sources[i] = ((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, variable_to->symbol.d))->sources;
