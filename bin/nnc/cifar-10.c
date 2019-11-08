@@ -186,13 +186,13 @@ static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_
 	{
 		if (trainable_indexes[i].cmd.cmd == CCV_NNC_BATCH_NORM_FORWARD &&
 			(trainable_indexes[i].index == 1 ||  trainable_indexes[i].index == 2)) // If it is scale / bias of batch norm, remove weight decay.
-			cmd.info.minimize.decay = 0;
+			cmd.info.sgd.decay = 0;
 		if (trainable_indexes[i].cmd.cmd == CCV_NNC_GEMM_FORWARD &&
 			trainable_indexes[i].index == 2) // bias in gemm.
-			cmd.info.minimize.decay = 0;
+			cmd.info.sgd.decay = 0;
 		if (trainable_indexes[i].cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD &&
 			trainable_indexes[i].index == 2) // bias in convolution.
-			cmd.info.minimize.decay = 0;
+			cmd.info.sgd.decay = 0;
 	}
 	return cmd;
 }

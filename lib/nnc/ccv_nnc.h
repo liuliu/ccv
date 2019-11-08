@@ -91,13 +91,21 @@ typedef struct {
 			float epsilon; /**< [lnorm.epsilon] The epsilon for standard derivation. */
 		} lnorm;
 		struct {
-			int nesterov; /**< [minimize.nesterov] Nesterov accelerated gradient. */
-			float rate; /**< [minimize.rate] The learning rate. */
-			float scale; /**< [minimize.scale] The scale to be applied to the gradient before doing any minimization. */
-			float decay; /**< [minimize.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
-			float momentum; /**< [minimize.momentum] For SGD, this follows http://www.cs.toronto.edu/%7Ehinton/absps/momentum.pdf. */
-			float dampening; /**< [minimize.dampening] This usually == momentum, however, it can be changed. */
-		} minimize;
+			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
+			float rate; /**< [sgd.rate] The learning rate. */
+			float scale; /**< [sgd.scale] The scale to be applied to the gradient before doing any minimization. */
+			float decay; /**< [sgd.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
+			float momentum; /**< [sgd.momentum] For SGD, this follows http://www.cs.toronto.edu/%7Ehinton/absps/momentum.pdf. */
+			float dampening; /**< [sgd.dampening] This usually == momentum, however, it can be changed. */
+		} sgd;
+		struct {
+			int step; /**< [adam.step] Step t in adam optimizer. */
+			float rate; /**< [adam.rate] The learning rate. */
+			float beta1; /**< [adam.beta1] The beta1 hyper-parameter in adam optimizer. */
+			float beta2; /**< [adam.beta2] The beta2 hyper-parameter in adam optimizer. */
+			float decay; /**< [adam.decay] This is the weight decay parameter, which represents L2 regularization. */
+			float epsilon; /**< [adam.epsilon] The epsilon for standard derivation. */
+		} adam;
 		struct {
 			int transpose_a[2]; /**< [blas.transpose_a[2]] The axis we'd like to transpose for input a. */
 			int transpose_b[2]; /**< [blas.transpose_b[2]] The axis we'd like to transpose for input b. */

@@ -42,13 +42,13 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	ccv_nnc_tensor_view_get_inc(m, minc);
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	ccv_nnc_tensor_view_get_inc(n, ninc);
-	const float rate = cmd.info.minimize.rate;
-	const float scale = cmd.info.minimize.scale;
-	const float decay = cmd.info.minimize.decay;
-	const float momentum = cmd.info.minimize.momentum;
-	const float dampening = cmd.info.minimize.dampening;
+	const float rate = cmd.info.sgd.rate;
+	const float scale = cmd.info.sgd.scale;
+	const float decay = cmd.info.sgd.decay;
+	const float momentum = cmd.info.sgd.momentum;
+	const float dampening = cmd.info.sgd.dampening;
 	const float inv_dampening = 1 - dampening;
-	const int nesterov = cmd.info.minimize.nesterov;
+	const int nesterov = cmd.info.sgd.nesterov;
 	if (nesterov)
 		{ assert(dampening == 0); }
 	int i[CCV_NNC_MAX_DIM + 1];
