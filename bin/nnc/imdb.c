@@ -206,8 +206,8 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(3, embedding_size * 2, 8, batch_size, max_length, embedding_size * 8);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size - 1) / batch_size;
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, 0.1, 1. / batch_size, 0.0001, 0.9, 0);
-	const int aux_size = ccv_nnc_minimizer_saved_aux_size(sgd);
+	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.002, 0.9, 0.98, 0, 1e-9);
+	const int aux_size = ccv_nnc_minimizer_saved_aux_size(adam);
 	ccv_nnc_tensor_variable_t saved_auxs[aux_size * 2];
 	for (i = 0; i < aux_size; i++)
 		saved_auxs[i] = ccv_nnc_tensor_variable_new(dynamic_graph, GPU_TENSOR_NCHW(000, 32F, vocab_size, embedding_size));
@@ -222,9 +222,9 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 100000; i++)
 	{
-		float learn_rate = 0.0005;
+		float learn_rate = 0.002;
 		learn_rate = ccv_max(learn_rate, 0.0001);
-		sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / batch_size, 0.0001, 0.9, 0);
+		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 		const ccv_nnc_tensor_variable_t vec = ccv_nnc_tensor_variable_new(dynamic_graph, GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, embedding_size * 2));
 		ccv_nnc_tensor_t word_indices_tensor = ccv_nnc_tensor(tensor[0]->data.f32, GPU_TENSOR_NCHW(000, 32S, batch_size * max_length), 0);
@@ -267,7 +267,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_dynamic_graph_dot(dynamic_graph, CCV_NNC_LONG_DOT_GRAPH, exec);
 			fclose(exec);
 		}
-		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, sgd, TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), saved_auxs, 0);
+		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), saved_auxs, 0);
 		ccv_nnc_tensor_variable_free(dynamic_graph, vec);
 		ccv_nnc_tensor_variable_free(dynamic_graph, word_vec);
 		ccv_nnc_tensor_variable_free(dynamic_graph, word_indices);

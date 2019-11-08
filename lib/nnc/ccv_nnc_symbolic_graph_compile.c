@@ -1019,18 +1019,18 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			if (dup_ref >= 0 && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[dup_ref]))
 				TENSOR_EXPECT_UNSET_UNASSIGNED(tensor_blocks[i]);
 		}
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(int) * tensor_symbol_info_size + sizeof(off_t) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(off_t) * tensor_symbol_info_size + sizeof(int) * tensor_symbol_info_size);
 	graph_prep->tensor_arena = tensor_arena;
 	tensor_arena->graph_ref = (intptr_t)graph_prep->symbolic_graph;
 	tensor_arena->buffers = (void*)(tensor_arena + 1);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
-	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
-	tensor_arena->vt_alias_refs = (int*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
-	tensor_arena->vt_alias_offs = (off_t*)(tensor_arena->vt_alias_refs + tensor_symbol_info_size);
+	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
+	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->sub_arenas + graph_prep->sub_prep_size);
+	tensor_arena->vt_alias_offs = (off_t*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
+	tensor_arena->vt_alias_refs = (int*)(tensor_arena->vt_alias_offs + tensor_symbol_info_size);
 	tensor_arena->pb_vt_tensors = 0;
 	tensor_arena->vt_alias_tos = 0;
-	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->vt_alias_offs + tensor_symbol_info_size);
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
