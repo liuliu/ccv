@@ -2771,21 +2771,8 @@ CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* con
  */
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
 
-enum {
-	CCV_CNNP_ACTIVATION_NONE,
-	CCV_CNNP_ACTIVATION_RELU,
-	CCV_CNNP_ACTIVATION_SOFTMAX,
-};
-
-enum {
-	CCV_CNNP_NO_NORM,
-	CCV_CNNP_BATCH_NORM,
-};
-
 typedef struct {
 	int no_bias; /**< No bias term. */
-	int norm; /**< The normalizations can be applied after activation such as CCV_CNNP_BATCH_NORM. */
-	int activation; /**< The activations  can be applied for the output, such as CCV_CNNP_ACTIVATION_RELU or CCV_CNNP_ACTIVATION_SOFTMAX. */
 	ccv_nnc_hint_t hint; /**< The hint for a particular operation */
 } ccv_cnnp_param_t;
 /**
@@ -2801,19 +2788,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const char* const name);
 /**
- * An identity layer that takes input and do nothing pass it as the output. Realistically, we use this
- * because we want to apply some normalization / activation function on top of the input.
- * @param params Parameters (such as hint and activation or norm).
- * @param name The unique name of the model.
- * @return A model that takes input and pass it as output.
- */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const ccv_cnnp_param_t params, const char* const name);
-/**
  * A convolution model.
  * @param groups The number of kernel groups in the model.
  * @param filters The total number of filters in the model (filters = groups * per group filters).
  * @param kdim The dimensions of the kernel.
- * @param params Other parameters (such as hint and activation or norm).
+ * @param params Other parameters (such as hint and contains bias or not).
  * @param name The unique name of the model.
  * @return A convolution model.
  */
@@ -2821,15 +2800,33 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const 
 /**
  * A dense layer model.
  * @param count The output dimension.
- * @param params Other parameters (such as hint and activation or norm).
+ * @param params Other parameters (such as hint and contains bias or not).
  * @param name The unique name of the model.
  * @return A dense layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params, const char* const name);
 /**
+ * A batch norm layer model.
+ * @param momentum The momentum in batch norm parameter.
+ * @param epsilon The epsilon in batch norm parameter.
+ * @param name The unique name of the model.
+ * @return A batch norm layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_batch_norm(const float momentum, const float epsilon, const char* const name);
+/**
+ * A RELU activation layer model.
+ * @return A RELU activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
+/**
+ * A softmax activation layer model.
+ * @return A softmax activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softmax(const char* const name);
+/**
  * A max pool model.
  * @param kdim The pooling window dimension.
- * @param params Other parameters (such as hint and activation or norm).
+ * @param params Other parameters (such as hint).
  * @param name The unique name of the model.
  * @return A max pool model.
  */
@@ -2837,7 +2834,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
 /**
  * An average pool model.
  * @param kdim The pooling window dimension.
- * @param params Other parameters (such as hint and activation or norm).
+ * @param params Other parameters (such as hint).
  * @param name The unique name of the model.
  * @return An average pool model.
  */

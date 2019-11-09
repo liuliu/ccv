@@ -2999,9 +2999,9 @@ TEST_CASE("broadcasting semantics for mul backward")
 	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
 	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b, c), TENSOR_LIST(ga, gb, gc), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(gc, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(gc, ga, gb), TENSOR_LIST(gda, gdb), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(c, a, b), TENSOR_LIST(dat, dbt), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(c, a, b), TENSOR_LIST(dat, dbt), 0);
 	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
 	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
 	ccv_nnc_tensor_free(a);
@@ -3039,9 +3039,9 @@ TEST_CASE("broadcasting semantics for mul backward (no input grad)")
 	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 1), 0);
 	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
 	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
 	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
 	ccv_nnc_tensor_free(a);
@@ -3080,9 +3080,9 @@ TEST_CASE("broadcasting semantics for mul backward (no input grad) for b")
 	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
 	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
 	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
 	ccv_nnc_tensor_free(a);
@@ -3121,9 +3121,9 @@ TEST_CASE("broadcasting semantics for mul backward (no input grad) for a")
 	ccv_nnc_tensor_t* const gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const gda = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ga, gb), TENSOR_LIST(gda, gdb), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gda, gdb), TENSOR_LIST(da, db), 0);
-	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
+	ccv_nnc_cmd_exec(CMD_MUL_BACKWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(dat, dbt), 0);
 	REQUIRE_TENSOR_EQ(dat, da, "gradient of a should be equal");
 	REQUIRE_TENSOR_EQ(dbt, db, "gradient of b should be equal");
 	ccv_nnc_tensor_free(a);

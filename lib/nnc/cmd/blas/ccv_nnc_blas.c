@@ -118,9 +118,9 @@ REGISTER_COMMAND(CCV_NNC_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADD_FORWARD)
-#define CMD_ADD_FORWARD(...) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_ADD_FORWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, CMD_BLAS(_p, _q), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADD_BACKWARD)
-#define CMD_ADD_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_ADD_BACKWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, CMD_BLAS(_p, _q), 0)
 
 static int _ccv_nnc_mul_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -160,9 +160,9 @@ REGISTER_COMMAND(CCV_NNC_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MUL_FORWARD)
-#define CMD_MUL_FORWARD(...) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_MUL_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, CMD_BLAS(_p), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MUL_BACKWARD)
-#define CMD_MUL_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+#define CMD_MUL_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(_p), 0)
 
 static int _ccv_nnc_scalar_mul_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
