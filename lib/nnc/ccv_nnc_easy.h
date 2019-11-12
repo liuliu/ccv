@@ -386,9 +386,9 @@ static inline void ccv_nnc_tensor_view_alignment(ccv_nnc_tensor_view_t** const t
 
 
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
-#define TRANSPOSE(_X, _Y) ((_X), (_Y))
+#define TRANSPOSE(_X, _Y) ((int[]){(_X),(_Y)})
 #define NO_TRANSPOSE TRANSPOSE(0, 0)
-#define CMD_GEMM_X(_0, _TA, _TB, ...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.transpose_a={ESCAPE_X _TA},.transpose_b={ESCAPE_X _TB},}}) // We default to alpha = 1 and beta = 1
+#define CMD_GEMM_X(_0, _TA, _TB, ...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.transpose_a={_TA[0],_TA[1]},.transpose_b={_TB[0],_TB[1]},}}) // We default to alpha = 1 and beta = 1
 #define CMD_GEMM(...) CMD_GEMM_X(_0, ##__VA_ARGS__, NO_TRANSPOSE, NO_TRANSPOSE)
 #define CMD_GENERIC_X_0() ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}})
 #define CMD_GENERIC_X_F(...) ("This should not be used, you should have either 0 parameter or 3 parameters for CMD_GENERIC")

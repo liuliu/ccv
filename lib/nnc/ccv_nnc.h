@@ -2157,6 +2157,13 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph);
  * @param out The output file stream.
  */
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out);
+/**
+ * Count how many ops we kept for gradient computation purpose. This method is useful when we
+ * want to assert at end of some train loop, we shouldn't have any gradient computation left.
+ * @param graph The dynamic graph.
+ * @return How many gradient computations we kept.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph);
 
 /** @} */
 
@@ -2854,6 +2861,27 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DI
  * @return A flatten layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
+/**
+ * A layer norm model.
+ * @param epsilon The epsilon in layer norm parameter.
+ * @param axis The axis are the feature axis to compute norm.
+ * @param axis_count How many axis we count as feature.
+ * @param name The unique name of the model.
+ * @return A layer norm model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
+/**
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar_mul(const float p, const char* const name);
+/**
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_transpose(const int axis_a, const int axis_b, const char* const name);
+/**
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const char* const name);
+/**
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const char* const name);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
