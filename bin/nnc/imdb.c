@@ -94,23 +94,22 @@ static ccv_cnnp_model_t* _self_attention_new(const int k, const int h, const int
 	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
 	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
 	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
-	keys = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
-	queries = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries));
-	values = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(values));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(values));
 	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
 	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
 	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
 	const float scale = 1. / powf(k, 0.25);
-	queries = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_SCALAR_MUL_FORWARD(scale), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries));
-	keys = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_SCALAR_MUL_FORWARD(scale), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
-	ccv_cnnp_model_io_t keys_t = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(keys));
-	ccv_cnnp_model_io_t dot = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(queries, keys_t));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_scalar_mul(scale, 0), MODEL_IO_LIST(queries));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_scalar_mul(scale, 0), MODEL_IO_LIST(keys));
+	ccv_cnnp_model_io_t dot = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, TRANSPOSE(1, 2), 0), MODEL_IO_LIST(queries, keys));
 	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h * t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
 	dot = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(dot));
 	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
-	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(dot, values));
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0), MODEL_IO_LIST(dot, values));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, h * k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	ccv_cnnp_model_t* const unifyheads = ccv_cnnp_dense(k, (ccv_cnnp_param_t){}, "unifyheads");
 	out = ccv_cnnp_model_apply(unifyheads, MODEL_IO_LIST(out));
@@ -124,14 +123,14 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	ccv_cnnp_model_t* const self_attention = _self_attention_new(k, h, b, t);
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(self_attention, MODEL_IO_LIST(x));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, out));
-	ccv_cnnp_model_io_t first = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-5, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, 1, 1, k))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, 1, 1, k)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
+	ccv_cnnp_model_io_t first = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(first));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(ff, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(first, out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_LAYER_NORM_FORWARD(1e-5, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, 1, 1, k))), KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, GPU_TENSOR_NCHW(000, 32F, 1, 1, k)))), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO, CCV_CNNP_TENSOR_NOT_OUTPUT, CCV_CNNP_TENSOR_NOT_OUTPUT), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(out), "transformer");
 }
 
@@ -142,7 +141,7 @@ static ccv_cnnp_model_t* _classifier_transformer_new(const int layers, const int
 	int i;
 	for (i = 0; i < layers; i++)
 		out = ccv_cnnp_model_apply(_transformer_block_new(k, h, b, t, ff), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO)), MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, k, t, 1), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	// Last layer, get it to 2.
@@ -200,7 +199,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			seq_indices_cpu->data.i32[i * max_length + j] = j;
 	const ccv_nnc_tensor_variable_t seq_indices = ccv_nnc_tensor_constant_new(dynamic_graph, GPU_TENSOR_NCHW(000, 32S, batch_size * max_length));
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices)), 0);
-	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(6, embedding_size, 8, batch_size, max_length, embedding_size * 4);
+	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(4, embedding_size, 8, batch_size, max_length, embedding_size * 4);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size - 1) / batch_size;
 	ccv_cnnp_dataframe_shuffle(train_data);
 	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
