@@ -859,14 +859,15 @@ static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
-	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_tensor_param_t output_params[2];
 	ccv_cnnp_model_dropout_t* const self = (ccv_cnnp_model_dropout_t*)super;
 	const ccv_nnc_cmd_t dropout = CMD_DROPOUT_FORWARD(self->p);
 	ccv_nnc_hint_tensor_auto(dropout, (ccv_nnc_tensor_param_t []){
 			params,
-		}, 1, ccv_nnc_no_hint, &output_params, 1);
-	const ccv_nnc_tensor_symbol_t dropout_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, dropout, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(dropout_output), 0);
+		}, 1, ccv_nnc_no_hint, output_params, 2);
+	const ccv_nnc_tensor_symbol_t dropout_output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
+	const ccv_nnc_tensor_symbol_t mask = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+	ccv_nnc_graph_exec_symbol_new(graph, dropout, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(dropout_output, mask), 0);
 	outputs[0] = dropout_output;
 }
 

@@ -2977,7 +2977,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_transpose(const int axis_a, const in
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const char* const name);
 /**
  * A dropout model.
- * @param p The probability to keep the current value (otherwise mute to 0).
+ * @param p The probability to drop the current value.
  * @param name The unique name of the model.
  * @return A dropout model.
  */

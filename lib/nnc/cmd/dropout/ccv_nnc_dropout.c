@@ -21,7 +21,7 @@ static int _ccv_nnc_xy_inplace(const int input_idx, const int input_size, const 
 static void _ccv_nnc_dropout_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	assert(input_size == 1);
-	assert(output_size == 2);
+	assert(output_size <= 2);
 	outputs[0] = inputs[0];
 	if (output_size == 1)
 		return;
@@ -54,7 +54,7 @@ REGISTER_COMMAND(CCV_NNC_DROPOUT_FORWARD)(ccv_nnc_cmd_registry_t* const registry
 {
 	registry->bitmask = _ccv_nnc_dropout_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_dropout_tensor_auto_forw;
-	registry->enforce_inplace = _ccv_nnc_xy_inplace;
+	registry->allow_inplace = _ccv_nnc_xy_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_DROPOUT_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
