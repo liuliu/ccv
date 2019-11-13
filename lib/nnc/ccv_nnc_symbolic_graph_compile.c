@@ -1039,7 +1039,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	{
 		tensor_arena->vt_alias_refs[i] = tensor_symbol_info[i].alias_ref;
 		if (tensor_symbol_info[i].alias_ref)
-			tensor_arena->vt_alias_offs[i] = ccv_nnc_tensor_view_offset(tensor_symbol_info[i].info.type, tensor_symbol_info[i].inc, tensor_symbol_info[i].ofs);
+			tensor_arena->vt_alias_offs[i] = ccv_nnc_tensor_view_offset(tensor_symbol_info[i].info.datatype, tensor_symbol_info[i].inc, tensor_symbol_info[i].ofs);
 	}
 	// Do the buffer copies.
 	for (i = 0; i < alloc_prep->buffer_size; i++)

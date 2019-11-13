@@ -68,4 +68,44 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	ccv_nnc_graph_free(graph);
 }
 
+TEST_CASE("compile graph (a[1] + a[0]) * a where a is a binded tensor")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	const ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "a");
+	const ccv_nnc_tensor_symbol_t a0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, ccv_nnc_no_ofs, DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "a[0]");
+	const ccv_nnc_tensor_symbol_t a1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, DIM_ALLOC(1), DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "a[1]");
+	const ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a0, a1), TENSOR_SYMBOL_LIST(b), "sum");
+	const ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "c");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MUL_FORWARD(1), TENSOR_SYMBOL_LIST(b, a), TENSOR_SYMBOL_LIST(c), "mul");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		0, 0,
+		0, 0,
+		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
+		&graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	a_tensor->data.f32[0] = 1.1;
+	a_tensor->data.f32[1] = 0.4;
+	ccv_nnc_tensor_bind_symbol(tensor_arena, a, a_tensor);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_tensor_t* const c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, c);
+	float ct[] = {
+		(1.1 + 0.4) * 1.1,
+		(1.1 + 0.4) * 0.4,
+	};
+	ccv_nnc_tensor_t ct_tensor = ccv_nnc_tensor(ct, CPU_TENSOR_NHWC(32F, 2), 0);
+	REQUIRE_TENSOR_EQ(c_tensor, &ct_tensor, "c should be equal to [(1.1 + 0.4) * 11, (1.1 + 0.4) * 0.4]");
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+}
+
 #include "case_main.h"
