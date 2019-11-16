@@ -79,13 +79,14 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			.data = model
 		};
 		cmd.data = &stateful_exec;
-		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
+		// Parallel parameter doesn't make sense here, the parallel is defined inside the model.
+		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context);
 	} else {
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
 		cmd.data = stateful_exec;
-		const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, stream_context);
+		const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context);
 		assert(symbol.graph);
 		int ret;
 		khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);

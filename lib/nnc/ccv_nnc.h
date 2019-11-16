@@ -2074,9 +2074,10 @@ void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv
  * @param input_size The size of the input tensor variables array.
  * @param outputs The output tensor variables array.
  * @param output_size The size of the output tensor variables array.
+ * @param parallel The parallel parameter, how many concurrent computations we need to execute.
  * @param stream_context Which stream this command will be executed upon.
  */
-int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Compute the gradient of given tensor, with respect to the f. Thus, df / dt.
  * @param dynamic_graph The dynamic graph.
@@ -2098,9 +2099,10 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
  * @param parameters The parameters to update.
  * @param parameter_size The size of parameters array, should be the same length as gradients.
  * @param saved_aux The aux variables to faciliate the minimizer. See ccv_nnc_minimizer_saved_aux_size.
+ * @param parallel The parallel parameter, how many concurrent computations we need to execute.
  * @param stream_context Which stream this computation will be executed upon.
  */
-void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, const int parallel, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Apply one step of minimization (most likely, a gradient descent) to the parameters with a given loss (or
  * losses).

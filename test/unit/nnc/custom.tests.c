@@ -19,20 +19,20 @@ static int _ccv_nnc_cmd_custom_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		const ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, x, inputs[0]);
 		const ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), 0, 0);
 		const ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, y, outputs[0]);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y), 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y), 0, 0);
 		ccv_nnc_dynamic_graph_free(graph);
 	} else {
 		ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 		const ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, x, inputs[1]);
 		const ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), 0, 0);
 		const ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, y, inputs[2]);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y), 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y), 0, 0);
 		const ccv_nnc_tensor_variable_t dy = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, dy, inputs[0]);
 		const ccv_nnc_tensor_variable_t dx = ccv_nnc_tensor_variable_new(graph);
