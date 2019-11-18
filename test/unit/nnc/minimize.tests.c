@@ -144,7 +144,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on dynamic gr
 		ccv_nnc_dynamic_graph_exec(graph, CMD_REDUCE_SUM_FORWARD(0, 1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(c), TENSOR_VARIABLE_LIST(s), 0, 0);
 		ccv_nnc_tensor_variable_t g = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_backward(graph, s, 0, TENSOR_VARIABLE_LIST(w), TENSOR_VARIABLE_LIST(g), 0);
-		ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.001, 1, 0.995, 0.9, 0.9), TENSOR_VARIABLE_LIST(g), TENSOR_VARIABLE_LIST(w), &aux, 0, 0);
+		ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.001, 1, 0.995, 0.9, 0.9), TENSOR_VARIABLE_LIST(g), TENSOR_VARIABLE_LIST(w), &aux, 0);
 		ccv_nnc_tensor_variable_free(graph, a);
 		ccv_nnc_tensor_variable_free(graph, b);
 		ccv_nnc_tensor_variable_free(graph, bias);

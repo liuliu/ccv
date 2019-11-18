@@ -2099,10 +2099,9 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
  * @param parameters The parameters to update.
  * @param parameter_size The size of parameters array, should be the same length as gradients.
  * @param saved_aux The aux variables to faciliate the minimizer. See ccv_nnc_minimizer_saved_aux_size.
- * @param parallel The parallel parameter, how many concurrent computations we need to execute.
  * @param stream_context Which stream this computation will be executed upon.
  */
-void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, const int parallel, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Apply one step of minimization (most likely, a gradient descent) to the parameters with a given loss (or
  * losses).

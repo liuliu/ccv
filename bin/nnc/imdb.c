@@ -266,7 +266,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_dynamic_graph_dot(dynamic_graph, CCV_NNC_LONG_DOT_GRAPH, exec);
 			fclose(exec);
 		}
-		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), saved_auxs, 0, 0);
+		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), saved_auxs, 0);
 		ccv_nnc_tensor_variable_free(dynamic_graph, vec);
 		ccv_nnc_tensor_variable_free(dynamic_graph, select_vec);
 		ccv_nnc_tensor_variable_free(dynamic_graph, word_vec);

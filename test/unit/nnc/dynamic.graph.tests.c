@@ -310,7 +310,7 @@ TEST_CASE("dynamic graph to evaluate cnnp model")
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y, y), TENSOR_VARIABLE_LIST(f), 0, 0);
 		ccv_nnc_tensor_variable_t dx = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_backward(graph, f, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(dx), 0);
-		ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+		ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0);
 		ccv_nnc_tensor_variable_free(graph, x);
 		ccv_nnc_tensor_variable_free(graph, y);
 		ccv_nnc_tensor_variable_free(graph, f);
