@@ -207,7 +207,7 @@ static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_
 static void train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn();
-	const int device_count = 1; // ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0), CMD_NOOP());
@@ -281,7 +281,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	stream_contexts[1] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	int p = 0, q = 1;
 	const int epoch_end = (training_set->rnum + batch_size * device_count - 1) / (batch_size * device_count);
-	// ccv_cnnp_model_set_data_parallel(cifar_10, device_count);
+	ccv_cnnp_model_set_data_parallel(cifar_10, device_count);
 	// ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0);
 	unsigned int current_time = get_current_time();
 	ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[p]);
@@ -290,6 +290,10 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_t* softmax[device_count];
+	ccv_nnc_tensor_t* grad[device_count];
+	memset(softmax, 0, sizeof(softmax));
+	memset(grad, 0, sizeof(grad));
 	for (i = 0; i < 100000 / device_count; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
@@ -306,20 +310,22 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			outputs[j] = (ccv_nnc_tensor_t*)input_fits[device_count + j];
 		}
 		// ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, 0, stream_contexts[p]);
-		/*
 		ccv_cnnp_model_evaluate(cifar_10, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
 			.disable_outgrad = 1,
-		}, TENSOR_LIST(input_fit_inputs[0]), TENSOR_LIST(outputs[0]), 0, 0);
-		ccv_nnc_tensor_t* const softmax = ccv_nnc_tensor_new(0, outputs[0]->info, 0);
-		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[0], input_fit_fits[0]), TENSOR_LIST(0, softmax), 0);
-		ccv_nnc_tensor_t* const grad = ccv_nnc_tensor_new(0, outputs[0]->info, 0);
-		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, 0, outputs[0], input_fit_fits[0], 0, softmax), TENSOR_LIST(grad, 0), 0);
-		ccv_cnnp_model_backward(cifar_10, TENSOR_LIST(grad), TENSOR_LIST(), 0, 0);
+		}, input_fit_inputs, device_count, outputs, device_count, 0, 0);
+		for (j = 0; j < device_count; j++)
+		{
+			if (!softmax[j])
+				softmax[j] = ccv_nnc_tensor_new(0, outputs[j]->info, 0);
+			ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[j], input_fit_fits[j]), TENSOR_LIST(0, softmax[j]), 0);
+			if (!grad[j])
+				grad[j] = ccv_nnc_tensor_new(0, outputs[j]->info, 0);
+			ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, 0, outputs[j], input_fit_fits[j], 0, softmax[j]), TENSOR_LIST(grad[j], 0), 0);
+		}
+		ccv_cnnp_model_backward(cifar_10, grad, device_count, TENSOR_LIST(), 0, 0);
 		ccv_cnnp_model_apply_gradients(cifar_10, 0);
-		ccv_nnc_tensor_free(softmax);
-		ccv_nnc_tensor_free(grad);
-		*/
+		/*
 		ccv_nnc_stream_context_wait(stream_contexts[p]); // Need to wait the other context to finish, we use the same tensor_arena.
 		ccv_nnc_tensor_variable_t const input = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, input, input_fit_inputs[0]);
@@ -336,6 +342,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		ccv_nnc_tensor_variable_free(graph, output);
 		ccv_nnc_tensor_variable_free(graph, fit);
 		ccv_nnc_tensor_variable_free(graph, softmax);
+		*/
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
 		if ((i + 1) % epoch_end == 0)
@@ -385,6 +392,13 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		}
 		int t;
 		CCV_SWAP(p, q, t);
+	}
+	for (i = 0; i < device_count; i++)
+	{
+		if (softmax[i])
+			ccv_nnc_tensor_free(softmax[i]);
+		if (grad[i])
+			ccv_nnc_tensor_free(grad[i]);
 	}
 	ccv_nnc_dynamic_graph_free(graph);
 	ccv_cnnp_dataframe_iter_free(iter);

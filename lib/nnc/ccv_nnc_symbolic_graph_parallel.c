@@ -21,7 +21,7 @@ static int _ccv_nnc_exec_inputs_contain(const ccv_nnc_graph_exec_symbol_info_t* 
 	return 0;
 }
 
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, ccv_nnc_tensor_symbol_t* const allreducer_outs, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, ccv_nnc_tensor_symbol_t* const reducer_outs, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	assert(reduce_op_type == CCV_NNC_PARALLEL_REDUCE_OP_SUM);
 	const int parallel_count = (parallel == 0) ? ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) : parallel;
@@ -55,9 +55,12 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	ccv_array_t* const dup_tensors = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const dup_execs = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const broadcast_reduce_execs = ccv_array_new(sizeof(int), 0, 0);
+	int* const allreduce_inputs = allreducer_size > 0 ? (int*)ccmalloc(sizeof(int) * allreducer_size) : 0;
+	for (i = 0; i < allreducer_size; i++)
+		allreduce_inputs[i] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, allreducers[i]), 0).d;
 	const int tensor_symbol_size = graph->tensor_symbol_info->rnum;
 	const int graph_exec_symbol_size = graph->exec_symbol_info->rnum;
-	int* const tensor_flags = cccalloc(tensor_symbol_size + graph_exec_symbol_size, sizeof(int));
+	int* const tensor_flags = (int*)cccalloc(tensor_symbol_size + graph_exec_symbol_size, sizeof(int));
 	int* const exec_flags = tensor_flags + tensor_symbol_size;
 	for (i = 0; i < broadcast_size; i++)
 	{
@@ -66,12 +69,11 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		assert(graph == broadcasts[i].graph);
 		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, broadcasts[i].d))->alias_ref);
 	}
-	int* const allreduce_producers = allreducer_size > 0 ? ccmalloc(sizeof(int) * allreducer_size) : 0;
+	int* const allreduce_producers = allreducer_size > 0 ? (int*)cccalloc(tensor_symbol_size, sizeof(int)) : 0;
 	for (i = 0; i < allreducer_size; i++)
 	{
 		// Doesn't support alias for these.
 		tensor_flags[allreducers[i].d] = CCV_NNC_PARALLEL_ALLREDUCER;
-		allreduce_producers[i] = -1; // Should all be filled.
 		assert(graph == allreducers[i].graph);
 		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, allreducers[i].d))->alias_ref);
 	}
@@ -108,7 +110,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_BROADCAST);
 					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_ALLREDUCER);
 					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_REDUCER);
-					if (tensor_flags[node->inputs[i]] == CCV_NNC_PARALLEL_REDUCER)
+					const int d = node->inputs[i];
+					if (tensor_flags[d] == CCV_NNC_PARALLEL_REDUCER)
 						reduce_inputs = 1;
 					parallelizable_data = 1;
 				}
@@ -128,14 +131,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 					const int d = node->outputs[i];
 					if (tensor_flags[d] == CCV_NNC_PARALLEL_BROADCAST)
 						broadcast_outputs = 1;
-					else if (tensor_flags[d] == CCV_NNC_PARALLEL_ALLREDUCER) {
-						for (j = 0; j < allreducer_size; j++)
-							if (allreducers[j].d == d)
-							{
-								allreduce_producers[j] = idx;
-								break;
-							}
-					}
+					else if (tensor_flags[d] == CCV_NNC_PARALLEL_ALLREDUCER)
+						allreduce_producers[d] = idx + 1;
 					parallelizable_data = 1;
 				}
 			}
@@ -279,7 +276,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		}
 	}
 	// Create new tensors for broadcast / reduce.
-	int* const broadcast_reduce_tensor_idx = cccalloc(tensor_symbol_size, sizeof(int));
+	int* const broadcast_reduce_tensor_idx = (int*)cccalloc(tensor_symbol_size, sizeof(int));
 	for (i = 0; i < broadcast_size + reducer_size; i++)
 	{
 		const int idx = i >= broadcast_size ? reducers[i - broadcast_size].d : broadcasts[i].d;
@@ -292,8 +289,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
 		broadcast_reduce_tensor_idx[idx] = new_symbol.d + 1;
 	}
-	int* const broadcast_exec_idx = cccalloc(tensor_symbol_size, sizeof(int));
-	int* const reduce_exec_idx = cccalloc(tensor_symbol_size, sizeof(int));
+	int* const broadcast_exec_idx = (int*)cccalloc(tensor_symbol_size, sizeof(int));
+	int* const reduce_exec_idx = (int*)cccalloc(tensor_symbol_size, sizeof(int));
 	// Create node for broadcast (thus, transfer data to different parallel_count) and reducer (transfer data back to a device, and sum).
 	for (i = 0; i < broadcast_reduce_execs->rnum; i++)
 	{
@@ -331,6 +328,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 						};
 					const ccv_nnc_graph_exec_symbol_t bcast = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMM_BROADCAST_FORWARD(), inputs, 1, outputs, parallel_count, 0);
 					ccv_nnc_graph_exec_symbol_concat(graph, source, bcast);
+					assert(!broadcast_exec_idx[idx]);
 					broadcast_exec_idx[idx] = bcast.d + 1;
 				}
 			}
@@ -343,7 +341,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			for (j = 0; j < exec_symbol->input_size; j++)
 			{
 				const int idx = exec_symbol->inputs[j];
-				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_REDUCER)
+				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_REDUCER && !reduce_exec_idx[idx])
 				{
 					inputs[0] = (ccv_nnc_tensor_symbol_t){
 						.d = idx,
@@ -427,6 +425,13 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			}
 		}
 	}
+	// Write reducer_outs last, because it may be the same pointer as reducers.
+	if (reducer_outs)
+		for (i = 0; i < reducer_size; i++)
+		{
+			reducer_outs[i].d = broadcast_reduce_tensor_idx[i + broadcast_size] - 1;
+			reducer_outs[i].graph = graph;
+		}
 	ccfree(broadcast_reduce_tensor_idx);
 	ccv_array_free(dup_execs);
 	// Now everything is dup'ed, connect them all.
@@ -521,16 +526,25 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		// Copy over allreducers output symbols (as the old symbol).
 		for (j = 0; j < parallel_count - 1; j++)
 		{
+			const int d = allreducers[i].d;
 			outputs[j + 1].graph = graph;
-			outputs[j + 1].d = dup_tensor_idx[allreducers[i].d * (parallel_count - 1) + j];
+			assert(dup_tensor_idx[d * (parallel_count - 1) + j] >= 0);
+			outputs[j + 1].d = dup_tensor_idx[d * (parallel_count - 1) + j];
 		}
 		ccv_nnc_tensor_symbol_t* const inputs = max_io;
+		inputs[0].graph = graph;
+		inputs[0].d = allreduce_inputs[i];
 		// Create identical new tensor symbols
-		for (j = 0; j < parallel_count; j++)
-			inputs[j] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, outputs[j]), 0);
+		for (j = 0; j < parallel_count - 1; j++)
+		{
+			if (dup_tensor_idx[allreduce_inputs[i] * (parallel_count - 1) + j] < 0)
+				dup_tensor_idx[allreduce_inputs[i] * (parallel_count - 1) + j] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, outputs[j + 1]), 0).d;
+			inputs[j + 1].graph = graph;
+			inputs[j + 1].d = dup_tensor_idx[allreduce_inputs[i] * (parallel_count - 1) + j];
+		}
 		// Create allreduce node.
 		const ccv_nnc_graph_exec_symbol_t allreduce = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMM_ALLREDUCE_FORWARD(), inputs, parallel_count, outputs, parallel_count, 0);
-		const int exec_idx = allreduce_producers[i];
+		const int exec_idx = allreduce_producers[allreducers[i].d] - 1;
 		assert(exec_idx >= 0);
 		ccv_nnc_graph_exec_symbol_info_t* const node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, exec_idx);
 		for (j = 0; j < node->output_size; j++)
@@ -540,6 +554,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			.graph = graph,
 			.d = exec_idx,
 		}, allreduce);
+		// Remove connections from current node directly to its following nodes (these should follow allreduce node now).
 		for (j = 0; j < node->outgoings->rnum;)
 		{
 			const int d = *(int*)ccv_array_get(node->outgoings, j);
@@ -599,6 +614,15 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			}
 		}
 	}
+	ccfree(allreduce_producers);
+	// Write allreducer_outs last, because it may be the same pointer as allreducers.
+	if (allreducer_outs)
+		for (i = 0; i < allreducer_size; i++)
+		{
+			allreducer_outs[i].d = allreduce_inputs[i];
+			allreducer_outs[i].graph = graph;
+		}
+	ccfree(allreduce_inputs);
 }
 
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id)

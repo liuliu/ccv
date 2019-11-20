@@ -1950,15 +1950,19 @@ enum {
  * @param broadcast_size The size of the broadcast tensor symbols array.
  * @param allreducers The tensor symbols that to be allreduced.
  * @param allreducer_size The size of the allreducer tensor symbols array.
+ * @param allreducer_outs Return the tensor symbols for allreducers that before allreduced. Optional, 0
+ *        means I don't care about this.
  * @param reducers The tensor symbols to be reduced.
  * @param reducer_size The size of the reducer tensor symbols array.
+ * @param reducer_outs Return the tensor symbols for reducers that after reduced. Optional, 0 means
+ *        I don't care about this.
  * @param reduce_op_type The reduce op for reducer / allreducer.
  * @param sources The source execution node symbols array.
  * @param source_size The size of source node symbols array.
  * @param destinations The destinations execution node symbols array.
  * @param destination_size The size of destination node symbols array.
  */
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, ccv_nnc_tensor_symbol_t* const allreducer_outs, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, ccv_nnc_tensor_symbol_t* const reducer_outs, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.

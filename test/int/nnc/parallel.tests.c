@@ -56,7 +56,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		for (i = 0; i < saved_aux_size * 4; i++)
 			ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(saved_aux[i].source), "set 0");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-		ccv_nnc_symbolic_graph_data_parallel(symbolic_graph, 2, TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), 0, 0, gradients, 4, CCV_NNC_PARALLEL_REDUCE_OP_SUM, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), updated_execs, 4);
+		ccv_nnc_symbolic_graph_data_parallel(symbolic_graph, 2, TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), 0, 0, 0, gradients, 4, 0, CCV_NNC_PARALLEL_REDUCE_OP_SUM, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), updated_execs, 4);
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 		ccv_nnc_graph_t* graph;
@@ -235,7 +235,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		for (i = 0; i < saved_aux_size * 4; i++)
 			ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(saved_aux[i].source), "set 0");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-		ccv_nnc_symbolic_graph_data_parallel(symbolic_graph, 2, TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), gradients, 4, 0, 0, CCV_NNC_PARALLEL_REDUCE_OP_SUM, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), updated_execs, 4);
+		ccv_nnc_symbolic_graph_data_parallel(symbolic_graph, 2, TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), gradients, 4, 0, 0, 0, 0, CCV_NNC_PARALLEL_REDUCE_OP_SUM, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), updated_execs, 4);
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 		ccv_nnc_graph_t* graph;
