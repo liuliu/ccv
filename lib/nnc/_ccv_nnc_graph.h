@@ -27,6 +27,27 @@ typedef struct {
 } ccv_nnc_graph_tensor_wrap_array_t;
 
 typedef struct {
+	int stream_size; // This controls the size of both _heap_signals and _heap_streams. When this is <= 1, we don't have _heap variant.
+	union {
+		int _inline_signals[1];
+		int* _heap_signals;
+	};
+	union {
+		int _inline_streams[1]; // The assigned stream for this to be executed.
+		int* _heap_streams;
+	};
+	int wait_size;
+	int* waits;
+} ccv_nnc_graph_exec_schedule_t;
+
+typedef struct {
+	int exec_info_size;
+	int wait_size;
+	ccv_nnc_graph_exec_schedule_t* exec_info;
+	int* waits; // The default stream will wait on these signals to be done.
+} ccv_nnc_graph_schedule_t;
+
+typedef struct {
 	int input_size;
 	int output_size;
 	int flags;
@@ -42,19 +63,6 @@ typedef struct {
 	intptr_t alias_ref; // Link to some reference data.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
-	struct {
-		int stream_size; // This controls the size of both _heap_signals and _heap_streams. When this is <= 1, we don't have _heap variant.
-		union {
-			int _inline_signals[1];
-			int* _heap_signals;
-		};
-		union {
-			int _inline_streams[1]; // The assigned stream for this to be executed.
-			int* _heap_streams;
-		};
-		int wait_size;
-		int* waits;
-	} schedule;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	ccv_nnc_tensor_t** updates;
 	// Below are only relevant to sub-graph nodes (case_of, while).
@@ -102,7 +110,6 @@ struct ccv_nnc_graph_s {
 	int breakpoint_size;
 	int stream_size;
 	int signal_size;
-	int wait_size;
 	int buffer_size;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
@@ -115,7 +122,7 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_stream_task_t** block_stream_tasks; // Used to keep list of tasks that blocked current stream.
 	ccv_nnc_stream_signal_t** signals; // Preallocated several signals for use.
 	ccv_nnc_stream_signal_t* extern_signal; // This signal is created so that outside provided stream can be synced with the default stream.
-	int* waits; // The default stream will wait on these signals to be done.
+	ccv_nnc_graph_schedule_t* default_schedule; // The schedule for the whole graph.
 	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have
 	// any heap allocations (the usage of buffer first will, but subsequent runs won't).
 	void* buffer;

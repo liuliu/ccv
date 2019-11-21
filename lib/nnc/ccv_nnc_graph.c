@@ -604,7 +604,7 @@ typedef struct {
 	ccv_array_t* command_set; // The set of command executed in this stream. In case there is a tie (on rank). We will check this.
 } ccv_nnc_stream_data_t;
 
-static void _ccv_nnc_graph_schedule_assign_signals(ccv_array_t* const incoming, ccv_nnc_graph_exec_info_t* const node, ccv_array_t* const stream_data, int* const signal_size, ccv_nnc_graph_exec_info_t* const exec_info, const int exec_info_size)
+static void _ccv_nnc_graph_schedule_assign_signals(ccv_array_t* const incoming, ccv_nnc_graph_exec_schedule_t* const node, ccv_array_t* const stream_data, int* const signal_size, ccv_nnc_graph_exec_schedule_t* const exec_info, const int exec_info_size)
 {
 	assert(incoming->rnum > 0);
 	int i, j, k;
@@ -612,75 +612,75 @@ static void _ccv_nnc_graph_schedule_assign_signals(ccv_array_t* const incoming, 
 	for (i = 0; i < incoming->rnum; i++)
 	{
 		const int incoming_idx = *(int*)ccv_array_get(incoming, i);
-		ccv_nnc_graph_exec_info_t* const incoming_exec_info = exec_info + incoming_idx;
-		assert(incoming_exec_info->schedule.stream_size > 0);
-		max_wait_size += incoming_exec_info->schedule.stream_size;
+		ccv_nnc_graph_exec_schedule_t* const incoming_exec_info = exec_info + incoming_idx;
+		assert(incoming_exec_info->stream_size > 0);
+		max_wait_size += incoming_exec_info->stream_size;
 	}
 	int waits[ccv_max(1, max_wait_size)];
-	assert(node->schedule.stream_size > 0);
+	assert(node->stream_size > 0);
 	for (i = 0; i < incoming->rnum; i++)
 	{
 		const int incoming_idx = *(int*)ccv_array_get(incoming, i);
 		assert(incoming_idx < exec_info_size);
 		assert(incoming_idx >= 0);
-		ccv_nnc_graph_exec_info_t* const incoming_exec_info = exec_info + incoming_idx;
-		assert(incoming_exec_info->schedule.stream_size > 0);
+		ccv_nnc_graph_exec_schedule_t* const incoming_exec_info = exec_info + incoming_idx;
+		assert(incoming_exec_info->stream_size > 0);
 		int stream_synced = 1;
 		// If the current node's stream is a subset of the incoming node's stream, there
 		// is no need to sync with signal, because we are already synced with the incoming.
-		for (j = 0; stream_synced && j < node->schedule.stream_size; j++)
+		for (j = 0; stream_synced && j < node->stream_size; j++)
 		{
-			const int s = SCHEDULE_STREAMS(node->schedule)[j];
+			const int s = SCHEDULE_STREAMS(*node)[j];
 			assert(s >= 0);
 			int flag = 0;
-			for (k = 0; !flag && k < incoming_exec_info->schedule.stream_size; k++)
-				flag = (SCHEDULE_STREAMS(incoming_exec_info->schedule)[k] == s);
+			for (k = 0; !flag && k < incoming_exec_info->stream_size; k++)
+				flag = (SCHEDULE_STREAMS(*incoming_exec_info)[k] == s);
 			stream_synced = flag;
 		}
 		if (stream_synced)
 			continue;
 		// Otherwise, find the streams we need to sync with, and create signals for these.
-		for (j = 0; j < incoming_exec_info->schedule.stream_size; j++)
+		for (j = 0; j < incoming_exec_info->stream_size; j++)
 		{
-			const int s = SCHEDULE_STREAMS(incoming_exec_info->schedule)[j];
+			const int s = SCHEDULE_STREAMS(*incoming_exec_info)[j];
 			assert(s >= 0);
 			int flag = 0;
-			for (k = 0; !flag && k < node->schedule.stream_size; k++)
-				flag = (SCHEDULE_STREAMS(node->schedule)[k] == s);
+			for (k = 0; !flag && k < node->stream_size; k++)
+				flag = (SCHEDULE_STREAMS(*node)[k] == s);
 			if (!flag) // Need to have a signal.
 			{
-				if (SCHEDULE_SIGNALS(incoming_exec_info->schedule)[j] < 0)
-					SCHEDULE_SIGNALS(incoming_exec_info->schedule)[j] = (*signal_size)++;
+				if (SCHEDULE_SIGNALS(*incoming_exec_info)[j] < 0)
+					SCHEDULE_SIGNALS(*incoming_exec_info)[j] = (*signal_size)++;
 				else {
 					int flag = 0;
 					// If any of the stream the current node has already seen this signal, we are good already.
-					for (k = 0; !flag && k < node->schedule.stream_size; k++)
+					for (k = 0; !flag && k < node->stream_size; k++)
 					{
-						assert(SCHEDULE_STREAMS(node->schedule)[k] >= 0);
-						ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(node->schedule)[k]);
-						flag = (data->signal_set && ccv_array_find_int(data->signal_set, SCHEDULE_SIGNALS(incoming_exec_info->schedule)[j]));
+						assert(SCHEDULE_STREAMS(*node)[k] >= 0);
+						ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(*node)[k]);
+						flag = (data->signal_set && ccv_array_find_int(data->signal_set, SCHEDULE_SIGNALS(*incoming_exec_info)[j]));
 					}
 					if (flag)
 						continue;
 				}
 				// Otherwise, we need to wait for this. Currently, our granularity is about wait on all streams.
-				waits[wait_size++] = SCHEDULE_SIGNALS(incoming_exec_info->schedule)[j];
+				waits[wait_size++] = SCHEDULE_SIGNALS(*incoming_exec_info)[j];
 				// All streams on this node have seen this signal.
-				for (k = 0; k < node->schedule.stream_size; k++)
+				for (k = 0; k < node->stream_size; k++)
 				{
-					ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(node->schedule)[k]);
+					ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(*node)[k]);
 					if (!data->signal_set)
 						data->signal_set = ccv_array_new(sizeof(int), 0, 0);
-					ccv_array_push(data->signal_set, &SCHEDULE_SIGNALS(incoming_exec_info->schedule)[j]);
+					ccv_array_push(data->signal_set, &SCHEDULE_SIGNALS(*incoming_exec_info)[j]);
 				}
 			}
 		}
 	}
-	node->schedule.wait_size = wait_size;
+	node->wait_size = wait_size;
 	if (wait_size > 0)
 	{
-		node->schedule.waits = node->schedule.waits ? ccrealloc(node->schedule.waits, sizeof(int) * wait_size) : ccmalloc(sizeof(int) * wait_size);
-		memcpy(node->schedule.waits, waits, sizeof(int) * wait_size);
+		node->waits = node->waits ? ccrealloc(node->waits, sizeof(int) * wait_size) : ccmalloc(sizeof(int) * wait_size);
+		memcpy(node->waits, waits, sizeof(int) * wait_size);
 	}
 }
 
@@ -706,6 +706,22 @@ static int _ccv_nnc_device_ids_for_stream_data(ccv_nnc_graph_exec_info_t* const 
 	return device_id_size;
 }
 
+static void _ccv_nnc_graph_schedule_free(ccv_nnc_graph_schedule_t* const schedule)
+{
+	int i;
+	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
+	for (i = 0; i < schedule->exec_info_size; i++)
+	{
+		if (schd_info[i].stream_size > 1)
+			ccfree(schd_info[i]._heap_streams);
+		if (schd_info[i].waits)
+			ccfree(schd_info[i].waits);
+	}
+	if (schedule->waits)
+		ccfree(schedule->waits);
+	ccfree(schedule);
+}
+
 static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(graph->sources && graph->sources->rnum);
@@ -713,6 +729,9 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	assert(graph->topsorted); // Only support this on a topsorted graph.
 	const int exec_info_size = graph->exec_info->rnum;
 	assert(exec_info_size > 0);
+	ccv_nnc_graph_schedule_t* const schedule = cccalloc(1, sizeof(ccv_nnc_graph_schedule_t) + sizeof(ccv_nnc_graph_exec_schedule_t) * exec_info_size);
+	schedule->exec_info_size = exec_info_size;
+	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info = (ccv_nnc_graph_exec_schedule_t*)(schedule + 1);
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
 	int i, j, k;
@@ -732,10 +751,10 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx, term) {
 		buf_size = 0; /* save all its parent deps to this buffer */
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
-		if (node->schedule.stream_size > 1)
-			ccfree(node->schedule._heap_streams);
-		node->schedule.stream_size = 0;
-		node->schedule.wait_size = 0;
+		if (schd_info[idx].stream_size > 1)
+			ccfree(schd_info[idx]._heap_streams);
+		schd_info[idx].stream_size = 0;
+		schd_info[idx].wait_size = 0;
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
 		if (!node->outgoings)
@@ -816,20 +835,20 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 		// Go through the incomings.
 		const int device_id_size = _ccv_nnc_device_ids_for_stream_data(node, device_id, stream_data, device_ids, max_device_id_size);
-		if (node->schedule.stream_size == 0)
+		if (schd_info[idx].stream_size == 0)
 		{
-			node->schedule.stream_size = device_id_size; // At least at the same size as the device_id_size.
+			schd_info[idx].stream_size = device_id_size; // At least at the same size as the device_id_size.
 			if (device_id_size > 1)
 			{
-				node->schedule._heap_streams = (int*)ccmalloc(sizeof(int) * device_id_size * 2);
-				node->schedule._heap_signals = (node->schedule._heap_streams + device_id_size);
+				schd_info[idx]._heap_streams = (int*)ccmalloc(sizeof(int) * device_id_size * 2);
+				schd_info[idx]._heap_signals = (schd_info[idx]._heap_streams + device_id_size);
 			}
 			for (i = 0; i < device_id_size; i++)
-				SCHEDULE_STREAMS(node->schedule)[i] = -1, SCHEDULE_SIGNALS(node->schedule)[i] = -1;
+				SCHEDULE_STREAMS(schd_info[idx])[i] = -1, SCHEDULE_SIGNALS(schd_info[idx])[i] = -1;
 		}
 		for (i = 0; i < device_id_size; i++)
 			// Go through until the end to assign streams.
-			if (SCHEDULE_STREAMS(node->schedule)[i] < 0)
+			if (SCHEDULE_STREAMS(schd_info[idx])[i] < 0)
 			{
 				int stream_idx = -1;
 				int stream_has_command = 0;
@@ -865,7 +884,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 				ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx);
 				if (!data->command_set)
 					data->command_set = ccv_array_new(sizeof(uint32_t), 1, 0);
-				SCHEDULE_STREAMS(node->schedule)[i] = stream_idx;
+				SCHEDULE_STREAMS(schd_info[idx])[i] = stream_idx;
 				ccv_array_add_unique_uint(data->command_set, node->cmd.cmd);
 				// Assign all subsequent node to use this stream.
 				int outgoing_idx = idx;
@@ -880,22 +899,22 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 						const int d = *(int*)ccv_array_get(outgoings[outgoing_idx], j);
 						ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + d;
 						const int outgoing_device_id_size = _ccv_nnc_device_ids_for_stream_data(outgoing_node, device_id, stream_data, outgoing_device_ids, max_device_id_size);
-						if (outgoing_node->schedule.stream_size == 0)
+						if (schd_info[d].stream_size == 0)
 						{
-							outgoing_node->schedule.stream_size = outgoing_device_id_size; // At least at the same size as the device_id_size.
+							schd_info[d].stream_size = outgoing_device_id_size; // At least at the same size as the device_id_size.
 							if (outgoing_device_id_size > 1)
 							{
-								outgoing_node->schedule._heap_streams = (int*)ccmalloc(sizeof(int) * outgoing_device_id_size * 2);
-								outgoing_node->schedule._heap_signals = (outgoing_node->schedule._heap_streams + outgoing_device_id_size);
+								schd_info[d]._heap_streams = (int*)ccmalloc(sizeof(int) * outgoing_device_id_size * 2);
+								schd_info[d]._heap_signals = (schd_info[d]._heap_streams + outgoing_device_id_size);
 							}
 							for (k = 0; k < outgoing_device_id_size; k++)
-								SCHEDULE_STREAMS(outgoing_node->schedule)[k] = -1, SCHEDULE_SIGNALS(outgoing_node->schedule)[k] = -1;
+								SCHEDULE_STREAMS(schd_info[d])[k] = -1, SCHEDULE_SIGNALS(schd_info[d])[k] = -1;
 						}
-						assert(outgoing_node->schedule.stream_size == outgoing_device_id_size);
+						assert(schd_info[d].stream_size == outgoing_device_id_size);
 						for (k = 0; k < outgoing_device_id_size; k++)
 							// If it should be on the same device and the stream is not assign, potentially.
 							if (outgoing_device_ids[k] == device_ids[i] &&
-								SCHEDULE_STREAMS(outgoing_node->schedule)[k] < 0 &&
+								SCHEDULE_STREAMS(schd_info[d])[k] < 0 &&
 								(incomings[d].rank > highest_rank ||
 								 (incomings[d].rank == highest_rank &&
 								  !stream_has_command && ccv_array_find_uint(data->command_set, outgoing_node->cmd.cmd))))
@@ -912,7 +931,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 						outgoing_idx = highest_idx;
 						ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
 						assert(stream_n >= 0);
-						SCHEDULE_STREAMS(outgoing_node->schedule)[stream_n] = stream_idx;
+						SCHEDULE_STREAMS(schd_info[outgoing_idx])[stream_n] = stream_idx;
 						ccv_array_add_unique_uint(data->command_set, outgoing_node->cmd.cmd);
 					} else
 						break;
@@ -923,7 +942,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	// Go through to assign signals when necessary.
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 		if (incomings[idx].outgoings && incomings[idx].outgoings->rnum)
-			_ccv_nnc_graph_schedule_assign_signals(incomings[idx].outgoings, node, stream_data, &signal_size, exec_info, exec_info_size);
+			_ccv_nnc_graph_schedule_assign_signals(incomings[idx].outgoings, schd_info + idx, stream_data, &signal_size, schd_info, exec_info_size);
 	} ccv_nnc_graph_visit_endfor
 	for (i = 0; i < exec_info_size; i++)
 		if (outgoings[i])
@@ -944,9 +963,9 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			// Find the stream idx to exchange.
 			ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 				int flag = 0;
-				for(i = 0; !flag && i < node->schedule.stream_size; i++)
+				for(i = 0; !flag && i < schd_info[idx].stream_size; i++)
 				{
-					const int stream_idx = SCHEDULE_STREAMS(node->schedule)[i];
+					const int stream_idx = SCHEDULE_STREAMS(schd_info[idx])[i];
 					ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx);
 					if (data->device_id == device_id)
 					{
@@ -959,19 +978,19 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			} ccv_nnc_graph_visit_endfor
 			assert(exchange_stream_idx >= 0);
 			ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-				for (i = 0; i < node->schedule.stream_size; i++)
-					if (SCHEDULE_STREAMS(node->schedule)[i] == 0)
-						SCHEDULE_STREAMS(node->schedule)[i] = -1;
+				for (i = 0; i < schd_info[idx].stream_size; i++)
+					if (SCHEDULE_STREAMS(schd_info[idx])[i] == 0)
+						SCHEDULE_STREAMS(schd_info[idx])[i] = -1;
 			} ccv_nnc_graph_visit_endfor
 			ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-				for (i = 0; i < node->schedule.stream_size; i++)
-					if (SCHEDULE_STREAMS(node->schedule)[i] == exchange_stream_idx)
-						SCHEDULE_STREAMS(node->schedule)[i] = 0;
+				for (i = 0; i < schd_info[idx].stream_size; i++)
+					if (SCHEDULE_STREAMS(schd_info[idx])[i] == exchange_stream_idx)
+						SCHEDULE_STREAMS(schd_info[idx])[i] = 0;
 			} ccv_nnc_graph_visit_endfor
 			ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-				for (i = 0; i < node->schedule.stream_size; i++)
-					if (SCHEDULE_STREAMS(node->schedule)[i] == -1)
-						SCHEDULE_STREAMS(node->schedule)[i] = exchange_stream_idx;
+				for (i = 0; i < schd_info[idx].stream_size; i++)
+					if (SCHEDULE_STREAMS(schd_info[idx])[i] == -1)
+						SCHEDULE_STREAMS(schd_info[idx])[i] = exchange_stream_idx;
 			} ccv_nnc_graph_visit_endfor
 			((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, exchange_stream_idx))->device_id = default_data->device_id;
 			default_data->device_id = device_id;
@@ -981,29 +1000,28 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	for (i = 0; i < graph->destinations->rnum; i++)
 	{
 		const int idx = *(int*)ccv_array_get(graph->destinations, i);
-		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
-			if (SCHEDULE_STREAMS(exec_info[idx].schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
+		for (j = 0; j < schd_info[idx].stream_size; j++)
+			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
 				++graph_wait_size;
 	}
 	if (graph_wait_size > 0)
-		graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
+		schedule->waits = ccmalloc(sizeof(int) * graph_wait_size);
 	graph_wait_size = 0;
 	for (i = 0; i < graph->destinations->rnum; i++)
 	{
 		const int idx = *(int*)ccv_array_get(graph->destinations, i);
-		ccv_nnc_graph_exec_info_t* const destination_exec_info = exec_info + idx;
-		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
-			if (SCHEDULE_STREAMS(destination_exec_info->schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
+		for (j = 0; j < schd_info[idx].stream_size; j++)
+			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
 			{
 				ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
-				if (SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] < 0)
-					SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] = signal_size++;
-				else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(destination_exec_info->schedule)[j]))
+				if (SCHEDULE_SIGNALS(schd_info[idx])[j] < 0)
+					SCHEDULE_SIGNALS(schd_info[idx])[j] = signal_size++;
+				else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(schd_info[idx])[j]))
 					continue;
-				graph->waits[graph_wait_size++] = SCHEDULE_SIGNALS(destination_exec_info->schedule)[j];
+				schedule->waits[graph_wait_size++] = SCHEDULE_SIGNALS(schd_info[idx])[j];
 			}
 	}
-	graph->wait_size = graph_wait_size;
+	schedule->wait_size = graph_wait_size;
 	for (i = 0; i < stream_data->rnum; i++)
 	{
 		ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
@@ -1012,6 +1030,9 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		assert(data->command_set);
 		ccv_array_free(data->command_set);
 	}
+	if (graph->default_schedule)
+		_ccv_nnc_graph_schedule_free(graph->default_schedule);
+	graph->default_schedule = schedule;
 	// Allocate streams & signals
 	graph->stream_size = stream_data->rnum;
 	graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
@@ -1030,13 +1051,13 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	graph->signal_size = signal_size;
 	graph->signals = (ccv_nnc_stream_signal_t**)cccalloc(signal_size, sizeof(ccv_nnc_stream_signal_t*));
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-		for (i = 0; i < node->schedule.stream_size; i++)
-			if (SCHEDULE_SIGNALS(node->schedule)[i] >= 0)
+		for (i = 0; i < schd_info[idx].stream_size; i++)
+			if (SCHEDULE_SIGNALS(schd_info[idx])[i] >= 0)
 			{
-				const int signal = SCHEDULE_SIGNALS(node->schedule)[i];
+				const int signal = SCHEDULE_SIGNALS(schd_info[idx])[i];
 				if (!graph->signals[signal])
 				{
-					const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(node->schedule)[i]);
+					const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
 					int type = stream_type;
 					CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
 					graph->signals[signal] = ccv_nnc_stream_signal_new(type);
@@ -1056,8 +1077,8 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			if (sub_graph)
 			{
 				const int exec_idx = sub_graph->exec_idx - 1;
-				assert(exec_info[exec_idx].schedule.stream_size == 1);
-				const int stream_idx = SCHEDULE_STREAMS(exec_info[exec_idx].schedule)[0];
+				assert(schd_info[exec_idx].stream_size == 1);
+				const int stream_idx = SCHEDULE_STREAMS(schd_info[exec_idx])[0];
 				const int device_id = ((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx))->device_id;
 				_ccv_nnc_graph_static_schedule(sub_graph, stream_type, device_id, graph->streams[stream_idx]);
 			}
@@ -1078,7 +1099,7 @@ ccv_nnc_stream_context_t* ccv_nnc_graph_default_stream(const ccv_nnc_graph_t* co
 	return 0;
 }
 
-static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, ccv_nnc_stream_context_t** const streams, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_graph_exec_schedule_t* const schd_info, ccv_nnc_stream_context_t** const streams, const int flags, FILE* out)
 {
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		fputc('{', out);
@@ -1087,36 +1108,39 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 	{
 		fputs("|Command: ", out);
 		fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
-		if (exec_info->schedule.stream_size > 0)
+		if (schd_info)
 		{
-			int i, flag = 0;
-			fputs("|Stream: ", out);
-			for (i = 0; i < exec_info->schedule.stream_size; i++)
+			if (schd_info->stream_size > 0)
 			{
-				const int device_id = streams ? CCV_TENSOR_GET_DEVICE_ID(streams[SCHEDULE_STREAMS(exec_info->schedule)[i]]->type) : 0;
-				if (i == 0)
-					fprintf(out, "%d (d%d)", SCHEDULE_STREAMS(exec_info->schedule)[i], device_id);
-				else
-					fprintf(out, ", %d (d%d)", SCHEDULE_STREAMS(exec_info->schedule)[i], device_id);
-			}
-			for (i = 0; i < exec_info->schedule.stream_size; i++)
-				if (SCHEDULE_SIGNALS(exec_info->schedule)[i] >= 0)
+				int i, flag = 0;
+				fputs("|Stream: ", out);
+				for (i = 0; i < schd_info->stream_size; i++)
 				{
-					if (!flag)
-					{
-						flag = 1;
-						fprintf(out, "|Signal: %d", SCHEDULE_SIGNALS(exec_info->schedule)[i]);
-					} else
-						fprintf(out, ", %d", SCHEDULE_SIGNALS(exec_info->schedule)[i]);
+					const int device_id = streams ? CCV_TENSOR_GET_DEVICE_ID(streams[SCHEDULE_STREAMS(*schd_info)[i]]->type) : 0;
+					if (i == 0)
+						fprintf(out, "%d (d%d)", SCHEDULE_STREAMS(*schd_info)[i], device_id);
+					else
+						fprintf(out, ", %d (d%d)", SCHEDULE_STREAMS(*schd_info)[i], device_id);
 				}
-		}
-		if (exec_info->schedule.wait_size > 0)
-		{
-			fputs("|Wait: ", out);
-			int i;
-			for (i = 0; i < exec_info->schedule.wait_size - 1; i++)
-				fprintf(out, "%d, ", exec_info->schedule.waits[i]);
-			fprintf(out, "%d", exec_info->schedule.waits[exec_info->schedule.wait_size - 1]);
+				for (i = 0; i < schd_info->stream_size; i++)
+					if (SCHEDULE_SIGNALS(*schd_info)[i] >= 0)
+					{
+						if (!flag)
+						{
+							flag = 1;
+							fprintf(out, "|Signal: %d", SCHEDULE_SIGNALS(*schd_info)[i]);
+						} else
+							fprintf(out, ", %d", SCHEDULE_SIGNALS(*schd_info)[i]);
+					}
+			}
+			if (schd_info->wait_size > 0)
+			{
+				fputs("|Wait: ", out);
+				int i;
+				for (i = 0; i < schd_info->wait_size - 1; i++)
+					fprintf(out, "%d, ", schd_info->waits[i]);
+				fprintf(out, "%d", schd_info->waits[schd_info->wait_size - 1]);
+			}
 		}
 		fputc('}', out);
 	}
@@ -1393,10 +1417,10 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 		*tensor_index += _ccv_nnc_graph_dot_tensor_multiview_count(mv);
 }
 
-static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, ccv_nnc_stream_context_t** const streams, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* const tensor_index)
+static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_graph_exec_schedule_t* const schd_info, const int exec_index, ccv_nnc_stream_context_t** const streams, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* const tensor_index)
 {
 	fprintf(out, "node%d [shape=record,label=\"", exec_index);
-	_ccv_nnc_graph_dot_exec(exec_index, exec_info, streams, flags, out);
+	_ccv_nnc_graph_dot_exec(exec_index, exec_info, schd_info, streams, flags, out);
 	int i;
 	int k = *tensor_index;
 	if (exec_info->input_size > 0)
@@ -1573,6 +1597,7 @@ static void _ccv_nnc_graph_dot_sub_graphs(const ccv_nnc_graph_exec_info_t* const
 			++(*exec_index);
 		}
 		const ccv_nnc_graph_t* const graph = *(ccv_nnc_graph_t**)ccv_array_get(sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[p] - 1);
+		const ccv_nnc_graph_schedule_t* const schedule = graph->default_schedule;
 		ccv_nnc_tensor_dot_recovery_t recovery = _ccv_nnc_graph_tensor_dot_recovery(graph);
 		int i, j;
 		int k = 0;
@@ -1585,7 +1610,9 @@ static void _ccv_nnc_graph_dot_sub_graphs(const ccv_nnc_graph_exec_info_t* const
 			if (CCV_NNC_GRAPH_REF(exec_info)[0])
 				_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, depth + 1, out, &k, exec_index);
 			else {
-				_ccv_nnc_graph_dot_node(exec_info, *exec_index, graph->streams, recovery, flags, depth, out, &k);
+				_ccv_nnc_graph_dot_node(exec_info,
+					schedule ? (i < schedule->exec_info_size ? schedule->exec_info + i : 0) : 0,
+					*exec_index, graph->streams, recovery, flags, depth, out, &k);
 				++(*exec_index);
 			}
 		}
@@ -1625,6 +1652,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 	int i, j;
 	int k = 0, c = 0;
 	int* node_id = (int*)ccmalloc(sizeof(int) * graph->exec_info->rnum);
+	const ccv_nnc_graph_schedule_t* const schedule = graph->default_schedule;
 	// Output styles.
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
@@ -1633,7 +1661,9 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 		if (CCV_NNC_GRAPH_REF(exec_info)[0])
 			_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, 1, out, &k, &c);
 		else {
-			_ccv_nnc_graph_dot_node(exec_info, c, graph->streams, recovery, flags, 0, out, &k);
+			_ccv_nnc_graph_dot_node(exec_info,
+				schedule ? (i < schedule->exec_info_size ? schedule->exec_info + i : 0) : 0,
+				c, graph->streams, recovery, flags, 0, out, &k);
 			++c;
 		}
 	}
@@ -1717,10 +1747,6 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccfree(info->updates);
 		if ((info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) && info->p_while.inputs)
 			ccfree(info->p_while.inputs);
-		if (info->schedule.stream_size > 1)
-			ccfree(info->schedule._heap_streams);
-		if (info->schedule.waits)
-			ccfree(info->schedule.waits);
 	}
 	if (graph->tensor_wraps)
 	{
@@ -1744,6 +1770,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->sources);
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
+	if (graph->default_schedule)
+		_ccv_nnc_graph_schedule_free(graph->default_schedule);
 	if (graph->streams)
 	{
 		// If the graph has parent graph, the default stream is allocated by the parent graph, we need to skip.
@@ -1763,8 +1791,6 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	}
 	if (graph->extern_signal)
 		ccv_nnc_stream_signal_free(graph->extern_signal);
-	if (graph->waits)
-		ccfree(graph->waits);
 	if (graph->carry_overs)
 	{
 		for (i = 0; i < graph->carry_overs->rnum; i++)
