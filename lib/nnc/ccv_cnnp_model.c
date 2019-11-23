@@ -754,7 +754,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 		if (to.graph)
 			compiled_data->evaluate.to_ops[compiled_data->evaluate.to_op_size++] = to;
 	}
-	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
@@ -880,7 +880,7 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 		.graph_exec_arena = compiled_data->graph_exec_arena,
 	};
 	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
-	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
@@ -1000,7 +1000,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 			.graph = compiled_data->graph,
 		};
 	ccv_array_free(backward_from);
-	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
@@ -1086,7 +1086,7 @@ static void _ccv_cnnp_model_multistage_jit_1(ccv_cnnp_model_t* const model)
 	_ccv_cnnp_model_bind_tensors(accum, compiled_data->backward.updated_accum_gradients, compiled_data->tensors.accum_gradients, trainable_size * parallel_count, 1, tensor_binds);
 	ccv_nnc_symbolic_graph_compile(accum, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(accum), SYMBOLIC_GRAPH_DESTINATIONS(accum), &compiled_data->backward.accum, &compiled_data->backward.tensor_arena, &compiled_data->backward.graph_exec_arena);
 	ccv_nnc_symbolic_graph_free(accum);
-	ccv_nnc_graph_static_schedule(compiled_data->backward.accum, compiled_data->stream_type);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->backward.accum, compiled_data->stream_type);
 	ccv_array_free(tensor_binds);
 }
 
@@ -1231,7 +1231,7 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 				ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &copy, 1, 0);
 		}
 	}
-	ccv_nnc_graph_static_schedule(compiled_data->apply_gradients.graph, compiled_data->stream_type);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->apply_gradients.graph, compiled_data->stream_type);
 }
 
 void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_stream_context_t* const stream_context)

@@ -706,7 +706,7 @@ static int _ccv_nnc_device_ids_for_stream_data(ccv_nnc_graph_exec_info_t* const 
 	return device_id_size;
 }
 
-static void _ccv_nnc_graph_schedule_free(ccv_nnc_graph_schedule_t* const schedule)
+void ccv_nnc_graph_static_schedule_free(ccv_nnc_graph_static_schedule_t* const schedule)
 {
 	int i;
 	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
@@ -722,18 +722,26 @@ static void _ccv_nnc_graph_schedule_free(ccv_nnc_graph_schedule_t* const schedul
 	ccfree(schedule);
 }
 
-static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context)
+static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_graph_exec_t* const _sources, const int _source_size, const ccv_nnc_graph_exec_t* const _destinations, const int _destination_size)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
 	assert(graph->topsorted); // Only support this on a topsorted graph.
 	const int exec_info_size = graph->exec_info->rnum;
 	assert(exec_info_size > 0);
-	ccv_nnc_graph_schedule_t* const schedule = cccalloc(1, sizeof(ccv_nnc_graph_schedule_t) + sizeof(ccv_nnc_graph_exec_schedule_t) * exec_info_size);
+	const ccv_nnc_graph_exec_t* const sources = _sources == 0 ? (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0) : _sources;
+	const int source_size = _sources == 0 ? graph->sources->rnum : _source_size;
+	if (!_sources)
+		{ assert(_source_size == 0); }
+	const ccv_nnc_graph_exec_t* const destinations = _destinations == 0 ? (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0) : _destinations;
+	const int destination_size = _destinations == 0 ? graph->destinations->rnum : _destination_size;
+	if (!_destinations)
+		{ assert(_destination_size == 0); }
+	ccv_nnc_graph_static_schedule_t* const schedule = cccalloc(1, sizeof(ccv_nnc_graph_static_schedule_t) + sizeof(ccv_nnc_graph_exec_schedule_t) * (exec_info_size - 1));
 	schedule->exec_info_size = exec_info_size;
-	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info = (ccv_nnc_graph_exec_schedule_t*)(schedule + 1);
+	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
-	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, sources, source_size, destinations, destination_size, 0);
 	int i, j, k;
 	// Generate exec dependencies (or, in other words, partial ordering of executions).
 	ccv_sparse_matrix_t* exec_dep = ccv_sparse_matrix_new(exec_info_size, exec_info_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
@@ -827,7 +835,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			const int d = *(int*)ccv_array_get(node->outgoings, i); \
 			node->rank = ccv_max(incomings[d].rank + 1, node->rank); \
 		}
-	CCV_NNC_GRAPH_VISIT(graph, incomings, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, 0, visitor);
+	CCV_NNC_GRAPH_VISIT(graph, incomings, exec_info_size, destinations, destination_size, sources, source_size, 0, visitor);
 #undef visitor
 	int device_ids[max_device_id_size];
 	int outgoing_device_ids[max_device_id_size];
@@ -1030,9 +1038,6 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		assert(data->command_set);
 		ccv_array_free(data->command_set);
 	}
-	if (graph->default_schedule)
-		_ccv_nnc_graph_schedule_free(graph->default_schedule);
-	graph->default_schedule = schedule;
 	// Allocate streams & signals
 	graph->stream_size = stream_data->rnum;
 	graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
@@ -1074,22 +1079,30 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		for (i = 0; i < graph->sub_graphs->rnum; i++)
 		{
 			ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, i);
-			if (sub_graph)
+			if (sub_graph && !sub_graph->default_schedule)
 			{
 				const int exec_idx = sub_graph->exec_idx - 1;
 				assert(schd_info[exec_idx].stream_size == 1);
 				const int stream_idx = SCHEDULE_STREAMS(schd_info[exec_idx])[0];
 				const int device_id = ((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx))->device_id;
-				_ccv_nnc_graph_static_schedule(sub_graph, stream_type, device_id, graph->streams[stream_idx]);
+				sub_graph->default_schedule = _ccv_nnc_graph_static_schedule_new(sub_graph, stream_type, device_id, graph->streams[stream_idx], 0, 0, 0, 0);
 			}
 		}
 	ccv_array_free(stream_data);
+	return schedule;
 }
-
-void ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type)
+void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type)
 {
 	assert(graph->p == 0);
-	_ccv_nnc_graph_static_schedule(graph, stream_type, -1, 0);
+	if (graph->default_schedule)
+		ccv_nnc_graph_static_schedule_free(graph->default_schedule);
+	graph->default_schedule = _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, 0, 0, 0, 0, 0);
+}
+
+ccv_nnc_graph_static_schedule_t* ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+{
+	assert(graph->p == 0);
+	return _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, 0, sources, source_size, destinations, destination_size);
 }
 
 ccv_nnc_stream_context_t* ccv_nnc_graph_default_stream(const ccv_nnc_graph_t* const graph)
@@ -1597,7 +1610,7 @@ static void _ccv_nnc_graph_dot_sub_graphs(const ccv_nnc_graph_exec_info_t* const
 			++(*exec_index);
 		}
 		const ccv_nnc_graph_t* const graph = *(ccv_nnc_graph_t**)ccv_array_get(sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[p] - 1);
-		const ccv_nnc_graph_schedule_t* const schedule = graph->default_schedule;
+		const ccv_nnc_graph_static_schedule_t* const schedule = graph->default_schedule;
 		ccv_nnc_tensor_dot_recovery_t recovery = _ccv_nnc_graph_tensor_dot_recovery(graph);
 		int i, j;
 		int k = 0;
@@ -1652,7 +1665,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 	int i, j;
 	int k = 0, c = 0;
 	int* node_id = (int*)ccmalloc(sizeof(int) * graph->exec_info->rnum);
-	const ccv_nnc_graph_schedule_t* const schedule = graph->default_schedule;
+	const ccv_nnc_graph_static_schedule_t* const schedule = graph->default_schedule;
 	// Output styles.
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
@@ -1771,7 +1784,7 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
 	if (graph->default_schedule)
-		_ccv_nnc_graph_schedule_free(graph->default_schedule);
+		ccv_nnc_graph_static_schedule_free(graph->default_schedule);
 	if (graph->streams)
 	{
 		// If the graph has parent graph, the default stream is allocated by the parent graph, we need to skip.

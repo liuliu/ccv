@@ -40,12 +40,13 @@ typedef struct {
 	int* waits;
 } ccv_nnc_graph_exec_schedule_t;
 
-typedef struct {
+struct ccv_nnc_graph_static_schedule_s {
 	int exec_info_size;
 	int wait_size;
-	ccv_nnc_graph_exec_schedule_t* exec_info;
 	int* waits; // The default stream will wait on these signals to be done.
-} ccv_nnc_graph_schedule_t;
+	int* reidx; // If the graph is not topsorted, I will re-index it. Only applicable for partial scheduling.
+	ccv_nnc_graph_exec_schedule_t exec_info[1];
+};
 
 typedef struct {
 	int input_size;
@@ -122,7 +123,7 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_stream_task_t** block_stream_tasks; // Used to keep list of tasks that blocked current stream.
 	ccv_nnc_stream_signal_t** signals; // Preallocated several signals for use.
 	ccv_nnc_stream_signal_t* extern_signal; // This signal is created so that outside provided stream can be synced with the default stream.
-	ccv_nnc_graph_schedule_t* default_schedule; // The schedule for the whole graph.
+	ccv_nnc_graph_static_schedule_t* default_schedule; // The schedule for the whole graph.
 	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have
 	// any heap allocations (the usage of buffer first will, but subsequent runs won't).
 	void* buffer;

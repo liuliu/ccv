@@ -171,7 +171,7 @@ TEST_CASE("partial autograd with D[y * x + Log[1 / x], y] when x = 0.84 and y = 
 	ccv_nnc_graph_exec_symbol_t dyc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dy);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dyc, sum), &graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_CPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_CPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* tone = ccv_nnc_tensor_from_symbol(tensor_arena, one);
 	tone->data.f32[0] = 1;

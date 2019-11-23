@@ -692,13 +692,37 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
  * @param exec_cvt_size The provided conversion array size.
  */
 void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size);
+
 /**
- * Allocate extra streams to make this graph parallel runnable. Note this requires the graph to be topsorted.
- * After this is done, you can schedule a graph either on its default stream, or a new stream.
+ * Opaque pointer holds the graph schedule.
+ */
+typedef struct ccv_nnc_graph_static_schedule_s ccv_nnc_graph_static_schedule_t;
+/**
+ * Assuming the graph runs from the beginning to the end. Allocate a internal schedule object that will
+ * run the graph efficiently if it runs from the beginning to the end. It will basically call ccv_nnc_graph_static_schedule
+ * and save the end result to a internal schedule object to this graph.
  * @param graph The concrete graph.
  * @param stream_type The type of stream context we are going to use.
  */
-void ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
+void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
+/**
+ * Allocate extra streams to make this graph parallel runnable. Note this requires the graph to be topsorted.
+ * After this is done, you can schedule a graph either on its default stream, or a new stream with the schedule
+ * object.
+ * @param graph The concrete graph.
+ * @param stream_type The type of stream context we are going to use.
+ * @param sources The source execution nodes to begin. 0 uses default sources.
+ * @param source_size The size of source execution nodes.
+ * @param destinations The destination execution nodes which we end. 0 uses default destinations.
+ * @param destination_size The size of destination execution nodes.
+ * @return An opaque schedule object that let the graph knows how to run itself efficiently.
+ */
+CCV_WARN_UNUSED(ccv_nnc_graph_static_schedule_t*) ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+/**
+ * Free a schedule object for a graph.
+ * @param schedule The schedule object returned from ccv_nnc_graph_static_schedule_new.
+ */
+void ccv_nnc_graph_static_schedule_free(ccv_nnc_graph_static_schedule_t* const schedule);
 /**
  * Query the default stream for a given graph.
  * @param graph The concrete graph.
@@ -766,6 +790,19 @@ typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
  * @return CCV_NNC_EXEC_SUCCESS if succeed.
  */
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Execute a computation graph with all bells and whistles. Need to supply a tensor tape if it contains backward pass
+ * for while loop or branches. With tensor tape, the tensors are versioned, so you can "backpropagate through time".
+ * Comparing with ccv_nnc_graph_run method, this method doesn't take sources / destinations node, rather, it takes the
+ * schedule object.
+ * @param graph The concrete graph.
+ * @param flags A reserved field for flags.
+ * @param schedule The schedule object specified the sources / destinations and how to efficiently run this.
+ * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
+ * @param stream_context Which stream this graph will be executed upon.
+ * @return CCV_NNC_EXEC_SUCCESS if succeed.
+ */
+int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 
 /** @} */
 

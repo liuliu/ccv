@@ -30,7 +30,7 @@ TEST_CASE("schedule GPU work on one stream")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -99,7 +99,7 @@ TEST_CASE("schedule GPU work on multiple streams")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -215,7 +215,7 @@ TEST_CASE("schedule GPU work with while loop")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
@@ -323,7 +323,7 @@ TEST_CASE("schedule GPU work with case..of")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
@@ -410,7 +410,7 @@ TEST_CASE("schedule GPU work with both while loop and case..of")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
