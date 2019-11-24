@@ -496,6 +496,12 @@ typedef struct ccv_nnc_stream_signal_s ccv_nnc_stream_signal_t;
  */
 CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(const int type);
 /**
+ * Get the type of the stream signal.
+ * @param stream_signal The stream signal we want to inspect.
+ * @return The type of the stream signal.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_stream_signal_type(const ccv_nnc_stream_signal_t* const signal);
+/**
  * Emit a signal on a stream.
  * @param stream The stream context where the signal will be emitted.
  * @param signal The signal to be emitted. It has to be on the same device as the stream.

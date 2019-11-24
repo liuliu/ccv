@@ -319,7 +319,7 @@ static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 typedef struct {
 	ccv_nnc_graph_t* graph;
 	int exec_idx;
-	ccv_nnc_graph_static_schedule_t* schedule;
+	const ccv_nnc_graph_static_schedule_t* schedule;
 	ccv_nnc_graph_exec_info_t* exec;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	ccv_nnc_stream_context_t* stream_context;
@@ -332,7 +332,7 @@ typedef struct {
 	ccv_nnc_graph_t* graph;
 	int exec_idx;
 	ccv_nnc_graph_exec_info_t* exec;
-	ccv_nnc_graph_exec_schedule_t* schd;
+	const ccv_nnc_graph_exec_schedule_t* schd;
 	ccv_nnc_tensor_t* const* inputs;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	ccv_nnc_stream_context_t* stream_context;
@@ -345,7 +345,7 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	ccv_nnc_graph_t* const graph = params->graph;
 	const int exec_idx = params->exec_idx;
 	ccv_nnc_graph_exec_info_t* const exec = params->exec;
-	ccv_nnc_graph_exec_schedule_t* const schd = params->schd;
+	const ccv_nnc_graph_exec_schedule_t* const schd = params->schd;
 	ccv_nnc_tensor_t* const* const inputs = params->inputs;
 	ccv_nnc_tensor_tape_t* const tensor_tape = params->tensor_tape;
 	ccv_nnc_stream_context_t* const stream_context = params->stream_context;
@@ -392,7 +392,7 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 
 typedef struct {
 	ccv_nnc_graph_t* graph;
-	ccv_nnc_graph_exec_schedule_t* node;
+	const ccv_nnc_graph_exec_schedule_t* node;
 	ccv_nnc_stream_context_t* stream;
 } ccv_nnc_graph_neighbor_context_discovery_t;
 
@@ -402,7 +402,7 @@ static ccv_nnc_stream_context_t* _ccv_nnc_graph_neighbor_context_discovery(const
 	if (CCV_STREAM_GET_DEVICE_ID(ccv_nnc_stream_context_type(discovery->stream)) == device_id)
 		return discovery->stream;
 	ccv_nnc_graph_t* const graph = discovery->graph;
-	ccv_nnc_graph_exec_schedule_t* const node = discovery->node;
+	const ccv_nnc_graph_exec_schedule_t* const node = discovery->node;
 	int i;
 	// First try to find in other streams of the same node.
 	for (i = 0; i < node->stream_size; i++)
@@ -421,7 +421,7 @@ static ccv_nnc_stream_context_t* _ccv_nnc_graph_neighbor_context_discovery(const
 	return 0;
 }
 
-static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node, ccv_nnc_graph_exec_schedule_t* const schd, const int idx, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_scheduler_t* const scheduler, const int flags)
+static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node, const ccv_nnc_graph_exec_schedule_t* const schd, const int idx, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_scheduler_t* const scheduler, const int flags)
 {
 	_ccv_nnc_graph_exec_unwrap_io(graph, node);
 	ccv_nnc_tensor_t** inputs = node->inputs;
@@ -506,14 +506,14 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 	return 0;
 }
 
-static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_schedule_t* const schd_info, ccv_nnc_graph_exec_info_t* const node, ccv_nnc_stream_task_t* const task)
+static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_schedule_t* const schd_info, ccv_nnc_graph_exec_info_t* const node, ccv_nnc_stream_task_t* const task)
 {
 	int i, j;
 	if (node->outgoings)
 		for (i = 0; i < node->outgoings->rnum; i++)
 		{
 			const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
-			ccv_nnc_graph_exec_schedule_t* const outgoing_schd = schd_info + outgoing_idx;
+			const ccv_nnc_graph_exec_schedule_t* const outgoing_schd = schd_info + outgoing_idx;
 			// An outgoing stream can be blocked by multiple other tasks from other streams. But it is OK,
 			// because on next round of execution, that one will be marked as blocked again.
 			for (j = 0; j < outgoing_schd->stream_size; j++)
@@ -521,7 +521,7 @@ static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t
 		}
 }
 
-static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_stream_task_t* const* const sub_tasks, const int sub_task_size, ccv_nnc_graph_exec_schedule_t* const schd_info, const int* const pending_nodes, const int pending_node_size)
+static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_stream_task_t* const* const sub_tasks, const int sub_task_size, const ccv_nnc_graph_exec_schedule_t* const schd_info, const int* const pending_nodes, const int pending_node_size)
 {
 	int i, j, k;
 	if (sub_task_size)
@@ -530,14 +530,14 @@ static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self,
 		if (sub_tasks[i]->done)
 			for (j = 0; j < pending_node_size; j++)
 			{
-				ccv_nnc_graph_exec_schedule_t* const node = schd_info + pending_nodes[j];
+				const ccv_nnc_graph_exec_schedule_t* const node = schd_info + pending_nodes[j];
 				for (k = 0; k < node->stream_size; k++)
 					if (graph->block_stream_tasks[SCHEDULE_STREAMS(*node)[k]] == sub_tasks[i])
 						graph->block_stream_tasks[SCHEDULE_STREAMS(*node)[k]] = 0;
 			}
 }
 
-static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const exec_info, ccv_nnc_graph_exec_schedule_t* const schd_info, const int start_index, const int exec_info_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags)
+static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_graph_exec_schedule_t* const schd_info, const int* const psort, const int start_index, const int exec_info_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags)
 {
 	int i, j;
 	int sub_task_size = 0;
@@ -550,20 +550,21 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 	};
 	for (i = start_index; i < exec_info_size; i++)
 	{
-		ccv_nnc_graph_exec_info_t* const node = exec_info + i;
-		ccv_nnc_graph_exec_schedule_t* const schd = schd_info + i;
+		const int idx = psort ? psort[i] : i;
+		ccv_nnc_graph_exec_info_t* const node = exec_info + idx;
+		const ccv_nnc_graph_exec_schedule_t* const schd = schd_info + idx;
 		// If stream is blocked by but not blocked by current executing task.
 		int blocked = 0;
 		for (j = 0; j < schd->stream_size; j++)
 			if (graph->block_stream_tasks[SCHEDULE_STREAMS(*schd)[j]])
 			{
-				pending_nodes[0][pending_node_size[0]++] = i;
+				pending_nodes[0][pending_node_size[0]++] = idx;
 				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, schd_info, node, graph->block_stream_tasks[SCHEDULE_STREAMS(*schd)[j]]);
 				blocked = 1;
 			}
 		if (blocked)
 			continue;
-		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, schd, i, tensor_tape, self->super, flags);
+		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, schd, idx, tensor_tape, self->super, flags);
 		if (task && !task->done)
 		{
 			sub_tasks[sub_task_size++] = task;
@@ -582,7 +583,7 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 		{
 			const int idx = pending_nodes[p][i];
 			ccv_nnc_graph_exec_info_t* const node = exec_info + idx;
-			ccv_nnc_graph_exec_schedule_t* const schd = schd_info + idx;
+			const ccv_nnc_graph_exec_schedule_t* const schd = schd_info + idx;
 			int blocked = 0;
 			for (j = 0; j < schd->stream_size; j++)
 				if (graph->block_stream_tasks[SCHEDULE_STREAMS(*schd)[j]])
@@ -616,7 +617,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	const int exec_idx = params->exec_idx;
 	ccv_nnc_graph_exec_info_t* const exec = params->exec;
 	ccv_nnc_tensor_tape_t* const tensor_tape = params->tensor_tape;
-	ccv_nnc_graph_static_schedule_t* const schedule = params->schedule;
+	const ccv_nnc_graph_static_schedule_t* const schedule = params->schedule;
 	ccv_nnc_stream_context_t* const stream_context = params->stream_context;
 	const int flags = params->flags;
 	int i, j;
@@ -625,7 +626,8 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 		graph->streams[i]->resource_container = stream_context->_inline_container;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	assert(schedule);
-	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
+	const ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
+	const int stream_0 = schedule->stream_0;
 	if (exec_idx == -1)
 	{
 		if (stream_context->main)
@@ -637,18 +639,19 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 			ccv_nnc_stream_task_wait_any(self, &previous_main, 1);
 		} else
 			stream_context->main = self;
-		if (stream_context != graph->streams[0])
+		if (stream_context != graph->streams[stream_0])
 		{
 			// Make sure when we start work on streams[0], the current stream context is done.
 			ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_get_signal(stream_context, (int64_t)(intptr_t)graph);
 			ccv_nnc_stream_context_emit_signal(stream_context, signal);
-			ccv_nnc_stream_context_wait_signal(graph->streams[0], signal);
+			ccv_nnc_stream_context_wait_signal(graph->streams[stream_0], signal);
 		}
 	} else {
 		assert(stream_context == graph->streams[0]);
 	}
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
+		assert(schedule == graph->default_schedule);
 		assert(exec->p_while.expr);
 		int64_t count = 0;
 		// This is a forward while loop. Backward while loop will just consult its pairing part.
@@ -666,7 +669,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				_ccv_nnc_graph_unwrap(graph, count, 0);
 				if (count > 0)
 					_ccv_nnc_graph_transit_move_to(graph);
-				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, graph_breakpoint_size, tensor_tape, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, 0, graph_breakpoint_size, tensor_tape, flags);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
 				// Wait until everything on the stream is executed.
 				for (i = graph->breakpoint_offset; i < graph_breakpoint_size; i++)
@@ -679,7 +682,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 					// If we break from here, it is ok because all the streams are waited.
 					break;
 				}
-				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, graph_breakpoint_size, graph->exec_info->rnum, tensor_tape, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, graph_breakpoint_size, graph->exec_info->rnum, tensor_tape, flags);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
@@ -694,7 +697,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 					.graph = graph->p,
 				});
 			_ccv_nnc_graph_unwrap(graph, count, reverse_count);
-			_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, graph->breakpoint_offset, graph->exec_info->rnum, tensor_tape, flags);
+			_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, graph->breakpoint_offset, graph->exec_info->rnum, tensor_tape, flags);
 			_ccv_nnc_graph_from_move_transit(graph);
 			_ccv_nnc_graph_rewrap(graph);
 			for (count = 1; reverse_count > 0; ++count)
@@ -702,7 +705,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				graph->while_count = --reverse_count;
 				_ccv_nnc_graph_unwrap(graph, count, reverse_count);
 				_ccv_nnc_graph_transit_move_to(graph);
-				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, graph->exec_info->rnum, tensor_tape, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, 0, graph->exec_info->rnum, tensor_tape, flags);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
@@ -711,15 +714,15 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 			ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[schedule->waits[i]]);
 	} else {
 		graph->while_count = 0;
-		_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, 0, graph->exec_info->rnum, tensor_tape, flags);
+		_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, schd_info, schedule->psort, 0, schedule->psort ? schedule->psort_size : schedule->exec_info_size, tensor_tape, flags);
 		for (i = 0; i < schedule->wait_size; i++)
-			ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[schedule->waits[i]]);
+			ccv_nnc_stream_context_wait_signal(graph->streams[stream_0], graph->signals[schedule->waits[i]]);
 	}
-	if (stream_context != graph->streams[0])
+	if (stream_context != graph->streams[stream_0])
 	{
 		assert(exec_idx == -1);
-		ccv_nnc_stream_context_emit_signal(graph->streams[0], graph->extern_signal);
-		ccv_nnc_stream_context_wait_signal(stream_context, graph->extern_signal);
+		ccv_nnc_stream_context_emit_signal(graph->streams[stream_0], schedule->signal_synced);
+		ccv_nnc_stream_context_wait_signal(stream_context, schedule->signal_synced);
 	}
 	// Reset main to 0 if it is current me.
 	if (exec_idx == -1 && stream_context->main == self)
@@ -994,27 +997,24 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_n
 		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, flags, sources, source_size, destinations, destination_size, tensor_tape, 0 /* In this case, we don't support stream context yet. */);
 }
 
-int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
+int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const _schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(graph->topsorted);
 	assert(graph->stream_size > 0);
 	assert(stream_context);
-	if (!schedule)
-	{
-		assert(graph->default_schedule);
-		ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
-		ccv_nnc_graph_topsorted_run_coro_t params = {
-			.graph = graph,
-			.exec_idx = -1,
-			.schedule = graph->default_schedule,
-			.exec = 0,
-			.tensor_tape = tensor_tape,
-			.stream_context = stream_context,
-			.flags = flags
-		};
-		ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, sizeof(params));
-		ccv_nnc_stream_schedule_task(scheduler, task);
-	} else {
-	}
+	const ccv_nnc_graph_static_schedule_t* const schedule = _schedule ? _schedule : graph->default_schedule;
+	assert(schedule);
+	ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
+	ccv_nnc_graph_topsorted_run_coro_t params = {
+		.graph = graph,
+		.exec_idx = -1,
+		.schedule = schedule,
+		.exec = 0,
+		.tensor_tape = tensor_tape,
+		.stream_context = stream_context,
+		.flags = flags
+	};
+	ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, sizeof(params));
+	ccv_nnc_stream_schedule_task(scheduler, task);
 	return CCV_NNC_EXEC_SUCCESS;
 }

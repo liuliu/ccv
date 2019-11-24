@@ -719,6 +719,10 @@ void ccv_nnc_graph_static_schedule_free(ccv_nnc_graph_static_schedule_t* const s
 	}
 	if (schedule->waits)
 		ccfree(schedule->waits);
+	if (schedule->psort)
+		ccfree(schedule->psort);
+	if (schedule->signal_synced)
+		ccv_nnc_stream_signal_free(schedule->signal_synced);
 	ccfree(schedule);
 }
 
@@ -737,11 +741,26 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 	const int destination_size = _destinations == 0 ? graph->destinations->rnum : _destination_size;
 	if (!_destinations)
 		{ assert(_destination_size == 0); }
+	const int root_schedule = (_sources == 0 && _destinations == 0);
 	ccv_nnc_graph_static_schedule_t* const schedule = cccalloc(1, sizeof(ccv_nnc_graph_static_schedule_t) + sizeof(ccv_nnc_graph_exec_schedule_t) * (exec_info_size - 1));
 	schedule->exec_info_size = exec_info_size;
 	ccv_nnc_graph_exec_schedule_t* const schd_info = schedule->exec_info;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, sources, source_size, destinations, destination_size, 0);
+	if (!root_schedule)
+	{
+		// If this is not a root schedule, we need to do partial topsort.
+		int psort_size = 0;
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			++psort_size;
+		} ccv_nnc_graph_visit_endfor
+		schedule->psort = (int*)ccmalloc(sizeof(int) * psort_size);
+		schedule->psort_size = psort_size;
+		psort_size = 0;
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			schedule->psort[psort_size++] = idx;
+		} ccv_nnc_graph_visit_endfor
+	}
 	int i, j, k;
 	// Generate exec dependencies (or, in other words, partial ordering of executions).
 	ccv_sparse_matrix_t* exec_dep = ccv_sparse_matrix_new(exec_info_size, exec_info_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
@@ -1039,41 +1058,113 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		ccv_array_free(data->command_set);
 	}
 	// Allocate streams & signals
-	graph->stream_size = stream_data->rnum;
-	graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
-	graph->block_stream_tasks = (ccv_nnc_stream_task_t**)cccalloc(graph->stream_size, sizeof(ccv_nnc_stream_task_t*));
-	if (stream_context)
-		graph->streams[0] = stream_context;
-	for (i = (stream_context ? 1 : 0); i < stream_data->rnum; i++)
-	{
-		ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
-		int type = stream_type;
-		CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
-		graph->streams[i] = ccv_nnc_stream_context_new(type);
-	}
 	int default_stream_type = stream_type;
 	CCV_TENSOR_SET_DEVICE_ID(default_stream_type, default_data->device_id);
-	graph->signal_size = signal_size;
-	graph->signals = (ccv_nnc_stream_signal_t**)cccalloc(signal_size, sizeof(ccv_nnc_stream_signal_t*));
-	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-		for (i = 0; i < schd_info[idx].stream_size; i++)
-			if (SCHEDULE_SIGNALS(schd_info[idx])[i] >= 0)
-			{
-				const int signal = SCHEDULE_SIGNALS(schd_info[idx])[i];
-				if (!graph->signals[signal])
+	if (root_schedule)
+	{
+		assert(!graph->streams);
+		graph->stream_size = stream_data->rnum;
+		graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
+		graph->block_stream_tasks = (ccv_nnc_stream_task_t**)cccalloc(graph->stream_size, sizeof(ccv_nnc_stream_task_t*));
+		if (stream_context)
+			graph->streams[0] = stream_context;
+		for (i = (stream_context ? 1 : 0); i < stream_data->rnum; i++)
+		{
+			ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
+			int type = stream_type;
+			CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+			graph->streams[i] = ccv_nnc_stream_context_new(type);
+		}
+		graph->signal_size = signal_size;
+		graph->signals = (ccv_nnc_stream_signal_t**)cccalloc(signal_size, sizeof(ccv_nnc_stream_signal_t*));
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			for (i = 0; i < schd_info[idx].stream_size; i++)
+				if (SCHEDULE_SIGNALS(schd_info[idx])[i] >= 0)
 				{
-					const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
-					int type = stream_type;
-					CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
-					graph->signals[signal] = ccv_nnc_stream_signal_new(type);
+					const int signal = SCHEDULE_SIGNALS(schd_info[idx])[i];
+					if (!graph->signals[signal])
+					{
+						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
+						int type = stream_type;
+						CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+						graph->signals[signal] = ccv_nnc_stream_signal_new(type);
+					}
 				}
+		} ccv_nnc_graph_visit_endfor
+	} else {
+		assert(graph->streams);
+		assert(graph->stream_size >= stream_data->rnum);
+		// Find streams to proper allocated stream based on the type we need.
+		int* const stream_idxs = (int*)ccmalloc(sizeof(int) * (stream_data->rnum + signal_size));
+		uint64_t* const stream_used = (uint64_t*)cccalloc(((graph->stream_size + 63) >> 6) + ((graph->signal_size + 63) >> 6), sizeof(uint64_t));
+		for (i = 0; i < stream_data->rnum; i++)
+		{
+			ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
+			int type = stream_type;
+			CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+			for (j = 0; j < graph->stream_size; j++)
+				if (!(stream_used[j >> 6] & ((uint64_t)1 << (j & 63))))
+				{
+					const int stream_type = ccv_nnc_stream_context_type(graph->streams[j]);
+					if (stream_type == type)
+					{
+						stream_idxs[i] = j;
+						stream_used[j >> 6] |= ((uint64_t)1 << (j & 63));
+						break;
+					}
+				}
+		}
+		assert(graph->signal_size >= signal_size);
+		// Find signals to proper allocated signal based on the type we need.
+		int* const signal_idxs = stream_idxs + stream_data->rnum;
+		uint64_t* const signal_used = stream_used + ((graph->stream_size + 63) >> 6);
+		for (i = 0; i < signal_size; i++)
+			signal_idxs[i] = -1;
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			for (i = 0; i < schd_info[idx].stream_size; i++)
+				if (SCHEDULE_SIGNALS(schd_info[idx])[i] >= 0)
+				{
+					const int signal = SCHEDULE_SIGNALS(schd_info[idx])[i];
+					if (signal_idxs[signal] < 0)
+					{
+						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
+						int type = stream_type;
+						CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+						for (j = 0; j < graph->signal_size; j++)
+							if (!(signal_used[j >> 6] & ((uint64_t)1 << (j & 63))))
+							{
+								const int signal_type = ccv_nnc_stream_signal_type(graph->signals[j]);
+								if (signal_type == type)
+								{
+									signal_idxs[signal] = j;
+									signal_used[j >> 6] |= ((uint64_t)1 << (j & 63));
+									break;
+								}
+							}
+					}
+				}
+		} ccv_nnc_graph_visit_endfor
+		// Now rebind streams and signals from the schedule.
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			for (i = 0; i < schd_info[idx].stream_size; i++)
+			{
+				SCHEDULE_STREAMS(schd_info[idx])[i] = stream_idxs[SCHEDULE_STREAMS(schd_info[idx])[i]];
+				if (SCHEDULE_SIGNALS(schd_info[idx])[i] >= 0)
+					SCHEDULE_SIGNALS(schd_info[idx])[i] = signal_idxs[SCHEDULE_SIGNALS(schd_info[idx])[i]];
 			}
-	} ccv_nnc_graph_visit_endfor
+			for (i = 0; i < schd_info[idx].wait_size; i++)
+				schd_info[idx].waits[i] = signal_idxs[schd_info[idx].waits[i]];
+		} ccv_nnc_graph_visit_endfor
+		for (i = 0; i < schedule->wait_size; i++)
+			schedule->waits[i] = signal_idxs[schedule->waits[i]];
+		// Rebind who is the stream 0 (default stream).
+		schedule->stream_0 = stream_idxs[0];
+	}
+	assert(graph->streams);
 	ccv_nnc_graph_visit_free(visit);
 	for (i = 0; i < signal_size; i++)
 		{ assert(graph->signals[i]); }
-	if (!graph->extern_signal)
-		graph->extern_signal = ccv_nnc_stream_signal_new(default_stream_type);
+	schedule->signal_synced = ccv_nnc_stream_signal_new(default_stream_type);
 	// Do this recursively for its sub graphs.
 	if (graph->sub_graphs)
 		for (i = 0; i < graph->sub_graphs->rnum; i++)
@@ -1802,8 +1893,6 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccv_nnc_stream_signal_free(graph->signals[i]);
 		ccfree(graph->signals);
 	}
-	if (graph->extern_signal)
-		ccv_nnc_stream_signal_free(graph->extern_signal);
 	if (graph->carry_overs)
 	{
 		for (i = 0; i < graph->carry_overs->rnum; i++)

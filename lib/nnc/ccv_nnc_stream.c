@@ -163,6 +163,11 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_signal_new(const int type)
 	return signal;
 }
 
+CCV_WARN_UNUSED(int) ccv_nnc_stream_signal_type(const ccv_nnc_stream_signal_t* const signal)
+{
+	return signal->type;
+}
+
 void ccv_nnc_stream_context_emit_signal(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const signal)
 {
 	signal->emit_context = stream;
