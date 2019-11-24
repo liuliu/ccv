@@ -644,6 +644,9 @@ static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->evaluate.tos)
 		ccfree(compiled_data->evaluate.tos);
 	compiled_data->evaluate.tos = 0;
+	if (compiled_data->evaluate.schedule)
+		ccv_nnc_graph_static_schedule_free(compiled_data->evaluate.schedule);
+	compiled_data->evaluate.schedule = 0;
 	if (compiled_data->backward.from_ops)
 		ccfree(compiled_data->backward.from_ops);
 	compiled_data->backward.from_ops = 0;
@@ -663,6 +666,9 @@ static void _ccv_cnnp_compiled_data_backward_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->backward.graph_exec_arena)
 		ccv_nnc_graph_exec_arena_free(compiled_data->backward.graph_exec_arena);
 	compiled_data->backward.graph_exec_arena = 0;
+	if (compiled_data->backward.schedule)
+		ccv_nnc_graph_static_schedule_free(compiled_data->backward.schedule);
+	compiled_data->backward.schedule = 0;
 }
 
 static void _ccv_cnnp_compiled_data_apply_gradients_free(ccv_cnnp_compiled_data_t* const compiled_data)
@@ -1046,10 +1052,11 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
 		ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, tensor_tape, stream_context);
-	else
-		ccv_nnc_graph_run(compiled_data->graph, 0, 0, 0,
-			compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size,
-			tensor_tape, stream_context);
+	else {
+		if (!compiled_data->evaluate.schedule)
+			compiled_data->evaluate.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, 0, 0, compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, compiled_data->evaluate.schedule, tensor_tape, stream_context);
+	}
 }
 
 // Compile the graph to run ccv_cnnp_model_backward after ccv_cnnp_model_evaluate with requires_grad = true (MULTISTAGE_MODE).
@@ -1163,8 +1170,10 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	// Bind to the gradients (if we start to accumulate at 2 (i.e. accum_gradients and gradients binding no longer changes), no need to do the binding.
 	if (compiled_data->backward.count <= 1)
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
+	if (!compiled_data->backward.schedule)
+		compiled_data->backward.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
 	// Run the backward pass.
-	ccv_nnc_graph_run(compiled_data->graph, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0, tensor_tape, stream_context);
+	ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, compiled_data->backward.schedule, tensor_tape, stream_context);
 	// If we need to run accumulation round, do that now.
 	if (compiled_data->backward.count > 0)
 		ccv_nnc_graph_run(compiled_data->backward.accum, 0, TRAVERSE_FULL, 0, stream_context);

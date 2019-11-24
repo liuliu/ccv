@@ -997,13 +997,13 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_n
 		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, flags, sources, source_size, destinations, destination_size, tensor_tape, 0 /* In this case, we don't support stream context yet. */);
 }
 
-int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const _schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
+int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const _schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const _stream_context)
 {
 	assert(graph->topsorted);
 	assert(graph->stream_size > 0);
-	assert(stream_context);
 	const ccv_nnc_graph_static_schedule_t* const schedule = _schedule ? _schedule : graph->default_schedule;
 	assert(schedule);
+	ccv_nnc_stream_context_t* const stream_context = _stream_context ? _stream_context : graph->streams[schedule->stream_0];
 	ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
 	ccv_nnc_graph_topsorted_run_coro_t params = {
 		.graph = graph,
@@ -1016,5 +1016,7 @@ int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flag
 	};
 	ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, sizeof(params));
 	ccv_nnc_stream_schedule_task(scheduler, task);
+	if (!_stream_context) // If no stream context provided, this is a sync operation.
+		ccv_nnc_stream_context_wait(stream_context);
 	return CCV_NNC_EXEC_SUCCESS;
 }

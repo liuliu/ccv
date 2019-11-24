@@ -97,6 +97,7 @@ typedef struct {
 		int to_size;
 		ccv_nnc_graph_exec_t* to_ops;
 		ccv_nnc_graph_exec_symbol_t* tos;
+		ccv_nnc_graph_static_schedule_t* schedule; // The partial schedule for running evaluate step.
 	} evaluate; // Data related to ccv_cnnp_model_evaluate
 	struct {
 		int count; // Called backward how many times. Starting with 0.
@@ -110,6 +111,7 @@ typedef struct {
 		ccv_nnc_tensor_symbol_t* gradients; // The new gradients.
 		ccv_nnc_tensor_symbol_t* accum_gradients; // The old accumulate gradients.
 		ccv_nnc_tensor_symbol_t* updated_accum_gradients; // The new accumulate gradients.
+		ccv_nnc_graph_static_schedule_t* schedule; // The partial schedule for running backward step.
 	} backward;
 	struct {
 		ccv_nnc_graph_t* graph;

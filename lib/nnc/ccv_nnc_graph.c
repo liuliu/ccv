@@ -1159,6 +1159,8 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			schedule->waits[i] = signal_idxs[schedule->waits[i]];
 		// Rebind who is the stream 0 (default stream).
 		schedule->stream_0 = stream_idxs[0];
+		ccfree(stream_used);
+		ccfree(stream_idxs);
 	}
 	assert(graph->streams);
 	ccv_nnc_graph_visit_free(visit);
