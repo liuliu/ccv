@@ -423,7 +423,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			for (j = 0; j < per_output_size; j++)
 			{
 				output_tensors[j] = outputs[j + i * per_output_size] ? ccv_nnc_tensor_from_variable(graph, outputs[j + i * per_output_size]) : 0;
-				if (output_tensors[j])
+				if (output_tensors[j] && !flag)
 					flag = (CCV_TENSOR_GET_MEMORY(output_tensors[j]->info.type) == CCV_TENSOR_GPU_MEMORY);
 			}
 			const int device_id_size = ccv_nnc_device_ids_for_io(input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, device_ids, max_device_id_size);
