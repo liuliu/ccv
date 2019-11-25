@@ -75,9 +75,6 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		&f_variable->symbol, 1, input_symbols, input_size,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum);
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	// Bind generated tensors.
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), dynamic_graph->vars->rnum + 2, 0);
 	for (i = 0; i < dynamic_graph->vars->rnum; i++)
@@ -152,27 +149,57 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	}
 	int freeable_size = 0;
 	ccv_nnc_tensor_variable_t freeables[output_size];
-	// Bind dt tensor.
-	for (i = 0; i < output_size; i++)
-		if (outputs[i])
-		{
-			const ccv_nnc_tensor_symbol_t symbol = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, input_symbols[i]);
-			if (outputs[i]->symbol.d >= 0)
-				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, outputs[i]);
-			ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
-			const ccv_nnc_tensor_bind_t dt_bind = {
-				.symbol = symbol,
-				.tensor = tensor
-			};
-			ccv_array_push(tensor_binds, &dt_bind);
-		}
 	ccv_array_clear(destinations);
+	// Bind dt tensor.
 	for (i = 0; i < output_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t symbol = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, input_symbols[i]);
-		const ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->tape, symbol);
+		ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->tape, symbol);
+		if (outputs[i])
+		{
+			if (outputs[i]->tensor_view &&
+				(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(outputs[i]->tensor_view) || outputs[i]->symbol.d >= 0))
+			{
+				// If the output tensors already exist, we need to accumulate the result.
+				// However, if this tensor is set from outside, we don't accumulate on that
+				// (these maybe people just want to collect the result in explicit way).
+				// On the other hand, if these external tensor views has a symbol associated
+				// with them, they are not made to collect results. They are probably bind in
+				// previous computations.
+				// The above logic is convoluted, but it should make intuitive sense in many
+				// cases.
+				ccv_nnc_tensor_symbol_t inputs[2];
+				inputs[0] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, outputs[i]->info, 0);
+				inputs[1] = symbol;
+				const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, outputs[i]->info, 0);
+				ccv_nnc_tensor_bind_t dt_bind = {
+					.symbol = inputs[0],
+					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i])
+				};
+				ccv_array_push(tensor_binds, &dt_bind);
+				ccv_nnc_graph_exec_symbol_t accum = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_EWSUM_FORWARD(), inputs, 2, &output, 1, 0);
+				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, destination, accum);
+				destination = accum; // The accumulation unit becomes the new destination.
+				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, outputs[i]);
+				dt_bind.symbol = output;
+				dt_bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
+				ccv_array_push(tensor_binds, &dt_bind);
+			} else {
+				// Otherwise, we can directly bind to the backward output.
+				ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
+				const ccv_nnc_tensor_bind_t dt_bind = {
+					.symbol = symbol,
+					.tensor = tensor
+				};
+				ccv_array_push(tensor_binds, &dt_bind);
+			}
+		}
 		ccv_array_push(destinations, &destination);
 	}
+	// Remove the hook only at this point.
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
