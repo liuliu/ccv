@@ -157,8 +157,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->tape, symbol);
 		if (outputs[i])
 		{
-			if (outputs[i]->tensor_view &&
-				(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(outputs[i]->tensor_view) || outputs[i]->symbol.d >= 0))
+			if (ccv_nnc_tensor_variable_contains_value(outputs[i]))
 			{
 				// If the output tensors already exist, we need to accumulate the result.
 				// However, if this tensor is set from outside, we don't accumulate on that
@@ -185,6 +184,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				dt_bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
 				ccv_array_push(tensor_binds, &dt_bind);
 			} else {
+				assert(outputs[i]->symbol.d < 0);
 				// Otherwise, we can directly bind to the backward output.
 				ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
 				const ccv_nnc_tensor_bind_t dt_bind = {
