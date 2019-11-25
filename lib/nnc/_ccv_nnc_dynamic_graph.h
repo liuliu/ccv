@@ -58,12 +58,20 @@ typedef struct {
 
 KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)
 
+typedef struct {
+	ccv_nnc_stream_context_t* stream;
+	ccv_nnc_stream_signal_t* synced;
+} ccv_nnc_synced_stream_t;
+
+KHASH_MAP_INIT_INT(synced_stream, ccv_nnc_synced_stream_t);
+
 struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
 	ccv_array_t* vars; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.
 	khash_t(stateful_exec)* stateful_execs; // Array keeps track of the stateful execs. The stateful execs type can have additional apply_gradients calls to update its internal states.
+	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
 	ccv_array_t* ws; // array of integers as workspace
 };

@@ -443,9 +443,9 @@ enum {
 	CCV_STREAM_CONTEXT_GPU = 0x2, /**< A GPU based stream context. */
 };
 #define CCV_STREAM_GET_CONTEXT(type) ((type) & 0x3)
-#define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
-#define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
-#define CCV_STREAM_SET_DEVICE_ID(type, device_id) (type) = (((type) & ~0xfff00) | (((device_id) & 0xfff) << 8))
+#define CCV_STREAM_GET_DEVICE(type) CCV_TENSOR_GET_DEVICE(type)
+#define CCV_STREAM_GET_DEVICE_ID(type) CCV_TENSOR_GET_DEVICE_ID(type)
+#define CCV_STREAM_SET_DEVICE_ID(type, device_id) CCV_TENSOR_SET_DEVICE_ID(type, device_id)
 /**
  * Create a new stream context.
  * @param type A combination of CPU / GPU and DEVICE_ID.

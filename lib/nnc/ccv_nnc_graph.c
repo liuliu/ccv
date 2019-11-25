@@ -1059,7 +1059,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 	}
 	// Allocate streams & signals
 	int default_stream_type = stream_type;
-	CCV_TENSOR_SET_DEVICE_ID(default_stream_type, default_data->device_id);
+	CCV_STREAM_SET_DEVICE_ID(default_stream_type, default_data->device_id);
 	if (root_schedule)
 	{
 		assert(!graph->streams);
@@ -1072,7 +1072,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		{
 			ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
 			int type = stream_type;
-			CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+			CCV_STREAM_SET_DEVICE_ID(type, data->device_id);
 			graph->streams[i] = ccv_nnc_stream_context_new(type);
 		}
 		graph->signal_size = signal_size;
@@ -1086,7 +1086,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 					{
 						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
 						int type = stream_type;
-						CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+						CCV_STREAM_SET_DEVICE_ID(type, data->device_id);
 						graph->signals[signal] = ccv_nnc_stream_signal_new(type);
 					}
 				}
@@ -1101,7 +1101,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		{
 			ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
 			int type = stream_type;
-			CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+			CCV_STREAM_SET_DEVICE_ID(type, data->device_id);
 			for (j = 0; j < graph->stream_size; j++)
 				if (!(stream_used[j >> 6] & ((uint64_t)1 << (j & 63))))
 				{
@@ -1129,7 +1129,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 					{
 						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, SCHEDULE_STREAMS(schd_info[idx])[i]);
 						int type = stream_type;
-						CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
+						CCV_STREAM_SET_DEVICE_ID(type, data->device_id);
 						for (j = 0; j < graph->signal_size; j++)
 							if (!(signal_used[j >> 6] & ((uint64_t)1 << (j & 63))))
 							{

@@ -16,6 +16,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
 	graph->tape = ccv_nnc_symbolic_graph_new();
 	graph->stateful_execs = kh_init(stateful_exec);
+	graph->synced_streams = kh_init(synced_stream);
 	graph->ws = 0;
 	return graph;
 }
@@ -93,6 +94,15 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		ccfree(kh_val(graph->stateful_execs, k));
 	}
 	kh_destroy(stateful_exec, graph->stateful_execs);
+	for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
+	{
+		if (!kh_exist(graph->synced_streams, k))
+			continue;
+		ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
+		ccv_nnc_stream_context_free(synced_stream->stream);
+		ccv_nnc_stream_signal_free(synced_stream->synced);
+	}
+	kh_destroy(synced_stream, graph->synced_streams);
 	ccfree(graph);
 }
 
@@ -289,6 +299,34 @@ void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_gr
 	dynamic_graph->no_grad = no_grad;
 }
 
+static ccv_nnc_synced_stream_t _ccv_nnc_dynamic_graph_get_synced_stream(ccv_nnc_dynamic_graph_t* const graph, const int type)
+{
+	int ret = 0;
+	khiter_t k = kh_put(synced_stream, graph->synced_streams, type, &ret);
+	assert(ret >= 0);
+	ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
+	// If ret == 0, the key already exist, we can return directly, otherwise, create and return.
+	if (ret != 0)
+	{
+		synced_stream->stream = ccv_nnc_stream_context_new(type);
+		synced_stream->synced = ccv_nnc_stream_signal_new(type);
+	}
+	return *synced_stream;
+}
+
+typedef struct {
+	ccv_nnc_dynamic_graph_t* graph;
+	int stream_type;
+} ccv_nnc_dynamic_graph_neighbor_context_discovery_t;
+
+static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_graph_neighbor_context_discovery(const int device_id, void* const context)
+{
+	ccv_nnc_dynamic_graph_neighbor_context_discovery_t* const discovery = (ccv_nnc_dynamic_graph_neighbor_context_discovery_t*)context;
+	int type = discovery->stream_type;
+	CCV_STREAM_SET_DEVICE_ID(type, device_id);
+	return _ccv_nnc_dynamic_graph_get_synced_stream(discovery->graph, type).stream;
+}
+
 void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_graph_exec_symbol_t* const graph_execs)
 {
 	int i, j;
@@ -370,11 +408,55 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 		}
 	}
 	ccv_nnc_tensor_t* output_tensors[ccv_max(1, per_output_size)];
-	for (i = 0; i < parallel_count; i++)
+	if (parallel_count > 1)
 	{
-		for (j = 0; j < per_output_size; j++)
-			output_tensors[j] = outputs[j + i * per_output_size] ? ccv_nnc_tensor_from_variable(graph, outputs[j + i * per_output_size]) : 0;
-		ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_context);
+		const int max_device_id_size = per_input_size + per_output_size;
+		assert(max_device_id_size > 0);
+		int device_ids[max_device_id_size];
+		ccv_nnc_stream_context_t* streams[parallel_count];
+		for (i = 0; i < parallel_count; i++)
+		{
+			int flag = 0;
+			for (j = 0; !flag && j < per_input_size; j++)
+				if (input_tensors[i * per_input_size + j])
+					flag = (CCV_TENSOR_GET_MEMORY(input_tensors[i * per_input_size + j]->info.type) == CCV_TENSOR_GPU_MEMORY);
+			for (j = 0; j < per_output_size; j++)
+			{
+				output_tensors[j] = outputs[j + i * per_output_size] ? ccv_nnc_tensor_from_variable(graph, outputs[j + i * per_output_size]) : 0;
+				if (output_tensors[j])
+					flag = (CCV_TENSOR_GET_MEMORY(output_tensors[j]->info.type) == CCV_TENSOR_GPU_MEMORY);
+			}
+			const int device_id_size = ccv_nnc_device_ids_for_io(input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, device_ids, max_device_id_size);
+			const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+			ccv_nnc_synced_stream_t stream_0 = {};
+			for (j = 0; j < device_id_size; j++)
+			{
+				int type = stream_type;
+				CCV_STREAM_SET_DEVICE_ID(type, device_ids[j]);
+				ccv_nnc_synced_stream_t synced_stream = _ccv_nnc_dynamic_graph_get_synced_stream(graph, type);
+				if (!stream_0.stream)
+					stream_0 = synced_stream;
+			}
+			ccv_nnc_dynamic_graph_neighbor_context_discovery_t discovery = {
+				.graph = graph,
+				.stream_type = stream_type
+			};
+			ccv_nnc_stream_context_set_neighbor_discovery(stream_0.stream, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
+			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0.stream);
+			if (stream_context)
+			{
+				ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
+				ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+			}
+			streams[i] = stream_0.stream;
+		}
+		if (!stream_context)
+			for (i = 0; i < parallel_count; i++)
+				ccv_nnc_stream_context_wait(streams[i]);
+	} else {
+		for (i = 0; i < per_output_size; i++)
+			output_tensors[i] = outputs[i] ? ccv_nnc_tensor_from_variable(graph, outputs[i]) : 0;
+		ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, per_input_size, output_tensors, per_output_size, stream_context);
 	}
 	ccv_nnc_stream_context_wait(stream_context);
 	if (input_size > 0 && !graph->no_grad) // No need to record the execution if there is no input or we disabled gradient computation.
