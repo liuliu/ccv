@@ -497,7 +497,7 @@ typedef struct ccv_nnc_stream_signal_s ccv_nnc_stream_signal_t;
 CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(const int type);
 /**
  * Get the type of the stream signal.
- * @param stream_signal The stream signal we want to inspect.
+ * @param signal The stream signal we want to inspect.
  * @return The type of the stream signal.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_stream_signal_type(const ccv_nnc_stream_signal_t* const signal);
@@ -2128,8 +2128,9 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 /**
  * Compute the gradient of given tensor, with respect to the f. Thus, df / dt.
  * @param dynamic_graph The dynamic graph.
- * @param f_variable The output losses.
- * @param df_optional The custom gradient for f. If not provided, will default to 1.
+ * @param f_variables The output losses.
+ * @param f_variable_size The size of output losses array.
+ * @param df_optionals The custom gradients for f. If not provided, will default to 1.
  * @param inputs The input variables.
  * @param input_size The size of the input variables array.
  * @param outputs The gradients with respect to the inputs. If the gradient already have value exist, it will be
@@ -2137,7 +2138,7 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
  * @param output_size The size of the outputs array. Should be equal to the input_size.
  * @param stream_context Which stream this computation will be executed upon.
  */
-void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t* const f_variables, const int f_variable_size, const ccv_nnc_tensor_variable_t* const df_optionals, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Apply gradients to the set of parameters to update them with appropriate minimizer.
  * @param dynamic_graph The dynamic graph.

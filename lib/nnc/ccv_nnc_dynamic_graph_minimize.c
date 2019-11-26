@@ -66,7 +66,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	}
 	// Go over sources, because destinations will get removed all the time, thus, the index is not accurate.
 	if (destinations->rnum > 1)
-		for (i = 0 ; i < destinations->rnum; i++)
+		for (i = 0; i < destinations->rnum; i++)
 		{
 			memset((uint32_t*)ccv_array_get(ws, exec_symbol_info_size * 2), 0, sizeof(uint32_t) * ((exec_symbol_info_size + 31) >> 5));
 			ccv_nnc_remove_if_prior_to_any(dynamic_graph->tape,

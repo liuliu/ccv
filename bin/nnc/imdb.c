@@ -253,7 +253,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(out, fit), TENSOR_VARIABLE_LIST(0, softmax), 0, 0);
 		const ccv_nnc_tensor_variable_t vocab_vec_grad = ccv_nnc_tensor_variable_new(dynamic_graph);
 		const ccv_nnc_tensor_variable_t seq_vec_grad = ccv_nnc_tensor_variable_new(dynamic_graph);
-		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, 0, TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), 0);
+		ccv_nnc_dynamic_graph_backward(dynamic_graph, TENSOR_VARIABLE_LIST(softmax), 0, TENSOR_VARIABLE_LIST(vocab_vec, seq_vec), TENSOR_VARIABLE_LIST(vocab_vec_grad, seq_vec_grad), 0);
 		if (i == 0)
 		{
 			FILE* model = fopen("imdb-model.dot", "w+");

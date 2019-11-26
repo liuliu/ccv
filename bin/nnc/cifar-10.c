@@ -336,7 +336,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		ccv_nnc_tensor_variable_set(graph, fit, input_fit_fits[0]);
 		ccv_nnc_tensor_variable_t const softmax = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(output, fit), TENSOR_VARIABLE_LIST(0, softmax), 0, stream_contexts[q]);
-		ccv_nnc_dynamic_graph_backward(graph, softmax, 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), stream_contexts[q]);
+		ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(softmax), 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), stream_contexts[q]);
 		ccv_nnc_dynamic_graph_apply_gradients(graph, sgd, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, stream_contexts[q]);
 		ccv_nnc_tensor_variable_free(graph, input);
 		ccv_nnc_tensor_variable_free(graph, output);

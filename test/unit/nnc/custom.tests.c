@@ -37,7 +37,7 @@ static int _ccv_nnc_cmd_custom_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		ccv_nnc_tensor_variable_set(graph, dy, inputs[0]);
 		const ccv_nnc_tensor_variable_t dx = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, dx, outputs[0]);
-		ccv_nnc_dynamic_graph_backward(graph, y, dy, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(dx), 0);
+		ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(y), &dy, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(dx), 0);
 		ccv_nnc_dynamic_graph_free(graph);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
