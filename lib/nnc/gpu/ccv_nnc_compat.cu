@@ -206,7 +206,7 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	memset(stream_compat, 0, sizeof(ccv_nnc_stream_context_compat_t));
 	stream_compat->super = super;
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
-	cudaStreamCreate(&device_local->stream);
+	CUDA_ENFORCE(cudaStreamCreate(&device_local->stream));
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
 
@@ -410,8 +410,8 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	if (!device_local->cublas)
 	{
-		cublasCreate(&device_local->cublas);
-		cublasSetStream(device_local->cublas, device_local->stream);
+		CUBLAS_ENFORCE(cublasCreate(&device_local->cublas));
+		CUBLAS_ENFORCE(cublasSetStream(device_local->cublas, device_local->stream));
 	}
 	return device_local->cublas;
 }

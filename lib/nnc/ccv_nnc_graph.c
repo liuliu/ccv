@@ -775,13 +775,12 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			++buf_size; \
 		} \
 	} while (0)
+	for (i = 0; i < exec_info_size; i++)
+		schd_info[i].stream_size = -1;
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx, term) {
 		buf_size = 0; /* save all its parent deps to this buffer */
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
-		if (schd_info[idx].stream_size > 1)
-			ccfree(schd_info[idx]._heap_streams);
 		schd_info[idx].stream_size = 0;
-		schd_info[idx].wait_size = 0;
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
 		if (!node->outgoings)
@@ -825,6 +824,9 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			for (i = 0; i < node->outgoings->rnum; i++)
 			{
 				const int di = *(int*)ccv_array_get(node->outgoings, i);
+				// Skip if we haven't accessed this exec.
+				if (schd_info[di].stream_size < 0)
+					continue;
 				int flag = 0;
 				for (j = 0; !flag && j < node->outgoings->rnum; j++)
 				{
@@ -843,8 +845,6 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 					ccv_array_push(incomings[di].outgoings, &idx);
 				}
 			}
-			// If we have outgoing nodes, I cannot filter out all of them.
-			assert(node->outgoings->rnum == 0 || outgoings[idx]->rnum > 0);
 		}
 	} ccv_nnc_graph_visit_endfor
 #define visitor(node, idx, _) \
@@ -924,6 +924,8 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 					for (j = 0; j < outgoings[outgoing_idx]->rnum; j++)
 					{
 						const int d = *(int*)ccv_array_get(outgoings[outgoing_idx], j);
+						// This is not outside of our scope at this point.
+						assert(schd_info[d].stream_size >= 0);
 						ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + d;
 						const int outgoing_device_id_size = _ccv_nnc_device_ids_for_stream_data(outgoing_node, device_id, stream_data, outgoing_device_ids, max_device_id_size);
 						if (schd_info[d].stream_size == 0)

@@ -478,7 +478,7 @@ int main(int argc, char** argv)
 			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(tests, &categorized);
 		}
-		train_cifar_10(categorizeds, 256, meanf, tests);
+		train_cifar_10(categorizeds, 512, meanf, tests);
 	}
 	if (r1)
 		fclose(r1);
