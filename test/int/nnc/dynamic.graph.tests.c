@@ -98,7 +98,102 @@ TEST_CASE("run dynamic graph backward & apply gradients on multiple devices")
 	ccv_nnc_tensor_variable_t const y0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
 	ccv_nnc_tensor_variable_t const y1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(y0, y1), 2, 0);
+	ccv_nnc_tensor_variable_t const dx0 = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_t const dx1 = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(dx0, dx1), 0);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(dx0, dx1), 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_ADD_FORWARD(1, 1), TENSOR_VARIABLE_LIST(dx0, dx1), TENSOR_VARIABLE_LIST(x0, x1), 0, 2, 0);
+	ccv_nnc_tensor_t* const hx0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x0)), TENSOR_LIST(hx0), 0);
+	ccv_nnc_tensor_t* const hx1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x1)), TENSOR_LIST(hx1), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(hx0->data.f32[0], 2 + 1.1 * 4, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(hx1->data.f32[0], -1 + 1.1 * 4, 1e-5, "should be equal");
 	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_tensor_free(hx0);
+	ccv_nnc_tensor_free(hx1);
+}
+
+TEST_CASE("async run dynamic graph backward & apply gradients on multiple devices")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) >= 2 &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t const x0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const x1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x0), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(-1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x1), 0, 0);
+	ccv_nnc_tensor_variable_t const y0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const y1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(y0, y1), 2, stream);
+	ccv_nnc_tensor_variable_t const dx0 = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_t const dx1 = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(dx0, dx1), stream);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(dx0, dx1), stream);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_ADD_FORWARD(1, 1), TENSOR_VARIABLE_LIST(dx0, dx1), TENSOR_VARIABLE_LIST(x0, x1), 0, 2, stream);
+	ccv_nnc_tensor_t* const hx0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x0)), TENSOR_LIST(hx0), stream);
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_tensor_t* const hx1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x1)), TENSOR_LIST(hx1), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(hx0->data.f32[0], 2 + 1.1 * 4, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(hx1->data.f32[0], -1 + 1.1 * 4, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_free(hx0);
+	ccv_nnc_tensor_free(hx1);
+}
+
+TEST_CASE("run dynamic graph minimize on multiple devices")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) >= 2 &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t const x0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const x1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x0), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(-1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x1), 0, 0);
+	ccv_nnc_tensor_variable_t const y0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const y1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(y0, y1), 2, 0);
+	ccv_nnc_dynamic_graph_minimize(graph, CMD_ADD_FORWARD(1, 1), TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), 0, 2, 0);
+	ccv_nnc_tensor_t* const hx0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x0)), TENSOR_LIST(hx0), 0);
+	ccv_nnc_tensor_t* const hx1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x1)), TENSOR_LIST(hx1), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(hx0->data.f32[0], 2 + 1.1 * 2, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(hx1->data.f32[0], -1 + 1.1 * 2, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_tensor_free(hx0);
+	ccv_nnc_tensor_free(hx1);
+}
+
+TEST_CASE("async run dynamic graph minimize on multiple devices")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) >= 2 &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t const x0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const x1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x0), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(-1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x1), 0, 0);
+	ccv_nnc_tensor_variable_t const y0 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_variable_t const y1 = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(001, 32F, 1));
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x0, x1), TENSOR_VARIABLE_LIST(y0, y1), 2, stream);
+	ccv_nnc_dynamic_graph_minimize(graph, CMD_ADD_FORWARD(1, 1), TENSOR_VARIABLE_LIST(y0, y1), 0, TENSOR_VARIABLE_LIST(x0, x1), 0, 2, stream);
+	ccv_nnc_tensor_t* const hx0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x0)), TENSOR_LIST(hx0), stream);
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_tensor_t* const hx1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, x1)), TENSOR_LIST(hx1), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(hx0->data.f32[0], 2 + 1.1 * 2, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(hx1->data.f32[0], -1 + 1.1 * 2, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_free(hx0);
+	ccv_nnc_tensor_free(hx1);
 }
 
 #include "case_main.h"

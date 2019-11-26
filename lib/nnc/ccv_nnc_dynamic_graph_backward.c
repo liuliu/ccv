@@ -251,17 +251,49 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			&graph, &tensor_arena, &exec_arena);
 		ccv_array_free(sources);
 	} else {
-		ccv_nnc_graph_exec_symbol_t set_ones = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(1), 0, 0, df_symbols, f_variable_size, 0);
-		for (i = 0; i < sources->rnum; i++)
-			ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_ones, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, i));
+		ccv_nnc_tensor_symbol_t df_symbols_0[f_variable_size];
+		ccv_nnc_graph_exec_symbol_t set_ones[f_variable_size];
+		int set_one_size = 0;
+		for (i = 0; i < f_variable_size;)
+			if (!df_symbols[i].graph) // Skip.
+				++i;
+			else {
+				df_symbols_0[0] = df_symbols[i];
+				k = 1;
+				int idx = f_variable_size;
+				const ccv_nnc_tensor_param_t params_0 = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols_0[0]);
+				for (j = i + 1; j < f_variable_size; j++)
+					if (df_symbols[j].graph)
+					{
+						const ccv_nnc_tensor_param_t params_j = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols[j]);
+						if (params_j.type != params_0.type)
+						{
+							if (idx == f_variable_size)
+								idx = j;
+						} else {
+							df_symbols_0[k++] = df_symbols[j];
+							assert(df_symbols[j].graph == dynamic_graph->tape);
+							df_symbols[j].graph = 0;
+						}
+					}
+				i = idx;
+				set_ones[set_one_size] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(1), 0, 0, df_symbols_0, k, 0);
+				for (j = 0; j < sources->rnum; j++)
+					ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_ones[set_one_size], *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j));
+				++set_one_size;
+			}
+		// Reset it back.
+		for (i = 0; i < f_variable_size; i++)
+			df_symbols[i].graph = dynamic_graph->tape;
 		ccv_array_free(sources);
 		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape,
 			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 			0, 0,
-			&set_ones, 1,
+			set_ones, set_one_size,
 			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
 			&graph, &tensor_arena, &exec_arena);
-		ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones);
+		for (i = 0; i < set_one_size; i++)
+			ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones[i]);
 	}
 	ccv_array_free(destinations);
 	ccv_array_free(tensor_binds);

@@ -1345,6 +1345,14 @@ void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, c
  */
 void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const inputs, int* const input_size, const int** const outputs, int* const output_size);
 /**
+ * Replace a input / output tensor symbol on an exec symbol.
+ * @param graph The symbolic graph.
+ * @param symbol The execution node symbol reference.
+ * @param old_symbol The old tensor symbol to be replaced.
+ * @param new_symbol The new tensor symbol on input / output.
+ */
+void ccv_nnc_graph_exec_symbol_replace_io(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_tensor_symbol_t old_symbol, const ccv_nnc_tensor_symbol_t new_symbol);
+/**
  * Which exec symbol this is connected to. For efficiency consideration, this returns pointer directly.
  * @param graph The symbolic graph.
  * @param symbol The execution node symbol reference.
@@ -2159,14 +2167,14 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
  * @param minimizer The wrapped command that represents a particular optimization strategy.
  * @param losses The losses we are trying to minimize.
  * @param loss_size The size of the losses array.
- * @param dlosses_optional The custom gradient for losses. If not provided, will default to 1.
+ * @param dloss_optionals The custom gradient for losses. If not provided, will default to 1.
  * @param parameters The parameters to update.
  * @param parameter_size The size of parameters array.
  * @param saved_aux The aux variables to faciliate the minimizer. See ccv_nnc_minimizer_saved_aux_size.
  * @param parallel The parallel parameter, how many concurrent computations we need to execute.
  * @param stream_context Which stream this computation will be executed upon.
  */
-void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const losses, const int loss_size, const ccv_nnc_tensor_variable_t* const dlosses_optional, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, const int parallel, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const losses, const int loss_size, const ccv_nnc_tensor_variable_t* const dloss_optionals, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux, const int parallel, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Read more in Level-5 API section.
  */

@@ -953,6 +953,34 @@ void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, c
 		*output_size = symbol_info->output_size;
 }
 
+void ccv_nnc_graph_exec_symbol_replace_io(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_tensor_symbol_t old_symbol, const ccv_nnc_tensor_symbol_t new_symbol)
+{
+	assert(graph == symbol.graph);
+	assert(symbol.d < graph->exec_symbol_info->rnum);
+	assert(graph == old_symbol.graph);
+	assert(old_symbol.d < graph->tensor_symbol_info->rnum);
+	assert(graph == new_symbol.graph);
+	assert(new_symbol.d < graph->tensor_symbol_info->rnum);
+	const ccv_nnc_tensor_symbol_info_t* const old_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, old_symbol.d);
+	const ccv_nnc_tensor_symbol_info_t* const new_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, new_symbol.d);
+	if (old_tensor_info != new_tensor_info)
+	{
+		// These need to be the same, otherwise we need to find the backend again for this exec. See _ccv_nnc_graph_exec_symbol_set_io
+		assert(ccv_nnc_is_tensor_auto(old_tensor_info->info) == ccv_nnc_is_tensor_auto(new_tensor_info->info));
+		assert(old_tensor_info->info.type == new_tensor_info->info.type);
+		assert(old_tensor_info->info.format == new_tensor_info->info.format);
+		assert(old_tensor_info->info.datatype == new_tensor_info->info.datatype);
+	}
+	const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	int i;
+	for (i = 0; i < symbol_info->input_size; i++)
+		if (symbol_info->inputs[i] == old_symbol.d)
+			symbol_info->inputs[i] = new_symbol.d;
+	for (i = 0; i < symbol_info->output_size; i++)
+		if (symbol_info->outputs[i] == old_symbol.d)
+			symbol_info->outputs[i] = new_symbol.d;
+}
+
 void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const tos, int* const to_size)
 {
 	assert(graph == symbol.graph);

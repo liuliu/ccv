@@ -472,7 +472,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 		int t;
 		for (t = 0; t < parallel_count; t++)
 		{
-			ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols, input_size, output_symbols, output_size, 0);
+			ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols + t * per_input_size, per_input_size, output_symbols + t * per_output_size, per_output_size, 0);
 			if (graph_execs)
 				graph_execs[t] = graph_exec;
 			// This needs to be done before we set the new sources on the outputs.

@@ -95,8 +95,8 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k]);
 					ccv_array_push(tensor_binds, &bind);
 				}
-				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, allreduces[i], minimizes[idx]);
 				minimizes[idx] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
+				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, allreduces[i], minimizes[idx]);
 			}
 		}
 	} else {
