@@ -68,7 +68,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < input_size; i++)
 	{
 		// Cannot have the parameter be a partial tensor view for model evaluation.
-		ccv_nnc_tensor_t* const tensor = inputs[i] ? (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(inputs[i]->tensor_view) : 0;
+		ccv_nnc_tensor_t* const tensor = inputs[i] ? ccv_nnc_tensor_from_variable(dynamic_graph, inputs[i]) : 0;
 		if (tensor)
 			{ assert(!CCV_IS_TENSOR_VIEW(tensor)); }
 	}

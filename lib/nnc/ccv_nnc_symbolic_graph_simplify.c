@@ -321,6 +321,7 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		// Note on alias, we cannot really generate proper hash for alias (yet). Thus, just treat alias as normal tensors.
 		for (i = 0; i < node->input_size; i++)
 		{
+			assert(node->inputs[i] < simplify->tensor_symbol_info_size);
 			// If no hash for the input, use the index + 1 as the hash.
 			if (node->inputs[i] >= 0 && tensor_hash[node->inputs[i]] == 0)
 				tensor_hash[node->inputs[i]] = node->inputs[i] + 1;
@@ -341,6 +342,7 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		for (i = 0; i < node->output_size; i++)
 			if (node->outputs[i] >= 0)
 			{
+				assert(node->outputs[i] < simplify->tensor_symbol_info_size);
 				// Assigning once, especially now we don't consider aliases.
 				assert(tensor_hash[node->outputs[i]] == 0);
 				hashin[0] = hashout;

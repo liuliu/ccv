@@ -108,8 +108,12 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 
 void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor)
 {
-	assert(!tensor_variable->tensor_view);
 	assert(!tensor_variable->alias_ref);
+	if (tensor_variable->tensor_view && !CCV_NNC_IS_EXTERN_TENSOR_VIEW(tensor_variable->tensor_view))
+	{
+		assert(!CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view));
+		ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
+	}
 	tensor_variable->info = tensor->info;
 	tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)((uintptr_t)tensor | 1);
 }
@@ -191,10 +195,20 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 			const int alias_ref = tensor_variable->alias_ref - 1;
 			assert(alias_ref >= 0);
 			ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_ref);
-			ccv_nnc_tensor_view_t* const tv = tensor_variable->tensor_view; // We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
-			assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
-			// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
-			tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tv->off;
+			if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
+			{
+				ccv_nnc_tensor_view_t* const tv = tensor_variable->tensor_view;
+				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
+				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
+				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
+				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tv->off;
+			} else {
+				ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
+				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
+				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
+				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
+				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8;
+			}
 		}
 		return (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(tensor_variable->tensor_view);
 	}
