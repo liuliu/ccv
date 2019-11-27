@@ -201,7 +201,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			seq_indices_cpu->data.i32[i * max_length + j] = j;
 	const ccv_nnc_tensor_variable_t seq_indices = ccv_nnc_tensor_constant_new(dynamic_graph, GPU_TENSOR_NCHW(000, 32S, batch_size * max_length));
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices)), 0);
-	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(6, embedding_size, 8, batch_size, max_length, embedding_size * 4);
+	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(4, embedding_size, 8, batch_size, max_length, embedding_size * 4);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size - 1) / batch_size;
 	ccv_cnnp_dataframe_shuffle(train_data);
 	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);

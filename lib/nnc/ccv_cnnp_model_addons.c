@@ -73,6 +73,7 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	assert(output_size == 1);
 	ccv_cnnp_model_reshape_t* const self = (ccv_cnnp_model_reshape_t*)super;
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	assert(ccv_nnc_dimension_count(self->dim) <= ccv_nnc_tensor_count(params));
 	memcpy(params.dim, self->dim, sizeof(params.dim));
 	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, self->inc, params, 0);
 }

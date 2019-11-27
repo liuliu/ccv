@@ -218,6 +218,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 		no_inc = (tensor_variable->inc[i] == 0);
 	if (!no_inc)
 		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
+	assert(ccv_nnc_tensor_count(tensor_variable->info) <= ccv_nnc_tensor_count(variable_to->info));
 	if (no_ofs && no_inc)
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
 	else

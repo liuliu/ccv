@@ -466,6 +466,7 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 			return task;
 		}
 	} else {
+		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
 		int i, j;
 		for (i = 0; i < schd->stream_size; i++)
 		{
@@ -473,7 +474,6 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 			for (j = 0; j < schd->wait_size; j++)
 				ccv_nnc_stream_context_wait_signal(stream, graph->signals[schd->waits[j]]);
 		}
-		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
 		for (i = 0; i < node->input_size; i++)
 		{
 			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
