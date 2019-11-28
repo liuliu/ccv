@@ -389,4 +389,36 @@ TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) and sum o
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("long chain to autograd, simulate random free of unused tensors due to garbage collection")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x[10];
+	ccv_nnc_tensor_variable_t f[10];
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t dy[3];
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 1.3;
+	int i, j;
+	for (i = 0; i < 10; i++)
+	{
+		x[i] = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+		ccv_nnc_tensor_from_variable(graph, x[i])->data.f32[0] = i + 1;
+		f[i] = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x[i], y), TENSOR_VARIABLE_LIST(f[i]), 0, 0);
+		if (i >= 5)
+		{
+			if (i - 5 < 3)
+				dy[i - 5] = ccv_nnc_tensor_variable_new(graph);
+			ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(f[i]), 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(dy[ccv_min(2, i - 5)]), 0);
+		}
+		if (i == 7)
+			for (j = 0; j < 5; j++)
+				ccv_nnc_tensor_variable_free(graph, f[j]);
+	}
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, f[9])->data.f32[0], 1.3 * 10, 1e-5, "should equal to 1.3 * 10");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, dy[2])->data.f32[0], 8 + 9 + 10, 1e-5, "should equal to sum of the last 3");
+	for (i = 0; i < 10; i++)
+		ccv_nnc_tensor_variable_free(graph, x[i]);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"
