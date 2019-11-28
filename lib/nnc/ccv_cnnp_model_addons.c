@@ -852,6 +852,7 @@ ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_graph_exec_symbol_t dropout;
 	float p;
 } ccv_cnnp_model_dropout_t;
 
@@ -868,12 +869,26 @@ static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		}, 1, ccv_nnc_no_hint, output_params, 2);
 	const ccv_nnc_tensor_symbol_t dropout_output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 	const ccv_nnc_tensor_symbol_t mask = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
-	ccv_nnc_graph_exec_symbol_new(graph, dropout, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(dropout_output, mask), 0);
+	self->dropout = ccv_nnc_graph_exec_symbol_new(graph, dropout, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(dropout_output, mask), 0);
 	outputs[0] = dropout_output;
+}
+
+static void _ccv_cnnp_dropout_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
+{
+	ccv_cnnp_model_dropout_t* const self = (ccv_cnnp_model_dropout_t*)super;
+	if (self->dropout.graph)
+	{
+		if (is_test)
+			// During test, the dropout is not applied. Data transfer is perfect because if these are the same tensor, it will skip.
+			updater(context, self->dropout, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint);
+		else
+			updater(context, self->dropout, CMD_DROPOUT_FORWARD(self->p), ccv_nnc_no_hint);
+	}
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dropout_isa = {
 	.build = _ccv_cnnp_dropout_build,
+	.set_is_test = _ccv_cnnp_dropout_is_test,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)

@@ -268,7 +268,7 @@ static void _ccv_cnnp_normalize(ccv_dense_matrix_t* const image, const float mea
 
 static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
-	sfmt_t* const sfmt = (sfmt_t*)alloca(sizeof(sfmt_t) * batch_size);
+	sfmt_t* const sfmt = (sfmt_t*)ccmalloc(sizeof(sfmt_t) * batch_size);
 	ccv_cnnp_random_jitter_context_t* const ctx = (ccv_cnnp_random_jitter_context_t*)context;
 	int i;
 	for (i = 0; i < batch_size; i++)
@@ -365,6 +365,7 @@ static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const
 		assert(!ccv_any_nan(patch));
 		data[i] = patch;
 	} parallel_endfor
+	ccfree(sfmt);
 }
 
 int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter)
