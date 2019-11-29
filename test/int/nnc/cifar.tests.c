@@ -667,7 +667,7 @@ static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int bat
 		ccv_nnc_tensor_variable_set(graph, input, input_fit_inputs[0]);
 		ccv_nnc_tensor_variable_t const output = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, output, outputs[0]);
-		ccv_nnc_dynamic_graph_evaluate(graph, cifar_10, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(output), 0, stream_contexts[q]);
+		ccv_nnc_dynamic_graph_evaluate(graph, cifar_10, 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(output), 0, stream_contexts[q]);
 		ccv_nnc_tensor_variable_t const fit = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_set(graph, fit, input_fit_fits[0]);
 		ccv_nnc_tensor_variable_t const softmax = ccv_nnc_tensor_variable_new(graph);

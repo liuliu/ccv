@@ -65,15 +65,13 @@ typedef struct {
 	int gradient_mode; // Have init gradient graph.
 	int is_test;
 	int stream_type;
-	int parallel_count; // How many parallel devices.
-	int memory_compression; // Whether to enable memory compression for training phase.
-	size_t workspace_size; // Set the default workspace size.
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 	ccv_array_t* trainables;
 	ccv_array_t* retainables; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* gradients;
+	ccv_nnc_tensor_symbol_t* outgrads;
 	ccv_nnc_tensor_symbol_t* updated_trainables;
 	ccv_nnc_graph_exec_symbol_t* update_nodes;
 	ccv_nnc_tensor_symbol_map_t* saved_aux;
@@ -137,6 +135,9 @@ struct ccv_cnnp_model_s {
 	ccv_nnc_tensor_symbol_t* outputs;
 	char* name;
 	ccv_cnnp_compiled_data_t* compiled_data;
+	int parallel_count; // How many parallel devices.
+	int memory_compression; // Whether to enable memory compression for training phase.
+	size_t workspace_size; // Set the default workspace size.
 };
 
 enum {
@@ -245,6 +246,6 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, co
 	}
 }
 
-void ccv_cnnp_model_tensors_init(const ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data);
+void ccv_cnnp_model_tensors_init(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 
 #endif

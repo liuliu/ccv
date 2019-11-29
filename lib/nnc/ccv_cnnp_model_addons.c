@@ -761,7 +761,7 @@ static void _ccv_cnnp_layer_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 
 static void _ccv_cnnp_layer_norm_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
-	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
+	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 	if (self->scale.graph)
@@ -770,7 +770,7 @@ static void _ccv_cnnp_layer_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 
 static void _ccv_cnnp_layer_norm_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
-	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
+	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
 	if (self->bias.graph)
 		add_to_array(trainables, self->bias);
 	if (self->scale.graph)

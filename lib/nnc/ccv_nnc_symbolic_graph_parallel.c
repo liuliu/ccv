@@ -632,6 +632,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_
 	assert(graph->data_parallel.tensor_symbol_idx);
 	assert(symbol.d >= 0);
 	assert(symbol.d < graph->data_parallel.tensor_symbol_size);
+	assert(symbol.graph == graph);
 	if (device_id == 0)
 		return symbol;
 	const int parallel_count = graph->data_parallel.count;
@@ -644,6 +645,34 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_
 	return tensor;
 }
 
+void ccv_nnc_tensor_symbol_set_copy(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id, const ccv_nnc_tensor_symbol_t copy)
+{
+	assert(graph->data_parallel.tensor_symbol_idx);
+	assert(symbol.d >= 0);
+	assert(symbol.d < graph->tensor_symbol_info->rnum);
+	assert(symbol.graph == graph);
+	const int parallel_count = graph->data_parallel.count;
+	if (copy.d == CCV_NNC_NO_TENSOR_SYMBOL)
+	{
+		assert(symbol.d < graph->data_parallel.tensor_symbol_size);
+		graph->data_parallel.tensor_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = -1;
+		return;
+	}
+	assert(copy.d >= 0);
+	assert(copy.d < graph->tensor_symbol_info->rnum);
+	assert(copy.graph == graph);
+	assert(parallel_count > 1);
+	if (symbol.d >= graph->data_parallel.tensor_symbol_size)
+	{
+		graph->data_parallel.tensor_symbol_idx = ccrealloc(graph->data_parallel.tensor_symbol_idx, sizeof(int) * (parallel_count - 1) * (symbol.d + 1));
+		int i;
+		for (i = graph->data_parallel.tensor_symbol_size * (parallel_count - 1); i < (symbol.d + 1) * (parallel_count - 1); i++)
+			graph->data_parallel.tensor_symbol_idx[i] = -1;
+		graph->data_parallel.tensor_symbol_size = symbol.d + 1;
+	}
+	graph->data_parallel.tensor_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = copy.d;
+}
+
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id)
 {
 	if (!graph->data_parallel.exec_symbol_idx)
@@ -651,6 +680,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symboli
 	assert(graph->data_parallel.exec_symbol_idx);
 	assert(symbol.d >= 0);
 	assert(symbol.d < graph->data_parallel.exec_symbol_size);
+	assert(symbol.graph == graph);
 	if (device_id == 0)
 		return symbol;
 	const int parallel_count = graph->data_parallel.count;
@@ -661,4 +691,32 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symboli
 		.graph = graph,
 	};
 	return graph_exec;
+}
+
+void ccv_nnc_graph_exec_symbol_set_copy(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id, const ccv_nnc_graph_exec_symbol_t copy)
+{
+	assert(graph->data_parallel.exec_symbol_idx);
+	assert(symbol.d >= 0);
+	assert(symbol.d < graph->exec_symbol_info->rnum);
+	assert(symbol.graph == graph);
+	const int parallel_count = graph->data_parallel.count;
+	if (copy.d == CCV_NNC_NO_GRAPH_EXEC_SYMBOL)
+	{
+		assert(symbol.d < graph->data_parallel.exec_symbol_size);
+		graph->data_parallel.exec_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = -1;
+		return;
+	}
+	assert(copy.d >= 0);
+	assert(copy.d < graph->exec_symbol_info->rnum);
+	assert(copy.graph == graph);
+	assert(parallel_count > 1);
+	if (symbol.d >= graph->data_parallel.exec_symbol_size)
+	{
+		graph->data_parallel.exec_symbol_idx = ccrealloc(graph->data_parallel.exec_symbol_idx, sizeof(int) * (parallel_count - 1) * (symbol.d + 1));
+		int i;
+		for (i = graph->data_parallel.exec_symbol_size * (parallel_count - 1); i < (symbol.d + 1) * (parallel_count - 1); i++)
+			graph->data_parallel.exec_symbol_idx[i] = -1;
+		graph->data_parallel.exec_symbol_size = symbol.d + 1;
+	}
+	graph->data_parallel.exec_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = copy.d;
 }

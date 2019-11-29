@@ -333,7 +333,7 @@ TEST_CASE("dynamic graph to evaluate cnnp model")
 		ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
 		ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
-		ccv_nnc_dynamic_graph_evaluate(graph, linear, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(y), 0, 0);
+		ccv_nnc_dynamic_graph_evaluate(graph, linear, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(y), 0, 0);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y, z), TENSOR_VARIABLE_LIST(y), 0, 0);
 		ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y, y), TENSOR_VARIABLE_LIST(f), 0, 0);
@@ -349,7 +349,7 @@ TEST_CASE("dynamic graph to evaluate cnnp model")
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
-	ccv_nnc_dynamic_graph_evaluate(graph, linear, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(y), 0, 0);
+	ccv_nnc_dynamic_graph_evaluate(graph, linear, 1, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(y), 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], 5, 1e-2, "linear model should be trained to generate the same value as z");
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_dynamic_graph_free(graph);

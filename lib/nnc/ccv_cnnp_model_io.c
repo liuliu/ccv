@@ -23,14 +23,14 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 		return;
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	int i, j;
-	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
 	const int trainable_size = compiled_data->trainables->rnum;
 	const int retainable_size = compiled_data->retainables->rnum;
 	char retainable_name[1024 + 16];
 	if (!tensors_init || flags == CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY)
 	{
 		if (!tensors_init)
-			ccv_cnnp_model_tensors_init(model->graph, compiled_data);
+			ccv_cnnp_model_tensors_init(model, compiled_data);
 		for (i = 0; i < trainable_size; i++)
 		{
 			const char* const id = *(char**)ccv_array_get(compiled_data->ids.trainables, i);

@@ -1013,6 +1013,12 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
  */
 void ccv_nnc_symbolic_graph_set_sources(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size);
 /**
+ * Add one node to the default sources for a symbolic graph.
+ * @param graph The symbolic graph.
+ * @param source The source execution node.
+ */
+void ccv_nnc_symbolic_graph_add_source(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source);
+/**
  * Get the pointer to the default sources.
  * @param graph The symbolic graph.
  * @return The pointer to the source execution nodes array.
@@ -1031,6 +1037,12 @@ int ccv_nnc_symbolic_graph_source_size(const ccv_nnc_symbolic_graph_t* const gra
  * @param destination_size The size of destination execution nodes array.
  */
 void ccv_nnc_symbolic_graph_set_destinations(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+/**
+ * Add one node to the default destinations for a symbolic graph.
+ * @param graph The symbolic graph.
+ * @param destination The destination execution node.
+ */
+void ccv_nnc_symbolic_graph_add_destination(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t destination);
 /**
  * Get the pointer to the default destinations.
  * @param graph The symbolic graph.
@@ -2018,20 +2030,38 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.
  * @param graph The symbolic graph.
- * @param symbol The tensor symbol we want to retrieve its counterparts on a different device.
+ * @param symbol The tensor symbol we want to retrieve its counterpart on a different device.
  * @param device_id The device numeric id for this symbol.
  * @return A tensor symbol that is on a different device.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id);
 /**
+ * Set corresponding symbol for this symbol on another device. Thus, someone else can query this
+ * later with ccv_nnc_tensor_symbol_copy
+ * @param graph The symbolic graph.
+ * @param symbol The tensor symbol we want to set its counterpart on a different device.
+ * @param device_id The device numeric id for this symbol.
+ * @param copy The tensor symbol counterpart on a different device.
+ */
+void ccv_nnc_tensor_symbol_set_copy(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id, const ccv_nnc_tensor_symbol_t copy);
+/**
  * Get the execution node that is on a device other than the default one. The list will be flushed
  * if the ccv_nnc_symbolic_graph_data_parallel function is called again.
  * @param graph The symbolic graph.
- * @param symbol The execution node we want to retrieve its counterparts on a different device.
+ * @param symbol The execution node we want to retrieve its counterpart on a different device.
  * @param device_id The device numeric id for this symbol.
  * @return A execution node that is on a different device.
  */
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id);
+/**
+ * Set corresponding symbol for this symbol on another device. Thus, someone else can query this
+ * later with ccv_nnc_graph_exec_symbol_copy
+ * @param graph The symbolic graph.
+ * @param symbol The execution node we want to set its counterpart on a different device.
+ * @param device_id The device numeric id for this symbol.
+ * @param copy The execution node counterpart on a different device.
+ */
+void ccv_nnc_graph_exec_symbol_set_copy(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id, const ccv_nnc_graph_exec_symbol_t copy);
 
 /** @} */
 
@@ -2185,6 +2215,7 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
  * @param model The CNNP model to be evaluated against. Note that ccv_nnc_dynamic_graph_backward /
  *              ccv_nnc_dynamic_graph_apply_gradients / ccv_nnc_dynamic_graph_minimize all works with this
  *              model. It takes over the life-cycle of the model, and now you don't need to free it any more.
+ * @param is_test Whether we are in test mode or not.
  * @param inputs The input variables.
  * @param input_size The size of the input variables array.
  * @param outputs The gradients with respect to the inputs.
@@ -2192,7 +2223,7 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
  * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
  * @param stream_context Which stream this computation will be executed upon.
  */
-void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Enable or disable gradient computation on a dynamic graph.
  * @param dynamic_graph The dynamic graph.

@@ -20,8 +20,7 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			.is_test = 0,
 		}, inputs, input_size, outputs, output_size, 0, stream_context);
 	} else {
-		ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-		const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
+		const int parallel_count = ccv_max(model->parallel_count, 1);
 		const int ingrad_size = model->output_size * parallel_count;
 		assert(ingrad_size <= input_size);
 		ccv_cnnp_model_backward(model, inputs, ingrad_size, outputs, output_size, 0, stream_context);
@@ -33,7 +32,22 @@ static void _ccv_cnnp_model_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_t
 {
 	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
 	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
-	ccv_cnnp_model_tensor_auto(model, outputs, output_size);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int per_input_size = input_size / parallel_count;
+	assert(per_input_size > 0);
+	assert((input_size % parallel_count) == 0);
+	const int per_output_size = output_size / parallel_count;
+	assert(per_output_size > 0);
+	assert((output_size % parallel_count) == 0);
+	int i, j;
+	for (i = 0; i < parallel_count; i++)
+	{
+		ccv_cnnp_model_tensor_auto(model, outputs + i * per_output_size, per_output_size);
+		// Set device id to the corresponding inputs' device id.
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i * per_input_size].type);
+		for (j = 0; j < per_output_size; j++)
+			CCV_TENSOR_SET_DEVICE_ID(outputs[i * per_output_size + j].type, device_id);
+	}
 }
 
 static void _ccv_cnnp_model_apply_gradients(const ccv_nnc_cmd_t cmd, const ccv_nnc_cmd_t minimizer, ccv_nnc_stream_context_t* const stream_context)
@@ -52,17 +66,21 @@ static ccv_nnc_stateful_cmd_vtab_t ccv_cnnp_model_exec_isa = {
 	.apply_gradients = _ccv_cnnp_model_apply_gradients,
 };
 
-void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
+void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_model_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
 	assert(input_size > 0);
 	if (!model->graph)
 	{
-		ccv_nnc_tensor_param_t input_params[input_size];
+		const int parallel_count = ccv_max(model->parallel_count, 1);
+		const int per_input_size = input_size / parallel_count;
+		assert(per_input_size > 0);
+		assert((input_size % parallel_count) == 0);
+		ccv_nnc_tensor_param_t input_params[per_input_size];
 		int i;
-		for (i = 0; i < input_size; i++)
+		for (i = 0; i < per_input_size; i++)
 			input_params[i] = inputs[i]->info;
-		ccv_cnnp_model_compile(model, input_params, input_size, CMD_NOOP(), CMD_NOOP());
+		ccv_cnnp_model_compile(model, input_params, per_input_size, CMD_NOOP(), CMD_NOOP());
 	}
 	int i;
 	for (i = 0; i < input_size; i++)
