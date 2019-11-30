@@ -30,7 +30,7 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
 			.disable_outgrad = 0,
-			.is_test = 0,
+			.is_test = stateful_exec->is_test,
 		}, inputs, input_size, outputs, output_size, 0, 0);
 	} else {
 		const int parallel_count = ccv_max(model->parallel_count, 1);
@@ -106,6 +106,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	if (dynamic_graph->no_grad)
 	{
 		ccv_nnc_stateful_exec_t stateful_exec = {
+			.is_test = is_test,
 			.tensor_tape = tensor_tape,
 			.data = model
 		};
@@ -114,6 +115,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, 0);
 	} else {
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
+		stateful_exec->is_test = is_test;
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
 		cmd.data = stateful_exec;
