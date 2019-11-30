@@ -479,6 +479,13 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream);
  */
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
 /**
+ * Wait until command tasks submitted and signals on the stream context
+ * completed. If graph run haven't done, return -1.
+ * @param stream The stream context to wait.
+ * @return 0 if there is no graph run to wait, -1 if there is and we skipped.
+ */
+int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream);
+/**
  * Deallocate the stream context.
  * @param stream_context The stream context to be destroyed.
  */

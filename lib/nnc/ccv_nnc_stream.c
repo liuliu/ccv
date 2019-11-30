@@ -78,6 +78,18 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context
 #endif
 }
 
+int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream_context)
+{
+	if (!stream_context)
+		return 0;
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
+		ccv_nnc_synchronize_stream_context(stream_context);
+#endif
+	ccv_nnc_stream_scheduler_t* const scheduler = stream_context->scheduler;
+	return scheduler ? -1 : 0;
+}
+
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (!stream_context)

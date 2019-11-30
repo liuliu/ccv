@@ -182,7 +182,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 {
 	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_categorized_t, matrix));
 	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	const int device_count = 1; //ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_categorized_t, matrix));
 	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_categorized_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);

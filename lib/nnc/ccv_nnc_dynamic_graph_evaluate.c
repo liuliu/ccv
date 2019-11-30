@@ -12,18 +12,31 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
 	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
+	// I cannot just use stream context, it cannot synchronize correctly based on existing coroutine implementation.
+	if (stream_context) // Find all neighbor context and wait on them all.
+	{
+		const int parallel_count = ccv_max(model->parallel_count, 1);
+		int i;
+		for (i = 0; i < parallel_count; i++)
+		{
+			ccv_nnc_stream_context_t* const neighbor_context = ccv_nnc_stream_context_find_neighbor(stream_context, i);
+			if (neighbor_context && neighbor_context != stream_context)
+				ccv_nnc_stream_context_try_wait(neighbor_context);
+		}
+		ccv_nnc_stream_context_try_wait(stream_context);
+	}
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD)
 	{
 		ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
 			.disable_outgrad = 0,
 			.is_test = 0,
-		}, inputs, input_size, outputs, output_size, 0, stream_context);
+		}, inputs, input_size, outputs, output_size, 0, 0);
 	} else {
 		const int parallel_count = ccv_max(model->parallel_count, 1);
 		const int ingrad_size = model->output_size * parallel_count;
 		assert(ingrad_size <= input_size);
-		ccv_cnnp_model_backward(model, inputs, ingrad_size, outputs, output_size, 0, stream_context);
+		ccv_cnnp_model_backward(model, inputs, ingrad_size, outputs, output_size, 0, 0);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

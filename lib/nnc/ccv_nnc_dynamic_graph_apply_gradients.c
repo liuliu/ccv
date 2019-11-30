@@ -58,7 +58,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			{
 				const int idx = i + j * per_parameter_size;
 				assert(parameters[idx]->symbol.d >= 0);
-				const ccv_nnc_tensor_param_t info = parameters[i + j * per_parameter_size]->info;
+				const ccv_nnc_tensor_param_t info = parameters[idx]->info;
 				const ccv_nnc_tensor_symbol_t gradient = allreduce_inputs[j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 				const ccv_nnc_tensor_bind_t bind = {
 					.symbol = gradient,

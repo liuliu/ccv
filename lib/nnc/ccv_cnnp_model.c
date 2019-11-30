@@ -501,7 +501,8 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	{
 		ccv_nnc_symbolic_graph_data_parallel(model->graph, parallel_count,
 			0, 0,
-			compiled_data->gradients, trainable_size_maybe_more, compiled_data->gradients, /* We only care about gradients before allreduce, thus, update our current pointers */
+			compiled_data->gradients, trainable_size /* No need to deal with outgrads, we don't allreduce outgrads */,
+			compiled_data->gradients /* We only care about gradients before allreduce, thus, update our current pointers */,
 			0, 0, 0,
 			CCV_NNC_PARALLEL_REDUCE_OP_SUM,
 			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
