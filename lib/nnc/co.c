@@ -150,6 +150,7 @@ static void* _co_main(void* userdata)
 		co_routine_t* task = scheduler->head;
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
+		co_routine_t* notify_any = 0;
 		while (task) {
 			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
@@ -163,7 +164,7 @@ static void* _co_main(void* userdata)
 				prev_task->caller = 0;
 				if (prev_task->done)
 				{
-					co_routine_t* const notify_any = _co_done(prev_task);
+					notify_any = _co_done(prev_task);
 					if (notify_any)
 					{
 						pthread_mutex_lock(&scheduler->mutex);
@@ -173,9 +174,12 @@ static void* _co_main(void* userdata)
 						if (task)
 							pthread_mutex_unlock(&scheduler->mutex);
 					}
-				}
+				} else
+					notify_any = 0;
 			}
 		}
+		if (!notify_any)
+			pthread_mutex_lock(&scheduler->mutex);
 	}
 	return 0;
 }
@@ -215,6 +219,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 		co_routine_t* task = scheduler->head;
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
+		co_routine_t* notify_any = 0;
 		while (task) {
 			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
@@ -228,7 +233,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 				prev_task->caller = 0;
 				if (prev_task->done)
 				{
-					co_routine_t* const notify_any = _co_done(prev_task);
+					notify_any = _co_done(prev_task);
 					if (notify_any)
 					{
 						pthread_mutex_lock(&scheduler->mutex);
@@ -238,9 +243,12 @@ static void _co_try(co_scheduler_t* const scheduler)
 						if (task)
 							pthread_mutex_unlock(&scheduler->mutex);
 					}
-				}
+				} else
+					notify_any = 0;
 			}
 		}
+		if (!notify_any)
+			pthread_mutex_lock(&scheduler->mutex);
 	}
 }
 
