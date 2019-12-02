@@ -282,37 +282,37 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 }
 
 #if CUDA_VERSION >= 10000
-static void _ccv_nnc_stream_compat_task_resume(void* userdata)
+static void _co_stream_compat_resume(void* userdata)
 #else
-static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t status, void* userdata)
+static void _co_stream_compat_resume(cudaStream_t stream, cudaError_t status, void* userdata)
 #endif
 {
-	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)userdata;
-	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
+	co_routine_t* const task = (co_routine_t*)userdata;
+	co_scheduler_t* const scheduler = task->scheduler;
 	pthread_mutex_lock(&scheduler->mutex);
-	ccv_nnc_stream_scheduler_prepend_task(scheduler, task);
-	--scheduler->stream_wait_task_count;
+	_co_prepend_task(scheduler, task);
+	--scheduler->stream_await_count;
 	pthread_cond_signal(&scheduler->wait);
 	pthread_mutex_unlock(&scheduler->mutex);
 }
 
-void ccv_nnc_stream_compat_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
+int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	// If the stream is completed, no need to wait.
 	if (cudaStreamQuery(device_local->stream) == cudaSuccess)
-		return;
-	ccv_nnc_stream_scheduler_t* const scheduler = self->super;
+		return 1;
+	co_scheduler_t* const scheduler = self->scheduler;
 	pthread_mutex_lock(&scheduler->mutex);
-	++scheduler->stream_wait_task_count;
+	++scheduler->stream_await_count;
 #if CUDA_VERSION >= 10000
-	cudaLaunchHostFunc(device_local->stream, _ccv_nnc_stream_compat_task_resume, self);
+	cudaLaunchHostFunc(device_local->stream, _co_stream_compat_resume, self);
 #else
-	cudaStreamAddCallback(device_local->stream, _ccv_nnc_stream_compat_task_resume, self, 0);
+	cudaStreamAddCallback(device_local->stream, _co_stream_compat_resume, self, 0);
 #endif
 	pthread_mutex_unlock(&scheduler->mutex);
-	swapcontext(&scheduler->callee, &scheduler->caller);
+	return 0;
 }
 
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)

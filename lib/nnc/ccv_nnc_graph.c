@@ -1067,7 +1067,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		assert(!graph->streams);
 		graph->stream_size = stream_data->rnum;
 		graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
-		graph->block_stream_tasks = (ccv_nnc_stream_task_t**)cccalloc(graph->stream_size, sizeof(ccv_nnc_stream_task_t*));
+		graph->block_stream_tasks = (co_routine_t**)cccalloc(graph->stream_size, sizeof(co_routine_t*));
 		if (stream_context)
 			graph->streams[0] = stream_context;
 		for (i = (stream_context ? 1 : 0); i < stream_data->rnum; i++)
@@ -1914,5 +1914,7 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->sub_graphs);
 	}
 	ccv_array_free(graph->exec_info);
+	if (graph->buffer)
+		ccfree(graph->buffer);
 	ccfree(graph);
 }

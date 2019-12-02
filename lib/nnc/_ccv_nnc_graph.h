@@ -123,7 +123,7 @@ struct ccv_nnc_graph_s {
 	// streams, signals, and waits are used to coordinate multi-stream graph run (several nodes can execute
 	// concurrently).
 	ccv_nnc_stream_context_t** streams; // Preallocated several streams for use, Default stream will be stream 0.
-	ccv_nnc_stream_task_t** block_stream_tasks; // Used to keep list of tasks that blocked current stream.
+	co_routine_t** block_stream_tasks; // Used to keep list of tasks that blocked current stream.
 	ccv_nnc_stream_signal_t** signals; // Preallocated several signals for use.
 	ccv_nnc_graph_static_schedule_t* default_schedule; // The schedule for the whole graph.
 	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have
