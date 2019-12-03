@@ -135,21 +135,27 @@ struct co_routine_s {
 
 #define co_return(...) co_return_sel(_0, ## __VA_ARGS__, co_return_1, co_return_0)(__VA_ARGS__)
 
-#define co_new(_func, _param) ({ \
-	co_routine_t* task = ccmalloc(sizeof(co_routine_t) + _func ## _stack_size()); \
+#define co_init(_task, _func, _param) do { \
 	struct _func ## _param_s params = { \
 		._co_params = { co_escape _param } \
 	}; \
-	task->fn = _func; \
-	task->line = 0; \
-	task->done = 0; \
-	task->other_size = 0; \
-	task->notify_any = 0; \
-	task->others = 0; \
-	task->caller = 0; \
-	task->callee = 0; \
+	_task->fn = _func; \
+	_task->line = 0; \
+	_task->done = 0; \
+	_task->other_size = 0; \
+	_task->notify_any = 0; \
+	_task->others = 0; \
+	_task->caller = 0; \
+	_task->callee = 0; \
 	if (sizeof(params) > 0) \
-		memcpy(task + 1, &params, sizeof(params)); \
+		memcpy(_task + 1, &params, sizeof(params)); \
+} while (0)
+
+#define co_size(_func) (sizeof(co_routine_t) + _func ## _stack_size())
+
+#define co_new(_func, _param) ({ \
+	co_routine_t* const task = ccmalloc(co_size(_func)); \
+	co_init(task, _func, _param); \
 	task; \
 })
 
