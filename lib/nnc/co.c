@@ -150,7 +150,6 @@ static void* _co_main(void* userdata)
 		co_routine_t* task = scheduler->head;
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
-		co_routine_t* notify_any = 0;
 		while (task) {
 			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
@@ -164,22 +163,22 @@ static void* _co_main(void* userdata)
 				prev_task->caller = 0;
 				if (prev_task->done)
 				{
-					notify_any = _co_done(prev_task);
+					co_routine_t* const notify_any = _co_done(prev_task);
 					if (notify_any)
 					{
-						pthread_mutex_lock(&scheduler->mutex);
-						_co_prepend_task(scheduler, notify_any);
-						// If we have follow-up task to execute, unlock now. Otherwise
-						// we will hold the lock to check the head.
-						if (task)
+						if (!task)
+							task = notify_any;
+						else {
+							pthread_mutex_lock(&scheduler->mutex);
+							_co_prepend_task(scheduler, notify_any);
 							pthread_mutex_unlock(&scheduler->mutex);
+							// Since we have task, we will resume the inner loop.
+						}
 					}
-				} else
-					notify_any = 0;
+				}
 			}
 		}
-		if (!notify_any)
-			pthread_mutex_lock(&scheduler->mutex);
+		pthread_mutex_lock(&scheduler->mutex);
 	}
 	return 0;
 }
@@ -219,7 +218,6 @@ static void _co_try(co_scheduler_t* const scheduler)
 		co_routine_t* task = scheduler->head;
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
-		co_routine_t* notify_any = 0;
 		while (task) {
 			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
@@ -233,22 +231,22 @@ static void _co_try(co_scheduler_t* const scheduler)
 				prev_task->caller = 0;
 				if (prev_task->done)
 				{
-					notify_any = _co_done(prev_task);
+					co_routine_t* const notify_any = _co_done(prev_task);
 					if (notify_any)
 					{
-						pthread_mutex_lock(&scheduler->mutex);
-						_co_prepend_task(scheduler, notify_any);
-						// If we have follow-up task to execute, unlock now. Otherwise
-						// we will hold the lock to check the head.
-						if (task)
+						if (!task)
+							task = notify_any;
+						else {
+							pthread_mutex_lock(&scheduler->mutex);
+							_co_prepend_task(scheduler, notify_any);
 							pthread_mutex_unlock(&scheduler->mutex);
+							// Since we have task, we will resume the inner loop.
+						}
 					}
-				} else
-					notify_any = 0;
+				}
 			}
 		}
-		if (!notify_any)
-			pthread_mutex_lock(&scheduler->mutex);
+		pthread_mutex_lock(&scheduler->mutex);
 	}
 }
 

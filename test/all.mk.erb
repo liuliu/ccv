@@ -17,7 +17,7 @@ all.tests.o: all.tests.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 <% tests.each do |test| %>
 <%= test[:objname] %>: <%= test[:filename] %>
-	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"<%= test[:dir] %>"' -o $@ -c $(CFLAGS)
+	$(CC) $< -D COVERAGE_TESTS -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"<%= test[:dir] %>"' -o $@ -c $(CFLAGS)
 <% end %>
 libccv.a:
 	${MAKE} -C ../lib

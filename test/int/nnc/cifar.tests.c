@@ -108,7 +108,7 @@ static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_
 	return cmd;
 }
 
-static int train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
+static int train_cifar_10(const int epoch_limit, ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn(1);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
@@ -182,7 +182,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 35; i++)
+	for (i = 0; epoch < epoch_limit; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
@@ -323,13 +323,17 @@ TEST_CASE("cifar-10 with dawnnet to > 90% under 3 minutes")
 		ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 		ccv_array_push(tests, &categorized);
 	}
-	int correct = train_cifar_10(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
+	if (!ccv_is_coverage())
+	{
+		int correct = train_cifar_10(35, categorizeds, 256, meanf, tests);
+		REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
+	} else
+		train_cifar_10(1, categorizeds, 256, meanf, tests);
 }
 
-static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
+static int train_cifar_10_fp16(const int epoch_limit, ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn(1);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
@@ -413,7 +417,7 @@ static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 35; i++)
+	for (i = 0; epoch < epoch_limit; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
@@ -558,13 +562,17 @@ TEST_CASE("cifar-10 with dawnnet to > 90% under 1 minutes (fp16)")
 		ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 		ccv_array_push(tests, &categorized);
 	}
-	int correct = train_cifar_10_fp16(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
+	if (!ccv_is_coverage())
+	{
+		int correct = train_cifar_10_fp16(35, categorizeds, 256, meanf, tests);
+		REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
+	} else
+		train_cifar_10_fp16(1, categorizeds, 256, meanf, tests);
 }
 
-static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
+static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn(0);
 	const int device_count = 1;
@@ -647,7 +655,7 @@ static int train_cifar_10_fp16_dy(ccv_array_t* const training_set, const int bat
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	for (i = 0; epoch < 10; i++)
+	for (i = 0; epoch < epoch_limit; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
@@ -808,10 +816,14 @@ TEST_CASE("cifar-10 with dawnnet to > 65% after 10 epoch (fp16) use dynamic grap
 		ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 		ccv_array_push(tests, &categorized);
 	}
-	int correct = train_cifar_10_fp16_dy(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 6500, "accuracy %.2f after 10 epoch should be higher than 65%%", (float)correct / 10000);
+	if (!ccv_is_coverage())
+	{
+		int correct = train_cifar_10_fp16_dy(10, categorizeds, 256, meanf, tests);
+		REQUIRE(correct > 6500, "accuracy %.2f after 10 epoch should be higher than 65%%", (float)correct / 10000);
+	} else
+		train_cifar_10_fp16_dy(1, categorizeds, 256, meanf, tests);
 }
 
 #include "case_main.h"

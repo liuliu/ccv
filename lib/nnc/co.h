@@ -165,13 +165,14 @@ struct co_routine_s {
 
 #define co_retval_sel(_0, _1, _2, _3, ...) _3
 
-#define co_retval(...) co_ret_sel(_0, ## __VA_ARGS__, co_retval_2, co_retval_1, co_retval_0)(__VA_ARGS__)
+#define co_retval(...) co_retval_sel(_0, ## __VA_ARGS__, co_retval_2, co_retval_1, co_retval_0)(__VA_ARGS__)
 
 #define co_await_any(_tasks, _task_size) if (!_co_await_any(_self_, _tasks, _task_size)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__:
 
-#define co_await_1(_task, _val) \
+#define co_await_1(_task, _val) do { \
 	co_await_any(&(_task), 1); \
-	_val = co_retval(_task, typeof(_val))
+	_val = co_retval(_task, typeof(_val)); \
+} while (0)
 
 #define co_await_0(_task) \
 	co_await_any(&(_task), 1)
@@ -180,39 +181,43 @@ struct co_routine_s {
 
 #define co_await(_task, ...) co_await_sel(_0, ## __VA_ARGS__, co_await_1, co_await_0)(_task, ## __VA_ARGS__)
 
-#define co_apply_1(_func, _param, _val) \
+#define co_apply_1(_func, _param, _val) do { \
 	_self_->callee = co_new(_func, _param); \
 	_co_apply(_self_, _self_->callee); \
 	return (co_state_t){ __LINE__, 0 }; \
 	case __LINE__: \
 	_val = co_retval(&(_self_->callee), typeof(_val)); \
 	co_free(_self_->callee); \
-	_self_->callee = 0
+	_self_->callee = 0; \
+} while (0)
 
-#define co_apply_0(_func, _param) \
+#define co_apply_0(_func, _param) do { \
 	_self_->callee = co_new(_func, _param); \
 	_co_apply(_self_, _self_->callee); \
 	return (co_state_t){ __LINE__, 0 }; \
 	case __LINE__: \
 	co_free(_self_->callee); \
-	_self_->callee = 0
+	_self_->callee = 0; \
+} while (0)
 
 #define co_apply_sel(_0, _1, _2, ...) _2
 
 #define co_apply(_func, _param, ...) co_apply_sel(_0, ## __VA_ARGS__, co_apply_1, co_apply_0)(_func, _param, ## __VA_ARGS__)
 
-#define co_resume_1(_task, _val) \
+#define co_resume_1(_task, _val) do { \
 	_co_resume(_self_, _task); \
 	return (co_state_t){ __LINE__, 0 }; \
 	case __LINE__: \
 	_self_->callee = 0; \
-	_val = co_retval(_task, typeof(_val))
+	_val = co_retval(_task, typeof(_val)); \
+} while (0)
 
-#define co_resume_0(_task) \
+#define co_resume_0(_task) do { \
 	_co_resume(_self_, _task); \
 	return (co_state_t){ __LINE__, 0 }; \
 	case __LINE__: \
-	_self_->callee = 0
+	_self_->callee = 0; \
+} while (0)
 
 #define co_resume_sel(_0, _1, _2, ...) _2
 

@@ -6,6 +6,15 @@
 #include <string.h>
 #include <sys/stat.h>
 
+static inline int ccv_is_coverage(void)
+{
+#ifdef COVERAGE_TESTS
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 #define REQUIRE_MATRIX_EQ(a, b, err, ...) { \
 if (ccv_matrix_eq(a, b) != 0) \
 { \

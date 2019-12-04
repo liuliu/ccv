@@ -461,8 +461,8 @@ static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t
 
 static co_decl_task(_ccv_nnc_graph_wait_any_sub_tasks, (ccv_nnc_graph_t* const graph, co_routine_t* const* const sub_tasks, const int sub_task_size, const ccv_nnc_graph_exec_schedule_t* const schd_info, const int* const pending_nodes, const int pending_node_size), private(
 )) {
-	if (CO_P(sub_task_size))
-		co_await_any(CO_P(sub_tasks), CO_P(sub_task_size));
+	assert(CO_P(sub_task_size) > 0);
+	co_await_any(CO_P(sub_tasks), CO_P(sub_task_size));
 	// This is not good, these local variables need to be in the private section.
 	// I got away with it because there is no yield or resume or apply or any after await above.
 	int i, j, k;
@@ -528,7 +528,8 @@ static co_decl_task(_ccv_nnc_graph_exec_run_loop, (ccv_nnc_graph_t* const graph,
 				co_free(CO_V(task));
 		}
 	}
-	co_apply(_ccv_nnc_graph_wait_any_sub_tasks, (CO_P(graph), CO_V(sub_tasks), CO_V(sub_task_size), CO_P(schd_info), CO_V(pending_nodes)[0], CO_V(pending_node_size)[0]));
+	if (CO_V(sub_task_size))
+		co_apply(_ccv_nnc_graph_wait_any_sub_tasks, (CO_P(graph), CO_V(sub_tasks), CO_V(sub_task_size), CO_P(schd_info), CO_V(pending_nodes)[0], CO_V(pending_node_size)[0]));
 	CO_V(p) = 0;
 	CO_V(q) = 1;
 	while (CO_V(pending_node_size)[CO_V(p)] > 0)
@@ -566,7 +567,8 @@ static co_decl_task(_ccv_nnc_graph_exec_run_loop, (ccv_nnc_graph_t* const graph,
 		}
 		int t;
 		CCV_SWAP(CO_V(p), CO_V(q), t);
-		co_apply(_ccv_nnc_graph_wait_any_sub_tasks, (CO_P(graph), CO_V(sub_tasks), CO_V(sub_task_size), CO_P(schd_info), CO_V(pending_nodes)[CO_V(p)], CO_V(pending_node_size)[CO_V(p)]));
+		if (CO_V(sub_task_size))
+			co_apply(_ccv_nnc_graph_wait_any_sub_tasks, (CO_P(graph), CO_V(sub_tasks), CO_V(sub_task_size), CO_P(schd_info), CO_V(pending_nodes)[CO_V(p)], CO_V(pending_node_size)[CO_V(p)]));
 	}
 } co_end()
 
@@ -962,7 +964,7 @@ int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flag
 	co_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
 	co_routine_t* const task = co_new(_ccv_nnc_graph_topsorted_run_coro, (graph, -1, schedule, 0, tensor_tape, stream_context, flags));
 	co_schedule(scheduler, task);
-		// I don't need to worry about freeing this task, it will free itself at the end.
+	// I don't need to worry about freeing this task, it will free itself at the end.
 	if (!_stream_context) // If no stream context provided, this is a sync operation.
 		ccv_nnc_stream_context_wait(stream_context);
 	return CCV_NNC_EXEC_SUCCESS;
