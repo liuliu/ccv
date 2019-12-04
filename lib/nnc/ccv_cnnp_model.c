@@ -1391,7 +1391,12 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		ccv_nnc_tensor_symbol_t update_outputs[saved_aux_size + 1];
 		for (i = 0; i < trainable_size; i++)
 		{
-			update_inputs[0] = compiled_data->gradients[i];
+			const int* inputs = 0;
+			int input_size = 0;
+			ccv_nnc_graph_exec_symbol_io(model->graph, compiled_data->update_nodes[i], &inputs, &input_size, 0, 0);
+			assert(input_size >= 1);
+			update_inputs[0].d = inputs[0];
+			update_inputs[0].graph = model->graph;
 			update_inputs[1] = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i);
 			update_outputs[0] = compiled_data->updated_trainables[i];
 			for (j = 0; j < saved_aux_size; j++)
@@ -1404,7 +1409,10 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 			{
 				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_copy(model->graph, compiled_data->update_nodes[i], k);
 				assert(copy.d >= 0);
-				update_inputs[0] = ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->gradients[i], k);
+				ccv_nnc_graph_exec_symbol_io(model->graph, copy, &inputs, &input_size, 0, 0);
+				assert(input_size >= 1);
+				update_inputs[0].d = inputs[0];
+				update_inputs[0].graph = model->graph;
 				update_inputs[1] = ccv_nnc_tensor_symbol_copy(model->graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i), k);
 				update_outputs[0] = ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->updated_trainables[i], k);
 				for (j = 0; j < saved_aux_size; j++)
