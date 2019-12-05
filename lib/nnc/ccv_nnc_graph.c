@@ -1026,9 +1026,9 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		}
 	}
 	int graph_wait_size = 0;
-	for (i = 0; i < graph->destinations->rnum; i++)
+	for (i = 0; i < destination_size; i++)
 	{
-		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		const int idx = destinations[i].d;
 		for (j = 0; j < schd_info[idx].stream_size; j++)
 			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
 				++graph_wait_size;
@@ -1036,9 +1036,9 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 	if (graph_wait_size > 0)
 		schedule->waits = ccmalloc(sizeof(int) * graph_wait_size);
 	graph_wait_size = 0;
-	for (i = 0; i < graph->destinations->rnum; i++)
+	for (i = 0; i < destination_size; i++)
 	{
-		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		const int idx = destinations[i].d;
 		for (j = 0; j < schd_info[idx].stream_size; j++)
 			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
 			{

@@ -404,20 +404,31 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 			return co_new(_ccv_nnc_graph_topsorted_run_coro, (sub_graph, idx, sub_graph->default_schedule, node, tensor_tape, graph->streams[SCHEDULE_STREAMS(*schd)[0]], flags));
 		}
 	} else {
-		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
+		PRINT(CCV_CLI_INFO, "%s [%d]: [%d] -> [%d] (%d)\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size, SCHEDULE_STREAMS(*schd)[0]);
 		int i, j;
+		int flag = 0;
 		for (i = 0; i < schd->stream_size; i++)
 		{
 			ccv_nnc_stream_context_t* const stream = graph->streams[SCHEDULE_STREAMS(*schd)[i]];
 			for (j = 0; j < schd->wait_size; j++)
+			{
 				ccv_nnc_stream_context_wait_signal(stream, graph->signals[schd->waits[j]]);
+				if (!flag)
+				{
+					PRINT(CCV_CLI_INFO, "Wait: (%d, %d)", SCHEDULE_STREAMS(*schd)[i], schd->waits[j]);
+					flag = 1;
+				} else
+					PRINT(CCV_CLI_INFO, ", (%d, %d)", SCHEDULE_STREAMS(*schd)[i], schd->waits[j]);
+			}
 		}
+		if (flag)
+			PRINT(CCV_CLI_INFO, "\n");
 		for (i = 0; i < node->input_size; i++)
 		{
-			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
+			PRINT(CCV_CLI_INFO, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
 			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 				_ccv_nnc_print_tensor_verbose(inputs[i]);
-			PRINT(CCV_CLI_VERBOSE, "\n");
+			PRINT(CCV_CLI_INFO, "\n");
 		}
 		ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(*schd)[0]];
 		ccv_nnc_graph_neighbor_context_discovery_t discovery_context = {
@@ -429,17 +440,26 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
 		for (i = 0; i < node->output_size; i++)
 		{
-			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
+			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
 			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 				_ccv_nnc_print_tensor_verbose(outputs[i]);
-			PRINT(CCV_CLI_VERBOSE, "\n");
+			PRINT(CCV_CLI_INFO, "\n");
 		}
+		flag = 0;
 		for (i = 0; i < schd->stream_size; i++)
 			if (SCHEDULE_SIGNALS(*schd)[i] >= 0)
 			{
 				ccv_nnc_stream_context_t* const stream = graph->streams[SCHEDULE_STREAMS(*schd)[i]];
 				ccv_nnc_stream_context_emit_signal(stream, graph->signals[SCHEDULE_SIGNALS(*schd)[i]]);
+				if (!flag)
+				{
+					PRINT(CCV_CLI_INFO, "Emit: (%d, %d)", SCHEDULE_STREAMS(*schd)[i], SCHEDULE_SIGNALS(*schd)[i]);
+					flag = 1;
+				} else
+					PRINT(CCV_CLI_INFO, ", (%d, %d)", SCHEDULE_STREAMS(*schd)[i], SCHEDULE_SIGNALS(*schd)[i]);
 			}
+		if (flag)
+			PRINT(CCV_CLI_INFO, "\n");
 	}
 	return 0;
 }
@@ -679,9 +699,19 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 	} else {
 		CO_P(graph)->while_count = 0;
 		co_apply(_ccv_nnc_graph_exec_run_loop, (CO_P(graph), CO_V(exec_info), CO_V(schd_info), CO_P(schedule)->psort, 0, CO_P(schedule)->psort ? CO_P(schedule)->psort_size : CO_P(schedule)->exec_info_size, CO_P(tensor_tape), CO_P(flags)));
-		int i;
+		PRINT(CCV_CLI_INFO, "Graph Stream %d", CO_V(stream_0));
+		int i, flag = 0;
 		for (i = 0; i < CO_P(schedule)->wait_size; i++)
+		{
 			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(graph)->signals[CO_P(schedule)->waits[i]]);
+			if (!flag)
+			{
+				PRINT(CCV_CLI_INFO, ", Wait: %d", CO_P(schedule)->waits[i]);
+				flag = 1;
+			} else
+				PRINT(CCV_CLI_INFO, ", %d", CO_P(schedule)->waits[i]);
+		}
+		PRINT(CCV_CLI_INFO, "\n");
 	}
 	if (CO_P(stream_context) != CO_P(graph)->streams[CO_V(stream_0)])
 	{

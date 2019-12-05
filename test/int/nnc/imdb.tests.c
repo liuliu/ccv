@@ -294,11 +294,6 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 			tvin[j * 2] = word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, select_vec, device_count, device_count, 0);
 		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, transformer, 0, vec, device_count, out, device_count, 0, 0);
-		for (j = 0; j < device_count; j++)
-		{
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, out[j])), TENSOR_LIST(out_cpu), 0);
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[j][1]), TENSOR_LIST(fit_cpu), 0);
-		}
 		ccv_nnc_tensor_variable_t softmax[device_count];
 		ccv_nnc_tensor_variable_t fit[device_count];
 		ccv_nnc_tensor_variable_t vocab_vec_grad[device_count];
@@ -409,7 +404,6 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 	}
 	ccv_cnnp_dataframe_iter_free(test_iter);
 	ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 0);
-	// printf("epoch %d done, test accuracy %lf\n", epoch, (double)correct / row_count);
 	ccv_cnnp_model_free(transformer);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batched_data);
