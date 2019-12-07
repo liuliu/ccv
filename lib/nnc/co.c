@@ -130,14 +130,11 @@ static void* _co_main(void* userdata)
 	// scheduler is asynchronous, we cannot free it somewhere else. That
 	// left us with the only choice to free the task at the very end when we
 	// are going to put the scheduler to sleep again.
-	co_routine_t* last_task = 0;
 	for (;;)
 	{
 		if (scheduler->head == 0 && scheduler->stream_await_count == 0)
 		{
 			scheduler->active = 0;
-			if (last_task)
-				co_free(last_task);
 			pthread_cond_broadcast(&scheduler->notify);
 			pthread_mutex_unlock(&scheduler->mutex);
 			break;
@@ -151,7 +148,6 @@ static void* _co_main(void* userdata)
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
 		while (task) {
-			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
 			task->line = state.line;
 			task->done = state.done;
@@ -164,6 +160,8 @@ static void* _co_main(void* userdata)
 				if (prev_task->done)
 				{
 					co_routine_t* const notify_any = _co_done(prev_task);
+					if (prev_task->root) // Free the task scheduled from co_schedule.
+						co_free(prev_task);
 					if (notify_any)
 					{
 						if (!task)
@@ -193,18 +191,11 @@ static void _co_try(co_scheduler_t* const scheduler)
 		return;
 	}
 	scheduler->active = 1;
-	// By definition, the last task cannot co_free itself. And because this
-	// scheduler is asynchronous, we cannot free it somewhere else. That
-	// left us with the only choice to free the task at the very end when we
-	// are going to put the scheduler to sleep again.
-	co_routine_t* last_task = 0;
 	for (;;)
 	{
 		if (scheduler->head == 0 && scheduler->stream_await_count == 0)
 		{
 			scheduler->active = 0;
-			if (last_task)
-				co_free(last_task);
 			pthread_mutex_unlock(&scheduler->mutex);
 			break;
 		}
@@ -219,7 +210,6 @@ static void _co_try(co_scheduler_t* const scheduler)
 		_co_delete_task(scheduler, task);
 		pthread_mutex_unlock(&scheduler->mutex);
 		while (task) {
-			last_task = task;
 			const co_state_t state = task->fn(task, task + 1);
 			task->line = state.line;
 			task->done = state.done;
@@ -232,6 +222,8 @@ static void _co_try(co_scheduler_t* const scheduler)
 				if (prev_task->done)
 				{
 					co_routine_t* const notify_any = _co_done(prev_task);
+					if (prev_task->root) // Free the task scheduled from co_schedule.
+						co_free(prev_task);
 					if (notify_any)
 					{
 						if (!task)
@@ -253,6 +245,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 void co_schedule(co_scheduler_t* const scheduler, co_routine_t* const task)
 {
 	task->scheduler = scheduler;
+	task->root = 1; // If this is the root, we will free it ourselves.
 	int activate_scheduler = 0;
 	pthread_mutex_lock(&scheduler->mutex);
 	_co_append_task(scheduler, task);

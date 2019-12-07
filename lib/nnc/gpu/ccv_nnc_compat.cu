@@ -281,6 +281,44 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 	cudaStreamSynchronize(device_local->stream);
 }
 
+typedef struct {
+	ccv_nnc_stream_context_callback_f fn;
+	ccv_nnc_stream_context_t* stream;
+	void* callback_context;
+} ccv_nnc_compat_callback_t;
+
+#if CUDA_VERSION >= 10000
+static void _co_stream_compat_callback(void* userdata)
+#else
+static void _co_stream_compat_callback(cudaStream_t stream, cudaError_t status, void* userdata)
+#endif
+{
+	ccv_nnc_compat_callback_t* const callback = (ccv_nnc_compat_callback_t*)userdata;
+	callback->fn(callback->stream, callback->callback_context);
+	ccfree(callback);
+}
+
+void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_context_callback_f callback, void* const callback_context)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	// If the stream is completed, no need to wait.
+	if (cudaStreamQuery(device_local->stream) == cudaSuccess)
+	{
+		callback(stream, callback_context);
+		return;
+	}
+	ccv_nnc_compat_callback_t* const ctx = (ccv_nnc_compat_callback_t*)ccmalloc(sizeof(ccv_nnc_compat_callback_t));
+	ctx->fn = callback;
+	ctx->stream = stream;
+	ctx->callback_context = callback_context;
+#if CUDA_VERSION >= 10000
+	cudaLaunchHostFunc(device_local->stream, _co_stream_compat_callback, ctx);
+#else
+	cudaStreamAddCallback(device_local->stream, _co_stream_compat_callback, ctx, 0);
+#endif
+}
+
 #if CUDA_VERSION >= 10000
 static void _co_stream_compat_resume(void* userdata)
 #else

@@ -33,6 +33,7 @@ void cuunregister(void* ptr);
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_context_callback_f callback, void* const callback_context);
 int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream);
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_deinit_tensor(ccv_nnc_tensor_t* const tensor);

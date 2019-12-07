@@ -619,7 +619,6 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 			// Wait the previous task to be done. This makes sure that our graph run is serial on the same stream.
 			assert(!co_is_done(CO_V(previous_main)));
 			co_await(CO_V(previous_main));
-			co_free(CO_V(previous_main));
 		} else
 			CO_P(stream_context)->main = co_self();
 		if (CO_P(stream_context) != CO_P(graph)->streams[CO_V(stream_0)])

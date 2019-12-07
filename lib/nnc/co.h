@@ -30,6 +30,7 @@ typedef co_state_t(*co_task_f)(struct co_routine_s* const self, void* const priv
 struct co_routine_s {
 	int line;
 	int done;
+	int root;
 	int other_size;
 	co_scheduler_t* scheduler;
 	co_routine_t* prev;
@@ -142,6 +143,7 @@ struct co_routine_s {
 	_task->fn = _func; \
 	_task->line = 0; \
 	_task->done = 0; \
+	_task->root = 0; \
 	_task->other_size = 0; \
 	_task->notify_any = 0; \
 	_task->others = 0; \

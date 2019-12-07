@@ -78,6 +78,18 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context
 #endif
 }
 
+void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_context_callback_f callback, void* const callback_context)
+{
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
+		ccv_nnc_stream_compat_add_callback(stream_context, callback, callback_context);
+	else
+		callback(stream_context, callback_context);
+#else
+	callback(stream_context, callback_context);
+#endif
+}
+
 int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (!stream_context)
