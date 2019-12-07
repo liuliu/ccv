@@ -655,5 +655,104 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 	ccv_nnc_tensor_free(hd0);
 	ccv_nnc_tensor_free(hd1);
 }
+TEST_CASE("partial schedule on both device 0 and then join device 1")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) > 1 &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t const a0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2), "a0");
+	ccv_nnc_tensor_symbol_t const w0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2), "w0");
+	ccv_nnc_tensor_symbol_t const bias0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1), "bias0");
+	ccv_nnc_tensor_symbol_t const b0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 1), "b0");
+	ccv_nnc_graph_exec_symbol_t const src0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(a0, w0, bias0), TENSOR_SYMBOL_LIST(b0), "mul0");
+	ccv_nnc_graph_exec_symbol_t const dest0 = src0;
+	ccv_nnc_tensor_symbol_t const a1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1, 2), "a1");
+	ccv_nnc_tensor_symbol_t const w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1, 2), "w1");
+	ccv_nnc_tensor_symbol_t const bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1), "bias1");
+	ccv_nnc_tensor_symbol_t const b1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1, 1), "b1");
+	ccv_nnc_graph_exec_symbol_t const src1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(a1, w1, bias1), TENSOR_SYMBOL_LIST(b1), "mul1");
+	ccv_nnc_tensor_symbol_t const c1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1, 1), "c1");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SCALAR_MUL_FORWARD(1.2), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "scale10");
+	ccv_nnc_tensor_symbol_t const d1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(001, 32F, 1, 1), "d1");
+	ccv_nnc_graph_exec_symbol_t const dest1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SCALAR_MUL_FORWARD(0.8), TENSOR_SYMBOL_LIST(c1), TENSOR_SYMBOL_LIST(d1), "scale11");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_NOOP(), TENSOR_SYMBOL_LIST(b0, d1), TENSOR_SYMBOL_LIST(), "noop");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_graph_t* graph;
+	ccv_nnc_tensor_arena_t* tensor_arena;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		0, 0,
+		TENSOR_SYMBOL_LIST(b0, d1),
+		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
+		&graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const ha0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
+	ccv_nnc_tensor_t* const ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
+	ccv_nnc_tensor_t* const hw0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
+	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
+	ccv_nnc_tensor_t* const hbias0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const hbias1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const hb0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const hd1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ha0->data.f32[0] = 0.4;
+	ha0->data.f32[1] = 1.2;
+	hw0->data.f32[0] = 3;
+	hw0->data.f32[1] = 2;
+	hbias0->data.f32[0] = -1;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha0, hw0, hbias0),
+		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, a0), ccv_nnc_tensor_from_symbol(tensor_arena, w0), ccv_nnc_tensor_from_symbol(tensor_arena, bias0)),
+		0);
+	ha1->data.f32[0] = 1.3;
+	ha1->data.f32[1] = 0.5;
+	hw1->data.f32[0] = -3;
+	hw1->data.f32[1] = 5;
+	hbias1->data.f32[0] = 0.2;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha1, hw1, hbias1),
+		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, a1), ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, bias1)),
+		0);
+	ccv_nnc_stream_context_t* const stream0 = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_000);
+	ccv_nnc_stream_signal_t* const signal0 = ccv_nnc_stream_signal_new(CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_000);
+	ccv_nnc_stream_context_t* const stream1 = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_001);
+	// custom schedule again with both device 0 and device 1.
+	ccv_nnc_graph_static_schedule_t* const schedule01 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU,
+		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src1)),
+		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest1)));
+	ccv_nnc_graph_run_with_schedule(graph, 0, schedule01, 0, stream0);
+	ccv_nnc_stream_context_emit_signal(stream0, signal0);
+	ccv_nnc_stream_context_wait_signal(stream1, signal0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, d1)),
+		TENSOR_LIST(hd1),
+		stream1);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, b0)),
+		TENSOR_LIST(hb0),
+		stream0);
+	ccv_nnc_stream_context_wait(stream1);
+	ccv_nnc_stream_context_wait(stream0);
+	REQUIRE_EQ_WITH_TOLERANCE(hb0->data.f32[0], 0.4 * 3 + 1.2 * 2 - 1, 1e-5, "result should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(hd1->data.f32[0], (-1.3 * 3 + 0.5 * 5 + 0.2) * 1.2 * 0.8, 1e-5, "result should be equal");
+	ccv_nnc_graph_static_schedule_free(schedule01);
+	ccv_nnc_stream_context_free(stream0);
+	ccv_nnc_stream_signal_free(signal0);
+	ccv_nnc_stream_context_free(stream1);
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(ha0);
+	ccv_nnc_tensor_free(ha1);
+	ccv_nnc_tensor_free(hw0);
+	ccv_nnc_tensor_free(hw1);
+	ccv_nnc_tensor_free(hbias0);
+	ccv_nnc_tensor_free(hbias1);
+	ccv_nnc_tensor_free(hb0);
+	ccv_nnc_tensor_free(hd1);
+}
 
 #include "case_main.h"
