@@ -144,6 +144,22 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_array_free(tensor_binds);
+	// Remove newly added symbols to restore the graph.
+	for (i = 0; i < symbol_stack->rnum; i++)
+	{
+		const ccv_nnc_tape_symbol_t* const symbol = (ccv_nnc_tape_symbol_t*)ccv_array_get(symbol_stack, i);
+		if (symbol->type == CCV_NNC_SYMBOL_TENSOR || symbol->type == CCV_NNC_SYMBOL_TENSOR_ALIAS)
+			ccv_nnc_tensor_symbol_free(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
+				.d = symbol->d,
+				.graph = dynamic_graph->tape
+			});
+		else if (symbol->type == CCV_NNC_SYMBOL_GRAPH_EXEC)
+			ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
+				.d = symbol->d,
+				.graph = dynamic_graph->tape
+			});
+	}
+	ccv_array_free(symbol_stack);
 	if (stream_context)
 	{
 		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
@@ -163,24 +179,8 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);
-	// Remove newly added symbols to restore the graph.
-	for (i = 0; i < symbol_stack->rnum; i++)
-	{
-		const ccv_nnc_tape_symbol_t* const symbol = (ccv_nnc_tape_symbol_t*)ccv_array_get(symbol_stack, i);
-		if (symbol->type == CCV_NNC_SYMBOL_TENSOR || symbol->type == CCV_NNC_SYMBOL_TENSOR_ALIAS)
-			ccv_nnc_tensor_symbol_free(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
-				.d = symbol->d,
-				.graph = dynamic_graph->tape
-			});
-		else if (symbol->type == CCV_NNC_SYMBOL_GRAPH_EXEC)
-			ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
-				.d = symbol->d,
-				.graph = dynamic_graph->tape
-			});
-	}
 	// Now, able to free some of the reused outputs. This need to be the last step otherwise some of the exec symbols
 	// above may be freed by this operation.
 	for (i = 0; i < freeable_size; i++)
 		ccv_nnc_tensor_variable_free(dynamic_graph, freeables[i]);
-	ccv_array_free(symbol_stack);
 }

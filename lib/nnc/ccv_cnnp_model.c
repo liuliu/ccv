@@ -160,6 +160,13 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		model->compiled_data->ids.retainables = retainable_ids;
 		model->compiled_data->minimize.minimizer = minimizer;
 		model->compiled_data->loss = loss;
+	} else {
+		// Now, finally fill in this part. If the graph is already compiled, there are a few ways.
+		// 1. Free all compiled data, except trainables and retainables;
+		// 2. Rebuild the graph.
+		// Or we can:
+		// 1. Rebuild the graph.
+		// 2. Reconfigure the tensor arena to match the new dimensions.
 	}
 }
 

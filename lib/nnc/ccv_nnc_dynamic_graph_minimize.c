@@ -303,13 +303,6 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones[i]);
 	}
 	ccv_array_free(tensor_binds);
-	if (stream_context)
-		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
-	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
-	ccv_nnc_stream_context_wait(stream_context);
-	ccv_nnc_graph_free(graph);
-	ccv_nnc_tensor_arena_free(tensor_arena);
-	ccv_nnc_graph_exec_arena_free(exec_arena);
 	// Remove newly added symbols to restore the graph.
 	for (i = 0; i < symbol_stack->rnum; i++)
 	{
@@ -325,9 +318,16 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				.graph = dynamic_graph->tape
 			});
 	}
+	ccv_array_free(symbol_stack);
+	if (stream_context)
+		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(exec_arena);
 	// Now, able to free some of the reused outputs. This need to be the last step otherwise some of the exec symbols
 	// above may be freed by this operation.
 	for (i = 0; i < freeable_size; i++)
 		ccv_nnc_tensor_variable_free(dynamic_graph, freeables[i]);
-	ccv_array_free(symbol_stack);
 }
