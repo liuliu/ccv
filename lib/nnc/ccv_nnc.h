@@ -2151,14 +2151,21 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_
  * @return New tensor variable that is an alias.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
+/** @cond ALL */
 /**
  * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this
  * method.
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable to get the underlying tensor.
+ * @param stream_context Which stream this command will be executed upon.
  * @return The underlying tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_stream_context_t* const stream_context);
+#define CCV_NNC_TENSOR_FROM_VARIABLE_X_1(graph, tensor_variable) ccv_nnc_tensor_from_variable_impl(graph, tensor_variable, 0)
+#define CCV_NNC_TENSOR_FROM_VARIABLE_X_SEL(_1, _2, _3, _FX, ...) _FX
+// Making so that this new method can take parameters for both no parameter or with tensor_param.
+#define ccv_nnc_tensor_from_variable(graph, tensor_variable, ...) CCV_NNC_TENSOR_FROM_VARIABLE_X_SEL(graph, tensor_variable, ##__VA_ARGS__, ccv_nnc_tensor_from_variable_impl, CCV_NNC_TENSOR_FROM_VARIABLE_X_1)(graph, tensor_variable, ##__VA_ARGS__)
+/** @endcond */
 /**
  * Set a tensor on the tensor variable. Tensor variable doesn't take over the life-cycle management of the tensor
  * (in similar way as the tensor binds).

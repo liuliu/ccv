@@ -215,7 +215,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		const ccv_nnc_tensor_symbol_t symbol = updated_parameter_symbols[i];
 		if (parameters[i]->symbol.d >= 0)
 			freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, parameters[i]);
-		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i]);
+		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i], stream_context);
 		const ccv_nnc_tensor_bind_t dt_bind = {
 			.symbol = symbol,
 			.tensor = tensor
@@ -227,7 +227,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		const ccv_nnc_tensor_symbol_map_t symbol_map = saved_aux_symbols[i];
 		if (saved_aux[i]->symbol.d >= 0)
 			freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, saved_aux[i]);
-		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i]);
+		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i], stream_context);
 		ccv_nnc_tensor_bind_t aux_bind = {
 			.symbol = symbol_map.source,
 			.tensor = tensor
@@ -246,7 +246,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		{
 			const ccv_nnc_tensor_bind_t df_bind = {
 				.symbol = dloss_symbols[i],
-				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, dloss_optionals[i])
+				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, dloss_optionals[i], stream_context)
 			};
 			ccv_array_push(tensor_binds, &df_bind);
 		}

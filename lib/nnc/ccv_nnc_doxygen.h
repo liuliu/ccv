@@ -48,5 +48,22 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new(ccv_nnc_d
  * @return A newly created tensor constant reference.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+/**
+ * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this
+ * method.
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable to get the underlying tensor.
+ * @return The underlying tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+/**
+ * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this
+ * method.
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable to get the underlying tensor.
+ * @param stream_context Which stream this command will be executed upon.
+ * @return The underlying tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_stream_context_t* const stream_context);
 
 #endif

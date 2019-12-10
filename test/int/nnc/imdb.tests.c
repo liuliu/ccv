@@ -226,7 +226,7 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 		ccv_nnc_tensor_param_t seq_params = GPU_TENSOR_NCHW(000, 32S, batch_size * max_length);
 		CCV_TENSOR_SET_DEVICE_ID(seq_params.type, i);
 		seq_indices[i] = ccv_nnc_tensor_constant_new(dynamic_graph, seq_params);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i])), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i], 0)), 0);
 	}
 	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(2, embedding_size, 8, batch_size, max_length, embedding_size * 4);
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
@@ -382,7 +382,7 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 		int d;
 		for (d = 0; d < device_count; d++)
 		{
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, out[d])), TENSOR_LIST(out_cpu), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, out[d], 0)), TENSOR_LIST(out_cpu), 0);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[d][1]), TENSOR_LIST(fit_cpu), 0);
 			for (j = 0; j < ccv_min(row_count - k - d * batch_size, batch_size); j++)
 			{

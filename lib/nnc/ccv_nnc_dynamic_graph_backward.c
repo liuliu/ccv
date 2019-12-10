@@ -201,7 +201,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, outputs[i]->info, 0);
 				ccv_nnc_tensor_bind_t dt_bind = {
 					.symbol = inputs[0],
-					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i])
+					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i], stream_context)
 				};
 				ccv_array_push(tensor_binds, &dt_bind);
 				ccv_nnc_graph_exec_symbol_t accum = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_EWSUM_FORWARD(), inputs, 2, &output, 1, 0);
@@ -209,12 +209,12 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				destination = accum; // The accumulation unit becomes the new destination.
 				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, outputs[i]);
 				dt_bind.symbol = output;
-				dt_bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
+				dt_bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i], stream_context);
 				ccv_array_push(tensor_binds, &dt_bind);
 			} else {
 				assert(outputs[i]->symbol.d < 0);
 				// Otherwise, we can directly bind to the backward output.
-				ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
+				ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i], stream_context);
 				const ccv_nnc_tensor_bind_t dt_bind = {
 					.symbol = symbol,
 					.tensor = tensor
@@ -239,7 +239,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		{
 			const ccv_nnc_tensor_bind_t df_bind = {
 				.symbol = df_symbols[i],
-				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, df_optionals[i])
+				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, df_optionals[i], stream_context)
 			};
 			ccv_array_push(tensor_binds, &df_bind);
 		}

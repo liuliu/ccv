@@ -62,7 +62,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				const ccv_nnc_tensor_symbol_t gradient = allreduce_inputs[j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 				const ccv_nnc_tensor_bind_t bind = {
 					.symbol = gradient,
-					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, gradients[idx])
+					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, gradients[idx], stream_context)
 				};
 				ccv_array_push(tensor_binds, &bind);
 				allreduce_outputs[j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
@@ -77,22 +77,22 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				update_inputs[1] = parameters[idx]->symbol;
 				ccv_nnc_tensor_bind_t bind = {
 					.symbol = parameters[idx]->symbol,
-					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[idx])
+					.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[idx], stream_context)
 				};
 				ccv_array_push(tensor_binds, &bind);
 				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, parameters[idx]);
 				bind.symbol = update_outputs[0] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[idx]);
+				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[idx], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 				int k;
 				for (k = 0; k < aux_size; k++)
 				{
 					bind.symbol = update_inputs[2 + k] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k]);
+					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k], stream_context);
 					ccv_array_push(tensor_binds, &bind);
 					freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, saved_aux[idx * aux_size + k]);
 					bind.symbol = update_outputs[1 + k] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k]);
+					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k], stream_context);
 					ccv_array_push(tensor_binds, &bind);
 				}
 				minimizes[idx] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
@@ -107,25 +107,25 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			const ccv_nnc_tensor_symbol_t gradient = update_inputs[0] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 			ccv_nnc_tensor_bind_t bind = {
 				.symbol = gradient,
-				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, gradients[i])
+				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, gradients[i], stream_context)
 			};
 			ccv_array_push(tensor_binds, &bind);
 			update_inputs[1] = parameters[i]->symbol;
 			bind.symbol = parameters[i]->symbol;
-			bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i]);
+			bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i], stream_context);
 			ccv_array_push(tensor_binds, &bind);
 			freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, parameters[i]);
 			bind.symbol = update_outputs[0] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-			bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i]);
+			bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i], stream_context);
 			ccv_array_push(tensor_binds, &bind);
 			for (j = 0; j < aux_size; j++)
 			{
 				bind.symbol = update_inputs[2 + j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j]);
+				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, saved_aux[i * aux_size + j]);
 				bind.symbol = update_outputs[1 + j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
-				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j]);
+				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 			}
 			minimizes[i] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);

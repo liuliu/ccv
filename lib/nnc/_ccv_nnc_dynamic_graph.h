@@ -13,6 +13,7 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_internal.h"
 #include "3rdparty/khash/khash.h"
+#include "3rdparty/jemalloc/rb.h"
 
 #define CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv) ((uintptr_t)(tv) & 1)
 #define CCV_NNC_TENSOR_VIEW(tv) ((ccv_nnc_tensor_view_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
@@ -46,6 +47,7 @@ typedef struct {
 typedef struct { // Extra information kept per tensor symbol along with symbolic graph.
 	int type;
 	int index; // The index back into the tensor variable. -1 meant no associated tensor vairable.
+	int is_alias; // Whether this is an alias for this tensor view.
 	ccv_array_t* sources; // array of graph_exec_symbol, use this tensor symbol as output.
 	ccv_array_t* destinations; // array of graph_exec_symbol, use this tensor symbol as input.
 	ccv_nnc_tensor_view_t* tensor_view; // Transfer ownership of the tensor view to here.
@@ -66,6 +68,20 @@ typedef struct {
 
 KHASH_MAP_INIT_INT(synced_stream, ccv_nnc_synced_stream_t);
 
+typedef struct dy_alloc_metadata_s dy_alloc_metadata_t;
+struct dy_alloc_metadata_s {
+	int device;
+	size_t size;
+	intptr_t str;
+	rb_node(dy_alloc_metadata_t) link;
+	dy_alloc_metadata_t* next; // So I can chain them together.
+	void* ptr;
+};
+typedef rb_tree(dy_alloc_metadata_t) dy_alloc_tree_t;
+KHASH_MAP_INIT_INT64(dy_str, dy_alloc_tree_t);
+KHASH_MAP_INIT_INT(dy_dev, khash_t(dy_str)*);
+KHASH_MAP_INIT_INT64(dy_alloc, dy_alloc_metadata_t*);
+
 struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
@@ -73,6 +89,8 @@ struct ccv_nnc_dynamic_graph_s {
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.
 	khash_t(stateful_exec)* stateful_execs; // Array keeps track of the stateful execs. The stateful execs type can have additional apply_gradients calls to update its internal states.
 	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
+	khash_t(dy_dev)* freed; // The freed memory allocations.
+	khash_t(dy_alloc)* allocd; // The allocated memory.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
 	ccv_array_t* ws; // array of integers as workspace
 };
@@ -255,5 +273,8 @@ static inline int ccv_nnc_tensor_variable_contains_value(ccv_nnc_tensor_variable
 }
 
 void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_graph_exec_symbol_t* const graph_execs);
+void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, const int device, const intptr_t stream, const size_t size);
+void ccv_nnc_dynamic_graph_xpu_free(ccv_nnc_dynamic_graph_t* const graph, void* const ptr);
+void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const graph);
 
 #endif
