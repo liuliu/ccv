@@ -43,7 +43,7 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	a_tensor->data.f32[0] = 0.3;
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	b_tensor->data.f32[0] = 1.1;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		TENSOR_BIND_MAP(KV(a, a_tensor), KV(b, b_tensor)), // Binding the tensors.
 		0, 0,
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -83,7 +83,7 @@ TEST_CASE("compile graph (a[1] + a[0]) * a where a is a binded tensor")
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		0, 0,
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -126,7 +126,7 @@ TEST_CASE("compile a graph with tensor bindings, verify tensor arena doesn't all
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		TENSOR_BIND_MAP(KV(a, a_tensor), KV(d, d_tensor), KV(e, e_tensor)),
 		0, 0,
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),

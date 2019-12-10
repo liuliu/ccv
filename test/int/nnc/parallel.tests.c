@@ -62,7 +62,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_graph_t* graph;
 		ccv_nnc_tensor_arena_t* tensor_arena;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-		ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 			0, 0,
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -140,7 +140,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_graph_t* graph;
 		ccv_nnc_tensor_arena_t* tensor_arena;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-		ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 			0, 0,
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -241,7 +241,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_graph_t* graph;
 		ccv_nnc_tensor_arena_t* tensor_arena;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-		ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 			0, 0,
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -319,7 +319,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_graph_t* graph;
 		ccv_nnc_tensor_arena_t* tensor_arena;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-		ccv_nnc_symbolic_graph_compile(symbolic_graph,
+		ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 			0, 0,
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),

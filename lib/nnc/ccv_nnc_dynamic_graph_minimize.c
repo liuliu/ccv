@@ -250,7 +250,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			};
 			ccv_array_push(tensor_binds, &df_bind);
 		}
-		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape,
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
 			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 			0, 0,
 			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
@@ -293,7 +293,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		for (i = 0; i < loss_size; i++)
 			dloss_symbols[i].graph = dynamic_graph->tape;
 		ccv_array_free(sources);
-		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape,
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
 			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 			0, 0,
 			set_ones, set_one_size,

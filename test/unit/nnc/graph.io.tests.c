@@ -38,7 +38,7 @@ TEST_CASE("write graph (x + y) * (x + y) and read")
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph_2, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph_2), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph_2), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph_2, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph_2), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph_2), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	x_tensor->data.f32[0] = 10;

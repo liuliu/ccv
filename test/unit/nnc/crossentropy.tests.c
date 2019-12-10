@@ -36,7 +36,7 @@ TEST_CASE("compare softmax + categorical crossentropy v.s. softmax crossentropy 
 	ccv_nnc_graph_t* run_graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph), &run_graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph), &run_graph, &tensor_arena, &graph_exec_arena);
 	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, a);
 	a_tensor->data.f32[0] = 10;
 	a_tensor->data.f32[1] = -1;

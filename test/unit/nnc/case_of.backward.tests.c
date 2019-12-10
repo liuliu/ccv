@@ -57,7 +57,7 @@ TEST_CASE("symbolic graph for piece-wise function y = f(x), compute y'")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	const ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
 	ccv_nnc_graph_exec_symbol_t case_of_backward = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, &case_of, 1, &case_of_backward, 1, &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, &case_of, 1, &case_of_backward, 1, &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);

@@ -34,7 +34,7 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
 	ccv_nnc_graph_exec_symbol_t dxc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxc, sum), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxc, sum), &graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* tone = ccv_nnc_tensor_from_symbol(tensor_arena, one);
@@ -70,7 +70,7 @@ TEST_CASE("autograd with D[y, x] when x = 10 and y = 1 (no x presence in the for
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	if (tx)
@@ -118,7 +118,7 @@ TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.3
 	ccv_nnc_graph_exec_symbol_t dxc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
 	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, y);
 	ccv_nnc_graph_exec_symbol_t dyc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dy);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(minus, plus), GRAPH_EXEC_SYMBOL_LIST(dxc, dyc, prod), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(minus, plus), GRAPH_EXEC_SYMBOL_LIST(dxc, dyc, prod), &graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* tone = ccv_nnc_tensor_from_symbol(tensor_arena, one);
@@ -169,7 +169,7 @@ TEST_CASE("partial autograd with D[y * x + Log[1 / x], y] when x = 0.84 and y = 
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, y);
 	ccv_nnc_graph_exec_symbol_t dyc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dy);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dyc, sum), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dyc, sum), &graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_CPU);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
@@ -233,7 +233,7 @@ TEST_CASE("autograd with D[x * x + Log[1 / x], x] D[y * y + Log[1 / y], y] when 
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_tensor_symbol_t dx0 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x0);
 	ccv_nnc_tensor_symbol_t dx1 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x1);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(z0, z1),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),

@@ -1089,11 +1089,27 @@ typedef struct {
 	const ccv_nnc_tensor_t* tensor;
 } ccv_nnc_tensor_bind_t;
 
+typedef struct {
+	void* (*alloc)(const int type, void* const arg);
+	void (*free)(void* const ptr, void* const arg);
+} ccv_nnc_symbolic_graph_compile_allocator_isa_t;
+
+typedef struct {
+	struct {
+		ccv_nnc_symbolic_graph_compile_allocator_isa_t* isa;
+		struct {
+			void* alloc;
+			void* free;
+		} context;
+	} allocator;
+} ccv_nnc_symbolic_graph_compile_param_t;
+
 /**
  * Compile a symbolic graph into a graph that can be executed, and a set of tensors (opaque data structure tensor arena) are allocated based on which tensor symbols are the input and which are the outputs. The tensor allocation is done to minimize the required storage.
  * tensor_binds provide custom binding for these tensors. You still responsible to manage the life-time of these tensors.
  * outputs marks the tensor symbols that need to be kept til the end of the graph.
  * @param graph The symbolic graph.
+ * @param compile_params A ccv_nnc_symbolic_graph_compile_param_t struct defines compilation parameters.
  * @param tensor_binds The binding array (a tensor symbol and a concrete tensor). We replace everywhere that uses the tensor symbol with the concrete tensor.
  * @param tensor_bind_size The size of the binding array.
  * @param outputs The output tensor symbols that we want to keep the value.
@@ -1106,7 +1122,7 @@ typedef struct {
  * @param tensor_arena_ref The pointer to store ccv_nnc_tensor_arena_t.
  * @param graph_exec_arena_ref The pointer to store ccv_nnc_graph_exec_arena_t.
  */
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref);
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_symbolic_graph_compile_param_t compile_params, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref);
 /**
  * Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
  * @param graph The symbolic graph.

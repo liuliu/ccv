@@ -79,7 +79,7 @@ TEST_CASE("use reduce for softmax")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_tensor_t* const da_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, TENSOR_BIND_MAP(KV(a, a_tensor), KV(da, da_tensor)), 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, TENSOR_BIND_MAP(KV(a, a_tensor), KV(da, da_tensor)), 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const tx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);

@@ -134,7 +134,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape,
+	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
 		(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 		0, 0,
 		parallel_count > 1 ? allreduces : minimizes, parallel_count > 1 ? per_parameter_size : parameter_size,

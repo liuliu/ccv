@@ -422,6 +422,10 @@ extern const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC];
  */
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
 /**
+ * The default symbolic graph compile parameters.
+ */
+extern const ccv_nnc_symbolic_graph_compile_param_t ccv_nnc_default_compile_params;
+/**
  * Derive the command parameters automatically if possible.
  */
 extern const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto;

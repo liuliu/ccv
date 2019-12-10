@@ -35,7 +35,7 @@ TEST_CASE("dense net with GEMM as the core")
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(e3), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(e3), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* x1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x1);
@@ -104,7 +104,7 @@ TEST_CASE("dense net with GEMM as the core and autograd")
 	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, y);
 	ccv_nnc_tensor_t* dy_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	dy_tensor->data.f32[0] = 1;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, TENSOR_BIND_MAP(KV(dy, dy_tensor)), 0, 0, GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(de1), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, TENSOR_BIND_MAP(KV(dy, dy_tensor)), 0, 0, GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(de1), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* x1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x1);
 	x1_tensor->data.f32[0] = 0.472;

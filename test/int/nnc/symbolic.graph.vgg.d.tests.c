@@ -110,7 +110,7 @@ TEST_CASE("run vgg-d graph from its symbolic representation")
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	SYMBOLIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_symbolic_graph_compile(graph, TENSOR_BIND_MAP(KV(input_symbol, (ccv_nnc_tensor_t*)sliced), KV(output_symbol, c)), 0, 0, GRAPH_EXEC_SYMBOL_LIST(source_symbol), GRAPH_EXEC_SYMBOL_LIST(dest_symbol), &run_graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(graph, ccv_nnc_default_compile_params, TENSOR_BIND_MAP(KV(input_symbol, (ccv_nnc_tensor_t*)sliced), KV(output_symbol, c)), 0, 0, GRAPH_EXEC_SYMBOL_LIST(source_symbol), GRAPH_EXEC_SYMBOL_LIST(dest_symbol), &run_graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(run_graph, CCV_NNC_LONG_DOT_GRAPH);
 	REQUIRE(ccv_nnc_tensor_arena_size(tensor_arena) <= 471513504, "the allocated size should be smaller than what we previously got");
 	int i;

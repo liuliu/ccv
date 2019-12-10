@@ -24,7 +24,7 @@ TEST_CASE("schedule GPU work on one stream")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(b),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -93,7 +93,7 @@ TEST_CASE("schedule GPU work on multiple streams")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(d),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -209,7 +209,7 @@ TEST_CASE("schedule GPU work with while loop")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(c),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -317,7 +317,7 @@ TEST_CASE("schedule GPU work with case..of")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(b),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -404,7 +404,7 @@ TEST_CASE("schedule GPU work with both while loop and case..of")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(c),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -533,7 +533,7 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(d0, d1),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
@@ -681,7 +681,7 @@ TEST_CASE("partial schedule on both device 0 and then join device 1")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params,
 		0, 0,
 		TENSOR_SYMBOL_LIST(b0, d1),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),

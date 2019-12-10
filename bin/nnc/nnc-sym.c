@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 	ccv_nnc_graph_t* run_graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(graph, TENSOR_SYMBOL_LIST(a), TENSOR_LIST(tensor_a), GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]), &run_graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(graph, ccv_nnc_default_compile_params, TENSOR_SYMBOL_LIST(a), TENSOR_LIST(tensor_a), GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]), &run_graph, &tensor_arena, &graph_exec_arena);
 	ccv_nnc_graph_free(run_graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);

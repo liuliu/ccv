@@ -58,7 +58,7 @@ TEST_CASE("custom forward operation with dynamic graph")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0,
 		TENSOR_SYMBOL_LIST(y),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
@@ -89,7 +89,7 @@ TEST_CASE("custom backward operation with dynamic graph")
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0,
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0,
 		TENSOR_SYMBOL_LIST(dx),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
