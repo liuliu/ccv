@@ -16,7 +16,6 @@ static void* _ccv_nnc_dynamic_compile_alloc(const int type, const int pinned_mem
 	ccv_nnc_dy_xpu_alloc_t* const xpu_alloc  = (ccv_nnc_dy_xpu_alloc_t*)arg;
 	const int device = CCV_TENSOR_GET_DEVICE_ID(type);
 	return ccv_nnc_dynamic_graph_xpu_alloc(xpu_alloc->graph, device, xpu_alloc->stream, size);
-	return 0;
 }
 
 static void _ccv_nnc_dynamic_compile_free(void* const ptr, void* const arg)

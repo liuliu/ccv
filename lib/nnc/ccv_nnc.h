@@ -2863,6 +2863,21 @@ void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const 
  */
 void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
 /**
+ * Representation of a collection of trainables for a model. You can regard this as a simple
+ * immutable objects without thinking about its life-cycle. However, this is meaningless without
+ * an valid underlying model and if the underlying model is freed, the behavior is undefined.
+ */
+typedef struct ccv_cnnp_trainable_span_s* ccv_cnnp_trainable_span_t;
+/**
+ * Get the trainables associated with the model with some indexes. -1 means all. Otherwise
+ * it is indexed. You can also get nil trainables. For functional model or sequential model,
+ * the index meant for trainables of all its sub-models' at the given index.
+ * @param model The composed model.
+ * @param index The index of a collection of trainables.
+ * @return The trainable span that can be used to set minimizers.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_trainable_span_t) ccv_cnnp_model_trainable_span(ccv_cnnp_model_t* const model, const int index);
+/**
  * Simple structure for group of command and the index for the variable.
  */
 typedef struct {
