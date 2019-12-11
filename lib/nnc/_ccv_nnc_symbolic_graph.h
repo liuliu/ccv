@@ -136,6 +136,12 @@ struct ccv_nnc_tensor_arena_s {
 	off_t* vt_alias_offs; // offsets to the alias if there is.
 	ccv_numeric_data_t* pb_vt_tensors; // pre-bindings for this vt_tensors, this is optional.
 	ccv_array_t** vt_alias_tos; // array to record which tensor this is aliased to. This is first created when bind a symbol.
+	struct {
+		const ccv_nnc_symbolic_graph_compile_allocator_vtab_t* isa;
+		struct {
+			void* free;
+		} context;
+	} allocator;
 	// This is the allocated non-continuous buffers.
 	int buffer_size;
 	struct {

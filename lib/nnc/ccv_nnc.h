@@ -1090,18 +1090,20 @@ typedef struct {
 } ccv_nnc_tensor_bind_t;
 
 typedef struct {
-	void* (*alloc)(const int type, void* const arg);
+	void* (*alloc)(const int type, const int pinned_mem /* Currently only used to annotate CCV_TENSOR_PINNED_MEM, future can be expanded to generic flags */, const size_t size, void* const arg);
 	void (*free)(void* const ptr, void* const arg);
-} ccv_nnc_symbolic_graph_compile_allocator_isa_t;
+} ccv_nnc_symbolic_graph_compile_allocator_vtab_t;
 
 typedef struct {
+	const ccv_nnc_symbolic_graph_compile_allocator_vtab_t* isa;
 	struct {
-		ccv_nnc_symbolic_graph_compile_allocator_isa_t* isa;
-		struct {
-			void* alloc;
-			void* free;
-		} context;
-	} allocator;
+		void* alloc;
+		void* free;
+	} context;
+} ccv_nnc_symbolic_graph_compile_allocator_t;
+
+typedef struct {
+	ccv_nnc_symbolic_graph_compile_allocator_t allocator;
 } ccv_nnc_symbolic_graph_compile_param_t;
 
 /**

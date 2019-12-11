@@ -131,10 +131,23 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			minimizes[i] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
 		}
 	}
+	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
+		.graph = dynamic_graph,
+		.stream = (intptr_t)stream_context
+	};
+	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
+		.allocator = {
+			.isa = &ccv_nnc_dy_allocator_isa,
+			.context = {
+				.alloc = &xpu_alloc,
+				.free = dynamic_graph,
+			}
+		}
+	};
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
+	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
 		(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 		0, 0,
 		parallel_count > 1 ? allreduces : minimizes, parallel_count > 1 ? per_parameter_size : parameter_size,

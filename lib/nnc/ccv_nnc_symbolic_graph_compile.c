@@ -999,7 +999,7 @@ static int _ccv_nnc_tensor_flat_if_multiview(ccv_array_t* const tensor_metadata,
 	return new_pos;
 }
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_compile_allocator_t allocator, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
@@ -1034,6 +1034,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
+	tensor_arena->allocator.context.free = allocator.context.free;
+	tensor_arena->allocator.isa = allocator.isa;
 	// Copy alias_ref info back to the tensor arena.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 	{
@@ -1104,7 +1106,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			if (memory_type == CCV_TENSOR_GPU_MEMORY)
 			{
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
-				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
+				if (allocator.isa && allocator.isa->alloc)
+					tensor_arena->buffers[i].ptr = (uint8_t*)allocator.isa->alloc(buffer_type, 0, tensor_arena->buffers[i].size, allocator.context.alloc);
+				else
+					tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			} else {
 				assert(memory_type == CCV_TENSOR_CPU_MEMORY);
@@ -1128,7 +1133,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// will have automatic reference updates.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (graph_prep->sub_preps[i])
-			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, tensor_binds, tensor_bind_size);
+			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], allocator, tensor_arena, tensor_binds, tensor_bind_size);
 		else
 			tensor_arena->sub_arenas[i] = 0;
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
@@ -3776,7 +3781,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	}
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, outputs, output_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	_ccv_nnc_symbolic_graph_prep_while_count_tensor(graph_prep);
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, compile_params.allocator, 0, tensor_binds, tensor_bind_size);
 	_ccv_nnc_tensor_arena_fixup_pair_ref_and_tape_var(tensor_arena, graph_prep, tensor_arena);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
@@ -3881,8 +3886,12 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 #ifdef HAVE_CUDA
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
 		if (memory_type == CCV_TENSOR_GPU_MEMORY)
-			cufree(device_id, tensor_arena->buffers[i].ptr);
-		else {
+		{
+			if (tensor_arena->allocator.isa && tensor_arena->allocator.isa->free)
+				tensor_arena->allocator.isa->free(tensor_arena->buffers[i].ptr, tensor_arena->allocator.context.free);
+			else
+				cufree(device_id, tensor_arena->buffers[i].ptr);
+		} else {
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			if (tensor_arena->buffers[i].pin_mem)
 				cuhostfree(tensor_arena->buffers[i].ptr);

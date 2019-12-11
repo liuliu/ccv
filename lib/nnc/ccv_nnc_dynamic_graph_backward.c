@@ -3,9 +3,32 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_nnc_easy.h"
 #include "ccv_internal.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#endif
 #include "_ccv_nnc_dynamic_graph.h"
 
 #pragma mark - Level-4.5 API
+
+static void* _ccv_nnc_dynamic_compile_alloc(const int type, const int pinned_mem, const size_t size, void* const arg)
+{
+	assert(type & CCV_TENSOR_GPU_MEMORY);
+	ccv_nnc_dy_xpu_alloc_t* const xpu_alloc  = (ccv_nnc_dy_xpu_alloc_t*)arg;
+	const int device = CCV_TENSOR_GET_DEVICE_ID(type);
+	return ccv_nnc_dynamic_graph_xpu_alloc(xpu_alloc->graph, device, xpu_alloc->stream, size);
+	return 0;
+}
+
+static void _ccv_nnc_dynamic_compile_free(void* const ptr, void* const arg)
+{
+	ccv_nnc_dynamic_graph_t* const graph = (ccv_nnc_dynamic_graph_t*)arg;
+	ccv_nnc_dynamic_graph_xpu_free(graph, ptr);
+}
+
+const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa = {
+	.alloc = _ccv_nnc_dynamic_compile_alloc,
+	.free = _ccv_nnc_dynamic_compile_free
+};
 
 void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t* const f_variables, const int f_variable_size, const ccv_nnc_tensor_variable_t* const df_optionals, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -228,6 +251,19 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
+		.graph = dynamic_graph,
+		.stream = (intptr_t)stream_context
+	};
+	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
+		.allocator = {
+			.isa = &ccv_nnc_dy_allocator_isa,
+			.context = {
+				.alloc = &xpu_alloc,
+				.free = dynamic_graph,
+			}
+		}
+	};
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
@@ -243,7 +279,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			};
 			ccv_array_push(tensor_binds, &df_bind);
 		}
-		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
 			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 			0, 0,
 			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
@@ -286,7 +322,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		for (i = 0; i < f_variable_size; i++)
 			df_symbols[i].graph = dynamic_graph->tape;
 		ccv_array_free(sources);
-		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, ccv_nnc_default_compile_params,
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
 			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 			0, 0,
 			set_ones, set_one_size,
