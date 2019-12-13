@@ -89,25 +89,6 @@ static ccv_cnnp_model_t* _cifar_10_dawn(const int softmax)
 	}
 }
 
-static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const trainable_indexes, const int trainable_index_size, const void* const context)
-{
-	int i;
-	ccv_nnc_cmd_t cmd = *(const ccv_nnc_cmd_t*)context;
-	for (i = 0; i < trainable_index_size; i++)
-	{
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_BATCH_NORM_FORWARD &&
-			(trainable_indexes[i].index == 1 ||  trainable_indexes[i].index == 2)) // If it is scale / bias of batch norm, remove weight decay.
-			cmd.info.sgd.decay = 0;
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_GEMM_FORWARD &&
-			trainable_indexes[i].index == 2) // bias in gemm.
-			cmd.info.sgd.decay = 0;
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD &&
-			trainable_indexes[i].index == 2) // bias in convolution.
-			cmd.info.sgd.decay = 0;
-	}
-	return cmd;
-}
-
 static int train_cifar_10(const int epoch_limit, ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn(1);
@@ -188,7 +169,9 @@ static int train_cifar_10(const int epoch_limit, ccv_array_t* const training_set
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.000001);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(0, learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9);
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, 0);
+		sgd.info.sgd.decay = 0;
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(cifar_10, 1))); // Set bias (the second parameter) to decay 0
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
@@ -423,7 +406,9 @@ static int train_cifar_10_fp16(const int epoch_limit, ccv_array_t* const trainin
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.000001);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(0, learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9);
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, 0);
+		sgd.info.sgd.decay = 0;
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(cifar_10, 1))); // Set bias (the second parameter) to decay 0
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
@@ -661,7 +646,9 @@ static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const trai
 		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.000001);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(0, learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9);
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, 0);
+		sgd.info.sgd.decay = 0;
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(cifar_10, 1))); // Set bias (the second parameter) to decay 0
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)

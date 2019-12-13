@@ -2867,7 +2867,10 @@ void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t wor
  * immutable objects without thinking about its life-cycle. However, this is meaningless without
  * an valid underlying model and if the underlying model is freed, the behavior is undefined.
  */
-typedef struct ccv_cnnp_trainable_span_s* ccv_cnnp_trainable_span_t;
+typedef struct {
+	int d;
+	ccv_cnnp_model_t* model;
+} ccv_cnnp_trainable_span_t;
 /**
  * Get the trainables associated with the model with some indexes. -1 means all. Otherwise
  * it is indexed. You can also get nil trainables. For functional model or sequential model,
@@ -2878,35 +2881,15 @@ typedef struct ccv_cnnp_trainable_span_s* ccv_cnnp_trainable_span_t;
  */
 CCV_WARN_UNUSED(ccv_cnnp_trainable_span_t) ccv_cnnp_model_trainable_span(ccv_cnnp_model_t* const model, const int index);
 /**
- * Simple structure for group of command and the index for the variable.
- */
-typedef struct {
-	const ccv_nnc_cmd_t cmd;
-	const int index; // The input index.
-} ccv_cnnp_trainable_index_t;
-/**
- * The setter function prototype for ccv_cnnp_model_set_minimizer. This is useful because it helps to
- * set different minimizer parameters for different trainables. The example would be disable weight decay
- * for bias / scale variables. If I expand this idea a bit, I can also support for different trainables,
- * have entirely different minimizer  function. However, I haven't seen anything that can be trained with
- * different minimizer (most likely due to epoch updates learn rate, therefore, it is hard to manipulate
- * proper learn rate if different minimizers are used for different trainables at the same time). If
- * there is a model does that, I can add that (need some thinking though). Because we cannot attach names
- * to it (hmm, in retrospect, we probably should), the way we identify the trainables is to through which
- * node it is used (by the command type), and in which position. Also, it is only interesting if the
- * trainable is the input of some command. Therefore, only show it if it is an input.
- */
-typedef ccv_nnc_cmd_t(*ccv_cnnp_model_minimizer_set_f)(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const indexes, const int index_size, const void* const context);
-/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
- * @param minimizer_setter The function to be called to return minimizer for a particular trainable.
- * @param context The context passed to the minimizer setter function.
+ * @param trainable_spans The trainables to be applied the minimizer on. 0 meant for all.
+ * @param context The number of trainable spans.
  */
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_minimizer_set_f minimizer_setter, const void* const context);
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size);
 /**
  * Get the default stream from a compiled model. If the model is not compiled, the default stream is
  * 0.

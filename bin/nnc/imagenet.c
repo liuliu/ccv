@@ -250,25 +250,6 @@ static double _accuracy_from_gpu(ccv_nnc_tensor_t* const* const gpu_outputs, ccv
 	return (double)correct / (device_count * batch_size);
 }
 
-static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const trainable_indexes, const int trainable_index_size, const void* const context)
-{
-	int i;
-	ccv_nnc_cmd_t cmd = *(const ccv_nnc_cmd_t*)context;
-	for (i = 0; i < trainable_index_size; i++)
-	{
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_BATCH_NORM_FORWARD &&
-			(trainable_indexes[i].index == 1 ||  trainable_indexes[i].index == 2)) // If it is scale / bias of batch norm, remove weight decay.
-			cmd.info.sgd.decay = 0;
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_GEMM_FORWARD &&
-			trainable_indexes[i].index == 2) // bias in gemm.
-			cmd.info.sgd.decay = 0;
-		if (trainable_indexes[i].cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD &&
-			trainable_indexes[i].index == 2) // bias in convolution.
-			cmd.info.sgd.decay = 0;
-	}
-	return cmd;
-}
-
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
 	// Prepare model.
@@ -408,7 +389,9 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		}
 		learn_rate = ccv_max(learn_rate, 0.00004);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0);
-		ccv_cnnp_model_set_minimizer(imagenet, sgd, _no_wd, &sgd);
+		ccv_cnnp_model_set_minimizer(imagenet, sgd, 0, 0);
+		sgd.info.sgd.decay = 0;
+		ccv_cnnp_model_set_minimizer(imagenet, sgd, TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(imagenet, 1)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		// Re-layout data for model fitting.

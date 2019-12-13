@@ -24,6 +24,7 @@ typedef struct {
 	void (*add_to_trainable)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of trainables. */
 	void (*add_to_output)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of outputs for retention. The final outputs are already added. This method is optional for any additional values we want to retain. */
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
+	void (*add_to_trainable_indices)(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const trainable_indices); /**< This is called when we try to get trainable indices out of a given model */
 } ccv_cnnp_model_vtab_t;
 
 struct ccv_cnnp_model_io_s {
@@ -118,8 +119,8 @@ typedef struct {
 	} apply_gradients;
 	struct {
 		ccv_nnc_cmd_t minimizer;
-		ccv_cnnp_model_minimizer_set_f setter;
-		const void*context;
+		ccv_array_t* trainable_spans;
+		int max_saved_aux_size;
 	} minimize;
 	ccv_nnc_cmd_t loss;
 	ccv_nnc_tensor_symbol_t fits[1];
@@ -130,6 +131,7 @@ struct ccv_cnnp_model_s {
 	int input_size;
 	int output_size;
 	ccv_array_t* io; // The opaque io that can be nil.
+	ccv_array_t* trainable_indices; // The indexes for trainables in the final model.
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;
@@ -155,10 +157,11 @@ typedef struct {
 
 typedef struct {
 	int it;
+	ccv_cnnp_model_t* model;
 	ccv_array_t* sequences;
 } ccv_cnnp_model_sequence_t;
 
-static inline void ccv_cnnp_model_push(const ccv_cnnp_model_t* const self, void* const context)
+static inline void ccv_cnnp_model_push(ccv_cnnp_model_t* const self, void* const context)
 {
 	ccv_cnnp_model_sequence_t* const model_sequence = (ccv_cnnp_model_sequence_t*)context;
 	// Reset to 0.
@@ -175,6 +178,7 @@ static inline void ccv_cnnp_model_push(const ccv_cnnp_model_t* const self, void*
 	}
 	ccv_array_push(model_sequence->sequences, &name);
 	model_sequence->it = 0;
+	model_sequence->model = self;
 }
 
 static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, void* const context)
@@ -233,6 +237,22 @@ static inline void ccv_cnnp_model_add_to_trainable(ccv_cnnp_model_t* const self,
 		ccv_cnnp_model_push(self, trainables);
 		self->isa->add_to_trainable(self, add_to_array, trainables);
 		ccv_cnnp_model_pop(self, trainables);
+	}
+}
+
+static inline void ccv_cnnp_model_add_to_trainable_indices(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const trainable_indices)
+{
+	if (self->isa->add_to_trainable_indices)
+		self->isa->add_to_trainable_indices(self, index, trainable_indices);
+	else {
+		int i;
+		if (!self->trainable_indices)
+			return;
+		if (index == -1)
+			for (i = 0; i < self->trainable_indices->rnum; i++)
+				ccv_array_push(trainable_indices, ccv_array_get(self->trainable_indices, i));
+		else if (index < self->trainable_indices->rnum)
+			ccv_array_push(trainable_indices, ccv_array_get(self->trainable_indices, index));
 	}
 }
 

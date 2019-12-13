@@ -81,6 +81,14 @@ static void _ccv_cnnp_sequential_model_set_is_test(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_set_is_test(self->sequence[i], is_test, updater, context);
 }
 
+static void _ccv_cnnp_sequential_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+{
+	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
+		ccv_cnnp_model_add_to_trainable_indices(self->sequence[i], index, trainable_indices);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
 	.build = _ccv_cnnp_sequential_model_build,
@@ -88,6 +96,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.add_to_trainable = _ccv_cnnp_sequential_model_add_to_trainable,
 	.add_to_output = _ccv_cnnp_sequential_model_add_to_output,
 	.set_is_test = _ccv_cnnp_sequential_model_set_is_test,
+	.add_to_trainable_indices = _ccv_cnnp_sequential_model_add_to_trainable_indices,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const char* const name)
@@ -201,6 +210,14 @@ static void _ccv_cnnp_functional_model_set_is_test(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_set_is_test(self->sequence[i]->model, is_test, updater, context);
 }
 
+static void _ccv_cnnp_functional_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+{
+	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	int i;
+	for (i = self->super.input_size; i < self->sequence_size; i++)
+		ccv_cnnp_model_add_to_trainable_indices(self->sequence[i]->model, index, trainable_indices);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.deinit = _ccv_cnnp_functional_model_deinit,
 	.build = _ccv_cnnp_functional_model_build,
@@ -208,6 +225,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.add_to_trainable = _ccv_cnnp_functional_model_add_to_trainable,
 	.add_to_output = _ccv_cnnp_functional_model_add_to_output,
 	.set_is_test = _ccv_cnnp_functional_model_set_is_test,
+	.add_to_trainable_indices = _ccv_cnnp_functional_model_add_to_trainable_indices,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const char* const name)
