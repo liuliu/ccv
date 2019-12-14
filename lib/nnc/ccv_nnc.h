@@ -2844,7 +2844,7 @@ CCV_WARN_UNUSED(ccv_cnnp_trainable_span_t) ccv_cnnp_model_trainable_span(ccv_cnn
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
  * @param trainable_spans The trainables to be applied the minimizer on. 0 meant for all.
- * @param context The number of trainable spans.
+ * @param trainable_span_size The number of trainable spans.
  */
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size);
 /**
