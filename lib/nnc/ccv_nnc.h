@@ -1309,49 +1309,6 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t*
  */
 void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
- * The opaque structure to iterate over graph.
- */
-typedef struct ccv_nnc_symbolic_graph_iter_s ccv_nnc_symbolic_graph_iter_t;
-/**
- * Return iterator for graph exec symbols from a graph.
- * @param graph The symbolic graph.
- * @param sources The sources for the graph.
- * @param source_size The size of the sources array. 0 to use default sources.
- * @param destinations The destinations for the graph.
- * @param destination_size The size of the destinations array. 0 to use default destinations.
- * @return The iterator for the symbolic graph.
- */
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_iter_t*) ccv_nnc_symbolic_graph_iter_new(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
-/**
- * Iterate to the next item.
- * @param iter The iterator for the symbolic graph.
- * @return 1 if successful, 0 if reached the end.
- */
-CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_iter_next(ccv_nnc_symbolic_graph_iter_t* const iter);
-/**
- * Get the command and the name associated with the exec symbol.
- * @param iter The iterator for the symbolic graph.
- * @param cmd The pointer we are going to write command to.
- * @param hint The pointer we are going to write hint to.
- * @param flags The pointer we are going to write flags to.
- * @param name The pointer we are going to write name to.
- */
-void ccv_nnc_graph_exec_symbol_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_cmd_t* const cmd, ccv_nnc_hint_t* const hint, int* const flags, char** const name);
-/**
- * Get the inputs and outputs associated with the exec symbol.
- * @param iter The iterator for the symbolic graph.
- * @param inputs The pointer we are going to write input tensor symbols to.
- * @param input_size The pointer we are going to write input tensor symbol size to.
- * @param outputs The pointer we are going to write output tensor symbols to.
- * @param output_size The pointer we are going to write output tensor symbol size to.
- */
-void ccv_nnc_tensor_symbol_io_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_tensor_symbol_t** const inputs, int* const input_size,  ccv_nnc_tensor_symbol_t** const outputs, int* const output_size);
-/**
- * Free the iterator structure.
- * @param iter The iterator for the symbolic graph.
- */
-void ccv_nnc_symbolic_graph_iter_free(ccv_nnc_symbolic_graph_iter_t* const iter);
-/**
  * For a given tensor symbol, this method resolves to its local reference inside the given graph.
  * This is related to the sub-graph of symbolic graphs. A tensor symbol in the sub-graph can still have a
  * representation in the parent graph. This method used to find the local reference in any graph.
