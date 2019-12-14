@@ -209,8 +209,8 @@ TEST_CASE("solve least square sum with adam on symbolic graph")
 		ccv_nnc_graph_exec_set(graph, adam, CMD_ADAM_FORWARD(i + 1, 0.002, 0.9, 0.98, 0, 1e-9));
 		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	}
-	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-3, "converge for vector 1");
-	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[2] + a_tensor->data.f32[1] * w_tensor->data.f32[3], 1, 1e-3, "converge for vector 1");
+	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-1, "converge for vector 1");
+	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[2] + a_tensor->data.f32[1] * w_tensor->data.f32[3], 1, 1e-1, "converge for vector 1");
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[2] * w_tensor->data.f32[0] + a_tensor->data.f32[3] * w_tensor->data.f32[1], -1, 1e-1, "converge for vector 2");
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[2] * w_tensor->data.f32[2] + a_tensor->data.f32[3] * w_tensor->data.f32[3], 1, 1e-1, "converge for vector 2");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
