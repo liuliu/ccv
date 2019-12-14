@@ -146,6 +146,8 @@
 
 #define TRAVERSE_FULL 0,0,0,0
 
+#define ALL_TRAINABLES -1
+
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
 #define CPU_NUMA_TENSOR_NHWC(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
 #define CPU_NUMA_TENSOR_NCHW(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
