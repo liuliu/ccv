@@ -724,7 +724,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 	ccv_cnnp_model_free(final);
 }
 
-TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y")
+TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate convergence")
 {
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
 	x->data.f32[0] = 1;
@@ -801,6 +801,87 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y")
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 0, 1e-5, "the mean squared error should be 0 at this point");
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn-ability")
+{
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	x->data.f32[0] = 1;
+	ccv_cnnp_model_t* mul = ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+		MODEL_CMD_EXEC_IO_MAP(
+			KV(CCV_CNNP_IO),
+			KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_copy(x))),
+		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "mul");
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	y->data.f32[0] = 2;
+	ccv_cnnp_model_t* add = ccv_cnnp_cmd_exec(CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0,
+		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
+			KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_copy(y))),
+		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
+	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add), "seq");
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(left, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
+	// Because we don't have L2 loss function available yet, manually create L2 loss.
+	ccv_cnnp_model_io_t diff = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+		MODEL_IO_LIST(left_out, fit));
+	ccv_cnnp_model_io_t sqr = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+		MODEL_IO_LIST(diff, diff));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_set_trainable(final, ccv_cnnp_model_trainable_span(mul, ALL_TRAINABLES), 0, x);
+	// Train add exclusively.
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(mul, ALL_TRAINABLES)));
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 12;
+	o_tensor->data.f32[0] = 12;
+	int i;
+	for (i = 0; i < 1000; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 0, 5e-3, "the mean squared error should be 0 at this point");
+	ccv_cnnp_model_trainable_copy(final, ccv_cnnp_model_trainable_span(add, 0), 0, x);
+	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 10, 1e-1, "the weight on add should be 10");
+	// Switch to train mul exclusively. Reset its value.
+	ccv_cnnp_model_set_trainable(final, ccv_cnnp_model_trainable_span(add, ALL_TRAINABLES), 0, y);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(mul, ALL_TRAINABLES)));
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(add, ALL_TRAINABLES)));
+	for (i = 0; i < 1000; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 0, 5e-3, "the mean squared error should be 0 at this point");
+	ccv_cnnp_model_trainable_copy(final, ccv_cnnp_model_trainable_span(mul, 0), 0, x);
+	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 5, 1e-2, "the weight on add should be 10");
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_free(a_tensor);
 	ccv_nnc_tensor_free(o_tensor);

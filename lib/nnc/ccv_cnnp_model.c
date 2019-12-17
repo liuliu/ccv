@@ -1431,6 +1431,53 @@ ccv_cnnp_trainable_span_t ccv_cnnp_model_trainable_span(ccv_cnnp_model_t* const 
 	};
 }
 
+void ccv_cnnp_model_set_trainable(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, const ccv_nnc_tensor_t* const tensor)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	const int tensors_init = !!compiled_data->tensors_init.v;
+	if (!tensors_init)
+		ccv_cnnp_model_tensors_init(model, compiled_data);
+	ccv_array_t* const trainable_indices = ccv_array_new(sizeof(int), 0, 0);
+	ccv_cnnp_model_add_to_trainable_indices(trainable_span.model, trainable_span.d, trainable_indices);
+	assert(index < trainable_indices->rnum);
+	assert(index >= 0);
+	const int d = *(int*)ccv_array_get(trainable_indices, index);
+	ccv_array_free(trainable_indices);
+	const int trainable_size = compiled_data->trainables->rnum;
+	assert(d >= 0);
+	assert(d < trainable_size);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	ccv_nnc_tensor_t* const dest = compiled_data->tensors.trainables[d];
+	assert(dest);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)tensor), TENSOR_LIST(dest), 0);
+	int i;
+	for (i = 1; i < parallel_count; i++)
+	{
+		ccv_nnc_tensor_t* const copy_tensor = compiled_data->tensors.trainables[d + i * trainable_size];
+		if (copy_tensor)
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+	}
+}
+
+void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, ccv_nnc_tensor_t* const tensor)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data->tensors.trainables);
+	ccv_array_t* const trainable_indices = ccv_array_new(sizeof(int), 0, 0);
+	ccv_cnnp_model_add_to_trainable_indices(trainable_span.model, trainable_span.d, trainable_indices);
+	assert(index < trainable_indices->rnum);
+	assert(index >= 0);
+	const int d = *(int*)ccv_array_get(trainable_indices, index);
+	ccv_array_free(trainable_indices);
+	const int trainable_size = compiled_data->trainables->rnum;
+	assert(d >= 0);
+	assert(d < trainable_size);
+	// We don't need to consider parallel_count, every trainable on each device is identical.
+	ccv_nnc_tensor_t* const src = compiled_data->tensors.trainables[d];
+	assert(src);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(tensor), 0);
+}
+
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;

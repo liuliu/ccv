@@ -2838,6 +2838,27 @@ typedef struct {
  */
 CCV_WARN_UNUSED(ccv_cnnp_trainable_span_t) ccv_cnnp_model_trainable_span(ccv_cnnp_model_t* const model, const int index);
 /**
+ * Set a trainable that is specified by the trainable span. This will override whatever value in that
+ * trainable. The given tensor should match the dimension of the trainable. It doesn't matter whether
+ * the given tensor is on CPU or GPU, it will be copied over. This method is limited, it can only set
+ * tensor once the model is compiled.
+ * @param model The composed model.
+ * @param trainable_span The trainable span that is used to specify which trainable to override.
+ * @param index The index, if any, to the trainable span (trainable span covers multiple trainables).
+ * @param tensor The tensor contains the value we want to copy over.
+ */
+void ccv_cnnp_model_set_trainable(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, const ccv_nnc_tensor_t* const tensor);
+/**
+ * Copy a trainable that is specified by the trainable span out of a model. This will override the value
+ * in the tensor you provided. The given tensor should match the dimension of the trainable and should
+ * already be allocated. It doesn't matter whether the given tensor is on CPU or GPU.
+ * @param model The composed model.
+ * @param trainable_span The trainable span that is used to specify which trainable to override.
+ * @param index The index, if any, to the trainable span (trainable span covers multiple trainables).
+ * @param tensor The tensor that receives value.
+ */
+void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, ccv_nnc_tensor_t* const tensor);
+/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
