@@ -132,7 +132,7 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 	return CCV_IO_FINAL;
 }
 
-#if defined(__APPLE__) || defined(BSD)
+#if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
 typedef struct {
 	char* buffer;
 	fpos_t pos;
@@ -185,7 +185,7 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 	} else if (type & CCV_IO_ANY_STREAM) {
 		assert(rows > 8 && cols == 0 && scanline == 0);
 		assert((type & 0xFF) != CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
-#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L || defined(__APPLE__) || defined(BSD)
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L || defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
 		// this is only supported by glibc
 #if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
 		fd = fmemopen((void*)in, (size_t)rows, "rb");

@@ -14,7 +14,7 @@
 #include <float.h>
 #include <math.h>
 #include <assert.h>
-#if !defined(__OpenBSD__) && !defined(__FreeBSD__)
+#if !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__)
 #include <alloca.h>
 #endif
 
