@@ -123,6 +123,7 @@ typedef struct {
 		int max_saved_aux_size;
 	} minimize;
 	ccv_nnc_cmd_t loss;
+	ccv_nnc_tensor_symbol_t* f;
 	ccv_nnc_tensor_symbol_t fits[1];
 } ccv_cnnp_compiled_data_t;
 

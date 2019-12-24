@@ -127,7 +127,7 @@ TEST_CASE("simplify graph with softmax + crossentropy")
 	label0_tensor->data.i32[0] = label_tensor->data.i32[0] = 2;
 	label0_tensor->data.i32[1] = label_tensor->data.i32[1] = 1;
 	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
-	ccv_nnc_tensor_t* const loss0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const loss0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
 	ccv_nnc_tensor_t* const softmax_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a0_tensor, label0_tensor), TENSOR_LIST(loss0_tensor, softmax_tensor), 0);
 	ccv_nnc_tensor_free(a0_tensor);

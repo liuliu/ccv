@@ -28,8 +28,7 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 	int i;
 	if (c)
 	{
-		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
-			{ assert(b->info.dim[i] == c->info.dim[i]); }
+		assert(ccv_nnc_tensor_count(c->info) == batch_size);
 		if (b->info.datatype == CCV_32F)
 		{
 			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
