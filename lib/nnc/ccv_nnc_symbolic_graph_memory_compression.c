@@ -85,7 +85,7 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 	ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0);
 	ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, 0);
 	ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, exec_symbol_info, graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
-	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, sources, source_size, destinations, destination_size, 0, 0, 0, tensor_symbol_info, exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, sources, source_size, destinations, destination_size, 0, 0, tensor_symbol_info, exec_symbol_info);
 	const int tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
 	const int exec_symbol_info_size = graph->exec_symbol_info->rnum;
 	uint32_t* const tensor_marked = (uint32_t*)cccalloc(((tensor_symbol_info_size + 31) >> 5) * 2, sizeof(uint32_t));

@@ -2579,7 +2579,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * dup_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_visit_t* dup_visit = ccv_nnc_graph_visit_new(dup_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, 0), dup_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, 0);
-	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, 0, dup_tensor_symbol_info, dup_exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_tensor_symbol_info, dup_exec_symbol_info);
 	_ccv_nnc_fixup_assign_ref_after_unroll(symbolic_graph, unroll_count, tensor_blocks, dup_tensor_block_ref, dup_tensor_symbol_info);
 	// Free out the old exec_dep
 	ccv_matrix_free(exec_dep);
@@ -2881,7 +2881,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_flag_t* exec_flags = (ccv_nnc_graph_exec_flag_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(ccv_nnc_graph_exec_flag_t));
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
-	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, 0, tensor_symbol_info, exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
 	int i, j, k, p, q;
 	const ccv_nnc_graph_exec_symbol_info_t* const  p_node_info = p_exec_symbol_info ? p_exec_symbol_info + (symbolic_graph->exec_idx - 1) : 0;
 	ccv_sparse_matrix_t* exec_dep;
@@ -3749,7 +3749,7 @@ static void _ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(ccv_nnc_symbolic_g
 		ccv_nnc_graph_visit_free(graph_prep->visit);
 		graph_prep->visit = visit;
 		assert(graph_prep->p);
-		ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, graph_prep->p->tensor_symbol_info, graph_prep->p->tensor_symbol_info_size, 0, graph_prep->tensor_symbol_info, graph_prep->exec_symbol_info);
+		ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, graph_prep->p->tensor_symbol_info, graph_prep->p->tensor_symbol_info_size, graph_prep->tensor_symbol_info, graph_prep->exec_symbol_info);
 	}
 	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
 		for (i = 0; i < node->graph_ref_size; i++)

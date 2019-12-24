@@ -1320,13 +1320,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t*
 /**
  * Compute all the tensor shapes within this graph.
  * @param graph The symbolic graph.
- * @param overwrite If the tensor shape is not auto, by default, we don't overwrite it.
  * @param sources The sources for the graph.
  * @param source_size The size of the sources array. 0 to use default sources.
  * @param destinations The destinations for the graph.
  * @param destination_size The size of the destinations array. 0 to use default destinations.
  */
-void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const int overwrite, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * For a given tensor symbol, this method resolves to its local reference inside the given graph.
  * This is related to the sub-graph of symbolic graphs. A tensor symbol in the sub-graph can still have a

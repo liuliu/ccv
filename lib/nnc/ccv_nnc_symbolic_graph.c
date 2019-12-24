@@ -1828,7 +1828,7 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 	ccfree(graph);
 }
 
-void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const int overwrite, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
+void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
 {
 	if (ccv_array_get(symbolic_graph->tensor_symbol_info, 0) != tensor_symbol_info)
 		memcpy(tensor_symbol_info, ccv_array_get(symbolic_graph->tensor_symbol_info, 0), sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
@@ -1873,8 +1873,7 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size);
 			for (i = 0; i < node->output_size; i++)
 				/* Only assign the output parameters if the symbol itself is auto. */
-				if (node->outputs[i] >= 0 && !ccv_nnc_is_tensor_auto(output_params[i]) &&
-					(overwrite || ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info)))
+				if (node->outputs[i] >= 0 && ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info))
 					tensor_symbol_info[node->outputs[i]].info = output_params[i];
 		}
 	} ccv_nnc_graph_visit_endfor
@@ -1884,7 +1883,7 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 			tensor_symbol_info[i].info.type = (~CCV_COMPUTE_DEVICE_ANY & tensor_symbol_info[i].info.type) | CCV_COMPUTE_DEVICE_000;
 }
 
-void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const int overwrite, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	assert((sources && source_size) || (!sources && !source_size));
 	const ccv_nnc_graph_exec_symbol_t* const graph_sources = sources ? sources : (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->sources, 0);
@@ -1933,6 +1932,6 @@ void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, c
 					exec_symbol_info[d].cmd = exec_symbol_info[i].cmd;
 			}
 	}
-	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0, 0, overwrite, tensor_symbol_info, exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0, 0, tensor_symbol_info, exec_symbol_info);
 	ccv_nnc_graph_visit_free(visit);
 }

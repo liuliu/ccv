@@ -50,7 +50,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			}
 	} ccv_nnc_graph_visit_endfor
 	// Run infer in the graph to get all tensors shaped.
-	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, sources, source_size, destinations, destination_size, 0, 0, 0, (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, 0), (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0));
+	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, sources, source_size, destinations, destination_size, 0, 0, (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, 0), (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0));
 	// Set ANY device to default device. Make a list of execution nodes / tensors to be duplicated.
 	ccv_array_t* const dup_tensors = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const dup_execs = ccv_array_new(sizeof(int), 0, 0);
