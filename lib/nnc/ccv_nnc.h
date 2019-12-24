@@ -1225,6 +1225,24 @@ int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_n
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
 /**
+ * Set the tensor symbol alias parameters.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @param ofs The offset on each of the dimension.
+ * @param inc The line size of each dimension.
+ * @return non-zero if it is not a tensor alias.
+ */
+int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+/**
+ * Get the parameters for a tensor symbol.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @param ofs The offset on each of the dimension.
+ * @param inc The line size of each dimension.
+ * @return non-zero if it is not a tensor alias.
+ */
+int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, int ofs[CCV_NNC_MAX_DIM_ALLOC], int inc[CCV_NNC_MAX_DIM_ALLOC]);
+/**
  * Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
  * @param graph The symbolic graph.
  * @param tensor The tensor symbol reference.
@@ -1302,12 +1320,13 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t*
 /**
  * Compute all the tensor shapes within this graph.
  * @param graph The symbolic graph.
+ * @param overwrite If the tensor shape is not auto, by default, we don't overwrite it.
  * @param sources The sources for the graph.
  * @param source_size The size of the sources array. 0 to use default sources.
  * @param destinations The destinations for the graph.
  * @param destination_size The size of the destinations array. 0 to use default destinations.
  */
-void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const int overwrite, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * For a given tensor symbol, this method resolves to its local reference inside the given graph.
  * This is related to the sub-graph of symbolic graphs. A tensor symbol in the sub-graph can still have a
@@ -1371,6 +1390,23 @@ void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, c
  * @return The total allocated size in bytes.
  */
 CCV_WARN_UNUSED(uint64_t) ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_arena);
+/**
+ * Re-init the tensor arena with updated symbolic graph. This won't work if the symbolic graph requires
+ * larger tensors than what's available. Use this method properly, you can avoid re-compile a graph
+ * just because some tensor shape changed.
+ * @param tensor_arena The tensor arena object generated through compilation.
+ * @param graph The updated symbolic graph with different tensor shape.
+ * @return 0 if successful, -1 if the tensor arena doesn't have enough space to just re-init.
+ */
+int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph);
+/**
+ * Re-init the graph exec arena with updated symbolic graph. This updated some hyper-parameters of
+ * executions to match the updated symbolic graph.
+ * @param graph_exec_arena The graph exec arena object provided mapping between symbolic and concrete graph.
+ * @param graph The concrete graph generated through compile method.
+ * @param symbolic_graph The updated symbolic graph.
+ */
+void ccv_nnc_graph_exec_reinit(ccv_nnc_graph_exec_arena_t* const graph_exec_arena, ccv_nnc_graph_t* const graph, const ccv_nnc_symbolic_graph_t* const symbolic_graph);
 /**
  * Function prototype for tensor symbol creation callback.
  */
@@ -2703,6 +2739,16 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* con
  * @param loss The wrapped command that computes the loss function.
  */
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss);
+/**
+ * Absorb a new model into the existing model. This requires the new model has exactly the same trainables
+ * but other dimensionality's can change. The new model has to not be compiled yet, its life-cycle management
+ * will be take over by the existing model. You don't need to free it separately.
+ * @param model The existing model.
+ * @param init The new model.
+ * @param inputs The tensor parameters for the model's inputs, that can be used to derive all tensor shapes.
+ * @param input_size The size of the inputs array.
+ */
+void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* const init, const ccv_nnc_tensor_param_t* const inputs, const int input_size);
 /**
  * Compute the shape of the output tensor after the model applied to the input.
  * This can only be called after the model is compiled with proper input parameters.

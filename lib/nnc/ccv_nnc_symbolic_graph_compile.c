@@ -1019,7 +1019,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			if (dup_ref >= 0 && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[dup_ref]))
 				TENSOR_EXPECT_UNSET_UNASSIGNED(tensor_blocks[i]);
 		}
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(off_t) * tensor_symbol_info_size + sizeof(int) * tensor_symbol_info_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(int) * tensor_symbol_info_size);
 	graph_prep->tensor_arena = tensor_arena;
 	tensor_arena->graph_ref = (intptr_t)graph_prep->symbolic_graph;
 	tensor_arena->buffers = (void*)(tensor_arena + 1);
@@ -1027,10 +1027,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
 	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->sub_arenas + graph_prep->sub_prep_size);
-	tensor_arena->vt_alias_offs = (off_t*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
-	tensor_arena->vt_alias_refs = (int*)(tensor_arena->vt_alias_offs + tensor_symbol_info_size);
+	tensor_arena->vt_alias_refs = (int*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->pb_vt_tensors = 0;
 	tensor_arena->vt_alias_tos = 0;
+	tensor_arena->vt_sizes = 0;
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
@@ -1038,11 +1038,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->allocator.isa = allocator.isa;
 	// Copy alias_ref info back to the tensor arena.
 	for (i = 0; i < tensor_symbol_info_size; i++)
-	{
 		tensor_arena->vt_alias_refs[i] = tensor_symbol_info[i].alias_ref;
-		if (tensor_symbol_info[i].alias_ref)
-			tensor_arena->vt_alias_offs[i] = ccv_nnc_tensor_view_offset(tensor_symbol_info[i].info.datatype, tensor_symbol_info[i].inc, tensor_symbol_info[i].ofs);
-	}
 	// Do the buffer copies.
 	for (i = 0; i < alloc_prep->buffer_size; i++)
 		tensor_arena->buffers[i].type = alloc_prep->buffers[i].type,
@@ -2583,7 +2579,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * dup_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_visit_t* dup_visit = ccv_nnc_graph_visit_new(dup_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, 0), dup_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, 0);
-	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_tensor_symbol_info, dup_exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, 0, dup_tensor_symbol_info, dup_exec_symbol_info);
 	_ccv_nnc_fixup_assign_ref_after_unroll(symbolic_graph, unroll_count, tensor_blocks, dup_tensor_block_ref, dup_tensor_symbol_info);
 	// Free out the old exec_dep
 	ccv_matrix_free(exec_dep);
@@ -2885,7 +2881,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_flag_t* exec_flags = (ccv_nnc_graph_exec_flag_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(ccv_nnc_graph_exec_flag_t));
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
-	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
+	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, 0, tensor_symbol_info, exec_symbol_info);
 	int i, j, k, p, q;
 	const ccv_nnc_graph_exec_symbol_info_t* const  p_node_info = p_exec_symbol_info ? p_exec_symbol_info + (symbolic_graph->exec_idx - 1) : 0;
 	ccv_sparse_matrix_t* exec_dep;
@@ -3753,7 +3749,7 @@ static void _ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(ccv_nnc_symbolic_g
 		ccv_nnc_graph_visit_free(graph_prep->visit);
 		graph_prep->visit = visit;
 		assert(graph_prep->p);
-		ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, graph_prep->p->tensor_symbol_info, graph_prep->p->tensor_symbol_info_size, graph_prep->tensor_symbol_info, graph_prep->exec_symbol_info);
+		ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, graph_prep->p->tensor_symbol_info, graph_prep->p->tensor_symbol_info_size, 0, graph_prep->tensor_symbol_info, graph_prep->exec_symbol_info);
 	}
 	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
 		for (i = 0; i < node->graph_ref_size; i++)
@@ -3820,6 +3816,8 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 				ccv_array_free(tensor_arena->vt_alias_tos[i]);
 		ccfree(tensor_arena->vt_alias_tos);
 	}
+	if (tensor_arena->vt_sizes)
+		ccfree(tensor_arena->vt_sizes);
 	ccfree(tensor_arena);
 }
 
@@ -3853,7 +3851,11 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 		for (i = 0; i < tensor_arena->vt_alias_tos[symbol.d]->rnum; i++)
 		{
 			const int d = *(int*)ccv_array_get(tensor_arena->vt_alias_tos[symbol.d], i);
-			tensor_arena->vt_tensors[d]->data.u8 = tensor->data.u8 + tensor_arena->vt_alias_offs[d];
+			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
+			if (CCV_IS_TENSOR_VIEW(d_tensor))
+				d_tensor->data.u8 = tensor->data.u8 + ((ccv_nnc_tensor_view_t*)d_tensor)->off;
+			else
+				d_tensor->data.u8 = tensor->data.u8;
 		}
 }
 
@@ -3874,6 +3876,90 @@ uint64_t ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_ar
 	for (i = 0; i < tensor_arena->buffer_size; i++)
 		total_size += tensor_arena->buffers[i].size;
 	return total_size;
+}
+
+static void _ccv_nnc_multiview_update_params(ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_param_t params)
+{
+	int i;
+	if (mv->it)
+		mv->it->info = params;
+	for (i = 0; i < mv->repeat + mv->kind; i++)
+	{
+		ccv_nnc_tensor_t* tensor = CCV_NNC_MULTIVIEW_DATA(mv)[i];
+		if (CCV_IS_TENSOR_MULTIVIEW(tensor))
+			_ccv_nnc_multiview_update_params((ccv_nnc_tensor_multiview_t*)tensor, params);
+		else
+			tensor->info = params;
+	}
+}
+
+int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph)
+{
+	int i;
+	assert(graph->tensor_symbol_info->rnum >= tensor_arena->vt_tensor_size);
+	if (!tensor_arena->vt_sizes) // Keep the original size so we can check against to see if we will overflow.
+	{
+		tensor_arena->vt_sizes = (size_t*)ccmalloc(sizeof(size_t) * tensor_arena->vt_tensor_size);
+		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+			if (tensor_arena->vt_tensors[i] && !tensor_arena->vt_alias_refs[i])
+			{
+				ccv_nnc_tensor_t* tensor = tensor_arena->vt_tensors[i];
+				if (CCV_IS_TENSOR_MULTIVIEW(tensor))
+				{
+					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
+					while (CCV_IS_TENSOR_MULTIVIEW(mv))
+						mv = (ccv_nnc_tensor_multiview_t*)(mv->it ? mv->it : CCV_NNC_MULTIVIEW_DATA(mv)[0]);
+					tensor = (ccv_nnc_tensor_t*)mv;
+				}
+				tensor_arena->vt_sizes[i] = ccv_nnc_tensor_data_size(tensor->info);
+			}
+	}
+	int flag = 0;
+	for (i = 0; !flag && i < tensor_arena->vt_tensor_size; i++)
+		if (tensor_arena->vt_tensors[i] && !tensor_arena->vt_alias_refs[i])
+		{
+			ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
+			flag = (tensor_arena->vt_sizes[i] < ccv_nnc_tensor_data_size(symbol_info->info));
+		}
+	if (flag)
+		return -1;
+	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+		if (tensor_arena->vt_tensors[i])
+		{
+			ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
+			ccv_nnc_tensor_t* tensor = tensor_arena->vt_tensors[i];
+			if (CCV_IS_TENSOR_MULTIVIEW(tensor))
+			{
+				assert(!tensor_arena->vt_alias_refs[i]);
+				_ccv_nnc_multiview_update_params((ccv_nnc_tensor_multiview_t*)tensor, symbol_info->info);
+			} else if (!tensor_arena->vt_alias_refs[i])
+				tensor->info = symbol_info->info;
+			else {
+				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->inc, symbol_info->ofs);
+				tensor->info = symbol_info->info;
+				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
+				tensor->data.u8 = tensor_arena->vt_tensors[alias_ref]->data.u8 + off;
+				if (CCV_IS_TENSOR_VIEW(tensor))
+					((ccv_nnc_tensor_view_t*)tensor)->off = off;
+			}
+		}
+	// Should handle sub_tensor_arena, don't do that at the moment.
+	assert(!graph->sub_graphs);
+	return 0;
+}
+
+void ccv_nnc_graph_exec_reinit(ccv_nnc_graph_exec_arena_t* const graph_exec_arena, ccv_nnc_graph_t* const graph, const ccv_nnc_symbolic_graph_t* const symbolic_graph)
+{
+	assert(symbolic_graph->exec_symbol_info->rnum >= graph_exec_arena->graph_exec_size);
+	int i;
+	for (i = 0; i < graph_exec_arena->graph_exec_size; i++)
+	{
+		const ccv_nnc_graph_exec_t graph_exec = graph_exec_arena->graph_execs[i];
+		if (graph_exec.d < 0)
+			continue;
+		const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, i);
+		ccv_nnc_graph_exec_set(graph, graph_exec, symbol_info->cmd);
+	}
 }
 
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)

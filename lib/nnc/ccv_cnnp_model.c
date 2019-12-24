@@ -105,67 +105,201 @@ static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_sym
 	++add_to_array_context->sequence.it;
 }
 
+static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size)
+{
+	assert(model->graph);
+	model->inputs = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * input_size);
+	int i;
+	for (i = 0; i < input_size; i++)
+		model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
+	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
+	ccv_array_t* const trainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+	ccv_array_t* const trainable_ids = ccv_array_new(sizeof(char*), 0, 0);
+	ccv_cnnp_model_add_to_array_context_t context = {
+		.sequence = {},
+		.prefix = 't',
+		.symbols = trainables,
+		.ids = trainable_ids,
+	};
+	ccv_cnnp_model_add_to_trainable(model, _ccv_cnnp_add_to_array, &context);
+	// Assert no trainable is alias.
+	for (i = 0; i < trainables->rnum; i++)
+	{
+		const ccv_nnc_tensor_symbol_t trainable = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(trainables, i);
+		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(trainable.graph, trainable);
+		assert(alias_to.graph == 0); // Cannot find the one alias to.
+	}
+	ccv_array_t* const retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+	ccv_array_t* const retainable_ids = ccv_array_new(sizeof(char*), 0, 0);
+	if (context.sequence.sequences)
+		ccv_array_clear(context.sequence.sequences);
+	context.prefix = 'r';
+	context.symbols = retainables;
+	context.ids = retainable_ids;
+	ccv_cnnp_model_add_to_output(model, _ccv_cnnp_add_to_array, &context);
+	ccv_array_free(context.sequence.sequences);
+	// Assert no retainable is alias.
+	for (i = 0; i < retainables->rnum; i++)
+	{
+		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(retainables, i);
+		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(retained.graph, retained);
+		assert(alias_to.graph == 0); // Cannot find the one alias to.
+	}
+	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_simplify(model->graph,
+		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
+			CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
+			CCV_NNC_SIMPLIFY_OPS_FUSION,
+			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
+		model->outputs, model->output_size,
+		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+	model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (model->output_size - 1));
+	// If inputs are from GPU, stream type is GPU.
+	model->compiled_data->trainables = trainables;
+	model->compiled_data->retainables = retainables;
+	model->compiled_data->ids.trainables = trainable_ids;
+	model->compiled_data->ids.retainables = retainable_ids;
+}
+
+static void _ccv_cnnp_graph_push_graph_exec_symbol(void* context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
+{
+	ccv_array_t* const stack = (ccv_array_t*)context;
+	ccv_array_push(stack, &symbol.d);
+}
+
+static void _ccv_nnc_tensor_symbol_reinit(const ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const int src_index, const int dest_index)
+{
+	const ccv_nnc_tensor_symbol_t src_symbol = {
+		.d = src_index,
+		.graph = src_graph
+	};
+	const ccv_nnc_tensor_symbol_t dest_symbol = {
+		.d = dest_index,
+		.graph = dest_graph
+	};
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(src_graph, src_symbol);
+	ccv_nnc_tensor_symbol_set(dest_graph, dest_symbol, params);
+	int ofs[CCV_NNC_MAX_DIM_ALLOC];
+	int inc[CCV_NNC_MAX_DIM_ALLOC];
+	if (0 == ccv_nnc_tensor_symbol_alias_params(src_graph, src_symbol, ofs, inc))
+		ccv_nnc_tensor_symbol_alias_set(dest_graph, dest_symbol, ofs, inc);
+}
+
+static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const compiled_data);
+
+void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* const init, const ccv_nnc_tensor_param_t* const inputs, const int input_size)
+{
+	assert(model->graph);
+	assert(!init->graph);
+	init->graph = ccv_nnc_symbolic_graph_new();
+	ccv_array_t* const stack = ccv_array_new(sizeof(int), 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(init->graph, _ccv_cnnp_graph_push_graph_exec_symbol, stack);
+	_ccv_cnnp_model_compile(init, inputs, input_size);
+	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0);
+	ccv_nnc_symbolic_graph_tensor_auto(init->graph, 0, TRAVERSE_FULL);
+	// Go through the graph to set tensor on matching symbols
+	int i, j;
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	for (i = 0; i < stack->rnum; i++)
+	{
+		const int d = *(int*)ccv_array_get(stack, i);
+		// If exceed range, skip.
+		if (d >= ccv_nnc_graph_exec_symbol_count(init->graph) ||
+			d >= ccv_nnc_graph_exec_symbol_count(model->graph))
+			continue;
+		const ccv_nnc_graph_exec_symbol_t src_symbol = {
+			.d = d,
+			.graph = init->graph
+		};
+		const ccv_nnc_graph_exec_symbol_t dest_symbol = {
+			.d = d,
+			.graph = model->graph
+		};
+		const ccv_nnc_cmd_t src_cmd = ccv_nnc_graph_exec_symbol_cmd(init->graph, src_symbol);
+		const ccv_nnc_cmd_t dest_cmd = ccv_nnc_graph_exec_symbol_cmd(model->graph, dest_symbol);
+		// If the name doesn't match, skip.
+		if (dest_cmd.cmd != src_cmd.cmd && src_cmd.cmd != CCV_NNC_NOOP)
+			continue;
+		// Now get all the inputs and outputs, if matches, set them.
+		const int* src_inputs;
+		int src_input_size;
+		const int* src_outputs;
+		int src_output_size;
+		ccv_nnc_graph_exec_symbol_io(init->graph, src_symbol, &src_inputs, &src_input_size, &src_outputs, &src_output_size);
+		const int* dest_inputs;
+		int dest_input_size;
+		const int* dest_outputs;
+		int dest_output_size;
+		ccv_nnc_graph_exec_symbol_io(model->graph, dest_symbol, &dest_inputs, &dest_input_size, &dest_outputs, &dest_output_size);
+		int flag = 0;
+		if (src_input_size == dest_input_size)
+			for (j = 0; !flag && j < src_input_size; j++)
+				flag = (src_inputs[j] != dest_inputs[j]);
+		else
+			flag = 1;
+		if (!flag) // Input matches, now copy input tensor setup.
+		{
+			ccv_nnc_graph_exec_symbol_set(model->graph, dest_symbol, src_cmd);
+			for (j = 1; j < parallel_count; j++)
+			{
+				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_copy(model->graph, dest_symbol, j);
+				ccv_nnc_graph_exec_symbol_set(model->graph, copy, src_cmd);
+			}
+			for (j = 0; j < src_input_size; j++)
+				if (src_inputs[j] >= 0)
+					_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_inputs[j], dest_inputs[j]);
+		}
+		flag = 0;
+		if (src_output_size == dest_output_size)
+			for (j = 0; !flag && j < src_output_size; j++)
+				flag = (src_outputs[j] != dest_outputs[j]);
+		else
+			flag = 1;
+		if (!flag) // Output matches, now copy output tensor setup.
+			for (j = 0; j < src_output_size; j++)
+				if (src_outputs[j] >= 0)
+					_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_outputs[j], dest_outputs[j]);
+	}
+	ccv_array_free(stack);
+	// After this, we get all tensors in the model graph resolved through tensor_auto.
+	ccv_nnc_symbolic_graph_tensor_auto(model->graph, 1, TRAVERSE_FULL);
+	// Go through compiled data, if any.
+	if (model->compiled_data)
+	{
+		ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+		if (compiled_data->tensor_arena)
+		{
+			const int flag = ccv_nnc_tensor_arena_reinit(compiled_data->tensor_arena, model->graph);
+			if (flag == 0 && compiled_data->graph_exec_arena)
+				ccv_nnc_graph_exec_reinit(compiled_data->graph_exec_arena, compiled_data->graph, model->graph);
+			else
+				// Free-up tensor arena & graph exec arena.
+				_ccv_cnnp_compiled_data_graph_free(compiled_data);
+		}
+		// There are other compiled graphs, for accum and apply gradients.
+		// However, the main conclusion is, these absorb operations shouldn't impact trainables.
+		// Thus, it won't impact the shape of gradients (only outgrad). Since for outgrad, we
+		// don't allocate ourselves, it is not a concern. For normal gradients, the shape cannot
+		// be changed otherwise trainables' shape will be meaningless. The same goes to retainables.
+		// That is why we don't update these compiled graphs at all this point.
+	}
+	// Free the model, we've already "absorbed" it.
+	ccv_cnnp_model_free(init);
+}
+
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss)
 {
 	assert(input_size == model->input_size);
 	if (!model->graph) // The graph is not compiled yet.
 	{
 		model->graph = ccv_nnc_symbolic_graph_new();
-		model->inputs = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * input_size);
-		int i;
-		for (i = 0; i < input_size; i++)
-			model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
-		ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
-		ccv_array_t* const trainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_array_t* const trainable_ids = ccv_array_new(sizeof(char*), 0, 0);
-		ccv_cnnp_model_add_to_array_context_t context = {
-			.sequence = {},
-			.prefix = 't',
-			.symbols = trainables,
-			.ids = trainable_ids,
-		};
-		ccv_cnnp_model_add_to_trainable(model, _ccv_cnnp_add_to_array, &context);
-		// Assert no trainable is alias.
-		for (i = 0; i < trainables->rnum; i++)
-		{
-			const ccv_nnc_tensor_symbol_t trainable = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(trainables, i);
-			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(trainable.graph, trainable);
-			assert(alias_to.graph == 0); // Cannot find the one alias to.
-		}
-		ccv_array_t* const retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_array_t* const retainable_ids = ccv_array_new(sizeof(char*), 0, 0);
-		if (context.sequence.sequences)
-			ccv_array_clear(context.sequence.sequences);
-		context.prefix = 'r';
-		context.symbols = retainables;
-		context.ids = retainable_ids;
-		ccv_cnnp_model_add_to_output(model, _ccv_cnnp_add_to_array, &context);
-		ccv_array_free(context.sequence.sequences);
-		// Assert no retainable is alias.
-		for (i = 0; i < retainables->rnum; i++)
-		{
-			const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(retainables, i);
-			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(retained.graph, retained);
-			assert(alias_to.graph == 0); // Cannot find the one alias to.
-		}
-		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-		ccv_nnc_symbolic_graph_simplify(model->graph,
-			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
-				CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
-				CCV_NNC_SIMPLIFY_OPS_FUSION,
-				CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
-			model->outputs, model->output_size,
-			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
-		int flag = 0;
+		_ccv_cnnp_model_compile(model, inputs, input_size);
+		assert(model->compiled_data);
+		int i, flag = 0;
 		for (i = 0; !flag && i < input_size; i++)
 			flag = (CCV_TENSOR_GET_MEMORY(inputs[i].type) == CCV_TENSOR_GPU_MEMORY);
-		model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (model->output_size - 1));
 		// If inputs are from GPU, stream type is GPU.
 		model->compiled_data->stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
-		model->compiled_data->trainables = trainables;
-		model->compiled_data->retainables = retainables;
-		model->compiled_data->ids.trainables = trainable_ids;
-		model->compiled_data->ids.retainables = retainable_ids;
 		model->compiled_data->minimize.minimizer = minimizer;
 		model->compiled_data->minimize.max_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 		model->compiled_data->loss = loss;
@@ -184,7 +318,7 @@ void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_pa
 	assert(model->graph);
 	assert(output_size == model->output_size);
 	ccv_nnc_symbolic_graph_t* const graph = model->graph;
-	ccv_nnc_symbolic_graph_tensor_auto(graph, TRAVERSE_FULL);
+	ccv_nnc_symbolic_graph_tensor_auto(graph, 0, TRAVERSE_FULL);
 	int i;
 	for (i = 0; i < output_size; i++)
 	{
@@ -769,6 +903,9 @@ static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const c
 	if (compiled_data->graph_exec_arena)
 		ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
 	compiled_data->graph_exec_arena = 0;
+	if (compiled_data->backward.from_ops)
+		ccfree(compiled_data->backward.from_ops);
+	compiled_data->backward.from_ops = 0;
 }
 
 static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* const compiled_data)
@@ -787,9 +924,6 @@ static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->evaluate.schedule)
 		ccv_nnc_graph_static_schedule_free(compiled_data->evaluate.schedule);
 	compiled_data->evaluate.schedule = 0;
-	if (compiled_data->backward.from_ops)
-		ccfree(compiled_data->backward.from_ops);
-	compiled_data->backward.from_ops = 0;
 }
 
 static void _ccv_cnnp_compiled_data_backward_free(ccv_cnnp_compiled_data_t* const compiled_data)

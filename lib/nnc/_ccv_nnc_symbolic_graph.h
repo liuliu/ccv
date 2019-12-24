@@ -133,7 +133,7 @@ struct ccv_nnc_tensor_arena_s {
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
 	int* vt_alias_refs; // reference to which it is alias to.
-	off_t* vt_alias_offs; // offsets to the alias if there is.
+	size_t* vt_sizes; // The size of each tensor.
 	ccv_numeric_data_t* pb_vt_tensors; // pre-bindings for this vt_tensors, this is optional.
 	ccv_array_t** vt_alias_tos; // array to record which tensor this is aliased to. This is first created when bind a symbol.
 	struct {
@@ -203,7 +203,7 @@ inline static void ccv_array_replace_unique_int(ccv_array_t* ints, const int idx
 		ccv_array_push(ints, &outgoing);
 }
 
-void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
+void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const int overwrite, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
 
 int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const tensor_a, const ccv_nnc_tensor_symbol_info_t* const tensor_b);
 int ccv_nnc_tensor_symbol_map_raw(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);

@@ -891,4 +891,62 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("a compiled model absorbs a new model with slightly different configuration")
+{
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0)
+	), "multi_layer");
+	ccv_nnc_tensor_param_t x = CPU_TENSOR_NHWC(32F, 2, 2);
+	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(x), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, x, 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 4; i++)
+		x_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_cnnp_model_evaluate(multi_layer, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(x_tensor), TENSOR_LIST(y_tensor), 0, 0);
+	ccv_cnnp_model_t* const small_model = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0)
+	), "multi_layer");
+	x = CPU_TENSOR_NHWC(32F, 1, 2);
+	ccv_cnnp_model_absorb(multi_layer, small_model, TENSOR_PARAM_LIST(x));
+	ccv_nnc_tensor_t* const small_x = ccv_nnc_tensor_new(0, x, 0);
+	ccv_nnc_tensor_t* const small_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	memcpy(small_x->data.f32, x_tensor->data.f32, sizeof(float) * 2);
+	ccv_cnnp_model_evaluate(multi_layer, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(small_x), TENSOR_LIST(small_y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(small_y->data.f32[0], y_tensor->data.f32[0], 1e-5, "the trainables retained, the value should be too");
+	ccv_cnnp_model_t* const large_model = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(2, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0)
+	), "multi_layer");
+	x = CPU_TENSOR_NHWC(32F, 4, 2);
+	ccv_cnnp_model_absorb(multi_layer, large_model, TENSOR_PARAM_LIST(x));
+	ccv_nnc_tensor_t* const large_x = ccv_nnc_tensor_new(0, x, 0);
+	ccv_nnc_tensor_t* const large_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	memcpy(large_x->data.f32, x_tensor->data.f32, sizeof(float) * 4);
+	for (i = 4; i < 8; i++)
+		large_x->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_cnnp_model_evaluate(multi_layer, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(large_x), TENSOR_LIST(large_y), 0, 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, large_y->data.f32, y_tensor->data.f32, 2, 1e-5, "the trainables retained, the value should be too");
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(small_y);
+	ccv_nnc_tensor_free(small_x);
+	ccv_nnc_tensor_free(large_y);
+	ccv_nnc_tensor_free(large_x);
+	ccv_cnnp_model_free(multi_layer);
+}
+
 #include "case_main.h"
