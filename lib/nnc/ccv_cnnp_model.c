@@ -333,13 +333,18 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		model->compiled_data->minimize.minimizer = minimizer;
 		model->compiled_data->minimize.max_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	} else {
-		// Now, finally fill in this part. If the graph is already compiled, there are a few ways.
-		// 1. Free all compiled data, except trainables and retainables;
-		// 2. Rebuild the graph.
-		// Or we can:
-		// 1. Rebuild the graph.
-		// 2. Reconfigure the tensor arena to match the new dimensions.
+		// Now, finally fill in this part. If the graph is already compiled, we make a copy of the model.
+		// And then absorb the "new model" to the old one.
+		ccv_cnnp_model_t* const init = ccv_cnnp_model_copy(model);
+		ccv_cnnp_model_absorb(model, init, inputs, input_size);
+		ccv_cnnp_model_set_minimizer(model, minimizer, 0, 0);
 	}
+}
+
+ccv_cnnp_model_t* ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model)
+{
+	assert(model->isa->copy);
+	return model->isa->copy(model);
 }
 
 void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_param_t* const outputs, const int output_size)

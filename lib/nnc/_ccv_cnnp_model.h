@@ -23,6 +23,7 @@ typedef struct {
 	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); /**< This is called to init ccv_nnc_tensor_symbol_t with a exec. */
 	void (*add_to_trainable)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of trainables. */
 	void (*add_to_output)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of outputs for retention. The final outputs are already added. This method is optional for any additional values we want to retain. */
+	ccv_cnnp_model_t* (*copy)(const ccv_cnnp_model_t* const self); /**< This is called to make a deep copy of itself. */
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
 	void (*add_to_trainable_indices)(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const trainable_indices); /**< This is called when we try to get trainable indices out of a given model */
 } ccv_cnnp_model_vtab_t;

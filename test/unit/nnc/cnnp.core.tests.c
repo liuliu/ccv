@@ -45,7 +45,9 @@ static ccv_cnnp_model_t* simple_cifar_10(void)
 
 TEST_CASE("compile simple cifar-10 model")
 {
-	ccv_cnnp_model_t* const sequential = simple_cifar_10();
+	ccv_cnnp_model_t* const sequential0 = simple_cifar_10();
+	ccv_cnnp_model_t* const sequential = ccv_cnnp_model_copy(sequential0);
+	ccv_cnnp_model_free(sequential0);
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
@@ -137,8 +139,9 @@ TEST_CASE("inception layer for model")
 	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_3));
 
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(tower_1, tower_2, tower_3));
-
-	ccv_cnnp_model_t* inception = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output), 0);
+	ccv_cnnp_model_t* const inception0 = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output), 0);
+	ccv_cnnp_model_t* const inception = ccv_cnnp_model_copy(inception0);
+	ccv_cnnp_model_free(inception0);
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	ccv_cnnp_model_compile(inception, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	CNNP_MODEL_GEN(inception, CCV_NNC_LONG_DOT_GRAPH);

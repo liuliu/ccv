@@ -13,8 +13,11 @@ static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_g
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_EWSUM_FORWARD(), inputs, input_size, outputs, output_size, 0);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_add_isa = {
 	.build = _ccv_cnnp_add_build,
+	.copy = _ccv_cnnp_add_copy,
 };
 
 typedef struct {
@@ -33,14 +36,22 @@ ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
 	return (ccv_cnnp_model_t*)model_add;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self)
+{
+	return ccv_cnnp_add(self->name);
+}
+
 static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	assert(output_size == 1);
 	// TODO: Concatenate is not done yet.
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const self);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_concat_isa = {
 	.build = _ccv_cnnp_concat_build,
+	.copy = _ccv_cnnp_concat_copy,
 };
 
 typedef struct {
@@ -57,6 +68,11 @@ ccv_cnnp_model_t* ccv_cnnp_concat(const char* const name)
 	model_concat->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_concat->super, name);
 	return (ccv_cnnp_model_t*)model_concat;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const self)
+{
+	return ccv_cnnp_concat(self->name);
 }
 
 typedef struct {
@@ -78,8 +94,11 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, self->inc, params, 0);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_reshape_isa = {
 	.build = _ccv_cnnp_reshape_build,
+	.copy = _ccv_cnnp_reshape_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
@@ -97,6 +116,12 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const i
 		flag = (inc[i] != 0);
 	memcpy(model_reshape->inc, flag ? inc : dim, sizeof(model_reshape->inc));
 	return (ccv_cnnp_model_t*)model_reshape;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_reshape_t* const self = (const ccv_cnnp_model_reshape_t*)super;
+	return ccv_cnnp_reshape(self->dim, self->ofs, self->inc, self->super.name);
 }
 
 typedef struct {
@@ -117,8 +142,11 @@ static void _ccv_cnnp_flatten_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], DIM_ALLOC(), output_params.dim, output_params, 0);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_flatten_copy(const ccv_cnnp_model_t* const self);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_flatten_isa = {
 	.build = _ccv_cnnp_flatten_build,
+	.copy = _ccv_cnnp_flatten_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_flatten(const char* const name)
@@ -130,6 +158,11 @@ ccv_cnnp_model_t* ccv_cnnp_flatten(const char* const name)
 	model_flatten->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_flatten->super, name);
 	return (ccv_cnnp_model_t*)model_flatten;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_flatten_copy(const ccv_cnnp_model_t* const self)
+{
+	return ccv_cnnp_flatten(self->name);
 }
 
 #pragma mark - Batch Norm Layer
@@ -244,11 +277,14 @@ static void _ccv_cnnp_batch_norm_deinit(ccv_cnnp_model_t* const super)
 		ccv_array_free(self->retainables);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_batch_norm_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_batch_norm_isa = {
 	.build = _ccv_cnnp_batch_norm_build,
 	.init_states = _ccv_cnnp_batch_norm_init_states,
 	.add_to_trainable = _ccv_cnnp_batch_norm_add_to_trainable,
 	.add_to_output = _ccv_cnnp_batch_norm_add_to_output,
+	.copy = _ccv_cnnp_batch_norm_copy,
 	.set_is_test = _ccv_cnnp_batch_norm_set_is_test,
 	.deinit = _ccv_cnnp_batch_norm_deinit,
 };
@@ -268,6 +304,12 @@ ccv_cnnp_model_t* ccv_cnnp_batch_norm(const float momentum, const float epsilon,
 	model_batch_norm->params.bnorm.momentum = momentum;
 	model_batch_norm->params.bnorm.epsilon = epsilon;
 	return (ccv_cnnp_model_t*)model_batch_norm;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_batch_norm_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_batch_norm_t* const self = (const ccv_cnnp_model_batch_norm_t*)super;
+	return ccv_cnnp_batch_norm(self->params.bnorm.momentum, self->params.bnorm.epsilon, self->super.name);
 }
 
 #pragma mark - Convolution Layer
@@ -353,10 +395,13 @@ static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super
 		add_to_array(trainables, self->scale);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.build = _ccv_cnnp_convolution_build,
 	.init_states = _ccv_cnnp_convolution_init_states,
 	.add_to_trainable = _ccv_cnnp_convolution_add_to_trainable,
+	.copy = _ccv_cnnp_convolution_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
@@ -376,6 +421,12 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 	memcpy(model_convolution->kdim, kdim, sizeof(model_convolution->kdim));
 	model_convolution->params = params;
 	return (ccv_cnnp_model_t*)model_convolution;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
+	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->params, self->super.name);
 }
 
 #pragma mark - Dense Layer
@@ -448,10 +499,13 @@ static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, cons
 		add_to_array(trainables, self->scale);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.build = _ccv_cnnp_dense_build,
 	.init_states = _ccv_cnnp_dense_init_states,
 	.add_to_trainable = _ccv_cnnp_dense_add_to_trainable,
+	.copy = _ccv_cnnp_dense_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params, const char* const name)
@@ -469,6 +523,12 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params,
 	model_dense->count = count;
 	model_dense->params = params;
 	return (ccv_cnnp_model_t*)model_dense;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_dense_t* const self = (const ccv_cnnp_model_dense_t*)super;
+	return ccv_cnnp_dense(self->count, self->params, self->super.name);
 }
 
 #pragma mark - Pool Layers
@@ -500,8 +560,11 @@ static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	outputs[0] = pool_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_max_pool_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_max_pool_isa = {
 	.build = _ccv_cnnp_max_pool_build,
+	.copy = _ccv_cnnp_max_pool_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
@@ -515,6 +578,12 @@ ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
 	model_pool->params = params;
 	return (ccv_cnnp_model_t*)model_pool;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_max_pool_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_pool_t* const self = (const ccv_cnnp_model_pool_t*)super;
+	return ccv_cnnp_max_pool(self->kdim, self->params, self->super.name);
 }
 
 static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -537,8 +606,11 @@ static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_
 	outputs[0] = pool_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_average_pool_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_average_pool_isa = {
 	.build = _ccv_cnnp_average_pool_build,
+	.copy = _ccv_cnnp_average_pool_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
@@ -552,6 +624,12 @@ ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], c
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
 	model_pool->params = params;
 	return (ccv_cnnp_model_t*)model_pool;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_average_pool_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_pool_t* const self = (const ccv_cnnp_model_pool_t*)super;
+	return ccv_cnnp_average_pool(self->kdim, self->params, self->super.name);
 }
 
 #pragma mark - RELU Layer
@@ -576,8 +654,11 @@ static void _ccv_cnnp_relu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic
 	outputs[0] = relu_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_relu_copy(const ccv_cnnp_model_t* const self);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_relu_isa = {
 	.build = _ccv_cnnp_relu_build,
+	.copy = _ccv_cnnp_relu_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_relu(const char* const name)
@@ -589,6 +670,11 @@ ccv_cnnp_model_t* ccv_cnnp_relu(const char* const name)
 	model_relu->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_relu->super, name);
 	return (ccv_cnnp_model_t*)model_relu;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_relu_copy(const ccv_cnnp_model_t* const self)
+{
+	return ccv_cnnp_relu(self->name);
 }
 
 #pragma mark - Softmax Layer
@@ -613,8 +699,11 @@ static void _ccv_cnnp_softmax_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	outputs[0] = softmax_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const self);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_softmax_isa = {
 	.build = _ccv_cnnp_softmax_build,
+	.copy = _ccv_cnnp_softmax_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_softmax(const char* const name)
@@ -626,6 +715,11 @@ ccv_cnnp_model_t* ccv_cnnp_softmax(const char* const name)
 	model_softmax->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_softmax->super, name);
 	return (ccv_cnnp_model_t*)model_softmax;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const self)
+{
+	return ccv_cnnp_softmax(self->name);
 }
 
 #pragma mark - Scalar Mul Layer
@@ -652,8 +746,11 @@ static void _ccv_cnnp_scalar_mul_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	outputs[0] = scalar_mul_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_scalar_mul_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_scalar_mul_isa = {
 	.build = _ccv_cnnp_scalar_mul_build,
+	.copy = _ccv_cnnp_scalar_mul_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_scalar_mul(const float a, const char* const name)
@@ -666,6 +763,12 @@ ccv_cnnp_model_t* ccv_cnnp_scalar_mul(const float a, const char* const name)
 	model_scalar_mul->a = a;
 	ccv_cnnp_model_copy_name(&model_scalar_mul->super, name);
 	return (ccv_cnnp_model_t*)model_scalar_mul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_scalar_mul_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_scalar_mul_t* const self = (const ccv_cnnp_model_scalar_mul_t*)super;
+	return ccv_cnnp_scalar_mul(self->a, self->super.name);
 }
 
 #pragma mark - Transpose Layer
@@ -697,8 +800,11 @@ static void _ccv_cnnp_transpose_build(ccv_cnnp_model_t* const super, ccv_nnc_sym
 	outputs[0] = transpose_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_transpose_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_transpose_isa = {
 	.build = _ccv_cnnp_transpose_build,
+	.copy = _ccv_cnnp_transpose_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_transpose(const int axis_a, const int axis_b, const char* const name)
@@ -712,6 +818,12 @@ ccv_cnnp_model_t* ccv_cnnp_transpose(const int axis_a, const int axis_b, const c
 	model_transpose->transpose[1] = axis_b;
 	ccv_cnnp_model_copy_name(&model_transpose->super, name);
 	return (ccv_cnnp_model_t*)model_transpose;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_transpose_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_transpose_t* const self = (const ccv_cnnp_model_transpose_t*)super;
+	return ccv_cnnp_transpose(self->transpose[0], self->transpose[1], self->super.name);
 }
 
 #pragma mark - Layer Norm Layer
@@ -777,10 +889,13 @@ static void _ccv_cnnp_layer_norm_add_to_trainable(ccv_cnnp_model_t* const super,
 		add_to_array(trainables, self->scale);
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_layer_norm_isa = {
 	.build = _ccv_cnnp_layer_norm_build,
 	.init_states = _ccv_cnnp_layer_norm_init_states,
 	.add_to_trainable = _ccv_cnnp_layer_norm_add_to_trainable,
+	.copy = _ccv_cnnp_layer_norm_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name)
@@ -799,6 +914,12 @@ ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NN
 	model_layer_norm->params.lnorm.count = axis_count;
 	memcpy(model_layer_norm->params.lnorm.axis, axis, sizeof(model_layer_norm->params.lnorm.axis));
 	return (ccv_cnnp_model_t*)model_layer_norm;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_layer_norm_t* const self = (const ccv_cnnp_model_layer_norm_t*)super;
+	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.name);
 }
 
 #pragma mark - Batched Matrix Mul Layer
@@ -828,8 +949,11 @@ static void _ccv_cnnp_matmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	outputs[0] = matmul_output;
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_matmul_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_matmul_isa = {
 	.build = _ccv_cnnp_matmul_build,
+	.copy = _ccv_cnnp_matmul_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const char* const name)
@@ -845,6 +969,12 @@ ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_
 	model_matmul->transpose_b[1] = transpose_b[1];
 	ccv_cnnp_model_copy_name(&model_matmul->super, name);
 	return (ccv_cnnp_model_t*)model_matmul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_matmul_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_matmul_t* const self = (const ccv_cnnp_model_matmul_t*)super;
+	return ccv_cnnp_matmul(self->transpose_a, self->transpose_b, self->super.name);
 }
 
 #pragma mark - Dropout Layer
@@ -886,9 +1016,12 @@ static void _ccv_cnnp_dropout_is_test(ccv_cnnp_model_t* const super, const int i
 	}
 }
 
+static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const super);
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dropout_isa = {
 	.build = _ccv_cnnp_dropout_build,
 	.set_is_test = _ccv_cnnp_dropout_is_test,
+	.copy = _ccv_cnnp_dropout_copy,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)
@@ -901,4 +1034,10 @@ ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)
 	model_dropout->p = p;
 	ccv_cnnp_model_copy_name(&model_dropout->super, name);
 	return (ccv_cnnp_model_t*)model_dropout;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_dropout_t* const self = (const ccv_cnnp_model_dropout_t*)super;
+	return ccv_cnnp_dropout(self->p, self->super.name);
 }

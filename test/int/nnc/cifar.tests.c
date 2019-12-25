@@ -559,7 +559,9 @@ TEST_CASE("cifar-10 with dawnnet to > 90% under 1 minutes (fp16)")
 
 static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
-	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn(0);
+	ccv_cnnp_model_t* const cifar_10_0 = _cifar_10_dawn(0);
+	ccv_cnnp_model_t* const cifar_10 = ccv_cnnp_model_copy(cifar_10_0);
+	ccv_cnnp_model_free(cifar_10_0);
 	const int device_count = 1;
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;

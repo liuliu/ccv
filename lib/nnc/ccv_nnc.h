@@ -2749,6 +2749,12 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
  */
 void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* const init, const ccv_nnc_tensor_param_t* const inputs, const int input_size);
 /**
+ * Create a copy of an existing model.
+ * @param model The existing model.
+ * @return The new model that is exactly the same copy of the old one.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model);
+/**
  * Compute the shape of the output tensor after the model applied to the input.
  * This can only be called after the model is compiled with proper input parameters.
  * @param model The model to compute the output shapes.
