@@ -414,6 +414,104 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	return input_io;
 }
 
+#pragma mark - Dynamic Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_cnnp_model_dynamic_f func;
+	void* context;
+	ccv_cnnp_model_t* model;
+} ccv_cnnp_dynamic_model_t;
+
+static void _ccv_cnnp_dynamic_model_deinit(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	if (self->model)
+		ccv_cnnp_model_free(self->model);
+}
+
+static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	if (!self->model)
+	{
+		ccv_nnc_tensor_param_t input_params[input_size];
+		int i;
+		for (i = 0; i < input_size; i++)
+			input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+		self->model = self->func(input_params, input_size, self->context);
+		// Update to use the settings of the compiled model.
+		self->super.input_size = self->model->input_size;
+		self->super.outputs = self->model->outputs;
+		self->super.output_size = self->model->output_size;
+	}
+	ccv_cnnp_model_build(self->model, graph, inputs, input_size, outputs, output_size);
+}
+
+static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	assert(self->model);
+	ccv_cnnp_model_init_states(self->model, graph, initializer, context);
+}
+
+static void _ccv_cnnp_dynamic_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	assert(self->model);
+	ccv_cnnp_model_add_to_trainable(self->model, add_to_array, trainables);
+}
+
+static void _ccv_cnnp_dynamic_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	assert(self->model);
+	ccv_cnnp_model_add_to_output(self->model, add_to_array, outputs);
+}
+
+static void _ccv_cnnp_dynamic_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	assert(self->model);
+	ccv_cnnp_model_set_is_test(self->model, is_test, updater, context);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_dynamic_model_copy(const ccv_cnnp_model_t* const super);
+
+static void _ccv_cnnp_dynamic_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	assert(self->model);
+	ccv_cnnp_model_add_to_trainable_indices(self->model, index, trainable_indices);
+}
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
+	.deinit = _ccv_cnnp_dynamic_model_deinit,
+	.build = _ccv_cnnp_dynamic_model_build,
+	.init_states = _ccv_cnnp_dynamic_model_init_states,
+	.add_to_trainable = _ccv_cnnp_dynamic_model_add_to_trainable,
+	.add_to_output = _ccv_cnnp_dynamic_model_add_to_output,
+	.copy = _ccv_cnnp_dynamic_model_copy,
+	.set_is_test = _ccv_cnnp_dynamic_model_set_is_test,
+	.add_to_trainable_indices = _ccv_cnnp_dynamic_model_add_to_trainable_indices,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f func, void* const context, const char* const name)
+{
+	ccv_cnnp_dynamic_model_t* const dynamic_model = (ccv_cnnp_dynamic_model_t*)cccalloc(1, sizeof(ccv_cnnp_dynamic_model_t));
+	dynamic_model->super.isa = &ccv_cnnp_dynamic_model_isa;
+	dynamic_model->func = func;
+	dynamic_model->context = context;
+	ccv_cnnp_model_copy_name(&dynamic_model->super, name);
+	return (ccv_cnnp_model_t*)dynamic_model;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_dynamic_model_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_dynamic_model_t* const self = (const ccv_cnnp_dynamic_model_t*)super;
+	return ccv_cnnp_dynamic_new(self->func, self->context, self->super.name);
+}
+
 #pragma mark - Command Layer
 
 typedef struct {

@@ -2729,6 +2729,24 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t*
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const char* const name);
 /**
+ * A model generation function to be called for dynamic models.
+ */
+typedef ccv_cnnp_model_t* (*ccv_cnnp_model_dynamic_f)(const ccv_nnc_tensor_param_t* const inputs, const int input_size, void* const context);
+/**
+ * This method returns a model that will be recreated if it is recompiled. Put it this way, you can call
+ * ccv_cnnp_model_compile multiple times with different inputs and input size, however, the model will
+ * only be recompiled to some extent. For example, if you called ccv_cnnp_reshape, the shape is determined
+ * at the moment you create that model, recompilation won't change. There are two ways to workaround this:
+ * 1. Use models that doesn't have explicit shape specified, for example, ccv_cnnp_dense, and avoid models
+ *    that is not as flexible, such as ccv_cnnp_reshape, or ccv_cnnp_cmd_exec.
+ * 2. Create with ccv_cnnp_dynamic_new such that the model will be recreated again whenever recompile.
+ * @param func The function to be called to create the model.
+ * @param context The context used along to create the model.
+ * @param name The unique name of the model.
+ * @return A model object that is yet to be created until build.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f func, void* const context, const char* const name);
+/**
  * Prepare the model to be trained, the input specifies the batch size etc.
  * Input size technically is not needed, here is a safety check.
  * @param model The model to be compiled.

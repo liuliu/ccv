@@ -158,6 +158,21 @@ static ccv_cnnp_model_t* _classifier_transformer_new(const int layers, const int
 	return ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(out), "classifier");
 }
 
+typedef struct {
+	int layers;
+	int k;
+	int h;
+	int b;
+	int t;
+	int ff;
+} classifier_transformer_params_t;
+
+static ccv_cnnp_model_t* _dynamic_classifier_transformer(const ccv_nnc_tensor_param_t* const inputs, const int input_size, void* const context)
+{
+	const classifier_transformer_params_t* const params = (classifier_transformer_params_t*)context;
+	return _classifier_transformer_new(params->layers, params->k, params->h, params->b, params->t, params->ff);
+}
+
 static void _vocab_init(const char* const vocab_file, khash_t(vocab_map)** const vocab_ref, int* const vocab_size_ref)
 {
 	FILE* const vocab_ptr = fopen(vocab_file, "r");
@@ -228,7 +243,15 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 		seq_indices[i] = ccv_nnc_tensor_constant_new(dynamic_graph, seq_params);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i], 0)), 0);
 	}
-	ccv_cnnp_model_t* const transformer = _classifier_transformer_new(2, embedding_size, 8, batch_size, max_length, embedding_size * 4);
+	classifier_transformer_params_t classifier_transformer_params = {
+		.layers = 2,
+		.k = embedding_size,
+		.h = 8,
+		.b = batch_size,
+		.t = max_length,
+		.ff = embedding_size * 4,
+	};
+	ccv_cnnp_model_t* const transformer = ccv_cnnp_dynamic_new(_dynamic_classifier_transformer, &classifier_transformer_params, 0);
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);

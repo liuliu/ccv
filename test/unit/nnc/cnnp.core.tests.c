@@ -148,7 +148,7 @@ TEST_CASE("inception layer for model")
 	ccv_cnnp_model_free(inception);
 }
 
-TEST_CASE("functional model's IO can represent multiple outputs")
+static ccv_cnnp_model_t* _ccv_multiple_outputs_functional_model(const ccv_nnc_tensor_param_t* const inputs, const int input_size, void* const context)
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
@@ -175,7 +175,12 @@ TEST_CASE("functional model's IO can represent multiple outputs")
 	input2 = ccv_cnnp_input();
 	output0 = ccv_cnnp_model_apply(interim, MODEL_IO_LIST(input0, input1, input2));
 	output0 = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(output0));
-	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0), 0);
+}
+
+TEST_CASE("functional model's IO can represent multiple outputs")
+{
+	ccv_cnnp_model_t* const final = ccv_cnnp_dynamic_new(_ccv_multiple_outputs_functional_model, 0, 0);
 	const ccv_nnc_tensor_param_t a0 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	const ccv_nnc_tensor_param_t a1 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	const ccv_nnc_tensor_param_t a2 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);

@@ -329,8 +329,16 @@ TEST_CASE("dynamic graph to evaluate cnnp model")
 	int i;
 	for (i = 0; i < 100; i++)
 	{
-		ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
-		ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+		ccv_nnc_tensor_variable_t x;
+		if (i % 2 == 1)
+		{
+			x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 1));
+			ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+			ccv_nnc_tensor_from_variable(graph, x)->data.f32[1] = 10;
+		} else {
+			x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+			ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+		}
 		ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
 		ccv_nnc_dynamic_graph_evaluate(graph, linear, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(y), 0, 0);

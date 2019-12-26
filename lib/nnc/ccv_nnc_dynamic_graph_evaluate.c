@@ -83,19 +83,32 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 {
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_model_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
 	assert(input_size > 0);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int per_input_size = input_size / parallel_count;
+	assert(per_input_size > 0);
+	assert((input_size % parallel_count) == 0);
+	int i;
 	if (!model->graph)
 	{
-		const int parallel_count = ccv_max(model->parallel_count, 1);
-		const int per_input_size = input_size / parallel_count;
-		assert(per_input_size > 0);
-		assert((input_size % parallel_count) == 0);
 		ccv_nnc_tensor_param_t input_params[per_input_size];
-		int i;
 		for (i = 0; i < per_input_size; i++)
 			input_params[i] = inputs[i]->info;
 		ccv_cnnp_model_compile(model, input_params, per_input_size, CMD_NOOP(), CMD_NOOP());
+	} else {
+		assert(per_input_size == model->input_size);
+		ccv_nnc_tensor_param_t input_params[per_input_size];
+		int flag = 0;
+		for (i = 0; i < per_input_size; i++)
+		{
+			input_params[i] = inputs[i]->info;
+			const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(model->graph, model->inputs[i]);
+			// If these two parameters doesn't match, recompile the graph..
+			if (memcmp(&params, &input_params[i], sizeof(params)) != 0)
+				flag = 1;
+		}
+		if (flag) // Recompile the graph.
+			ccv_cnnp_model_compile(model, input_params, per_input_size, CMD_NOOP(), CMD_NOOP());
 	}
-	int i;
 	for (i = 0; i < input_size; i++)
 	{
 		// Cannot have the parameter be a partial tensor view for model evaluation.
