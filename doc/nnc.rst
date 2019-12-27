@@ -85,6 +85,8 @@ More over, **dynamic graph** implements a simple memorization mechanism. The ten
 
 A set of **common neural network primitives** for modeling as well as parameter updates is provided. The API looks very much like **Sonnet** or **Keras**. **Common neural network primitives** implemented these interfaces at a common language layer (C language). Thus, variety of host languages to implement a simple shim layer on top to enable these high-level APIs.
 
+Quite some efforts were put in place to make **common neural network primitives** work with **dynamic graph**. This enables easiest model building and training. With **dynamic graph**, you can manipulate inputs, gradients and losses with ease. With **common neural network primitives**, many states such as trainables and running averages are kept inside the primitives, there are much less variables to keep track with.
+
 Supplementary Materials
 -----------------------
 

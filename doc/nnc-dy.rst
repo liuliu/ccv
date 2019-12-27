@@ -33,10 +33,16 @@ Optimizations
 
 In **PyTorch**, there is a need to ``requires_grad`` such that the framework knows which variable should be discarded to save memory. If it is not done carefully, the memory usage can grow unbounded. **Dynamic graph** here provides :cpp:func:`ccv_nnc_tensor_variable_free` where when a tensor variable is freed, we will release its memory when it is safe. This method meant to hook up with object finalization methods in host languages (C++'s destructor, Objective-C's ``dealloc``, ``deinit`` in Swift, ``finalize`` in Java, ``tp_dealloc`` in Python).
 
-Interoperability (Not Ready)
-----------------------------
+However, the ``requires_grad`` can still be useful in case you need to keep track of trainables (such as weights) yourselves. For these cases, while training, it is all good because trainables update themselves and free their previous ones once updated. But for evaluation, these trainables won't be freed and can grow the memory unbounded (because the system assumes that you may want to compute the gradient against these trainables at later time). We provided :cpp:func:`ccv_nnc_dynamic_graph_set_no_grad` function to declare our intention.
+
+Interoperability
+----------------
 
 There are some sticky issues with interoperability between **static graph** (the **symbolic graph** we formed by hand) with **dynamic graph**. The way they interoperate is through ``CCV_NNC_CUSTOM_FORWARD`` / ``CCV_NNC_CUSTOM_BACKWARD`` functions. When a **static graph** includes a **dynamic graph**, its tape needs to book-keeping for the **dynamic graph**. When a **dynamic graph** includes a **static graph**, it also needs to create a tape at that point for the execution. All these implies significant changes for the :cpp:any:`ccv_nnc_tensor_tape_t` implementation to accommodate these new requirements.
+
+Ultimately, it doesn't make much sense to have **dynamic graph** embedded into a **static graph**. If you already knew the shapes of the inputs (as it is inside another **static graph**), you can create ordinary **static graph**. There is simply no need to support that. Therefore, the only use case we need to support is for **dynamic graph** to embed a **static graph**. We support that through :cpp:func:`ccv_nnc_dynamic_evaluate`. This function takes a CNNP model, and evaluate it directly against some tensor variable inputs. The CNNP model underneath uses the **static graph**, and that is how the interoperability works.
+
+In fact, it would be the recommended way to use small CNNP models and :cpp:func:`ccv_nnc_dynamic_evaluate` them. Unlike ordinary :cpp:any:`ccv_nnc_cmd_t`, a CNNP model contains states, and that is one less thing you need to worry about.
 
 Future Optimizations
 --------------------

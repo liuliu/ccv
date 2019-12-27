@@ -2685,14 +2685,18 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_batching_new(ccv_cnnp_
 typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
 /**
  * With this type, now in NNC, we have 4 types that represents a "tensor":
- * ccv_nnc_tensor_t / ccv_nnc_tensor_view_t / ccv_nnc_tensor_multiview_t: a concrete tensor with memory allocated.
- * ccv_nnc_tensor_symbol_t: a symbol representation of a tensor, with its data layout, device affinity, and type
- *                          specified.
- * ccv_nnc_tensor_variable_t: in dynamic graph, this represents a concrete tensor with memory allocated, but also
- *                            associated with a recorded execution.
- * ccv_cnnp_model_io_t: this is the most flexible one. No data layout, device affinity or type specified, the format
- *                      has to be c / h / w, no batch size needed. This is a handle used by model API to associates
- *                      model inputs / outputs.
+ *
+ * 1. ccv_nnc_tensor_t / ccv_nnc_tensor_view_t / ccv_nnc_tensor_multiview_t: a concrete tensor with memory allocated.
+ *
+ * 2. ccv_nnc_tensor_symbol_t: a symbol representation of a tensor, with its data layout, device affinity, and type
+ *                             specified.
+ *
+ * 3. ccv_nnc_tensor_variable_t: in dynamic graph, this represents a concrete tensor with memory allocated, but also
+ *                               associated with a recorded execution.
+ *
+ * 4. ccv_cnnp_model_io_t: this is the most flexible one. No data layout, device affinity or type specified. It can even
+ *                         represent a list of tensors rather than just one. This is a handle used by model API to
+ *                         associates model inputs / outputs.
  */
 typedef struct ccv_cnnp_model_io_s* ccv_cnnp_model_io_t;
 /**
@@ -2956,6 +2960,14 @@ CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* con
  * @param model The composed model.
  */
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
+
+/** @} */
+
+/**
+ * @defgroup level_5_model_add_ons Model Add-ons
+ * @{
+ */
+
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
