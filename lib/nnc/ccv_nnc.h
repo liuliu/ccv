@@ -3173,6 +3173,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], con
  * @return A dropout model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const char* const name);
+/**
+ * A masked fill model.
+ * @param eq If a value in the given mask tensor is equal to this.
+ * @param fill Fill in this value to the output tensor.
+ * @param name The unique name of the model.
+ * @return A masked fill model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_masked_fill(const float eq, const float fill, const char* const name);
 
 /** @} */
 

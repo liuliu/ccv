@@ -1041,3 +1041,49 @@ static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const su
 	const ccv_cnnp_model_dropout_t* const self = (const ccv_cnnp_model_dropout_t*)super;
 	return ccv_cnnp_dropout(self->p, self->super.name);
 }
+
+#pragma mark - Masked Fill Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float eq;
+	float fill;
+} ccv_cnnp_model_masked_fill_t;
+
+static void _ccv_cnnp_masked_fill_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_cnnp_model_masked_fill_t* const self = (ccv_cnnp_model_masked_fill_t*)super;
+	const ccv_nnc_tensor_symbol_t masked_fill_output = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_MASKED_FILL_FORWARD(self->eq, self->fill), TENSOR_SYMBOL_LIST(inputs[0], inputs[1]), TENSOR_SYMBOL_LIST(masked_fill_output), 0);
+	outputs[0] = masked_fill_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_masked_fill_copy(const ccv_cnnp_model_t* const super);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_masked_fill_isa = {
+	.build = _ccv_cnnp_masked_fill_build,
+	.copy = _ccv_cnnp_masked_fill_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_masked_fill(const float eq, const float fill, const char* const name)
+{
+	ccv_cnnp_model_masked_fill_t* const model_masked_fill = (ccv_cnnp_model_masked_fill_t*)cccalloc(1, sizeof(ccv_cnnp_model_masked_fill_t));
+	model_masked_fill->super.isa = &ccv_cnnp_masked_fill_isa;
+	model_masked_fill->super.input_size = 2;
+	model_masked_fill->super.outputs = &model_masked_fill->output;
+	model_masked_fill->super.output_size = 1;
+	model_masked_fill->eq = eq;
+	model_masked_fill->fill = fill;
+	ccv_cnnp_model_copy_name(&model_masked_fill->super, name);
+	return (ccv_cnnp_model_t*)model_masked_fill;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_masked_fill_copy(const ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_masked_fill_t* const self = (const ccv_cnnp_model_masked_fill_t*)super;
+	return ccv_cnnp_masked_fill(self->eq, self->fill, self->super.name);
+}

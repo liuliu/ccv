@@ -224,6 +224,15 @@ void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd
 		outputs[i] = inputs[i + 1];
 }
 
+void ccv_nnc_hint_tensor_auto_backward_from_gradient_and_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	int i;
+	outputs[0] = inputs[0];
+	assert(output_size < input_size);
+	for (i = 1; i < output_size; i++)
+		outputs[i] = inputs[i + 1];
+}
+
 void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	// zero out the parameters

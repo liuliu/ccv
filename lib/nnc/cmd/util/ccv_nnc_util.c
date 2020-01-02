@@ -74,7 +74,7 @@ REGISTER_COMMAND(CCV_NNC_MASKED_FILL_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, gpu/ccv_nnc_util_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_masked_fill_back_bitmask;
-	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient_and_inputs;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MASKED_FILL_FORWARD)
