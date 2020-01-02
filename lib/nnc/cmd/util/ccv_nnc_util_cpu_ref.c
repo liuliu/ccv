@@ -464,3 +464,224 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, CCV_NNC_BACKEND_C
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_datatype_conversion;
 }
+
+static void _ccv_nnc_masked_fill_cpu_ref_f(const float p, const float q, ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b, ccv_nnc_tensor_view_t* const c)
+{
+	int cdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, cdim); // Fill in cdim first.
+	ccv_nnc_tensor_view_get_broadcast_dim(b, cdim);
+	assert(ccv_nnc_tensor_view_check_broadcast_dim(a, cdim));
+	assert(ccv_nnc_tensor_view_check_broadcast_dim(b, cdim));
+	const int a_check_dim = ccv_nnc_tensor_view_check_dim(a, cdim);
+	const int b_check_dim = ccv_nnc_tensor_view_check_dim(b, cdim);
+	// Assuming this is float 32.
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int bdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, adim);
+	ccv_nnc_tensor_view_get_dim(b, bdim);
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
+	assert(ccv_nnc_tensor_view_check_dim(c, cdim));
+	int x;
+	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && a_check_dim && b_check_dim)
+	{
+		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		// Super optimal case, just do one for-loop for sum.
+		for (x = 0; x < tensor_count; x++)
+			c->data.f32[x] = (b->data.f32[x] == p) ? q : a->data.f32[x];
+		return;
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_inc(c, cinc);
+	int i[CCV_NNC_MAX_DIM + 2];
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	float* cp = c->data.f32;
+	const int count = cdim[2] * cdim[3];
+	if (ainc[3] == cdim[3] && binc[3] == cdim[3] && cinc[3] == cdim[3] && adim[2] == cdim[2] && bdim[2] == cdim[2])
+	{
+		// Special casing if the ainc[3] is the same as dim[3]
+		for (i[0] = 0; i[0] < cdim[0]; i[0]++)
+		{
+			float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
+			float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+			for (i[1] = 0; i[1] < cdim[1]; i[1]++)
+			{
+				float* const ap1 = adim[1] == 1 ? ap0 : ap0 + i[1] * ainc[2] * ainc[3];
+				float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+				for (x = 0; x < count; x++)
+					cp[x] = (bp1[x] == p) ? q : ap1[x];
+				cp += cinc[2] * cinc[3];
+			}
+			cp += (cinc[1] - cdim[1]) * cinc[2] * cinc[3];
+		}
+		return;
+	}
+	// Non-optimal case, need to do skip copy and handle broadcasting.
+	for (i[0] = 0; i[0] < cdim[0]; i[0]++)
+	{
+		float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
+		float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+		for (i[1] = 0; i[1] < cdim[1]; i[1]++)
+		{
+			float* const ap1 = adim[1] == 1 ? ap0 : ap0 + i[1] * ainc[2] * ainc[3];
+			float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+			for (i[2] = 0; i[2] < cdim[2]; i[2]++)
+			{
+				float* const ap2 = adim[2] == 1 ? ap1 : ap1 + i[2] * ainc[3];
+				float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * binc[3];
+				if (adim[3] == 1)
+					for (x = 0; x < cdim[3]; x++)
+						cp[x] = (bp2[x] == p) ? q : ap2[0];
+				else if (bdim[3] == 1)
+					if (bp2[0] == p)
+						for (x = 0; x < cdim[3]; x++)
+							cp[x] = q;
+					else
+						for (x = 0; x < cdim[3]; x++)
+							cp[x] = ap2[x];
+				else
+					for (x = 0; x < cdim[3]; x++)
+						cp[x] = (bp2[x] == p) ? q : ap2[x];
+				cp += cinc[3];
+			}
+			cp += (cinc[2] - cdim[2]) * cinc[3];
+		}
+		cp += (cinc[1] - cdim[1]) * cinc[2] * cinc[3];
+	}
+}
+
+static void _ccv_nnc_masked_fill_cpu_ref_s(const int p, const float q, ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b, ccv_nnc_tensor_view_t* const c)
+{
+	int cdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, cdim); // Fill in cdim first.
+	ccv_nnc_tensor_view_get_broadcast_dim(b, cdim);
+	assert(ccv_nnc_tensor_view_check_broadcast_dim(a, cdim));
+	assert(ccv_nnc_tensor_view_check_broadcast_dim(b, cdim));
+	const int a_check_dim = ccv_nnc_tensor_view_check_dim(a, cdim);
+	const int b_check_dim = ccv_nnc_tensor_view_check_dim(b, cdim);
+	// Assuming this is float 32.
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int bdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, adim);
+	ccv_nnc_tensor_view_get_dim(b, bdim);
+	int ainc[CCV_NNC_MAX_DIM_ALLOC];
+	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int cinc[CCV_NNC_MAX_DIM_ALLOC];
+	assert(ccv_nnc_tensor_view_check_dim(c, cdim));
+	int x;
+	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && a_check_dim && b_check_dim)
+	{
+		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		// Super optimal case, just do one for-loop for sum.
+		for (x = 0; x < tensor_count; x++)
+			c->data.f32[x] = (b->data.i32[x] == p) ? q : a->data.f32[x];
+		return;
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_inc(c, cinc);
+	int i[CCV_NNC_MAX_DIM + 2];
+	float* ap = a->data.f32;
+	int* bp = b->data.i32;
+	float* cp = c->data.f32;
+	const int count = cdim[2] * cdim[3];
+	if (ainc[3] == cdim[3] && binc[3] == cdim[3] && cinc[3] == cdim[3] && adim[2] == cdim[2] && bdim[2] == cdim[2])
+	{
+		// Special casing if the ainc[3] is the same as dim[3]
+		for (i[0] = 0; i[0] < cdim[0]; i[0]++)
+		{
+			float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
+			int* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+			for (i[1] = 0; i[1] < cdim[1]; i[1]++)
+			{
+				float* const ap1 = adim[1] == 1 ? ap0 : ap0 + i[1] * ainc[2] * ainc[3];
+				int* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+				for (x = 0; x < count; x++)
+					cp[x] = (bp1[x] == p) ? q : ap1[x];
+				cp += cinc[2] * cinc[3];
+			}
+			cp += (cinc[1] - cdim[1]) * cinc[2] * cinc[3];
+		}
+		return;
+	}
+	// Non-optimal case, need to do skip copy and handle broadcasting.
+	for (i[0] = 0; i[0] < cdim[0]; i[0]++)
+	{
+		float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
+		int* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+		for (i[1] = 0; i[1] < cdim[1]; i[1]++)
+		{
+			float* const ap1 = adim[1] == 1 ? ap0 : ap0 + i[1] * ainc[2] * ainc[3];
+			int* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+			for (i[2] = 0; i[2] < cdim[2]; i[2]++)
+			{
+				float* const ap2 = adim[2] == 1 ? ap1 : ap1 + i[2] * ainc[3];
+				int* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * binc[3];
+				if (adim[3] == 1)
+					for (x = 0; x < cdim[3]; x++)
+						cp[x] = (bp2[x] == p) ? q : ap2[0];
+				else if (bdim[3] == 1)
+					if (bp2[0] == p)
+						for (x = 0; x < cdim[3]; x++)
+							cp[x] = q;
+					else
+						for (x = 0; x < cdim[3]; x++)
+							cp[x] = ap2[x];
+				else
+					for (x = 0; x < cdim[3]; x++)
+						cp[x] = (bp2[x] == p) ? q : ap2[x];
+				cp += cinc[3];
+			}
+			cp += (cinc[2] - cdim[2]) * cinc[3];
+		}
+		cp += (cinc[1] - cdim[1]) * cinc[2] * cinc[3];
+	}
+}
+
+static int _ccv_nnc_masked_fill_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 2);
+	assert(inputs[0]);
+	assert(inputs[1]);
+	assert(outputs[0]);
+	if (inputs[1]->info.datatype == CCV_32F)
+		_ccv_nnc_masked_fill_cpu_ref_f(cmd.info.blas.a[0], cmd.info.blas.a[1], (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
+	else if (inputs[1]->info.datatype == CCV_32S)
+		_ccv_nnc_masked_fill_cpu_ref_s((int)(cmd.info.blas.a[0] + 0.5), cmd.info.blas.a[1], (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static int _ccv_nnc_masked_fill_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 3);
+	if (inputs[2]->info.datatype == CCV_32F)
+		_ccv_nnc_masked_fill_cpu_ref_f(cmd.info.blas.a[0], 0, (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+	else if (inputs[2]->info.datatype == CCV_32S)
+		_ccv_nnc_masked_fill_cpu_ref_s((int)(cmd.info.blas.a[0] + 0.5), 0, (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+	// TODO: doesn't really support taking gradient on mask.
+	// if (output_size >= 2 && outputs[1])
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_MASKED_FILL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_32S;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_masked_fill_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_MASKED_FILL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_32S;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_masked_fill_back;
+}

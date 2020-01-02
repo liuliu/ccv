@@ -222,4 +222,52 @@ TEST_CASE("transpose two 3d tensor views")
 	ccv_nnc_tensor_free(d);
 }
 
+TEST_CASE("masked fill forward a 3d tensor")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	int i, j;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	for (i = 0; i < 6 * 5 * 4; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 5, 4), 0);
+	for (i = 0; i < 5 * 4; i++)
+		b->data.i32[i] = (i % 2 == 1) ? 0 : 1;
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	ccv_nnc_cmd_exec(CMD_MASKED_FILL_FORWARD(0, -1e8), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	for (i = 0; i < 6; i++)
+		for (j = 0; j < 5 * 4; j++)
+			d->data.f32[i * 5 * 4 + j] = (j % 2 == 1) ? -1e8 : a->data.f32[i * 5 * 4 + j];
+	REQUIRE_TENSOR_EQ(d, c, "6x5x4 tensor should be exactly the same.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+}
+
+TEST_CASE("masked fill backward a 3d tensor")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	int i, j;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	for (i = 0; i < 6 * 5 * 4; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 5, 4), 0);
+	for (i = 0; i < 5 * 4; i++)
+		b->data.i32[i] = (i % 2 == 1) ? 0 : 1;
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	ccv_nnc_cmd_exec(CMD_MASKED_FILL_BACKWARD(0, -1e8), ccv_nnc_no_hint, 0, TENSOR_LIST(a, 0, b), TENSOR_LIST(c), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	for (i = 0; i < 6; i++)
+		for (j = 0; j < 5 * 4; j++)
+			d->data.f32[i * 5 * 4 + j] = (j % 2 == 1) ? 0 : a->data.f32[i * 5 * 4 + j];
+	REQUIRE_TENSOR_EQ(d, c, "6x5x4 tensor should be exactly the same.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+}
+
 #include "case_main.h"

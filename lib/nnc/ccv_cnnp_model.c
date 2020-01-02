@@ -1492,7 +1492,6 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 		_ccv_cnnp_model_bind_tensors(model->graph, compiled_data->gradients, compiled_data->tensors.accum_gradients, trainable_size, parallel_count, tensor_binds);
 	else
 		_ccv_cnnp_model_bind_tensors(model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count, tensor_binds);
-	// TODO: Need to find the start point for this.
 	ccv_array_t* const apply_gradients_from = ccv_array_new(sizeof(int), 0, 0);
 	int i, j;
 	for (i = 0; i < compiled_data->backward.to_size; i++)
