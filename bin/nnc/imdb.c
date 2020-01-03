@@ -78,11 +78,11 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 		for (i = 0; !length && i < max_length; i++)
 			if (tensor->data.i32[i] == pad_flag)
 				length = i;
-		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, max_length * max_length), 0);
-		memset(mask->data.f32, 0, sizeof(float) * max_length * max_length);
+		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, max_length * max_length), 0);
+		memset(mask->data.i32, 0, sizeof(float) * max_length * max_length);
 		for (i = 0; i < length; i++)
 			for (j = 0; j < length; j++)
-				mask->data.f32[i * max_length + j] = 1;
+				mask->data.i32[i * max_length + j] = 1;
 		ccv_nnc_text_t categorized = {
 			.tensor = tensor,
 			.mask = mask,
@@ -310,9 +310,9 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_tensor_param_t vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, embedding_size);
 			CCV_TENSOR_SET_DEVICE_ID(vec_params.type, j);
 			vec[j * 2] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, select_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
-			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, max_length);
+			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);
 			CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
-			mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.f32, mask_params, 0);
+			mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.i32, mask_params, 0);
 			vec[j * 2 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 			ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 2 + 1], &mask_tensor[j]);
 			out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
@@ -416,9 +416,9 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 					ccv_nnc_tensor_param_t vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, embedding_size);
 					CCV_TENSOR_SET_DEVICE_ID(vec_params.type, j);
 					vec[j * 2] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, select_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
-					ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32F, batch_size, max_length, max_length);
+					ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);
 					CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
-					mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.f32, mask_params, 0);
+					mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.i32, mask_params, 0);
 					vec[j * 2 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 					ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 2 + 1], &mask_tensor[j]);
 					out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);

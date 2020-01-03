@@ -54,7 +54,9 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 } ccv_nnc_tensor_variable_graph_bind_t;
 
 typedef struct {
+	int requires_grad;
 	int is_test;
+	uint64_t disable_outgrad;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;
 } ccv_nnc_stateful_exec_t;

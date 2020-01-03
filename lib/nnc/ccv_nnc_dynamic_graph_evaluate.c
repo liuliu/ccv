@@ -28,15 +28,34 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD)
 	{
 		ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){
-			.requires_grad = 1,
-			.disable_outgrad = 0,
+			.requires_grad = stateful_exec->requires_grad,
+			.disable_outgrad = stateful_exec->disable_outgrad,
 			.is_test = stateful_exec->is_test,
 		}, inputs, input_size, outputs, output_size, 0, 0);
 	} else {
 		const int parallel_count = ccv_max(model->parallel_count, 1);
 		const int ingrad_size = model->output_size * parallel_count;
 		assert(ingrad_size <= input_size);
-		ccv_cnnp_model_backward(model, inputs, ingrad_size, outputs, output_size, 0, 0);
+		if (stateful_exec->disable_outgrad == CCV_CNNP_DISABLE_OUTGRAD_NONE)
+			ccv_cnnp_model_backward(model, inputs, ingrad_size, outputs, output_size, 0, 0);
+		else if (stateful_exec->disable_outgrad == CCV_CNNP_DISABLE_OUTGRAD_ALL)
+			ccv_cnnp_model_backward(model, inputs, ingrad_size, 0, 0, 0, 0);
+		else {
+			assert(output_size == model->input_size * parallel_count);
+			int per_outgrad_size = 0;
+			int i, j, k;
+			for (i = 0; i < model->input_size; i++)
+				if (!(stateful_exec->disable_outgrad & ((uint64_t)1 << i)))
+					++per_outgrad_size;
+			assert(per_outgrad_size > 0);
+			const int outgrad_size = per_outgrad_size * parallel_count;
+			ccv_nnc_tensor_t* outgrads[outgrad_size];
+			for (i = 0; i < parallel_count; i++)
+				for (k = 0, j = 0; j < model->input_size; j++)
+					if (!(stateful_exec->disable_outgrad & ((uint64_t)1 << j)))
+						outgrads[(k++) + i * per_outgrad_size] = outputs[j + i * model->input_size];
+			ccv_cnnp_model_backward(model, inputs, ingrad_size, outgrads, outgrad_size, 0, 0);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -119,6 +138,8 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	if (dynamic_graph->no_grad)
 	{
 		ccv_nnc_stateful_exec_t stateful_exec = {
+			.requires_grad = 0,
+			.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL,
 			.is_test = is_test,
 			.tensor_tape = tensor_tape,
 			.data = model
@@ -127,8 +148,20 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		// Parallel parameter doesn't make sense here, the parallel is defined inside the model.
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, 0);
 	} else {
+		uint64_t disable_outgrad = 0;
+		int count = 0;
+		for (i = 0; i < per_input_size; i++)
+			if (!inputs[i] || inputs[i]->type == CCV_NNC_TENSOR_CONSTANT)
+			{
+				disable_outgrad |= ((uint64_t)1 << i);
+				++count;
+			}
+		if (count == per_input_size)
+			disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL;
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
 		stateful_exec->is_test = is_test;
+		stateful_exec->requires_grad = 1;
+		stateful_exec->disable_outgrad = disable_outgrad;
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
 		cmd.data = stateful_exec;

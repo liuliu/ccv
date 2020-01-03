@@ -295,7 +295,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		// ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, 0, stream_contexts[p]);
 		ccv_cnnp_model_evaluate(cifar_10, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
-			.disable_outgrad = 1,
+			.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL,
 		}, input_fit_inputs, device_count, outputs, device_count, 0, 0);
 		for (j = 0; j < device_count; j++)
 		{

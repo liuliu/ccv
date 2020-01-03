@@ -2810,13 +2810,23 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
  * @param stream_context The stream where the fit can be executed upon.
  */
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
+enum {
+	/**
+	 * Don't disable any outgrad.
+	 */
+	CCV_CNNP_DISABLE_OUTGRAD_NONE = (uint64_t)0,
+	/**
+	 * Disable all inputs' outgrads.
+	 */
+	CCV_CNNP_DISABLE_OUTGRAD_ALL = (uint64_t)(int64_t)-1,
+};
 /**
  * The parameters for how evaluation should behave.
  */
 typedef struct {
 	int requires_grad; /**< Whether we need to keep intermediate results for gradient computations. */
-	int disable_outgrad; /**< Whether we can compute outflow gradients when call ccv_cnnp_model_backward later. */
 	int is_test; /**< Whether we evaluate it as test, or just as forward pass of the training process. */
+	uint64_t disable_outgrad; /**< Whether we can compute outflow gradients when call ccv_cnnp_model_backward later, this is a bitmask, you can mark for which input the outgrad is disabled. */
 } ccv_cnnp_evaluate_param_t;
 /**
  * Evaluate model with output.
