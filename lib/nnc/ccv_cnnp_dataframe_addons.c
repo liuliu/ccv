@@ -436,6 +436,56 @@ int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
+#pragma mark - Mask for Sequence Attention
+
+typedef struct {
+	int variable_size;
+	int max_length;
+} ccv_cnnp_mask_for_sequence_context_t;
+
+static void _ccv_cnnp_mask_for_sequence(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_cnnp_mask_for_sequence_context_t* const mask_context = (ccv_cnnp_mask_for_sequence_context_t*)context;
+	assert(!mask_context->variable_size); // TODO: Doesn't support variable size.
+	const int max_length = mask_context->max_length;
+	parallel_for(i, batch_size) {
+		ccv_nnc_tensor_t* const seq = (ccv_nnc_tensor_t*)column_data[0][i];
+		assert(seq->info.datatype == CCV_32S);
+		const int len = ccv_nnc_tensor_count(seq->info);
+		if (!data[i])
+			data[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, len, mask_context->max_length, mask_context->max_length), 0);
+		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];
+		const int* const ia = seq->data.i32;
+		int* ib = tensor->data.i32;
+		parallel_for(j, len) {
+			int x, y;
+			int seq_len = ia[j];
+			for (y = 0; y < seq_len; y++)
+			{
+				for (x = 0; x < seq_len; x++)
+					ib[x] = 1;
+				for (x = seq_len; x < max_length; x++)
+					ib[x] = 0;
+				ib += max_length;
+			}
+			if (seq_len < max_length)
+				memset(ib, 0, sizeof(int) * max_length * (max_length - seq_len));
+		} parallel_endfor
+	} parallel_endfor
+}
+
+int ccv_cnnp_dataframe_mask_for_sequence(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length)
+{
+	assert(max_length > 0);
+	assert(variable_size == 0 || variable_size == 1);
+	ccv_cnnp_mask_for_sequence_context_t* const mask_context = (ccv_cnnp_mask_for_sequence_context_t*)ccmalloc(sizeof(ccv_cnnp_mask_for_sequence_context_t));
+	mask_context->variable_size = variable_size;
+	mask_context->max_length = max_length;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_mask_for_sequence, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), mask_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
+#pragma mark - Batching
+
 typedef struct {
 	ccv_cnnp_dataframe_tuple_t tuple;
 	int format;

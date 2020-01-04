@@ -74,15 +74,12 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 		strncpy(filename + dirlen, file, 1024 - dirlen);
 		ccv_nnc_tensor_t* const tensor = _text_to_tensor_index(filename, vocab, vocab_size, max_length);
 		int length = 0;
-		int i, j;
+		int i;
 		for (i = 0; !length && i < max_length; i++)
 			if (tensor->data.i32[i] == pad_flag)
 				length = i;
-		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, max_length * max_length), 0);
-		memset(mask->data.i32, 0, sizeof(float) * max_length * max_length);
-		for (i = 0; i < length; i++)
-			for (j = 0; j < length; j++)
-				mask->data.i32[i * max_length + j] = 1;
+		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+		mask->data.i32[0] = length;
 		ccv_nnc_text_t categorized = {
 			.tensor = tensor,
 			.mask = mask,
@@ -210,23 +207,31 @@ static void _vocab_destroy(khash_t(vocab_map)* const vocab)
 static void train_imdb(const int vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
 	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
 	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
+	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
-	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, mask_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx, mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
 	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_mask_idx, test_one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
-	int gpu_batched[device_count];
-	int test_gpu_batched[device_count];
+	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
+	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_one_hot_idx, test_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	int gpu_batched[device_count * 2];
+	int test_gpu_batched[device_count * 2];
 	int i, j;
 	for (i = 0; i < device_count; i++)
 	{
-		gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 3, i);
-		test_gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 3, i);
+		const int seq_len_batched = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2);
+		const int mask_batched = ccv_cnnp_dataframe_mask_for_sequence(batched_data, seq_len_batched, 0, max_length);
+		const int tupled_mask_batched = ccv_cnnp_dataframe_make_tuple(batched_data, COLUMN_ID_LIST(mask_batched));
+		gpu_batched[i * 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 2, i);
+		gpu_batched[i * 2 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, tupled_mask_batched, 0, 1, i);
+		const int test_seq_len_batched = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2);
+		const int test_mask_batched = ccv_cnnp_dataframe_mask_for_sequence(test_batched_data, test_seq_len_batched, 0, max_length);
+		const int test_tupled_mask_batched = ccv_cnnp_dataframe_make_tuple(test_batched_data, COLUMN_ID_LIST(test_mask_batched));
+		test_gpu_batched[i * 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 2, i);
+		test_gpu_batched[i * 2 + 1] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_tupled_mask_batched, 0, 1, i);
 	}
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, device_count);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, device_count * 2);
 	ccv_nnc_dynamic_graph_t* const dynamic_graph = ccv_nnc_dynamic_graph_new();
 	ccv_nnc_tensor_variable_t vocab_vec[device_count];
 	ccv_nnc_tensor_variable_t seq_vec[device_count];
@@ -278,7 +283,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
 	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
 	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
-	ccv_nnc_tensor_t** tensor[device_count];
+	ccv_nnc_tensor_t** tensor[device_count * 2];
 	double overall_accuracy = 0;
 	int epoch = 0;
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
@@ -286,7 +291,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
 		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
-		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count, 0);
+		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count * 2, 0);
 		ccv_nnc_tensor_t word_indices_tensor[device_count];
 		ccv_nnc_tensor_t mask_tensor[device_count];
 		ccv_nnc_tensor_variable_t word_indices[device_count];
@@ -299,7 +304,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		{
 			ccv_nnc_tensor_param_t word_indices_params = GPU_TENSOR_NCHW(000, 32S, batch_size * max_length);
 			CCV_TENSOR_SET_DEVICE_ID(word_indices_params.type, j);
-			word_indices_tensor[j] = ccv_nnc_tensor(tensor[j][0]->data.f32, word_indices_params, 0);
+			word_indices_tensor[j] = ccv_nnc_tensor(tensor[j * 2][0]->data.f32, word_indices_params, 0);
 			word_indices[j] = ccv_nnc_tensor_variable_new(dynamic_graph, word_indices_params);
 			ccv_nnc_tensor_variable_set(dynamic_graph, word_indices[j], &word_indices_tensor[j]);
 			ccv_nnc_tensor_param_t pre_vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size * max_length, embedding_size);
@@ -312,7 +317,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			vec[j * 2] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, select_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
 			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);
 			CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
-			mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.i32, mask_params, 0);
+			mask_tensor[j] = ccv_nnc_tensor(tensor[j * 2 + 1][0]->data.i32, mask_params, 0);
 			vec[j * 2 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 			ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 2 + 1], &mask_tensor[j]);
 			out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
@@ -332,7 +337,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		for (j = 0; j < device_count; j++)
 		{
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, out[j])), TENSOR_LIST(out_cpu), 0);
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[j][2]), TENSOR_LIST(fit_cpu), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[j * 2][1]), TENSOR_LIST(fit_cpu), 0);
 			int k;
 			for (k = 0; k < batch_size; k++)
 			{
@@ -352,7 +357,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		{
 			softmax[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 			fit[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
-			ccv_nnc_tensor_variable_set(dynamic_graph, fit[j], tensor[j][2]);
+			ccv_nnc_tensor_variable_set(dynamic_graph, fit[j], tensor[j * 2][1]);
 			vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 			seq_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 		}
@@ -385,14 +390,14 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		if ((i + 1) % epoch_end == 0)
 		{
 			int correct = 0;
-			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, device_count);
+			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, device_count * 2);
 			int k;
 			ccv_cnnp_dataframe_shuffle(test_data);
 			ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 1);
 			const int row_count = ccv_cnnp_dataframe_row_count(test_data);
 			for (k = 0; k < row_count; k += batch_size * device_count)
 			{
-				ccv_cnnp_dataframe_iter_next(test_iter, (void**)tensor, device_count, 0);
+				ccv_cnnp_dataframe_iter_next(test_iter, (void**)tensor, device_count * 2, 0);
 				ccv_nnc_tensor_t word_indices_tensor[device_count];
 				ccv_nnc_tensor_t mask_tensor[device_count];
 				ccv_nnc_tensor_variable_t word_indices[device_count];
@@ -405,7 +410,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 				{
 					ccv_nnc_tensor_param_t word_indices_params = GPU_TENSOR_NCHW(000, 32S, batch_size * max_length);
 					CCV_TENSOR_SET_DEVICE_ID(word_indices_params.type, j);
-					word_indices_tensor[j] = ccv_nnc_tensor(tensor[j][0]->data.f32, word_indices_params, 0);
+					word_indices_tensor[j] = ccv_nnc_tensor(tensor[j * 2][0]->data.f32, word_indices_params, 0);
 					word_indices[j] = ccv_nnc_tensor_variable_new(dynamic_graph, word_indices_params);
 					ccv_nnc_tensor_variable_set(dynamic_graph, word_indices[j], &word_indices_tensor[j]);
 					ccv_nnc_tensor_param_t pre_vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size * max_length, embedding_size);
@@ -418,7 +423,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 					vec[j * 2] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, select_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
 					ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);
 					CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
-					mask_tensor[j] = ccv_nnc_tensor(tensor[j][1]->data.i32, mask_params, 0);
+					mask_tensor[j] = ccv_nnc_tensor(tensor[j * 2 + 1][0]->data.i32, mask_params, 0);
 					vec[j * 2 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 					ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 2 + 1], &mask_tensor[j]);
 					out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
@@ -438,7 +443,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 				for (d = 0; d < device_count; d++)
 				{
 					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, out[d])), TENSOR_LIST(out_cpu), 0);
-					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[d][2]), TENSOR_LIST(fit_cpu), 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[d * 2][1]), TENSOR_LIST(fit_cpu), 0);
 					for (j = 0; j < ccv_min(row_count - k - d * batch_size, batch_size); j++)
 					{
 						const int truth = (fit_cpu->data.f32[j * 2] < fit_cpu->data.f32[j * 2 + 1]);
