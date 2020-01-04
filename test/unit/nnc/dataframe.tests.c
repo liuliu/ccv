@@ -665,4 +665,39 @@ TEST_CASE("extract value out of a tuple")
 	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated tuple should be the same");
 }
 
+TEST_CASE("iterate through derived column with peek")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0, 0);
+	assert(derived > 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(0, derived));
+	int result0[8];
+	int result1[8];
+	int i = 0;
+	void* data;
+	while (0 == ccv_cnnp_dataframe_iter_next(iter, 0, 0, 0))
+	{
+		ccv_cnnp_dataframe_iter_peek(iter, &data, 0, 1, 0);
+		result0[i] = (int)(intptr_t)data;
+		ccv_cnnp_dataframe_iter_peek(iter, &data, 1, 1, 0);
+		result1[i] = (int)(intptr_t)data;
+		++i;
+	}
+	ccv_cnnp_dataframe_iter_free(iter);
+	REQUIRE_ARRAY_EQ(int, int_array, result0, 8, "iterated result and actual result should be the same");
+	for (i = 0; i < 8; i++)
+		++int_array[i];
+	REQUIRE_ARRAY_EQ(int, int_array, result1, 8, "iterated result and actual result should be the same");
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"

@@ -143,6 +143,7 @@ typedef struct {
 KHASH_MAP_INIT_INT64(iter_ctx, ccv_cnnp_dataframe_column_ctx_t*)
 
 struct ccv_cnnp_dataframe_iter_s {
+	int flag; // Whether we called next or not.
 	int idx;
 	int prefetch_head;
 	int prefetch_tail;
@@ -327,8 +328,14 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 			iter->cached_data[i].ctx = 0;
 		}
 	const int idx = iter->idx;
-	if (idx == dataframe->row_count)
+	iter->flag = 1; // Mark it as we called next already.
+	if (idx > dataframe->row_count) // If we exceed row count, return -2.
+		return -2;
+	if (idx == dataframe->row_count) // Otherwise, no more row, return -1.
+	{
+		++iter->idx;
 		return -1;
+	}
 	if (iter->prefetch_tail != -1) // If there is something in prefetch log.
 	{
 		ccv_array_t* const prefetches = iter->prefetches;
@@ -355,6 +362,19 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, dataframe->shuffled_idx ? dataframe->shuffled_idx + idx : &idx, 1, iter->column_idxs[i], 1, stream_context);
 	++iter->idx;
 	return 0;
+}
+
+void ccv_cnnp_dataframe_iter_peek(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int offset, const int data_ref_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(iter->flag);
+	ccv_cnnp_dataframe_t* const dataframe = iter->dataframe;
+	assert(offset + data_ref_size <= iter->column_idx_size);
+	const int idx = iter->idx - 1; // next is called, therefore, index is already incremented.
+	assert(idx >= 0);
+	assert(idx < dataframe->row_count);
+	int i;
+	for (i = 0; i < data_ref_size; i++)
+		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, dataframe->shuffled_idx ? dataframe->shuffled_idx + idx : &idx, 1, iter->column_idxs[i + offset], 1, stream_context);
 }
 
 static void _ccv_cnnp_null_prefetches(ccv_cnnp_dataframe_iter_t* const iter)
@@ -527,6 +547,7 @@ int ccv_cnnp_dataframe_iter_set_cursor(ccv_cnnp_dataframe_iter_t* const iter, co
 	if (idx == iter->idx)
 		return 0;
 	iter->idx = idx;
+	iter->flag = 0;
 	_ccv_cnnp_null_prefetches(iter);
 	return 0;
 }

@@ -2495,9 +2495,17 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_iter_t*) ccv_cnnp_dataframe_iter_new(ccv_cnnp
  * @param data_ref The output for the data.
  * @param column_idx_size The size of the data_ref array.
  * @param stream_context The stream context to extract data asynchronously.
- * @return 0 if the iteration is successful, -1 if it is ended.
+ * @return 0 if the iteration is successful, -1 if there is no more row. -2 if it is already ended.
  */
 int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int column_idx_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Assuming iterator is on the same row, peek into potentially different column index.
+ * @param iter The iterator to go through.
+ * @param data_ref The output for the data.
+ * @param offset The offset for which column in this iterator to peek at.
+ * @param data_ref_size How many columns in this iterator to peek at.
+ */
+void ccv_cnnp_dataframe_iter_peek(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int offset, const int data_ref_size, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Prefetch next item on the iterator with the given stream context. You can call this method multiple times
  * to prefetch multiple items ahead of time.
