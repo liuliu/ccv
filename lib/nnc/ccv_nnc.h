@@ -2504,6 +2504,7 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
  * @param data_ref The output for the data.
  * @param offset The offset for which column in this iterator to peek at.
  * @param data_ref_size How many columns in this iterator to peek at.
+ * @param stream_context The stream context to extract data asynchronously.
  */
 void ccv_cnnp_dataframe_iter_peek(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int offset, const int data_ref_size, ccv_nnc_stream_context_t* const stream_context);
 /**
