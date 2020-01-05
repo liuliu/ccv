@@ -121,7 +121,11 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		dy_signal_container_t* const container = kh_val(graph->signal_container, k);
 		pthread_mutex_destroy(&container->mutex);
 		for (i = 0; i < container->free_signals->rnum; i++)
-			ccv_nnc_stream_signal_free(*(ccv_nnc_stream_signal_t**)ccv_array_get(container->free_signals, i));
+		{
+			dy_signal_t* const signal = *(dy_signal_t**)ccv_array_get(container->free_signals, i);
+			ccv_nnc_stream_signal_free(signal->signal);
+			ccfree(signal);
+		}
 	}
 	kh_destroy(signal_container, graph->signal_container);
 	ccv_nnc_dynamic_graph_xpu_alloc_destroy(graph);
