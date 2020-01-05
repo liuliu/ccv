@@ -15,6 +15,8 @@
 #include "3rdparty/khash/khash.h"
 #include "3rdparty/jemalloc/rb.h"
 
+#include <pthread.h>
+
 #define CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv) ((uintptr_t)(tv) & 1)
 #define CCV_NNC_TENSOR_VIEW(tv) ((ccv_nnc_tensor_view_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
 
@@ -84,6 +86,17 @@ KHASH_MAP_INIT_INT64(dy_str, dy_alloc_tree_t);
 KHASH_MAP_INIT_INT(dy_dev, khash_t(dy_str)*);
 KHASH_MAP_INIT_INT64(dy_alloc, dy_alloc_metadata_t*);
 
+typedef struct {
+	pthread_mutex_t mutex;
+	ccv_array_t* free_signals;
+} dy_signal_container_t;
+
+typedef struct {
+	dy_signal_container_t* container;
+	ccv_nnc_stream_signal_t* signal;
+} dy_signal_t;
+KHASH_MAP_INIT_INT64(signal_container, dy_signal_container_t*)
+
 struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
@@ -93,6 +106,7 @@ struct ccv_nnc_dynamic_graph_s {
 	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	khash_t(dy_dev)* freed; // The freed memory allocations.
 	khash_t(dy_alloc)* allocd; // The allocated memory.
+	khash_t(signal_container)* signal_container; // Signals for streams.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
 	ccv_array_t* ws; // array of integers as workspace
 };

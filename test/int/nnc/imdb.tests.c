@@ -314,7 +314,7 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
 		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
-		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count, 0);
+		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count, stream);
 		ccv_nnc_tensor_t word_indices_tensor[device_count];
 		ccv_nnc_tensor_t mask_tensor[device_count];
 		ccv_nnc_tensor_variable_t word_indices[device_count];
@@ -350,7 +350,7 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, select_vec, device_count, device_count, stream);
-		ccv_cnnp_dataframe_iter_peek(iter, (void**)(tensor + device_count), device_count, device_count, 0);
+		ccv_cnnp_dataframe_iter_peek(iter, (void**)(tensor + device_count), device_count, device_count, stream);
 		for (j = 0; j < device_count; j++)
 		{
 			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);
