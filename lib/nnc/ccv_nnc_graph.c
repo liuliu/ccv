@@ -1916,5 +1916,18 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	ccv_array_free(graph->exec_info);
 	if (graph->buffer)
 		ccfree(graph->buffer);
+	khash_t(signal_container)* const signal_container = graph->signal_container;
+	if (signal_container)
+	{
+		khiter_t k;
+		for (k = kh_begin(signal_container); k != kh_end(signal_container); ++k)
+		{
+			if (!kh_exist(signal_container, k))
+				continue;
+			ccv_nnc_stream_signal_t* const signal = kh_val(signal_container, k);
+			ccv_nnc_stream_signal_free(signal);
+		}
+		kh_destroy(signal_container, signal_container);
+	}
 	ccfree(graph);
 }

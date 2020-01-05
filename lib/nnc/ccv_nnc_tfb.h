@@ -87,6 +87,7 @@ typedef struct {
 	int refcount;
 	ccv_numeric_data_t data;
 	uintptr_t alias_ref;
+	uint64_t data_size;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_t;
@@ -96,6 +97,7 @@ typedef struct {
 	int refcount;
 	ccv_numeric_data_t data;
 	uintptr_t alias_ref;
+	uint64_t data_size;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 	/* tensor view and tensor shares the same data structure besides the following. */
@@ -113,6 +115,7 @@ typedef struct {
 	int refcount;
 	ccv_numeric_data_t data;
 	uintptr_t reserved0;
+	uint64_t reserved1;
 	uint64_t sig;
 	// This is used for toll-free bridging between ccv_dense_matrix_t and ccv_nnc_tensor_t
 	// Note that this is bigger than it is needed, we carefully structured this
@@ -125,7 +128,7 @@ typedef struct {
 			int rows;
 			int cols;
 			int channels;
-			int reserved1; /* This reserved bit need to be zero'ed such that later dim is not cared. */
+			int reserved2; /* This reserved bit need to be zero'ed such that later dim is not cared. */
 			int step;
 			union {
 				unsigned char u8;

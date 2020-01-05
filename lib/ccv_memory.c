@@ -48,6 +48,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->datatype = CCV_GET_DATA_TYPE(type);
 	mat->channels = CCV_GET_CHANNEL(type);
 	mat->reserved1 = 0;
+	mat->reserved2 = 0;
 #endif
 	mat->rows = rows;
 	mat->cols = cols;
@@ -116,6 +117,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.datatype = CCV_GET_DATA_TYPE(type);
 	mat.channels = CCV_GET_CHANNEL(type);
 	mat.reserved1 = 0;
+	mat.reserved2 = 0;
 #endif
 	mat.data.u8 = (unsigned char*)data;
 	return mat;

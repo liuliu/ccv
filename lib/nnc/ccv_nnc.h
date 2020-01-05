@@ -207,6 +207,7 @@ static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
  * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
  * @param params Tensor parameters.
  * @param flags Reserved flags for the allocation.
+ * @return The newly created tensor.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 /**
@@ -214,8 +215,16 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, con
  * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
  * @param params Tensor parameters.
  * @param flags Reserved flags for the allocation.
+ * @return The tensor struct.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
+/**
+ * Resize an existing tensor to a new dimension.
+ * @param tensor The old tensor to be resized.
+ * @param params Tensor parameters.
+ * @return Potentially a new tensor, but if the size is sufficient, it will be in-place operation.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params);
 /**
  * Pin the tensor memory for faster access on GPU.
  * @param tensor A tensor that we want to pin the memory.
@@ -233,6 +242,7 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
  * @param dim The new dimension of the tensor view.
  * @param ofs The offset on each of the dimension.
  * @param inc The line size of each dimension.
+ * @return The newly created tensor view.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 /**
@@ -241,6 +251,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_te
  * @param dim The new dimension of the tensor view.
  * @param ofs The offset on each of the dimension.
  * @param inc The line size of each dimension.
+ * @return The tensor view struct.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 /**
@@ -537,16 +548,6 @@ void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const st
  * @return The most recent stream context you called ccv_nnc_stream_context_emit_signal with.
  */
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_signal_get_emitter(const ccv_nnc_stream_signal_t* const signal);
-/**
- * Get a signal handle for a stream context, you can then wait this signal for this stream.
- * This is handy if you want to have a stream context specific signal that can be identified
- * with an identifier, and don't want to maintain it yourself. The returned signal cannot
- * be freed and managed by the stream itself.
- * @param stream The stream where the signal will be bind to.
- * @param identifier The identifier for this signal.
- * @return A signal that is binded to this stream and ready to be used.
- */
-CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_context_get_signal(ccv_nnc_stream_context_t* const stream, const int64_t identifier);
 /**
  * Deallocate the signal.
  * @param signal The signal to be destroyed.

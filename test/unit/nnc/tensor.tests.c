@@ -145,4 +145,21 @@ TEST_CASE("tensor persistence")
 	ccv_nnc_tensor_free(tensor);
 }
 
+TEST_CASE("resize tensor")
+{
+	ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 12, 12, 3), 0);
+	int i;
+	for (i = 0; i < 12 * 12 * 3; i++)
+		tensor->data.f32[i] = i;
+	tensor = ccv_nnc_tensor_resize(tensor, CPU_TENSOR_NHWC(32F, 23, 23, 3));
+	for (i = 12 * 12 * 3; i < 23 * 23 * 3; i++)
+		tensor->data.f32[i] = i;
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 23, 23, 3), 0);
+	for (i = 0; i < 23 * 23 * 3; i++)
+		b->data.f32[i] = i;
+	REQUIRE_TENSOR_EQ(tensor, b, "should retain the content when resize a tensor");
+	ccv_nnc_tensor_free(tensor);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

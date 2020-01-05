@@ -350,7 +350,7 @@ static int train_imdb(const int epoch_limit, const int vocab_size, const int bat
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, select_vec, device_count, device_count, stream);
-		ccv_cnnp_dataframe_iter_peek(iter, (void**)(tensor + device_count), device_count, device_count, stream);
+		ccv_cnnp_dataframe_iter_peek(iter, (void**)(tensor + device_count), device_count, device_count, 0);
 		for (j = 0; j < device_count; j++)
 		{
 			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size, max_length, max_length);

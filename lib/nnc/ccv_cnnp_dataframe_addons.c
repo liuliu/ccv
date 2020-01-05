@@ -53,19 +53,16 @@ static void _ccv_cnnp_copy_to_gpu(void* const* const* const column_data, const i
 		ccv_nnc_tensor_t* const* const inputs = (ccv_nnc_tensor_t* const*)column_data[0][i] + copy_to_gpu_context->tensor_offset;
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
-		{
-			outputs = (ccv_nnc_tensor_t**)(data[i] = ccmalloc(sizeof(ccv_nnc_tensor_t*) * copy_to_gpu_context->tuple.size));
-			for (j = 0; j < copy_to_gpu_context->tuple.size; j++)
-			{
-				ccv_nnc_tensor_param_t params = inputs[j]->info;
-				params.type &= ~CCV_TENSOR_CPU_MEMORY;
-				params.type |= CCV_TENSOR_GPU_MEMORY; // Change to GPU memory.
-				CCV_TENSOR_SET_DEVICE_ID(params.type, copy_to_gpu_context->device_id);
-				outputs[j] = ccv_nnc_tensor_new(0, params, 0);
-			}
-		}
+			outputs = (ccv_nnc_tensor_t**)(data[i] = cccalloc(copy_to_gpu_context->tuple.size, sizeof(ccv_nnc_tensor_t*)));
 		for (j = 0; j < copy_to_gpu_context->tuple.size; j++)
+		{
+			ccv_nnc_tensor_param_t params = inputs[j]->info;
+			params.type &= ~CCV_TENSOR_CPU_MEMORY;
+			params.type |= CCV_TENSOR_GPU_MEMORY; // Change to GPU memory.
+			CCV_TENSOR_SET_DEVICE_ID(params.type, copy_to_gpu_context->device_id);
+			outputs[j] = outputs[j] ? ccv_nnc_tensor_resize(outputs[j], params) : ccv_nnc_tensor_new(0, params, 0);
 			ccv_nnc_tensor_pin_memory(inputs[j]);
+		}
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, inputs, copy_to_gpu_context->tuple.size, outputs, copy_to_gpu_context->tuple.size, stream_context);
 	}
 }

@@ -170,7 +170,7 @@ void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const str
 		stream_compat = _ccv_nnc_default_stream_compat();
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
-	cudaEventRecord(compat_signal->event, device_local->stream);
+	CUDA_ENFORCE(cudaEventRecord(compat_signal->event, device_local->stream));
 }
 
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
@@ -180,7 +180,7 @@ void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const str
 		stream_compat = _ccv_nnc_default_stream_compat();
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
-	cudaStreamWaitEvent(device_local->stream, compat_signal->event, 0);
+	CUDA_ENFORCE(cudaStreamWaitEvent(device_local->stream, compat_signal->event, 0));
 }
 
 void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal)

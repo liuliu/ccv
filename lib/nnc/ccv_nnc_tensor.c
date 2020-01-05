@@ -13,7 +13,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 {
 	ccv_nnc_tensor_t* tensor;
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t (On CPU, and 3 dims (channels, rows, cols), and channels is smaller than max channels of ccv_dense_matrix_t).
-	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
+	const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 	if (ptr)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
@@ -56,6 +56,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 #endif
 	tensor->alias_ref = 0;
+	tensor->data_size = size;
 	tensor->sig = 0;
 	tensor->refcount = 1;
 	tensor->info = params;
@@ -69,10 +70,59 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	return tensor;
 }
 
+ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params)
+{
+	assert(!CCV_IS_TENSOR_VIEW(tensor));
+	assert(tensor->type & CCV_UNMANAGED);
+	assert(tensor->data_size > 0);
+	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GET_MEMORY(tensor->info.type));
+	assert(CCV_TENSOR_GET_DEVICE(params.type) == CCV_TENSOR_GET_DEVICE(tensor->info.type));
+	const size_t size = ccv_nnc_tensor_data_size(params);
+	const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
+	tensor->info = params;
+#ifdef HAVE_CUDA
+	const int pinned_mem = (tensor->type & CCV_PINNED_MEM);
+#endif
+	if (tfb)
+	{
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[2];
+		// This corresponding to mat->step
+		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[2]));
+	} else
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
+	if (size <= tensor->data_size) // Nothing.
+		return tensor;
+	ccv_nnc_tensor_t* new_tensor = tensor;
+	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 15) & -16;
+#ifdef HAVE_CUDA
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(params.type);
+		cufree(device_id, tensor->data.u8);
+		tensor->data.u8 = (uint8_t*)cumalloc(device_id, size);
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		// pin memory again.
+		if (pinned_mem)
+			cuunregister(new_tensor->data.u8);
+		new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
+		new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
+		ccv_nnc_tensor_pin_memory(new_tensor);
+	}
+#else
+	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+	new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
+	new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
+#endif
+	new_tensor->data_size = size;
+	return new_tensor;
+}
+
 ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags)
 {
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
-	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
+	const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 	ccv_nnc_tensor_t tensor;
 	tensor.alias_ref = 0;
 	tensor.sig = 0;
