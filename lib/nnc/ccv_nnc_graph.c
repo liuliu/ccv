@@ -691,7 +691,8 @@ typedef struct {
 
 static int _ccv_nnc_device_ids_for_stream_data(ccv_nnc_graph_exec_info_t* const node, const int device_id, ccv_array_t* const stream_data, int* const device_ids, const int max_device_id_size)
 {
-	int device_id_size = ccv_nnc_device_ids_for_io(node->inputs, node->input_size, node->outputs, node->output_size, device_ids, max_device_id_size);
+	// TODO: I need to re-think whether this is GPU only or not.
+	int device_id_size = ccv_nnc_device_ids_for_io(node->inputs, node->input_size, node->outputs, node->output_size, CCV_TENSOR_GPU_MEMORY, device_ids, max_device_id_size);
 	if (device_id_size == 0)
 	{
 		// If there is a default data, use that device id. Otherwise, use the device id passed in (this will be the default data device id).
@@ -1916,18 +1917,7 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	ccv_array_free(graph->exec_info);
 	if (graph->buffer)
 		ccfree(graph->buffer);
-	khash_t(signal_container)* const signal_container = graph->signal_container;
-	if (signal_container)
-	{
-		khiter_t k;
-		for (k = kh_begin(signal_container); k != kh_end(signal_container); ++k)
-		{
-			if (!kh_exist(signal_container, k))
-				continue;
-			ccv_nnc_stream_signal_t* const signal = kh_val(signal_container, k);
-			ccv_nnc_stream_signal_free(signal);
-		}
-		kh_destroy(signal_container, signal_container);
-	}
+	if (graph->signal_container)
+		ccv_nnc_signal_container_free(graph->signal_container);
 	ccfree(graph);
 }

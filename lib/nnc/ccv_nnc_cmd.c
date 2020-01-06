@@ -324,7 +324,7 @@ static void _ccv_nnc_cmd_set_device_id(ccv_nnc_tensor_t* const* const inputs, co
 	if (!stream_context)
 	{
 		int device_id;
-		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, &device_id, 1) > 0)
+		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, CCV_TENSOR_GPU_MEMORY, &device_id, 1) > 0)
 			cudevice(device_id);
 	}
 #endif
@@ -514,7 +514,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	return 0;
 }
 
-int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, int* const device_ids, const int max_device_id_size)
+int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int tensor_type, int* const device_ids, const int max_device_id_size)
 {
 	int i, j;
 	int device_id_size = 0;
@@ -523,7 +523,7 @@ int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int i
 	// The device id of the exec is determined by its outputs.
 	for (i = 0; i < output_size; i++)
 		if (outputs[i] &&
-			CCV_TENSOR_GET_MEMORY(outputs[i]->info.type) == CCV_TENSOR_GPU_MEMORY &&
+			CCV_TENSOR_GET_MEMORY(outputs[i]->info.type) == tensor_type &&
 			CCV_TENSOR_GET_DEVICE(outputs[i]->info.type) != CCV_COMPUTE_DEVICE_ANY)
 		{
 			const int device_id = CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type);
@@ -541,7 +541,7 @@ int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int i
 		int device_id = -1;
 		for (i = 0; i < input_size; i++)
 			if (inputs[i] &&
-				CCV_TENSOR_GET_MEMORY(inputs[i]->info.type) == CCV_TENSOR_GPU_MEMORY &&
+				CCV_TENSOR_GET_MEMORY(inputs[i]->info.type) == tensor_type &&
 				CCV_TENSOR_GET_DEVICE(inputs[i]->info.type) != CCV_COMPUTE_DEVICE_ANY &&
 				(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) < device_id))
 				device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);

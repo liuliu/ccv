@@ -429,4 +429,44 @@ TEST_CASE("long chain to autograd, simulate random free of unused tensors due to
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("parallel exec with a stream, focus on uma tensors")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_CPU);
+	ccv_nnc_tensor_variable_t x[2];
+	x[0] = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	x[1] = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x[0])->data.f32[0] = 10;
+	ccv_nnc_tensor_from_variable(graph, x[1])->data.f32[0] = 9;
+	ccv_nnc_tensor_variable_t y[2];
+	y[0] = ccv_nnc_tensor_variable_new(graph);
+	y[1] = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.4), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x[0], x[1]), TENSOR_VARIABLE_LIST(y[0], y[1]), 2, stream);
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_stream_context_free(stream);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y[0])->data.f32[0], 10 * 0.4, 1e-5, "should match the result");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y[1])->data.f32[0], 9 * 0.4, 1e-5, "should match the result");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("parallel exec with a stream, focus on potential memory issues")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_CPU);
+	ccv_nnc_tensor_variable_t x[2];
+	x[0] = ccv_nnc_tensor_variable_new(graph, CPU_NUMA_TENSOR_NHWC(000, 32F, 1));
+	x[1] = ccv_nnc_tensor_variable_new(graph, CPU_NUMA_TENSOR_NHWC(000, 32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x[0])->data.f32[0] = 10;
+	ccv_nnc_tensor_from_variable(graph, x[1])->data.f32[0] = 9;
+	ccv_nnc_tensor_variable_t y[2];
+	y[0] = ccv_nnc_tensor_variable_new(graph);
+	y[1] = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.4), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x[0], x[1]), TENSOR_VARIABLE_LIST(y[0], y[1]), 2, stream);
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_stream_context_free(stream);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y[0])->data.f32[0], 10 * 0.4, 1e-5, "should match the result");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y[1])->data.f32[0], 9 * 0.4, 1e-5, "should match the result");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"

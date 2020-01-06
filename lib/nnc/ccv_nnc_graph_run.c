@@ -221,22 +221,6 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 		}
 }
 
-static ccv_nnc_stream_signal_t* _ccv_nnc_graph_get_signal_for_stream(ccv_nnc_graph_t* const graph, const ccv_nnc_stream_context_t* const stream)
-{
-	if (!graph->signal_container)
-		graph->signal_container = kh_init(signal_container);
-	khash_t(signal_container)* const signal_container = graph->signal_container;
-	int ret = 0;
-	const int64_t identifier = (int64_t)(intptr_t)stream;
-	khiter_t k = kh_put(signal_container, signal_container, identifier, &ret);
-	assert(ret >= 0);
-	// If ret == 0, the key already exist, we can get the columns directly, otherwise, create and assign back.
-	ccv_nnc_stream_signal_t* const signal = (ret == 0) ? kh_val(signal_container, k) : ccv_nnc_stream_signal_new(stream->type);
-	if (ret != 0)
-		kh_val(signal_container, k) = signal;
-	return signal;
-}
-
 static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 {
 	if (tensor->info.dim[0] <= 0)
@@ -640,8 +624,9 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		if (CO_P(stream_context) != CO_P(graph)->streams[CO_V(stream_0)])
 		{
 			// Make sure when we start work on streams[0], the current stream context is done.
-			ccv_nnc_stream_signal_t* const signal = _ccv_nnc_graph_get_signal_for_stream(CO_P(graph), CO_P(stream_context));
-			ccv_nnc_stream_context_emit_signal(CO_P(stream_context), signal);
+			if (!CO_P(graph)->signal_container)
+				CO_P(graph)->signal_container = ccv_nnc_signal_container_new();
+			ccv_nnc_stream_signal_t* const signal = ccv_nnc_emit_signal_from_container(CO_P(graph)->signal_container, CO_P(stream_context));
 			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], signal);
 		}
 	} else {

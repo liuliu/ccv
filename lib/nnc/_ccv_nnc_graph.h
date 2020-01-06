@@ -15,8 +15,6 @@
 #include "_ccv_nnc_stream.h"
 #include "3rdparty/khash/khash.h"
 
-KHASH_MAP_INIT_INT64(signal_container, ccv_nnc_stream_signal_t*)
-
 typedef struct {
 	int update_required;
 	int count;

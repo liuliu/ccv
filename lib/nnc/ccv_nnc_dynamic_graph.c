@@ -15,11 +15,12 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->vars = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
 	graph->tape = ccv_nnc_symbolic_graph_new();
-	graph->stateful_execs = kh_init(stateful_exec);
-	graph->synced_streams = kh_init(synced_stream);
-	graph->signal_container = kh_init(signal_container);
 	graph->freed = kh_init(dy_dev);
 	graph->allocd = kh_init(dy_alloc);
+	// These may not be used as frequent, init as needed.
+	graph->stateful_execs = 0;
+	graph->synced_streams = 0;
+	graph->signal_container = 0;
 	graph->ws = 0;
 	return graph;
 }
@@ -98,36 +99,30 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	if (graph->ws)
 		ccv_array_free(graph->ws);
 	khiter_t k;
-	for (k = kh_begin(graph->stateful_execs); k != kh_end(graph->stateful_execs); ++k)
+	if (graph->stateful_execs)
 	{
-		if (!kh_exist(graph->stateful_execs, k))
-			continue;
-		ccfree(kh_val(graph->stateful_execs, k));
-	}
-	kh_destroy(stateful_exec, graph->stateful_execs);
-	for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
-	{
-		if (!kh_exist(graph->synced_streams, k))
-			continue;
-		ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
-		ccv_nnc_stream_context_free(synced_stream->stream);
-		ccv_nnc_stream_signal_free(synced_stream->synced);
-	}
-	kh_destroy(synced_stream, graph->synced_streams);
-	for (k = kh_begin(graph->signal_container); k != kh_end(graph->signal_container); ++k)
-	{
-		if (!kh_exist(graph->signal_container, k))
-			continue;
-		dy_signal_container_t* const container = kh_val(graph->signal_container, k);
-		pthread_mutex_destroy(&container->mutex);
-		for (i = 0; i < container->free_signals->rnum; i++)
+		for (k = kh_begin(graph->stateful_execs); k != kh_end(graph->stateful_execs); ++k)
 		{
-			dy_signal_t* const signal = *(dy_signal_t**)ccv_array_get(container->free_signals, i);
-			ccv_nnc_stream_signal_free(signal->signal);
-			ccfree(signal);
+			if (!kh_exist(graph->stateful_execs, k))
+				continue;
+			ccfree(kh_val(graph->stateful_execs, k));
 		}
+		kh_destroy(stateful_exec, graph->stateful_execs);
 	}
-	kh_destroy(signal_container, graph->signal_container);
+	if (graph->synced_streams)
+	{
+		for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
+		{
+			if (!kh_exist(graph->synced_streams, k))
+				continue;
+			ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
+			ccv_nnc_stream_context_free(synced_stream->stream);
+			ccv_nnc_stream_signal_free(synced_stream->synced);
+		}
+		kh_destroy(synced_stream, graph->synced_streams);
+	}
+	if (graph->signal_container)
+		ccv_nnc_signal_container_free(graph->signal_container);
 	ccv_nnc_dynamic_graph_xpu_alloc_destroy(graph);
 	ccfree(graph);
 }
@@ -349,50 +344,10 @@ void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_gr
 	dynamic_graph->no_grad = no_grad;
 }
 
-static dy_signal_t* const _ccv_nnc_dynamic_graph_signal(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_stream_context_t* const stream)
-{
-	int ret = 0;
-	khiter_t k = kh_put(signal_container, graph->signal_container, (int64_t)(intptr_t)stream, &ret);
-	dy_signal_container_t* container;
-	if (ret != 0)
-	{
-		container = (dy_signal_container_t*)ccmalloc(sizeof(dy_signal_container_t));
-		container->free_signals = ccv_array_new(sizeof(dy_signal_t*), 0, 0);
-		pthread_mutex_init(&container->mutex, 0);
-		kh_val(graph->signal_container, k) = container;
-	} else
-		container = kh_val(graph->signal_container, k);
-	dy_signal_t* signal;
-	pthread_mutex_lock(&container->mutex);
-	if (container->free_signals->rnum > 0)
-	{
-		signal = *(dy_signal_t**)ccv_array_get(container->free_signals, container->free_signals->rnum - 1);
-		--container->free_signals->rnum;
-	} else {
-		signal = (dy_signal_t*)ccmalloc(sizeof(dy_signal_t));
-		signal->container = container;
-		signal->signal = ccv_nnc_stream_signal_new(ccv_nnc_stream_context_type(stream));
-	}
-	pthread_mutex_unlock(&container->mutex);
-	return signal;
-}
-
-static void _ccv_nnc_dynamic_graph_signal_callback(ccv_nnc_stream_context_t* const stream, void* const callback_context)
-{
-	dy_signal_t* const signal = (dy_signal_t*)callback_context;
-	dy_signal_container_t* const container = signal->container;
-	pthread_mutex_lock(&container->mutex);
-	ccv_array_push(container->free_signals, &signal);
-	pthread_mutex_unlock(&container->mutex);
-}
-
-static void _ccv_nnc_dynamic_graph_free_signal_on_stream(dy_signal_t* const signal, ccv_nnc_stream_context_t* const stream)
-{
-	ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_dynamic_graph_signal_callback, signal);
-}
-
 static ccv_nnc_synced_stream_t _ccv_nnc_dynamic_graph_get_synced_stream(ccv_nnc_dynamic_graph_t* const graph, const int type)
 {
+	if (!graph->synced_streams)
+		graph->synced_streams = kh_init(synced_stream);
 	int ret = 0;
 	khiter_t k = kh_put(synced_stream, graph->synced_streams, type, &ret);
 	assert(ret >= 0);
@@ -509,10 +464,9 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 		ccv_nnc_stream_signal_t* signal;
 		if (stream_context)
 		{
-			dy_signal_t* const dy_signal = _ccv_nnc_dynamic_graph_signal(graph, stream_context);
-			signal = dy_signal->signal;
-			ccv_nnc_stream_context_emit_signal(stream_context, signal);
-			_ccv_nnc_dynamic_graph_free_signal_on_stream(dy_signal, stream_context);
+			if (!graph->signal_container)
+				graph->signal_container = ccv_nnc_signal_container_new();
+			signal = ccv_nnc_emit_signal_from_container(graph->signal_container, stream_context);
 		}
 		for (i = 0; i < parallel_count; i++)
 		{
@@ -526,8 +480,9 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				if (output_tensors[j] && !flag)
 					flag = (CCV_TENSOR_GET_MEMORY(output_tensors[j]->info.type) == CCV_TENSOR_GPU_MEMORY);
 			}
-			const int device_id_size = ccv_nnc_device_ids_for_io(input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, device_ids, max_device_id_size);
 			const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+			const int tensor_type = flag ? CCV_TENSOR_GPU_MEMORY : CCV_TENSOR_CPU_MEMORY;
+			const int device_id_size = ccv_nnc_device_ids_for_io(input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, tensor_type, device_ids, max_device_id_size);
 			ccv_nnc_synced_stream_t stream_0 = {};
 			for (j = 0; j < device_id_size; j++)
 			{
@@ -539,14 +494,22 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			}
 			// Wait signal to finish.
 			if (stream_context)
-				ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
-			ccv_nnc_dynamic_graph_neighbor_context_discovery_t discovery = {
-				.graph = graph,
-				.stream_type = stream_type
-			};
-			ccv_nnc_stream_context_set_neighbor_discovery(stream_0.stream, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
+			{
+				if (stream_0.stream)
+					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+				else
+					ccv_nnc_stream_context_wait(stream_context);
+			}
+			if (stream_0.stream)
+			{
+				ccv_nnc_dynamic_graph_neighbor_context_discovery_t discovery = {
+					.graph = graph,
+					.stream_type = stream_type
+				};
+				ccv_nnc_stream_context_set_neighbor_discovery(stream_0.stream, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
+			}
 			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0.stream);
-			if (stream_context)
+			if (stream_context && stream_0.stream)
 			{
 				ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
 				ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
@@ -555,7 +518,8 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 		}
 		if (!stream_context)
 			for (i = 0; i < parallel_count; i++)
-				ccv_nnc_stream_context_wait(streams[i]);
+				if (streams[i])
+					ccv_nnc_stream_context_wait(streams[i]);
 	} else {
 		for (i = 0; i < per_output_size; i++)
 			output_tensors[i] = outputs[i] ? ccv_nnc_tensor_from_variable(graph, outputs[i], stream_context) : 0;
@@ -732,6 +696,8 @@ static void _ccv_nnc_update_bind_sources_destinations_when_free(ccv_nnc_dynamic_
 
 static void _ccv_nnc_stateful_exec_free(khash_t(stateful_exec)* const stateful_execs, const ccv_nnc_graph_exec_symbol_t symbol)
 {
+	if (!stateful_execs)
+		return;
 	assert(symbol.d >= 0);
 	khiter_t k = kh_get(stateful_exec, stateful_execs, symbol.d);
 	if (k == kh_end(stateful_execs))

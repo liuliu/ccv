@@ -12,19 +12,22 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	assert(gradient_size == parameter_size);
 	assert(!dynamic_graph->no_grad);
 	// Call apply gradients to stateful execs first.
-	khiter_t k;
-	for (k = kh_begin(dynamic_graph->stateful_execs); k != kh_end(dynamic_graph->stateful_execs); ++k)
+	if (dynamic_graph->stateful_execs)
 	{
-		if (!kh_exist(dynamic_graph->stateful_execs, k))
-			continue;
-		const int d = kh_key(dynamic_graph->stateful_execs, k);
-		const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
-			.graph = dynamic_graph->tape,
-			.d = d
-		});
-		const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
-		if (isa->apply_gradients)
-			isa->apply_gradients(cmd, minimizer, stream_context);
+		khiter_t k;
+		for (k = kh_begin(dynamic_graph->stateful_execs); k != kh_end(dynamic_graph->stateful_execs); ++k)
+		{
+			if (!kh_exist(dynamic_graph->stateful_execs, k))
+				continue;
+			const int d = kh_key(dynamic_graph->stateful_execs, k);
+			const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
+				.graph = dynamic_graph->tape,
+				.d = d
+			});
+			const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
+			if (isa->apply_gradients)
+				isa->apply_gradients(cmd, minimizer, stream_context);
+		}
 	}
 	if (parameter_size == 0)
 	{

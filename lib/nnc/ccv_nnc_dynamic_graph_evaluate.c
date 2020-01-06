@@ -169,6 +169,8 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, &symbol);
 		assert(symbol.graph);
 		int ret;
+		if (!dynamic_graph->stateful_execs)
+			dynamic_graph->stateful_execs = kh_init(stateful_exec);
 		khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
 		kh_val(dynamic_graph->stateful_execs, k) = stateful_exec;
 	}
