@@ -2643,14 +2643,23 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format);
 /**
- * Generate mask for sequence attention. This will mask out the extra bits for attention layer.
- * @param dataframe The dataframe object that contains the label.
+ * Generate vector with ones up to a given length, the rest will be zeros. When applied to batched lengths
+ * array, this will generate a matrix of these vectors.
+ * @param dataframe The dataframe object that will contain the matrix.
  * @param column_idx The column which contains the sequence lengths (a 1d tensor).
- * @param variable_size The size of the final mask can vary, depending on the max length of current batch.
+ * @param variable_size The size of the final vector can vary, depending on the max length of current batch.
  * @param max_length The absolute max length for inputs.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_mask_for_sequence(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_ones(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length);
+/**
+ * Truncate a given matrix (as a list of vector) to the given size provided by another vector.
+ * @param dataframe The dataframe object that will contain the matrix.
+ * @param seq_idx The column of the given matrix to be truncated.
+ * @param len_idx The column of the given sizes as a vector.
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int seq_idx, const int len_idx);
 /**
  * Batch multiple tensors in a column into one tensor. This method can take multiple columns, which
  * will result a tuple of tensors. Each tensor in the tuple is a batched one from a given column.

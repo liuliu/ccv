@@ -1,3 +1,10 @@
+2020-01-06
+----------
+Get myself more familiar with LLVM. I am surprised the design separation of Function v.s. Basic Block v.s. Instruction, and then fact that Basic Block itself is not recursive. The loop structure, in particular, loop-closed SSA form is not something intrinsic to Basic Blocks. If the design is more functional, there shouldn't be a separation of Basic Block and function, while Basic Block would be enough to express loop structure. What I do learnt though, is how easy LLVM is to manipulate BB / Func / Inst through CGF / CGM. Comparing to how hard to create a phi node inside nnc (not explicitly, through the mapping when add case..of sub-graph), or assigning loop carry-overs, LLVM is so much easy to remove a BB, create a BB, and hook up one BB with another. Not to mention to iterate over Inst and BB, it is something builtin while there is still no easy way to iterate over nodes and manipulating them at the same time inside nnc.
+
+While it is very inspirational, I will punt more work in defining a better symbolic graph interface. After all, Relay and MIIR all try to do better job at expressing computation graph, I can learn one or two from their experimentation first.
+
+
 2019-08-22
 ----------
 Implementing named models and proper tensor init seems not so easy. Particularly, for complex training setup, such as: having new model share some weights with simpler models (for example, seed ResNet101 with ResNet50 parameters), or fix the training on certain weights, and continue on the others. The former one requires us to keep some consistency between different models, the second requires us to mark the model somehow while adding trainables.
