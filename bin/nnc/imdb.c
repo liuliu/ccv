@@ -221,12 +221,12 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	for (i = 0; i < device_count; i++)
 	{
 		const int seq_len_batched = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2);
-		const int mask_batched = ccv_cnnp_dataframe_ones(batched_data, seq_len_batched, 0, max_length);
+		const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, 0, max_length);
 		const int tupled_mask_batched = ccv_cnnp_dataframe_make_tuple(batched_data, COLUMN_ID_LIST(mask_batched));
 		gpu_batched[i * 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 2, i);
 		gpu_batched[i * 2 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, tupled_mask_batched, 0, 1, i);
 		const int test_seq_len_batched = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2);
-		const int test_mask_batched = ccv_cnnp_dataframe_ones(test_batched_data, test_seq_len_batched, 0, max_length);
+		const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, 0, max_length);
 		const int test_tupled_mask_batched = ccv_cnnp_dataframe_make_tuple(test_batched_data, COLUMN_ID_LIST(test_mask_batched));
 		test_gpu_batched[i * 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 2, i);
 		test_gpu_batched[i * 2 + 1] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_tupled_mask_batched, 0, 1, i);

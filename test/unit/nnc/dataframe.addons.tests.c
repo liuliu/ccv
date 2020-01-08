@@ -148,4 +148,99 @@ TEST_CASE("execute command from dataframe addons API")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
+TEST_CASE("sequence mask generation")
+{
+	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, 2), 0);
+	input->data.i32[0] = 2;
+	input->data.i32[1] = 3;
+	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t), 1, 0);
+	ccv_array_push(array, input);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, 0, 0, 4);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(one_idx));
+	ccv_nnc_tensor_t* data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
+	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data->info.dim[1], 4, "4 is the row number");
+	REQUIRE_EQ(data->info.dim[2], 4, "4 is the column number");
+	int b[2 * 4 * 4] = {
+		1, 1, 0, 0,
+		1, 1, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		1, 1, 1, 0,
+		1, 1, 1, 0,
+		1, 1, 1, 0,
+		0, 0, 0, 0,
+	};
+	REQUIRE_ARRAY_EQ(int, data->data.i32, b, 2 * 4 * 4, "should match the mask");
+	ccv_nnc_tensor_free(input);
+	ccv_array_free(array);
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("sequence mask generation with variable size")
+{
+	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, 2), 0);
+	input->data.i32[0] = 2;
+	input->data.i32[1] = 3;
+	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t), 1, 0);
+	ccv_array_push(array, input);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, 0, 1, 4);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(one_idx));
+	ccv_nnc_tensor_t* data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
+	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data->info.dim[1], 3, "3 is the row number");
+	REQUIRE_EQ(data->info.dim[2], 3, "3 is the column number");
+	int b[2 * 3 * 3] = {
+		1, 1, 0,
+		1, 1, 0,
+		0, 0, 0,
+		1, 1, 1,
+		1, 1, 1,
+		1, 1, 1,
+	};
+	REQUIRE_ARRAY_EQ(int, data->data.i32, b, 2 * 3 * 3, "should match the mask");
+	ccv_nnc_tensor_free(input);
+	ccv_array_free(array);
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("truncate a sequence")
+{
+	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 2, 4), 0);
+	int i;
+	for (i = 0; i < 2 * 4; i++)
+		input->data.f32[i] = i + 1;
+	ccv_nnc_tensor_t* len = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, 2), 0);
+	len->data.i32[0] = 2;
+	len->data.i32[1] = 3;
+	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t *[2]), 1, 0);
+	ccv_nnc_tensor_t* pair[2] = { input, len };
+	ccv_array_push(array, pair);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const int input_idx = ccv_cnnp_dataframe_extract_tuple(dataframe, 0, 0);
+	const int len_idx = ccv_cnnp_dataframe_extract_tuple(dataframe, 0, 1);
+	const int trunc_idx = ccv_cnnp_dataframe_truncate(dataframe, input_idx, len_idx);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(trunc_idx));
+	ccv_nnc_tensor_t* data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
+	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data->info.dim[1], 3, "3 is the row number");
+	float b[2 * 3] = {
+		1, 2, 3, // 4,
+		5, 6, 7, // 8,
+	};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, data->data.f32, b, 2 * 3, 1e-5, "should match the mask");
+	ccv_nnc_tensor_free(input);
+	ccv_nnc_tensor_free(len);
+	ccv_array_free(array);
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"

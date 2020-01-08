@@ -438,11 +438,11 @@ int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int 
 typedef struct {
 	int variable_size;
 	int max_length;
-} ccv_cnnp_ones_context_t;
+} ccv_cnnp_one_squared_context_t;
 
-static void _ccv_cnnp_ones(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_one_squared(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_cnnp_ones_context_t* const ones = (ccv_cnnp_ones_context_t*)context;
+	ccv_cnnp_one_squared_context_t* const ones = (ccv_cnnp_one_squared_context_t*)context;
 	const int max_length = ones->max_length;
 	if (ones->variable_size)
 	{
@@ -505,14 +505,14 @@ static void _ccv_cnnp_ones(void* const* const* const column_data, const int colu
 	}
 }
 
-int ccv_cnnp_dataframe_ones(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length)
+int ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length)
 {
 	assert(max_length > 0);
 	assert(variable_size == 0 || variable_size == 1);
-	ccv_cnnp_ones_context_t* const ones = (ccv_cnnp_ones_context_t*)ccmalloc(sizeof(ccv_cnnp_ones_context_t));
+	ccv_cnnp_one_squared_context_t* const ones = (ccv_cnnp_one_squared_context_t*)ccmalloc(sizeof(ccv_cnnp_one_squared_context_t));
 	ones->variable_size = variable_size;
 	ones->max_length = max_length;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_ones, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), ones, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_squared, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), ones, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
 #pragma mark - Truncate Matrix
@@ -545,7 +545,7 @@ static void _ccv_cnnp_truncate(void* const* const* const column_data, const int 
 		size_t la = CCV_GET_DATA_TYPE_SIZE(params.datatype) * ori_len;
 		size_t lb = CCV_GET_DATA_TYPE_SIZE(params.datatype) * max_len;
 		parallel_for(j, len) {
-			memcpy(ub + lb * j, ua + la * j, lb * j);
+			memcpy(ub + lb * j, ua + la * j, lb);
 		} parallel_endfor
 	} parallel_endfor
 }
