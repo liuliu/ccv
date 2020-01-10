@@ -2644,22 +2644,27 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format);
 /**
  * Generate vector with ones up to a given length, the rest will be zeros. When applied to batched lengths
- * array, this will generate a matrix of these vectors, squared.
+ * array, this will generate a matrix of these vectors, squared. The derived column will be a tuple of vectors
+ * for the given number of columns.
  * @param dataframe The dataframe object that will contain the matrix.
- * @param column_idx The column which contains the sequence lengths (a 1d tensor).
+ * @param column_idxs The columns which contain the sequence lengths (a 1d tensor).
+ * @param column_idx_size The number of columns. The derived column will be a tuple of vectors.
  * @param variable_size The size of the final vector can vary, depending on the max length of current batch.
  * @param max_length The absolute max length for inputs.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int column_idx, const int variable_size, const int max_length);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int* const column_idxs, const int column_idx_size, const int variable_size, const int max_length);
 /**
- * Truncate a given matrix (as a list of vector) to the given size provided by another vector.
+ * Truncate a given matrix (as a list of vector) to the given size provided by another vector. The truncated
+ * column will be a tuple of vectors for the given columns.
  * @param dataframe The dataframe object that will contain the matrix.
- * @param seq_idx The column of the given matrix to be truncated.
- * @param len_idx The column of the given sizes as a vector.
+ * @param vec_idxs The columns of the given matrix to be truncated.
+ * @param vec_idx_size The number of columns for vec_idxs.
+ * @param len_idxs The columns of the given sizes as a vector.
+ * @param len_idx_size The number of columns for len_idxs.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int seq_idx, const int len_idx);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idx, const int vec_idx_size, const int* len_idxs, const int len_idx_size);
 /**
  * Batch multiple tensors in a column into one tensor. This method can take multiple columns, which
  * will result a tuple of tensors. Each tensor in the tuple is a batched one from a given column.
@@ -2979,6 +2984,13 @@ void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
  * @param trainable_span_size The number of trainable spans.
  */
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size);
+/**
+ * Retrieve the default minimizer for the model. This is set either you call model compile or
+ * ccv_cnnp_model_set_minimizer with no trainable spans.
+ * @param model The composed model.
+ * @return The minimizer command.
+ */
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model);
 /**
  * Get the default stream from a compiled model. If the model is not compiled, the default stream is
  * 0.

@@ -126,7 +126,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				flag = 1;
 		}
 		if (flag) // Recompile the graph.
-			ccv_cnnp_model_compile(model, input_params, per_input_size, CMD_NOOP(), CMD_NOOP());
+			ccv_cnnp_model_compile(model, input_params, per_input_size, ccv_cnnp_model_minimizer(model), CMD_NOOP());
 	}
 	for (i = 0; i < input_size; i++)
 	{

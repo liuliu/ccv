@@ -228,12 +228,14 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	ccv_nnc_graph_exec_symbol_new_hook(init->graph, _ccv_cnnp_graph_push_graph_exec_symbol, stack);
 	_ccv_cnnp_model_compile(init, inputs, input_size, compiled_data->loss);
 	init->parallel_count = model->parallel_count;
+	init->compiled_data->stream_type = model->compiled_data->stream_type;
+	init->compiled_data->minimize.minimizer = model->compiled_data->minimize.minimizer;
+	init->compiled_data->minimize.max_saved_aux_size = model->compiled_data->minimize.max_saved_aux_size;
 	_ccv_cnnp_model_gradient_init(init, model->compiled_data->gradient_mode, model->compiled_data->disable_outgrad, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0);
 	ccv_nnc_symbolic_graph_tensor_auto(init->graph, TRAVERSE_FULL);
 	// Go through the graph to set tensor on matching symbols
 	int i, j;
-	const int parallel_count = ccv_max(model->parallel_count, 1);
 	for (i = 0; i < stack->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(stack, i);
@@ -274,11 +276,6 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 		if (!flag) // Input matches, now copy input tensor setup.
 		{
 			ccv_nnc_graph_exec_symbol_set(model->graph, dest_symbol, src_cmd);
-			for (j = 1; j < parallel_count; j++)
-			{
-				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_copy(model->graph, dest_symbol, j);
-				ccv_nnc_graph_exec_symbol_set(model->graph, copy, src_cmd);
-			}
 			for (j = 0; j < src_input_size; j++)
 				if (src_inputs[j] >= 0)
 					_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_inputs[j], dest_inputs[j]);
@@ -1669,6 +1666,13 @@ void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_nnc_tensor_t* const src = compiled_data->tensors.trainables[d];
 	assert(src);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(tensor), 0);
+}
+
+ccv_nnc_cmd_t ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	return compiled_data->minimize.minimizer;
 }
 
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size)

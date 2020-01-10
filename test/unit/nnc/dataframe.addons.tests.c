@@ -156,13 +156,13 @@ TEST_CASE("sequence mask generation")
 	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t), 1, 0);
 	ccv_array_push(array, input);
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
-	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, 0, 0, 4);
+	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, COLUMN_ID_LIST(0), 0, 4);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(one_idx));
-	ccv_nnc_tensor_t* data = 0;
+	ccv_nnc_tensor_t** data = 0;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
-	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
-	REQUIRE_EQ(data->info.dim[1], 4, "4 is the row number");
-	REQUIRE_EQ(data->info.dim[2], 4, "4 is the column number");
+	REQUIRE_EQ(data[0]->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data[0]->info.dim[1], 4, "4 is the row number");
+	REQUIRE_EQ(data[0]->info.dim[2], 4, "4 is the column number");
 	int b[2 * 4 * 4] = {
 		1, 1, 0, 0,
 		1, 1, 0, 0,
@@ -173,7 +173,7 @@ TEST_CASE("sequence mask generation")
 		1, 1, 1, 0,
 		0, 0, 0, 0,
 	};
-	REQUIRE_ARRAY_EQ(int, data->data.i32, b, 2 * 4 * 4, "should match the mask");
+	REQUIRE_ARRAY_EQ(int, data[0]->data.i32, b, 2 * 4 * 4, "should match the mask");
 	ccv_nnc_tensor_free(input);
 	ccv_array_free(array);
 	ccv_cnnp_dataframe_iter_free(iter);
@@ -188,13 +188,13 @@ TEST_CASE("sequence mask generation with variable size")
 	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t), 1, 0);
 	ccv_array_push(array, input);
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
-	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, 0, 1, 4);
+	const int one_idx = ccv_cnnp_dataframe_one_squared(dataframe, COLUMN_ID_LIST(0), 1, 4);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(one_idx));
-	ccv_nnc_tensor_t* data = 0;
+	ccv_nnc_tensor_t** data = 0;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
-	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
-	REQUIRE_EQ(data->info.dim[1], 3, "3 is the row number");
-	REQUIRE_EQ(data->info.dim[2], 3, "3 is the column number");
+	REQUIRE_EQ(data[0]->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data[0]->info.dim[1], 3, "3 is the row number");
+	REQUIRE_EQ(data[0]->info.dim[2], 3, "3 is the column number");
 	int b[2 * 3 * 3] = {
 		1, 1, 0,
 		1, 1, 0,
@@ -203,7 +203,7 @@ TEST_CASE("sequence mask generation with variable size")
 		1, 1, 1,
 		1, 1, 1,
 	};
-	REQUIRE_ARRAY_EQ(int, data->data.i32, b, 2 * 3 * 3, "should match the mask");
+	REQUIRE_ARRAY_EQ(int, data[0]->data.i32, b, 2 * 3 * 3, "should match the mask");
 	ccv_nnc_tensor_free(input);
 	ccv_array_free(array);
 	ccv_cnnp_dataframe_iter_free(iter);
@@ -225,17 +225,17 @@ TEST_CASE("truncate a sequence")
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
 	const int input_idx = ccv_cnnp_dataframe_extract_tuple(dataframe, 0, 0);
 	const int len_idx = ccv_cnnp_dataframe_extract_tuple(dataframe, 0, 1);
-	const int trunc_idx = ccv_cnnp_dataframe_truncate(dataframe, input_idx, len_idx);
+	const int trunc_idx = ccv_cnnp_dataframe_truncate(dataframe, COLUMN_ID_LIST(input_idx), COLUMN_ID_LIST(len_idx));
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(trunc_idx));
-	ccv_nnc_tensor_t* data = 0;
+	ccv_nnc_tensor_t** data = 0;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
-	REQUIRE_EQ(data->info.dim[0], 2, "batch size is 2");
-	REQUIRE_EQ(data->info.dim[1], 3, "3 is the row number");
+	REQUIRE_EQ(data[0]->info.dim[0], 2, "batch size is 2");
+	REQUIRE_EQ(data[0]->info.dim[1], 3, "3 is the row number");
 	float b[2 * 3] = {
 		1, 2, 3, // 4,
 		5, 6, 7, // 8,
 	};
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, data->data.f32, b, 2 * 3, 1e-5, "should match the mask");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, data[0]->data.f32, b, 2 * 3, 1e-5, "should match the mask");
 	ccv_nnc_tensor_free(input);
 	ccv_nnc_tensor_free(len);
 	ccv_array_free(array);
