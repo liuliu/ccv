@@ -568,14 +568,6 @@ static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const trai
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(0, learn_rate, 1. / batch_size, 0.01, 0.9, 0.9), CMD_NOOP());
 	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	int i, j, k;
-	ccv_nnc_tensor_t* cpu_outputs[device_count];
-	ccv_nnc_tensor_t* cpu_outputs_16f[device_count];
-	for (i = 0; i < device_count; i++)
-	{
-		cpu_outputs_16f[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, batch_size, 10), 0);
-		ccv_nnc_tensor_pin_memory(cpu_outputs_16f[i]);
-		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 10), 0);
-	}
 	ccv_cnnp_dataframe_t* const raw_train_data = ccv_cnnp_dataframe_from_array_new(training_set);
 	const ccv_cnnp_random_jitter_t random_jitter = {
 		.resize = {
@@ -687,12 +679,18 @@ static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const trai
 		int t;
 		CCV_SWAP(p, q, t);
 	}
-	ccv_nnc_dynamic_graph_free(graph);
 	ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
 	ccv_nnc_stream_context_wait(stream_contexts[p]);
 	ccv_nnc_stream_context_wait(stream_contexts[q]);
 	correct = 0;
-	p = 0, q = 1;
+	ccv_nnc_tensor_t* cpu_outputs[device_count];
+	ccv_nnc_tensor_t* cpu_outputs_16f[device_count];
+	for (i = 0; i < device_count; i++)
+	{
+		cpu_outputs_16f[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, batch_size, 10), 0);
+		ccv_nnc_tensor_pin_memory(cpu_outputs_16f[i]);
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 10), 0);
+	}
 	for (j = 0; j < test_set->rnum; j += batch_size * device_count)
 	{
 		ccv_cnnp_dataframe_iter_next(test_iter, (void**)input_fits, device_count * 2, 0);
@@ -728,6 +726,7 @@ static int train_cifar_10_fp16_dy(const int epoch_limit, ccv_array_t* const trai
 	ccv_cnnp_dataframe_free(batch_test_data);
 	ccv_cnnp_dataframe_free(raw_test_data);
 	ccv_cnnp_model_free(cifar_10);
+	ccv_nnc_dynamic_graph_free(graph);
 	ccv_nnc_stream_context_free(stream_contexts[0]);
 	ccv_nnc_stream_context_free(stream_contexts[1]);
 	for (i = 0; i < device_count; i++)
