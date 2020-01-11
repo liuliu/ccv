@@ -69,6 +69,7 @@ typedef struct {
 	int stream_type;
 	int outgrad_size;
 	uint64_t disable_outgrad;
+	ccv_nnc_symbolic_graph_compile_param_t compile_params;
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;

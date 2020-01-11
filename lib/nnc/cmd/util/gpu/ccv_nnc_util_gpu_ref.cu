@@ -19,38 +19,38 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		assert(!CCV_IS_TENSOR_VIEW(a));
 		assert(!CCV_IS_TENSOR_VIEW(b));
 		assert(ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info));
-		const size_t size = ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->type);
+		const size_t size = (ssize_t)ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 		if (stream_context)
 		{
 			cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 			if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
-				cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice, stream);
+				CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice, stream));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
-				cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToHost, stream);
+				CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToHost, stream));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
-				cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost, stream);
+				CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost, stream));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY) {
 				const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 				const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 				if (device_a == device_b)
-					cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice, stream);
+					CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice, stream));
 				else
-					cudaMemcpyPeerAsync(b->data.u8, device_b, a->data.u8, device_a, size, stream);
+					CUDA_ENFORCE(cudaMemcpyPeerAsync(b->data.u8, device_b, a->data.u8, device_a, size, stream));
 			}
 		} else {
 			if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
-				cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice);
+				CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
-				cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToHost);
+				CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToHost));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
-				cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost);
+				CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY) {
 				const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 				const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 				if (device_a == device_b)
-					cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice);
+					CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice));
 				else
-					cudaMemcpyPeer(b->data.u8, device_b, a->data.u8, device_a, size);
+					CUDA_ENFORCE(cudaMemcpyPeer(b->data.u8, device_b, a->data.u8, device_a, size));
 			}
 		}
 	}

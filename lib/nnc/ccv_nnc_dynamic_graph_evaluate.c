@@ -139,12 +139,26 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	{
 		ccv_nnc_stateful_exec_t stateful_exec = {
 			.requires_grad = 0,
-			.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL,
 			.is_test = is_test,
+			.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL,
+			.xpu_alloc = {
+				.graph = dynamic_graph,
+				.stream = (intptr_t)stream_context
+			},
 			.tensor_tape = tensor_tape,
 			.data = model
 		};
 		cmd.data = &stateful_exec;
+		ccv_nnc_symbolic_graph_compile_param_t compile_params = {
+			.allocator = {
+				.isa = &ccv_nnc_dy_allocator_isa,
+				.context = {
+					.alloc = &stateful_exec.xpu_alloc,
+					.free = dynamic_graph,
+				}
+			}
+		};
+		ccv_cnnp_model_set_compile_params(model, compile_params);
 		// Parallel parameter doesn't make sense here, the parallel is defined inside the model.
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, 0);
 	} else {
@@ -159,12 +173,26 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		if (count == per_input_size)
 			disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL;
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
-		stateful_exec->is_test = is_test;
 		stateful_exec->requires_grad = 1;
+		stateful_exec->is_test = is_test;
 		stateful_exec->disable_outgrad = disable_outgrad;
+		stateful_exec->xpu_alloc = (ccv_nnc_dy_xpu_alloc_t){
+			.graph = dynamic_graph,
+			.stream = (intptr_t)stream_context,
+		};
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
 		cmd.data = stateful_exec;
+		ccv_nnc_symbolic_graph_compile_param_t compile_params = {
+			.allocator = {
+				.isa = &ccv_nnc_dy_allocator_isa,
+				.context = {
+					.alloc = &stateful_exec->xpu_alloc,
+					.free = dynamic_graph,
+				}
+			}
+		};
+		ccv_cnnp_model_set_compile_params(model, compile_params);
 		ccv_nnc_graph_exec_symbol_t symbol;
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, &symbol);
 		assert(symbol.graph);

@@ -2929,6 +2929,12 @@ void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int p
  */
 void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
 /**
+ * Set compile parameters on the model so it compiles the graph with the said parameters.
+ * @param model The composed model.
+ * @param compile_params A ccv_nnc_symbolic_graph_compile_param_t struct defines compilation parameters.
+ */
+void ccv_cnnp_model_set_compile_params(ccv_cnnp_model_t* const model, const ccv_nnc_symbolic_graph_compile_param_t compile_params);
+/**
  * This method set the max workspace size. If the graph is already compiled. It will re-run
  * autotune to use the new workspace size to find the best algorithm.
  * @param model The composed model.

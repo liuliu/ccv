@@ -13,7 +13,8 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	assert(input_size == 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const float p = cmd.info.blas.a[0];
+	float p = cmd.info.blas.a[0];
+	float q = cmd.info.blas.a[1];
 	static const float zero = 0;
 	if (inputs[1] == 0)
 	{
@@ -46,6 +47,8 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		{
 			ccv_nnc_tensor_view_t t;
 			CCV_SWAP(atv, btv, t);
+			float v;
+			CCV_SWAP(p, q, v);
 			a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
 		} else {
 			const ccv_nnc_cudnn_tensor_view_descriptor_t old_a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
@@ -58,7 +61,6 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		}
 	} else
 		a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &atv);
-	const float q = cmd.info.blas.a[1];
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &btv);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &p, a.descriptor, a.data.u8, &q, b.descriptor, b.data.u8, &zero, c.descriptor, c.data.u8));

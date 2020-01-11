@@ -55,9 +55,15 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 } ccv_nnc_tensor_variable_graph_bind_t;
 
 typedef struct {
+	ccv_nnc_dynamic_graph_t* graph;
+	intptr_t stream;
+} ccv_nnc_dy_xpu_alloc_t;
+
+typedef struct {
 	int requires_grad;
 	int is_test;
 	uint64_t disable_outgrad;
+	ccv_nnc_dy_xpu_alloc_t xpu_alloc;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;
 } ccv_nnc_stateful_exec_t;
@@ -280,11 +286,6 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, const int device, const intptr_t stream, const size_t size);
 void ccv_nnc_dynamic_graph_xpu_free(ccv_nnc_dynamic_graph_t* const graph, void* const ptr);
 void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const graph);
-
-typedef struct {
-	ccv_nnc_dynamic_graph_t* graph;
-	intptr_t stream;
-} ccv_nnc_dy_xpu_alloc_t;
 
 extern const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa;
 

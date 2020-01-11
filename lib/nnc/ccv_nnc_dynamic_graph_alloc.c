@@ -90,6 +90,10 @@ void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, cons
 		node->device = device;
 		node->size = size;
 		node->str = stream;
+	} else {
+		assert(node->size >= size);
+		assert(node->device == device);
+		assert(node->str == stream);
 	}
 	node->next = 0;
 	int ret;

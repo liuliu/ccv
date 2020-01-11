@@ -88,6 +88,7 @@ void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t c
 void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 void ccv_nnc_hint_tensor_auto_backward_from_gradient_and_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int tensor_type, int* const device_ids, const int max_device_id_size);
+void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor);
 
 static inline off_t ccv_nnc_tensor_view_offset(const int datatype, const int inc[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {

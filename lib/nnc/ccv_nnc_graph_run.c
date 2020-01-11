@@ -221,11 +221,15 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 		}
 }
 
-static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
+void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 {
-	if (tensor->info.dim[0] <= 0)
-		return;
 	int i;
+	PRINT(CCV_CLI_INFO, " [%d", tensor->info.dim[0]);
+	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && tensor->info.dim[i]; i++)
+		PRINT(CCV_CLI_INFO, "x%d", tensor->info.dim[i]);
+	PRINT(CCV_CLI_INFO, "]");
+	if (!CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE) || tensor->info.dim[0] <= 0)
+		return;
 	const int len = ccv_min(tensor->info.dim[0], 3);
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 	{
@@ -426,8 +430,8 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 		for (i = 0; i < node->input_size; i++)
 		{
 			PRINT(CCV_CLI_INFO, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
-			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
-				_ccv_nnc_print_tensor_verbose(inputs[i]);
+			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(inputs[i]);
 			PRINT(CCV_CLI_INFO, "\n");
 		}
 		ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(*schd)[0]];
@@ -441,8 +445,8 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 		for (i = 0; i < node->output_size; i++)
 		{
 			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
-			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
-				_ccv_nnc_print_tensor_verbose(outputs[i]);
+			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(outputs[i]);
 			PRINT(CCV_CLI_INFO, "\n");
 		}
 		flag = 0;
@@ -771,21 +775,21 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 			_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, flags, 0, 0, 0, 0, tensor_tape, stream_context);
 		}
 	} else {
-		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
+		PRINT(CCV_CLI_INFO, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
 		for (i = 0; i < node->input_size; i++)
 		{
-			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
-			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
-				_ccv_nnc_print_tensor_verbose(inputs[i]);
-			PRINT(CCV_CLI_VERBOSE, "\n");
+			PRINT(CCV_CLI_INFO, "|-> %d. %p (%p:%d)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) : -1));
+			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(inputs[i]);
+			PRINT(CCV_CLI_INFO, "\n");
 		}
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, stream_context);
 		for (i = 0; i < node->output_size; i++)
 		{
-			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
-			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
-				_ccv_nnc_print_tensor_verbose(outputs[i]);
-			PRINT(CCV_CLI_VERBOSE, "\n");
+			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
+			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(outputs[i]);
+			PRINT(CCV_CLI_INFO, "\n");
 		}
 	}
 }

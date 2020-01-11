@@ -66,7 +66,7 @@ int curegister(void* ptr, size_t size)
 
 void cuunregister(void* ptr)
 {
-	cudaHostUnregister(ptr);
+	CUDA_ENFORCE(cudaHostUnregister(ptr));
 }
 
 typedef struct {

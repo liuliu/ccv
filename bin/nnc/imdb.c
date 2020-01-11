@@ -286,6 +286,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		seq_indices[i] = ccv_nnc_tensor_constant_new(dynamic_graph, seq_params);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i])), 0);
 	}
+	ccv_nnc_tensor_free(seq_indices_cpu);
 	classifier_transformer_params_t classifier_transformer_params = {
 		.layers = 2,
 		.h = 8,
@@ -316,12 +317,12 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	}
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
 	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
-	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_INFO);
 	ccv_nnc_tensor_t** tensor[device_count * 3];
 	double overall_accuracy = 0;
 	int epoch = 0;
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
-	for (i = 0; i < 100000; i++)
+	for (i = 0; i < 1000000; i++)
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
 		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
@@ -432,7 +433,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		if ((i + 1) % epoch_end == 0)
 		{
 			int correct = 0;
-			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, device_count * 2);
+			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, device_count * 3);
 			int k;
 			ccv_cnnp_dataframe_shuffle(test_data);
 			ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 1);

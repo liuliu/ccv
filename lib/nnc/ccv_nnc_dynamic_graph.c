@@ -508,7 +508,23 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				};
 				ccv_nnc_stream_context_set_neighbor_discovery(stream_0.stream, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
 			}
+			PRINT(CCV_CLI_INFO, "%s: [%d] -> [%d]\n", ccv_nnc_cmd_name(cmd.cmd), per_input_size, per_output_size);
+			int k;
+			for (k = 0; k < per_input_size; k++)
+			{
+				PRINT(CCV_CLI_INFO, "|-> %d. %p (%p:%d)", k + 1, input_tensors[k + i * per_input_size], (input_tensors[k + i * per_input_size] ? input_tensors[k + i * per_input_size]->data.u8 : 0), (input_tensors[k + i * per_input_size] ? CCV_TENSOR_GET_DEVICE_ID(input_tensors[k + i * per_input_size]->info.type) : -1));
+				if (input_tensors[k + i * per_input_size] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+					ccv_nnc_print_tensor_info(input_tensors[k + i * per_input_size]);
+				PRINT(CCV_CLI_INFO, "\n");
+			}
 			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0.stream);
+			for (k = 0; k < per_output_size; k++)
+			{
+				PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", k + 1, output_tensors[k], (output_tensors[k] ? output_tensors[k]->data.u8 : 0), (output_tensors[k] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[k]->info.type) : -1));
+				if (output_tensors[k] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+					ccv_nnc_print_tensor_info(output_tensors[k]);
+				PRINT(CCV_CLI_INFO, "\n");
+			}
 			if (stream_context && stream_0.stream)
 			{
 				ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
@@ -523,7 +539,22 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 	} else {
 		for (i = 0; i < per_output_size; i++)
 			output_tensors[i] = outputs[i] ? ccv_nnc_tensor_from_variable(graph, outputs[i], stream_context) : 0;
+		PRINT(CCV_CLI_INFO, "%s: [%d] -> [%d]\n", ccv_nnc_cmd_name(cmd.cmd), per_input_size, per_output_size);
+		for (i = 0; i < per_input_size; i++)
+		{
+			PRINT(CCV_CLI_INFO, "|-> %d. %p (%p:%d)", i + 1, input_tensors[i], (input_tensors[i] ? input_tensors[i]->data.u8 : 0), (input_tensors[i] ? CCV_TENSOR_GET_DEVICE_ID(input_tensors[i]->info.type) : -1));
+			if (input_tensors[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(input_tensors[i]);
+			PRINT(CCV_CLI_INFO, "\n");
+		}
 		ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, per_input_size, output_tensors, per_output_size, stream_context);
+		for (i = 0; i < per_output_size; i++)
+		{
+			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, output_tensors[i], (output_tensors[i] ? output_tensors[i]->data.u8 : 0), (output_tensors[i] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[i]->info.type) : -1));
+			if (output_tensors[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_info(output_tensors[i]);
+			PRINT(CCV_CLI_INFO, "\n");
+		}
 	}
 	if (input_size > 0 && !graph->no_grad) // No need to record the execution if there is no input or we disabled gradient computation.
 	{

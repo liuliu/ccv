@@ -91,7 +91,13 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 	} else
 		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
 	if (size <= tensor->data_size) // Nothing.
+	{
+#ifdef HAVE_CUDA
+		if (pinned_mem)
+			tensor->type |= CCV_PINNED_MEM;
+#endif
 		return tensor;
+	}
 	ccv_nnc_tensor_t* new_tensor = tensor;
 	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 15) & -16;
 #ifdef HAVE_CUDA
@@ -99,16 +105,17 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 	{
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(params.type);
+		assert(device_id == CCV_TENSOR_GET_DEVICE_ID(tensor->info.type));
 		cufree(device_id, tensor->data.u8);
-		tensor->data.u8 = (uint8_t*)cumalloc(device_id, size);
+		new_tensor->data.u8 = (uint8_t*)cumalloc(device_id, size);
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
 		// pin memory again.
 		if (pinned_mem)
 			cuunregister(new_tensor->data.u8);
 		new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
 		new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
-		ccv_nnc_tensor_pin_memory(new_tensor);
 	}
 #else
 	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
@@ -116,6 +123,10 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 	new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
 #endif
 	new_tensor->data_size = size;
+#ifdef HAVE_CUDA
+	if (pinned_mem)
+		ccv_nnc_tensor_pin_memory(new_tensor);
+#endif
 	return new_tensor;
 }
 
@@ -150,7 +161,7 @@ int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor)
 #ifdef HAVE_CUDA
 	if (!(tensor->type & CCV_PINNED_MEM))
 	{
-		const int success = curegister(tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info));
+		const int success = curegister(tensor->data.u8, tensor->data_size);
 		if (success)
 			tensor->type |= CCV_PINNED_MEM;
 		return success ? 0 : -1;
