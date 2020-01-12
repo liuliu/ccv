@@ -234,6 +234,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
 	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_one_hot_idx, test_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int gpu_batched[device_count * 3];
+	int first_gpu_batched[device_count * 3];
 	int seq_len_batched[device_count];
 	int data_batched[device_count];
 	int test_gpu_batched[device_count * 3];
@@ -248,6 +249,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		test_data_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3);
 	}
 	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 1, max_length);
+	const int full_mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 0, max_length);
 	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count, seq_len_batched, device_count);
 	const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, device_count, 1, max_length);
 	const int test_trunc_data_batched = ccv_cnnp_dataframe_truncate(test_batched_data, test_data_batched, device_count, test_seq_len_batched, device_count);
@@ -261,6 +263,12 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		test_gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_trunc_data_batched, i, 1, i);
 		test_gpu_batched[i * 3 + 1] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 1, 1, i);
 		test_gpu_batched[i * 3 + 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_mask_batched, i, 1, i);
+	}
+	for (i = 0; i < device_count; i++)
+	{
+		first_gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 1, i);
+		first_gpu_batched[i * 3 + 1] = gpu_batched[i * 3 + 1];
+		first_gpu_batched[i * 3 + 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, full_mask_batched, i, 1, i);
 	}
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, device_count * 3);
 	ccv_nnc_dynamic_graph_t* const dynamic_graph = ccv_nnc_dynamic_graph_new();
@@ -325,12 +333,15 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	double overall_accuracy = 0;
 	int epoch = 0;
 	int max_batch_length = 0;
+	ccv_cnnp_dataframe_iter_t* const first_iter = ccv_cnnp_dataframe_iter_new(batched_data, first_gpu_batched, device_count * 3);
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 1000000; i++)
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
 		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count * 3, 0);
+		if (i == 0) // Use the first iter, it doesn't have truncated data.
+			ccv_cnnp_dataframe_iter_next(first_iter, (void**)tensor, device_count * 3, 0);
 		ccv_nnc_tensor_t word_indices_tensor[device_count];
 		ccv_nnc_tensor_t mask_tensor[device_count];
 		ccv_nnc_tensor_variable_t word_indices[device_count];
@@ -438,6 +449,8 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_tensor_variable_free(dynamic_graph, vocab_vec_grad[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, seq_vec_grad[j]);
 		}
+		if (i == 0) // Free data associated with that.
+			ccv_cnnp_dataframe_iter_free(first_iter);
 		if ((i + 1) % 50 == 0)
 			printf("epoch %d (%d/%d), training accuracy %lf\n", epoch, (i + 1) - epoch * epoch_end, epoch_end, overall_accuracy);
 		if ((i + 1) % epoch_end == 0)

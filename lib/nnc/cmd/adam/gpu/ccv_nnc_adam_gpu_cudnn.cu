@@ -47,6 +47,7 @@ static int _ccv_nnc_adam_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const size_t tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
 	void* buf = ccv_nnc_stream_context_get_workspace(stream_context, tensor_count * CCV_GET_DATA_TYPE_SIZE(inputs[1]->info.datatype), CCV_TENSOR_GPU_MEMORY);
+	assert(buf);
 	ccv_nnc_tensor_param_t params = inputs[0]->info;
 	params.datatype = inputs[1]->info.datatype;
 	ccv_nnc_tensor_t t = ccv_nnc_tensor(buf, params, 0);
