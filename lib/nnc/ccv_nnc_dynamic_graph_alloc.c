@@ -158,6 +158,20 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 	}
 	kh_destroy(dy_dev, freed);
 }
+
+void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const graph)
+{
+	khash_t(dy_dev)* const freed = graph->freed;
+	khiter_t k;
+	for (k = kh_begin(freed); k != kh_end(freed); ++k)
+	{
+		if (!kh_exist(freed, k))
+			continue;
+		const int device = kh_key(freed, k);
+		khash_t(dy_str)* const str = kh_val(freed, k);
+		_ccv_nnc_dynamic_graph_xpu_alloc_drain(device, str);
+	}
+}
 #else
 void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, const int device, const intptr_t stream, const size_t size)
 {
@@ -169,6 +183,10 @@ void ccv_nnc_dynamic_graph_xpu_free(ccv_nnc_dynamic_graph_t* const graph, void* 
 }
 
 void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const graph)
+{
+}
+
+void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const dynamic_graph)
 {
 }
 #endif

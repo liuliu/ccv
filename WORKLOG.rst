@@ -1,3 +1,12 @@
+2020-01-12
+----------
+Memory reclamation is not as simple as what PyTorch made it out to be. The simple scheme PyTorch uses is to allocate memory gradually, and only do a pause / collect (because you have to synchronize with all devices) when run out of the memory. It is only useful if "all" your memory allocation go through the same path, or you won't have multi-processes.
+
+In my case, what bites back is the workspace memory for streams. Each stream can maintain and allocate their own workspace memory. These memory bounded to the stream and never reclaimed until stream destroyed. This simple scheme works fine for static graph. However, now it will conflict with the dynamic graph because dynamic graph won't release the memory.
+
+So, the choice has to make now is whether to have a "global" memory allocator for streams as well, that shared with the dynamic graph. Or inject a custom allocator to streams. I probably would prefer later consider this is a library not a framework.
+
+
 2020-01-06
 ----------
 Get myself more familiar with LLVM. I am surprised the design separation of Function v.s. Basic Block v.s. Instruction, and then fact that Basic Block itself is not recursive. The loop structure, in particular, loop-closed SSA form is not something intrinsic to Basic Blocks. If the design is more functional, there shouldn't be a separation of Basic Block and function, while Basic Block would be enough to express loop structure. What I do learnt though, is how easy LLVM is to manipulate BB / Func / Inst through CGF / CGM. Comparing to how hard to create a phi node inside nnc (not explicitly, through the mapping when add case..of sub-graph), or assigning loop carry-overs, LLVM is so much easy to remove a BB, create a BB, and hook up one BB with another. Not to mention to iterate over Inst and BB, it is something builtin while there is still no easy way to iterate over nodes and manipulating them at the same time inside nnc.

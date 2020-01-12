@@ -239,6 +239,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
 			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, tensor_variable->info, 0);
+		assert(tensor_variable->tensor_view->data.u8);
 		return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 	}
 	const int alias_ref = tensor_variable->alias_ref - 1;
@@ -251,6 +252,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
 			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, variable_to->info, 0);
+		assert(variable_to->tensor_view->data.u8);
 	}
 	int no_ofs = 1;
 	int i;

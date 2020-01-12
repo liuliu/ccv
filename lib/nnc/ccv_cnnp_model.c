@@ -214,6 +214,21 @@ static void _ccv_nnc_tensor_symbol_reinit(const ccv_nnc_symbolic_graph_t* const 
 		ccv_nnc_tensor_symbol_alias_set(dest_graph, dest_symbol, ofs, inc);
 }
 
+static int _ccv_nnc_tensor_symbol_check_dim(const ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const int src_index, const int dest_index)
+{
+	const ccv_nnc_tensor_symbol_t src_symbol = {
+		.d = src_index,
+		.graph = src_graph
+	};
+	const ccv_nnc_tensor_param_t src_params = ccv_nnc_tensor_symbol_params(src_graph, src_symbol);
+	const ccv_nnc_tensor_symbol_t dest_symbol = {
+		.d = dest_index,
+		.graph = dest_graph
+	};
+	const ccv_nnc_tensor_param_t dest_params = ccv_nnc_tensor_symbol_params(dest_graph, dest_symbol);
+	return memcmp(src_params.dim, dest_params.dim, sizeof(src_params.dim)) == 0;
+}
+
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, const uint64_t disable_outgrad, ccv_nnc_tensor_t* const* const fits, const int fit_size);
 static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const compiled_data);
 
@@ -234,8 +249,19 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	_ccv_cnnp_model_gradient_init(init, model->compiled_data->gradient_mode, model->compiled_data->disable_outgrad, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0);
 	ccv_nnc_symbolic_graph_tensor_auto(init->graph, TRAVERSE_FULL);
-	// Go through the graph to set tensor on matching symbols
 	int i, j;
+	// Verify trainables, retainables and saved_aux in both graph has the same dimensionality.
+	for (i = 0; i < compiled_data->trainables->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d;
+		assert(_ccv_nnc_tensor_symbol_check_dim(model->graph, init->graph, d, d));
+	}
+	for (i = 0; i < compiled_data->retainables->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retainables, i))->d;
+		assert(_ccv_nnc_tensor_symbol_check_dim(model->graph, init->graph, d, d));
+	}
+	// Go through the graph to set tensor on matching symbols
 	for (i = 0; i < stack->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(stack, i);
@@ -1382,7 +1408,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		ccv_cnnp_model_set_is_test(model, params.is_test, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
-		ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, tensor_tape, stream_context);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, 0, tensor_tape, stream_context);
 	else {
 		if (!compiled_data->evaluate.schedule)
 			compiled_data->evaluate.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, 0, 0, compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size);

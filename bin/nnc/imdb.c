@@ -247,16 +247,18 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		test_seq_len_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2);
 		test_data_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3);
 	}
-	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 0, max_length);
-	// const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count, seq_len_batched, device_count);
-	const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, device_count, 0, max_length);
-	// const int test_trunc_data_batched = ccv_cnnp_dataframe_truncate(test_batched_data, test_data_batched, device_count, test_seq_len_batched, device_count);
+	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 1, max_length);
+	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count, seq_len_batched, device_count);
+	const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, device_count, 1, max_length);
+	const int test_trunc_data_batched = ccv_cnnp_dataframe_truncate(test_batched_data, test_data_batched, device_count, test_seq_len_batched, device_count);
 	for (i = 0; i < device_count; i++)
 	{
-		gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 1, i);
+		// gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 1, i);
+		gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i, 1, i);
 		gpu_batched[i * 3 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3 + 1, 1, i);
 		gpu_batched[i * 3 + 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i, 1, i);
-		test_gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 1, i);
+		// test_gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 1, i);
+		test_gpu_batched[i * 3] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_trunc_data_batched, i, 1, i);
 		test_gpu_batched[i * 3 + 1] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 1, 1, i);
 		test_gpu_batched[i * 3 + 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_mask_batched, i, 1, i);
 	}
@@ -289,7 +291,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	}
 	ccv_nnc_tensor_free(seq_indices_cpu);
 	classifier_transformer_params_t classifier_transformer_params = {
-		.layers = 1,
+		.layers = 2,
 		.h = 8,
 		.ff = 4,
 		.dropout = 0.1,
@@ -318,10 +320,11 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	}
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
 	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
-	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_INFO);
 	ccv_nnc_tensor_t** tensor[device_count * 3];
 	double overall_accuracy = 0;
 	int epoch = 0;
+	int max_batch_length = 0;
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 1000000; i++)
 	{
@@ -337,9 +340,10 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		ccv_nnc_tensor_variable_t vec[device_count * 2];
 		ccv_nnc_tensor_variable_t out[device_count];
 		ccv_nnc_tensor_variable_t seq_indices_alias[device_count];
+		int batch_length = 0;
 		for (j = 0; j < device_count; j++)
 		{
-			const int batch_length = tensor[j * 3][0]->info.dim[1];
+			batch_length = tensor[j * 3][0]->info.dim[1];
 			ccv_nnc_tensor_param_t word_indices_params = GPU_TENSOR_NCHW(000, 32S, batch_size * batch_length);
 			CCV_TENSOR_SET_DEVICE_ID(word_indices_params.type, j);
 			word_indices_tensor[j] = ccv_nnc_tensor(tensor[j * 3][0]->data.f32, word_indices_params, 0);
@@ -376,11 +380,10 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			tvin[j * 2] = word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, select_vec, device_count, device_count, 0);
 		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, transformer, 0, vec, device_count * 2, out, device_count, 0, 0);
-		if (i == 0)
+		if (batch_length > max_batch_length)
 		{
-			FILE *w = fopen("imdb.dot", "w+");
-			ccv_cnnp_model_dot(transformer, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
-			fclose(w);
+			ccv_nnc_dynamic_graph_gc(dynamic_graph); // Trigger memory reclaim.
+			max_batch_length = batch_length;
 		}
 		int correct = 0;
 		for (j = 0; j < device_count; j++)

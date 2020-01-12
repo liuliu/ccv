@@ -597,7 +597,7 @@ static void _ccv_cnnp_truncate(void* const* const* const column_data, const int 
 			ccv_nnc_tensor_param_t params = inp->info;
 			assert(params.dim[0] == len);
 			assert(first_len == len);
-			assert(max_len <= first_params.dim[1]);
+			assert(max_len <= params.dim[1]);
 			const int ori_len = params.dim[1];
 			ccv_nnc_tensor_t* const out = outputs[c];
 			uint8_t* const ua = inp->data.u8;
