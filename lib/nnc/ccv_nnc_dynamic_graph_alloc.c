@@ -70,22 +70,13 @@ void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, cons
 	if (!node)
 	{
 		node = (dy_alloc_metadata_t*)ccmalloc(sizeof(dy_alloc_metadata_t));
+		if (graph->mp_hdr < 0)
+			graph->mp_hdr = curegmp((cump_f)ccv_nnc_dynamic_graph_gc, graph);
 		node->ptr = cumalloc(device, size);
 		if (!node->ptr) // If cannot allocate, drain the pool first and then allocate.
 		{
-			if (i != kh_end(freed))
-				_ccv_nnc_dynamic_graph_xpu_alloc_drain(device, kh_val(freed, i));
-			else {
-				// Have nothing to free, we cannot allocate, return 0.
-				ccfree(node);
-				return 0;
-			}
-			node->ptr = cumalloc(device, size);
-			if (!node->ptr) // Retry failed, return 0.
-			{
-				ccfree(node);
-				return 0;
-			}
+			ccfree(node);
+			return 0;
 		}
 		node->device = device;
 		node->size = size;
@@ -157,6 +148,8 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 		kh_destroy(dy_str, str);
 	}
 	kh_destroy(dy_dev, freed);
+	if (graph->mp_hdr >= 0)
+		cuunregmp(graph->mp_hdr);
 }
 
 void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const graph)

@@ -332,7 +332,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	ccv_nnc_tensor_t** tensor[device_count * 3];
 	double overall_accuracy = 0;
 	int epoch = 0;
-	int max_batch_length = 0;
 	ccv_cnnp_dataframe_iter_t* const first_iter = ccv_cnnp_dataframe_iter_new(batched_data, first_gpu_batched, device_count * 3);
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 1000000; i++)
@@ -391,11 +390,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			tvin[j * 2] = word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, select_vec, device_count, device_count, 0);
 		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, transformer, 0, vec, device_count * 2, out, device_count, 0, 0);
-		if (batch_length > max_batch_length)
-		{
-			ccv_nnc_dynamic_graph_gc(dynamic_graph); // Trigger memory reclaim.
-			max_batch_length = batch_length;
-		}
 		int correct = 0;
 		for (j = 0; j < device_count; j++)
 		{

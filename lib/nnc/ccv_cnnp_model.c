@@ -243,6 +243,7 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	ccv_nnc_graph_exec_symbol_new_hook(init->graph, _ccv_cnnp_graph_push_graph_exec_symbol, stack);
 	_ccv_cnnp_model_compile(init, inputs, input_size, compiled_data->loss);
 	init->parallel_count = model->parallel_count;
+	init->memory_compression = model->memory_compression;
 	init->compiled_data->stream_type = model->compiled_data->stream_type;
 	init->compiled_data->minimize.minimizer = model->compiled_data->minimize.minimizer;
 	init->compiled_data->minimize.max_saved_aux_size = model->compiled_data->minimize.max_saved_aux_size;
@@ -1376,14 +1377,15 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	assert(input_size == model->input_size * parallel_count);
 	assert(model->graph);
 	const int target_gradient_mode = _ccv_cnnp_is_disable_outgrad_all(params.disable_outgrad, model->input_size) ? CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES : CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS;
-	if (!compiled_data->graph ||
-		(params.requires_grad && (compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE || compiled_data->gradient_mode != target_gradient_mode || compiled_data->disable_outgrad != params.disable_outgrad)) ||
-		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
-		(stream_context && !params.requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))
+	const int mode_mismatch = (params.requires_grad && (compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE || compiled_data->gradient_mode != target_gradient_mode || compiled_data->disable_outgrad != params.disable_outgrad));
+	if (!compiled_data->graph || mode_mismatch)
 	{
 		_ccv_cnnp_compiled_data_graph_free(compiled_data);
-		_ccv_cnnp_compiled_data_backward_free(compiled_data);
-		_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
+		if (mode_mismatch) // If mode mismatch, we need to redo the backward and apply gradient as well.
+		{
+			_ccv_cnnp_compiled_data_backward_free(compiled_data);
+			_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
+		}
 		if (params.requires_grad)
 			_ccv_cnnp_model_multistage_jit_0(model, params.disable_outgrad, params.is_test, inputs, input_size, outputs, output_size);
 		else

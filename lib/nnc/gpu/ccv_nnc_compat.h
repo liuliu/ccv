@@ -29,6 +29,9 @@ void* cuhostalloc(size_t size);
 void cuhostfree(void* ptr);
 int curegister(void* ptr, size_t size);
 void cuunregister(void* ptr);
+typedef void(*cump_f)(void* const context);
+int curegmp(cump_f func, void* const context); // register memory pressure handler
+void cuunregmp(const int id); // un-register memory pressure handler.
 
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);

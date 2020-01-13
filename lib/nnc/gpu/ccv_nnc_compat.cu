@@ -4,11 +4,83 @@ extern "C" {
 #include <nnc/_ccv_nnc_stream.h>
 }
 
+typedef struct {
+	cump_f func;
+	void* ctx;
+} cump_t;
+
+static pthread_mutex_t g_mp_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ccv_array_t* g_mp_h;
+static int g_mp_slot;
+
+int curegmp(cump_f func, void* const context)
+{
+	assert(func);
+	pthread_mutex_lock(&g_mp_mutex);
+	if (!g_mp_h)
+	{
+		g_mp_h = ccv_array_new(sizeof(cump_t), 1, 0);
+		g_mp_slot = -1;
+	}
+	cump_t mp = {
+		func, context,
+	};
+	int slot = g_mp_slot;
+	if (g_mp_slot >= 0)
+	{
+		assert(g_mp_slot < g_mp_h->rnum);
+		*(cump_t*)ccv_array_get(g_mp_h, g_mp_slot) = mp;
+		int i;
+		for (i = g_mp_slot + 1; i < g_mp_h->rnum; i++)
+			if (((cump_t*)ccv_array_get(g_mp_h, i))->func == 0)
+			{
+				g_mp_slot = i;
+				break;
+			}
+		if (g_mp_slot == slot)
+			g_mp_slot = -1; // Cannot find a slot.
+	} else {
+		ccv_array_push(g_mp_h, &mp);
+		slot = g_mp_h->rnum - 1;
+	}
+	pthread_mutex_unlock(&g_mp_mutex);
+	return slot;
+}
+
+void cuunregmp(const int slot)
+{
+	pthread_mutex_lock(&g_mp_mutex);
+	assert(slot < g_mp_h->rnum);
+	if (g_mp_slot < 0 || slot < g_mp_slot)
+		g_mp_slot = slot;
+	*(cump_t*)ccv_array_get(g_mp_h, g_mp_slot) = (cump_t){};
+	pthread_mutex_unlock(&g_mp_mutex);
+}
+
+void cutrigmp(void)
+{
+	pthread_mutex_lock(&g_mp_mutex);
+	int i;
+	for (i = 0; i < g_mp_h->rnum; i++)
+	{
+		cump_t* const mp = (cump_t*)ccv_array_get(g_mp_h, i);
+		if (mp->func)
+			mp->func(mp->ctx);
+	}
+	pthread_mutex_unlock(&g_mp_mutex);
+}
+
 void* cumalloc(int device, size_t size)
 {
 	void* ptr = 0;
 	cudaSetDevice(device);
 	cudaMalloc(&ptr, size);
+	if (ptr == 0)
+	{
+		cutrigmp(); // trigger memory pressure. And then do it again.
+		cudaSetDevice(device);
+		cudaMalloc(&ptr, size);
+	}
 	return ptr;
 }
 

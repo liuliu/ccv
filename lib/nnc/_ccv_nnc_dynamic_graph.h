@@ -63,7 +63,6 @@ typedef struct {
 	int requires_grad;
 	int is_test;
 	uint64_t disable_outgrad;
-	ccv_nnc_dy_xpu_alloc_t xpu_alloc;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;
 } ccv_nnc_stateful_exec_t;
@@ -94,6 +93,7 @@ KHASH_MAP_INIT_INT64(dy_alloc, dy_alloc_metadata_t*);
 struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
+	int mp_hdr; // Memory pressure handler.
 	ccv_array_t* vars; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.
 	khash_t(dy_dev)* freed; // The freed memory allocations.
