@@ -250,8 +250,9 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 	if (!variable_to->tensor_view)
 	{
 		void* ptr = 0;
-		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
-			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
+		assert(variable_to->info.type == tensor_variable->info.type);
+		if (CCV_TENSOR_GET_MEMORY(variable_to->info.type) == CCV_TENSOR_GPU_MEMORY)
+			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(variable_to->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(variable_to->info));
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, variable_to->info, 0);
 		assert(variable_to->tensor_view->data.u8);
 	}

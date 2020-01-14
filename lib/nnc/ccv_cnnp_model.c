@@ -978,6 +978,12 @@ static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const c
 	if (compiled_data->backward.from_ops)
 		ccfree(compiled_data->backward.from_ops);
 	compiled_data->backward.from_ops = 0;
+	if (compiled_data->evaluate.schedule)
+		ccv_nnc_graph_static_schedule_free(compiled_data->evaluate.schedule);
+	compiled_data->evaluate.schedule = 0;
+	if (compiled_data->backward.schedule)
+		ccv_nnc_graph_static_schedule_free(compiled_data->backward.schedule);
+	compiled_data->backward.schedule = 0;
 }
 
 static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* const compiled_data)
@@ -990,9 +996,6 @@ static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* cons
 	compiled_data->updated_trainables = 0;
 	compiled_data->update_nodes = 0;
 	compiled_data->saved_aux = 0;
-	if (compiled_data->evaluate.schedule)
-		ccv_nnc_graph_static_schedule_free(compiled_data->evaluate.schedule);
-	compiled_data->evaluate.schedule = 0;
 }
 
 static void _ccv_cnnp_compiled_data_backward_free(ccv_cnnp_compiled_data_t* const compiled_data)
@@ -1009,9 +1012,6 @@ static void _ccv_cnnp_compiled_data_backward_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->backward.graph_exec_arena)
 		ccv_nnc_graph_exec_arena_free(compiled_data->backward.graph_exec_arena);
 	compiled_data->backward.graph_exec_arena = 0;
-	if (compiled_data->backward.schedule)
-		ccv_nnc_graph_static_schedule_free(compiled_data->backward.schedule);
-	compiled_data->backward.schedule = 0;
 }
 
 static void _ccv_cnnp_compiled_data_apply_gradients_free(ccv_cnnp_compiled_data_t* const compiled_data)

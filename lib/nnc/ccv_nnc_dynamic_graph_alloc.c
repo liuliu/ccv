@@ -99,10 +99,10 @@ void ccv_nnc_dynamic_graph_xpu_free(ccv_nnc_dynamic_graph_t* const graph, void* 
 {
 	khash_t(dy_alloc)* const allocd = graph->allocd;
 	khiter_t i = kh_get(dy_alloc, allocd, (int64_t)(intptr_t)ptr);
-	if (i == kh_end(allocd))
-		return;
+	assert(i != kh_end(allocd));
 	dy_alloc_metadata_t* const node = kh_val(allocd, i);
 	kh_del(dy_alloc, allocd, i);
+	assert(node->ptr == ptr);
 	khash_t(dy_dev)* const freed = graph->freed;
 	int ret;
 	i = kh_put(dy_dev, freed, node->device, &ret);

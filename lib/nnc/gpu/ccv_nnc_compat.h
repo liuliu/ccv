@@ -95,6 +95,7 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 		printf("[%s:%d]:CUDA - Error: %d\n",                    \
 				__FILE__, __LINE__, (int)__status);             \
 		cudaDeviceReset();                                      \
+		assert(0);                                              \
 		exit(EXIT_FAILURE);                                     \
 	}                                                           \
 } while (0)
@@ -109,6 +110,7 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 		printf("[%s:%d]:CUBLAS - Error: %d\n",                    \
 				__FILE__, __LINE__, (int)__status);               \
 		cudaDeviceReset();                                        \
+		assert(0);                                                \
 		exit(EXIT_FAILURE);                                       \
 	}                                                             \
 } while (0)
@@ -147,6 +149,7 @@ void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_contex
 		printf("[%s:%d]:CUDNN - Error: %s\n",                       \
 				__FILE__, __LINE__, cudnnGetErrorString(__status)); \
 		cudaDeviceReset();                                          \
+		assert(0);                                                  \
 		exit(EXIT_FAILURE);                                         \
 	}                                                               \
 } while (0)

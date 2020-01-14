@@ -73,12 +73,12 @@ void cutrigmp(void)
 void* cumalloc(int device, size_t size)
 {
 	void* ptr = 0;
-	cudaSetDevice(device);
+	CUDA_ENFORCE(cudaSetDevice(device));
 	cudaMalloc(&ptr, size);
 	if (ptr == 0)
 	{
 		cutrigmp(); // trigger memory pressure. And then do it again.
-		cudaSetDevice(device);
+		CUDA_ENFORCE(cudaSetDevice(device));
 		cudaMalloc(&ptr, size);
 	}
 	return ptr;
@@ -86,32 +86,32 @@ void* cumalloc(int device, size_t size)
 
 void cufree(int device, void* ptr)
 {
-	cudaSetDevice(device);
-	cudaFree(ptr);
+	CUDA_ENFORCE(cudaSetDevice(device));
+	CUDA_ENFORCE(cudaFree(ptr));
 }
 
 void cudevice(int device)
 {
 	if (device >= 0)
-		cudaSetDevice(device);
+		CUDA_ENFORCE(cudaSetDevice(device));
 }
 
 void cumemcpy(void* dest, const int dest_type, const void* src, const int src_type, size_t n)
 {
 	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
 		const int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
-		cudaSetDevice(device_b);
+		CUDA_ENFORCE(cudaSetDevice(device_b));
 		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyHostToDevice));
 	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
 		const int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
-		cudaSetDevice(device_a);
+		CUDA_ENFORCE(cudaSetDevice(device_a));
 		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyDeviceToHost));
 	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
 		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyHostToHost));
 	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
 		const int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
 		const int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
-		cudaSetDevice(device_b);
+		CUDA_ENFORCE(cudaSetDevice(device_b));
 		if (device_a == device_b)
 			CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyDeviceToDevice));
 		else
@@ -192,7 +192,7 @@ static ccv_nnc_stream_context_device_local_t* _ccv_nnc_stream_compat_device_loca
 	int device_id = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 	if (device_id == CCV_STREAM_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY))
 	{
-		cudaGetDevice(&device_id);
+		CUDA_ENFORCE(cudaGetDevice(&device_id));
 		if (stream_compat->_heap_gpu_size <= device_id)
 		{
 			if (!stream_compat->_heap_gpus)
@@ -205,7 +205,7 @@ static ccv_nnc_stream_context_device_local_t* _ccv_nnc_stream_compat_device_loca
 		}
 		return stream_compat->_heap_gpus + device_id;
 	} else {
-		cudaSetDevice(device_id);
+		CUDA_ENFORCE(cudaSetDevice(device_id));
 		return &stream_compat->_inline_gpu;
 	}
 }
@@ -230,8 +230,8 @@ ccv_nnc_stream_signal_t* ccv_nnc_init_stream_signal(ccv_nnc_stream_signal_t* con
 	assert(CCV_STREAM_GET_CONTEXT(((int*)signal)[0]) == CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)ccrealloc(signal, sizeof(ccv_nnc_stream_compat_signal_t));
 	const int device = CCV_STREAM_GET_DEVICE_ID(compat_signal->super.type);
-	cudaSetDevice(device);
-	cudaEventCreateWithFlags(&compat_signal->event, cudaEventDisableTiming);
+	CUDA_ENFORCE(cudaSetDevice(device));
+	CUDA_ENFORCE(cudaEventCreateWithFlags(&compat_signal->event, cudaEventDisableTiming));
 	return (ccv_nnc_stream_signal_t*)compat_signal;
 }
 
@@ -259,14 +259,14 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal)
 {
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
 	const int device = CCV_STREAM_GET_DEVICE_ID(compat_signal->super.type);
-	cudaSetDevice(device);
-	cudaEventDestroy(compat_signal->event);
+	CUDA_ENFORCE(cudaSetDevice(device));
+	CUDA_ENFORCE(cudaEventDestroy(compat_signal->event));
 }
 
 int ccv_nnc_gpu_device_count(void)
 {
 	int count = 0;
-	cudaGetDeviceCount(&count);
+	CUDA_ENFORCE(cudaGetDeviceCount(&count));
 	return count;
 }
 
@@ -303,11 +303,12 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 		if (device_local->workspace_size >= workspace_size)
 			return device_local->workspace;
+		int device_id;
+		CUDA_ENFORCE(cudaGetDevice(&device_id));
 		device_local->workspace_size = workspace_size;
 		if (device_local->workspace)
-			cudaFree(device_local->workspace);
-		device_local->workspace = 0;
-		cudaMalloc(&device_local->workspace, workspace_size);
+			CUDA_ENFORCE(cudaFree(device_local->workspace));
+		device_local->workspace = cumalloc(device_id, workspace_size);
 		return device_local->workspace;
 	}
 	return 0;
@@ -331,14 +332,14 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 		for (i = 0; i < stream_compat->_heap_gpu_size; i++)
 			if (stream_compat->_heap_gpus[i].workspace)
 			{
-				cudaSetDevice(i);
-				cudaFree(stream_compat->_heap_gpus[i].workspace);
+				CUDA_ENFORCE(cudaSetDevice(i));
+				CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].workspace));
 				stream_compat->_heap_gpus[i].workspace = 0;
 				stream_compat->_heap_gpus[i].workspace_size = 0;
 			}
 	} else if (stream_compat->_inline_gpu.workspace) {
-		cudaSetDevice(device);
-		cudaFree(stream_compat->_inline_gpu.workspace);
+		CUDA_ENFORCE(cudaSetDevice(device));
+		CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.workspace));
 		stream_compat->_inline_gpu.workspace = 0;
 		stream_compat->_inline_gpu.workspace_size = 0;
 	}
@@ -350,7 +351,7 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
-	cudaStreamSynchronize(device_local->stream);
+	CUDA_ENFORCE(cudaStreamSynchronize(device_local->stream));
 }
 
 typedef struct {
@@ -437,43 +438,45 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 		for (i = 0; i < stream_compat->_heap_gpu_size; i++)
 			if (stream_compat->_heap_gpus[i].workspace)
 			{
-				cudaSetDevice(i);
+				CUDA_ENFORCE(cudaSetDevice(i));
 				if (stream_compat->_heap_gpus[i].workspace)
-					cudaFree(stream_compat->_heap_gpus[i].workspace);
-				cudaStreamDestroy(stream_compat->_heap_gpus[i].stream);
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].workspace));
+				CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_heap_gpus[i].stream));
 				if (stream_compat->_heap_gpus[i].cublas)
-					cublasDestroy(stream_compat->_heap_gpus[i].cublas);
+					CUBLAS_ENFORCE(cublasDestroy(stream_compat->_heap_gpus[i].cublas));
 				if (stream_compat->_heap_gpus[i].ones_16.data)
-					cudaFree(stream_compat->_heap_gpus[i].ones_16.data);
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_16.data));
 				if (stream_compat->_heap_gpus[i].ones_32.data)
-					cudaFree(stream_compat->_heap_gpus[i].ones_32.data);
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_32.data));
 				if (stream_compat->_heap_gpus[i].ones_64.data)
-					cudaFree(stream_compat->_heap_gpus[i].ones_64.data);
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_64.data));
 #ifdef HAVE_CUDNN
 				if (stream_compat->_heap_gpus[i].cudnn)
-					cudnnDestroy(stream_compat->_heap_gpus[i].cudnn);
+					CUDNN_ENFORCE(cudnnDestroy(stream_compat->_heap_gpus[i].cudnn));
 				if (stream_compat->_heap_gpus[i].rngs)
-					cudaFree(stream_compat->_heap_gpus[i].rngs);
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].rngs));
 #endif
 			}
 	} else {
-		cudaSetDevice(device);
+		CUDA_ENFORCE(cudaSetDevice(device));
 		if (stream_compat->_inline_gpu.workspace)
-			cudaFree(stream_compat->_inline_gpu.workspace);
-		cudaStreamDestroy(stream_compat->_inline_gpu.stream);
+		{
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.workspace));
+		}
+		CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_inline_gpu.stream));
 		if (stream_compat->_inline_gpu.cublas)
-			cublasDestroy(stream_compat->_inline_gpu.cublas);
+			CUBLAS_ENFORCE(cublasDestroy(stream_compat->_inline_gpu.cublas));
 		if (stream_compat->_inline_gpu.ones_16.data)
-			cudaFree(stream_compat->_inline_gpu.ones_16.data);
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_16.data));
 		if (stream_compat->_inline_gpu.ones_32.data)
-			cudaFree(stream_compat->_inline_gpu.ones_32.data);
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_32.data));
 		if (stream_compat->_inline_gpu.ones_64.data)
-			cudaFree(stream_compat->_inline_gpu.ones_64.data);
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_64.data));
 #ifdef HAVE_CUDNN
 		if (stream_compat->_inline_gpu.cudnn)
-			cudnnDestroy(stream_compat->_inline_gpu.cudnn);
+			CUDNN_ENFORCE(cudnnDestroy(stream_compat->_inline_gpu.cudnn));
 		if (stream_compat->_inline_gpu.rngs)
-			cudaFree(stream_compat->_inline_gpu.rngs);
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.rngs));
 #endif
 	}
 #ifdef HAVE_NCCL
@@ -496,7 +499,7 @@ int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stre
 	if (!stream_context)
 	{
 		int device = 0;
-		cudaGetDevice(&device);
+		CUDA_ENFORCE(cudaGetDevice(&device));
 		return device;
 	}
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
