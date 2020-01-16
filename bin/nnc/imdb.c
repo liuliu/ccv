@@ -145,7 +145,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	ccv_cnnp_model_t* const self_attention = _self_attention_new(k, h, b, t, dropout);
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(self_attention, MODEL_IO_LIST(x, mask));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, out));
-	ccv_cnnp_model_io_t first = out; // ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
+	ccv_cnnp_model_io_t first = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	if (dropout)
 		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0), MODEL_IO_LIST(first));
 	else
@@ -156,7 +156,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(first, out));
-	// out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dropout(0.1, 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(x, mask), MODEL_IO_LIST(out), "transformer");
 }
@@ -227,7 +227,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor));
 	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
 	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
-	const int device_count = 2; // ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx, mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor));
 	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
@@ -334,11 +334,11 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	}
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
 	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
-	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_INFO);
+	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_INFO);
 	ccv_nnc_tensor_t** tensor[device_count * 3];
 	double overall_accuracy = 0;
 	int epoch = 0;
-	ccv_cnnp_dataframe_iter_t* const first_iter = ccv_cnnp_dataframe_iter_new(batched_data, first_gpu_batched, device_count * 3);
+	// ccv_cnnp_dataframe_iter_t* const first_iter = ccv_cnnp_dataframe_iter_new(batched_data, first_gpu_batched, device_count * 3);
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 1000000; i++)
 	{
