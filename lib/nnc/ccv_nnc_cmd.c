@@ -370,7 +370,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 		return cmd;
 	_ccv_nnc_cmd_set_device_id(inputs, input_size, outputs, output_size, stream_context);
 	// Allocate inputs / outputs and fill them in.
-	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)malloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size * 2));
+	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size * 2));
 	ccv_nnc_tensor_t** const copy_outputs = copy_inputs + input_size;
 	ccv_nnc_tensor_t** const allocated_outputs = copy_outputs + output_size;
 	for (i = 0; i < input_size; i++)

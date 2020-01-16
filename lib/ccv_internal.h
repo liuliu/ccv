@@ -25,7 +25,6 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
  */
 #define unroll_for(x, s, ...) UNROLL_FOR0(x, s, ##__VA_ARGS__, s)
 #define unroll_endfor }
-
 #ifdef USE_OPENMP
 #define OMP_PRAGMA0(x) MACRO_STRINGIFY(omp parallel for private(x) schedule(dynamic))
 #define parallel_for(x, n) { int x = 0; _Pragma(OMP_PRAGMA0(x)) for ((x) = 0; (x) < (n); (x)++) {

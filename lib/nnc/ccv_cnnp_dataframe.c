@@ -359,7 +359,11 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 			iter->prefetch_head = 0;
 	}
 	for (i = 0; i < column_idx_size; i++)
-		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, dataframe->shuffled_idx ? dataframe->shuffled_idx + idx : &idx, 1, iter->column_idxs[i], 1, stream_context);
+	{
+		void* fetched_data[1]; // This guards better than just give away data_ref + i.
+		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, fetched_data, dataframe->shuffled_idx ? dataframe->shuffled_idx + idx : &idx, 1, iter->column_idxs[i], 1, stream_context);
+		data_ref[i] = fetched_data[0];
+	}
 	++iter->idx;
 	return 0;
 }

@@ -471,12 +471,12 @@ static void _ccv_cnnp_one_squared(void* const* const* const column_data, const i
 				for (l = 0; l < len; l++)
 					max_len = ccv_max(max_len, ia[l]);
 			}
+			assert(max_len <= max_length);
 			parallel_for(c, column_size) {
 				ccv_nnc_tensor_t* const seq = (ccv_nnc_tensor_t*)column_data[c][i];
 				assert(seq->info.datatype == CCV_32S);
 				const int len = ccv_nnc_tensor_count(seq->info);
 				assert(len == first_len);
-				assert(max_len <= max_length);
 				ccv_nnc_tensor_t* tensor = outputs[c];
 				tensor = ccv_nnc_tensor_resize(tensor, CPU_TENSOR_NHWC(32S, len, max_len, max_len));
 				assert(outputs[c] == tensor); // Since we allocated with max_length, this cannot be reallocated.
@@ -598,6 +598,7 @@ static void _ccv_cnnp_truncate(void* const* const* const column_data, const int 
 			assert(params.dim[0] == len);
 			assert(first_len == len);
 			assert(max_len <= params.dim[1]);
+			assert(params.dim[2] == 0);
 			const int ori_len = params.dim[1];
 			ccv_nnc_tensor_t* const out = outputs[c];
 			uint8_t* const ua = inp->data.u8;

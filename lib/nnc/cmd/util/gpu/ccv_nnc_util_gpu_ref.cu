@@ -19,6 +19,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		assert(!CCV_IS_TENSOR_VIEW(a));
 		assert(!CCV_IS_TENSOR_VIEW(b));
 		assert(ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info));
+		assert(CCV_GET_DATA_TYPE_SIZE(a->info.datatype) == CCV_GET_DATA_TYPE_SIZE(b->info.datatype));
 		const size_t size = (ssize_t)ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 		if (stream_context)
 		{

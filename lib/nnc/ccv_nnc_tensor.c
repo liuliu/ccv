@@ -153,13 +153,15 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	} else // This won't be recognized by ccv_dense_matrix_t
 		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
 	tensor.data.u8 = (uint8_t*)ptr;
+	tensor.data_size = 0;
 	return tensor;
 }
 
 int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor)
 {
 #ifdef HAVE_CUDA
-	if (!(tensor->type & CCV_PINNED_MEM))
+	assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
+	if (!(tensor->type & CCV_PINNED_MEM) && tensor->data_size)
 	{
 		const int success = curegister(tensor->data.u8, tensor->data_size);
 		if (success)
@@ -198,6 +200,7 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const ten
 	tv->alias_ref = (uintptr_t)tensor;
 	tv->refcount = 1;
 	tv->sig = 0;
+	tv->data_size = 0;
 	tv->info = tensor->info;
 	_ccv_nnc_tensor_view_set(tv, tensor, dim, ofs, inc);
 	return tv;
@@ -212,6 +215,7 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, 
 		.refcount = 1,
 		.sig = 0,
 		.info = tensor->info,
+		.data_size = 0,
 	};
 	_ccv_nnc_tensor_view_set(&tv, tensor, dim, ofs, inc);
 	return tv;

@@ -193,7 +193,7 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 
 static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
 {
-	return (CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 15) & -16;
+	return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 15) & -16);
 }
 
 static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
