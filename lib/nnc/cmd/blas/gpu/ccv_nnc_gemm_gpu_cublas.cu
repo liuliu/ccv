@@ -241,6 +241,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
 		ccv_nnc_tensor_get_matrix_params(h->info, CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim, cmd.info.blas.transpose_a, &h_batch_size, &h_rows, &h_cols, &h_batch_inc, &h_rows_inc, &h_cols_inc);
 		ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim, cmd.info.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+		assert(h_rows == g_rows);
 		assert(h_cols == w_rows);
 		assert(w_cols == g_cols);
 		assert(h_batch_size == g_batch_size || h_batch_size == 1);

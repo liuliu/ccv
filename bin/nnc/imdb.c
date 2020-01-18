@@ -157,7 +157,8 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(first, out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_dropout(0.1, 0), MODEL_IO_LIST(out));
+	if (dropout > 0)
+		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(x, mask), MODEL_IO_LIST(out), "transformer");
 }
 
@@ -454,7 +455,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		//	ccv_cnnp_dataframe_iter_free(first_iter);
 		if ((i + 1) % 50 == 0)
 			printf("epoch %d (%d/%d), training accuracy %lf\n", epoch, (i + 1) - epoch * epoch_end, epoch_end, overall_accuracy);
-		/*
 		if ((i + 1) % epoch_end == 0)
 		{
 			int correct = 0;
@@ -546,13 +546,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_cnnp_dataframe_shuffle(train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
-	*/
-		if ((i + 1) % epoch_end == 0)
-		{
-			++epoch;
-			ccv_cnnp_dataframe_shuffle(train_data);
-			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
-		}
 	}
 	ccv_cnnp_model_free(transformer);
 	ccv_cnnp_dataframe_iter_free(iter);
@@ -609,7 +602,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir, vocab, vocab_size, max_length);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imdb(vocab_size, 32, max_length, 128, train_data, test_data, test_set);
+	train_imdb(vocab_size, 64, max_length, 128, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;

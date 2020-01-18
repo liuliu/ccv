@@ -294,29 +294,22 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 		const int* dest_outputs;
 		int dest_output_size;
 		ccv_nnc_graph_exec_symbol_io(model->graph, dest_symbol, &dest_inputs, &dest_input_size, &dest_outputs, &dest_output_size);
-		int flag = 0;
-		if (src_input_size == dest_input_size)
-			for (j = 0; !flag && j < src_input_size; j++)
-				flag = (src_inputs[j] != dest_inputs[j]);
-		else
-			flag = 1;
-		if (!flag) // Input matches, now copy input tensor setup.
-		{
-			ccv_nnc_graph_exec_symbol_set(model->graph, dest_symbol, src_cmd);
-			for (j = 0; j < src_input_size; j++)
-				if (src_inputs[j] >= 0)
-					_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_inputs[j], dest_inputs[j]);
-		}
-		flag = 0;
-		if (src_output_size == dest_output_size)
-			for (j = 0; !flag && j < src_output_size; j++)
-				flag = (src_outputs[j] != dest_outputs[j]);
-		else
-			flag = 1;
-		if (!flag) // Output matches, now copy output tensor setup.
-			for (j = 0; j < src_output_size; j++)
-				if (src_outputs[j] >= 0)
-					_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_outputs[j], dest_outputs[j]);
+		assert(src_input_size == dest_input_size);
+		assert(src_output_size == dest_output_size);
+		ccv_nnc_graph_exec_symbol_set(model->graph, dest_symbol, src_cmd);
+		// There may be mismatches of the source tensor symbols and destination tensor symbols. The reason is because
+		// we may later passed-in the minimizer, therefore, we may allocate tensors for minimizer later in the original
+		// graph whereas in the newly created graph, it is streamlined (the minimizer exists from the beginning). That
+		// will make the order of tensor symbols creation different, therefore, exact which tensor is which wrong as
+		// well. However, set a new minimizer won't change the exec symbol ordering, because we never create new exec
+		// symbols after gradient init step. Changing a new minimizer just updated that exec symbols setting, it is not
+		// a new exec symbol.
+		for (j = 0; j < src_input_size; j++)
+			if (src_inputs[j] >= 0)
+				_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_inputs[j], dest_inputs[j]);
+		for (j = 0; j < src_output_size; j++)
+			if (src_outputs[j] >= 0)
+				_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, src_outputs[j], dest_outputs[j]);
 	}
 	ccv_array_free(stack);
 	// After this, we get all tensors in the model graph resolved through tensor_auto.
