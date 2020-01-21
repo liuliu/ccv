@@ -165,6 +165,12 @@ static void _ccv_nnc_masked_fill_gpu_ref(const float p, const float q, ccv_nnc_t
 		_ccv_nnc_masked_fill_kernel<<<CUDA_GET_BLOCKS(a_count), CUDA_NUM_THREADS, 0, stream>>>(a_count, b_count, (int)(p + 0.5), (__half)q, (__half*)a->data.f16, b->data.i32, (__half*)c->data.f16);
 	else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F)
 		_ccv_nnc_masked_fill_kernel<<<CUDA_GET_BLOCKS(a_count), CUDA_NUM_THREADS, 0, stream>>>(a_count, b_count, (__half)p, (__half)q, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+	else if (a->info.datatype == CCV_32S && b->info.datatype == CCV_32F)
+		_ccv_nnc_masked_fill_kernel<<<CUDA_GET_BLOCKS(a_count), CUDA_NUM_THREADS, 0, stream>>>(a_count, b_count, p, (int)(q + 0.5), a->data.i32, b->data.f32, c->data.i32);
+	else if (a->info.datatype == CCV_32S && b->info.datatype == CCV_32S)
+		_ccv_nnc_masked_fill_kernel<<<CUDA_GET_BLOCKS(a_count), CUDA_NUM_THREADS, 0, stream>>>(a_count, b_count, (int)(p + 0.5), (int)(q + 0.5), a->data.i32, b->data.i32, c->data.i32);
+	else if (a->info.datatype == CCV_32S && b->info.datatype == CCV_16F)
+		_ccv_nnc_masked_fill_kernel<<<CUDA_GET_BLOCKS(a_count), CUDA_NUM_THREADS, 0, stream>>>(a_count, b_count, (__half)p, (int)(q + 0.5), a->data.i32, (__half*)b->data.f16, c->data.i32);
 }
 
 static int _ccv_nnc_masked_fill_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)

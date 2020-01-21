@@ -560,7 +560,11 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			PRINT(CCV_CLI_INFO, "\n");
 		}
 	}
-	if (input_size > 0 && !graph->no_grad) // No need to record the execution if there is no input or we disabled gradient computation.
+	int inputs_are_constants = 1;
+	for (i = 0; inputs_are_constants && i < input_size; i++)
+		if (inputs[i] && inputs[i]->type != CCV_NNC_TENSOR_CONSTANT)
+			inputs_are_constants = 0;
+	if (input_size > 0 && !inputs_are_constants && !graph->no_grad) // No need to record the execution if there is no input or we disabled gradient computation.
 	{
 		ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
 		for (i = 0; i < output_size; i++)
