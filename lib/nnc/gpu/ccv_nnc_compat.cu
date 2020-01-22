@@ -59,6 +59,8 @@ void cuunregmp(const int slot)
 
 void cutrigmp(void)
 {
+	int device_id;
+	CUDA_ENFORCE(cudaGetDevice(&device_id));
 	pthread_mutex_lock(&g_mp_mutex);
 	int i;
 	for (i = 0; i < g_mp_h->rnum; i++)
@@ -68,6 +70,8 @@ void cutrigmp(void)
 			mp->func(mp->ctx);
 	}
 	pthread_mutex_unlock(&g_mp_mutex);
+	// Set back the device id.
+	CUDA_ENFORCE(cudaSetDevice(device_id));
 }
 
 void* cumalloc(int device, size_t size)
@@ -77,8 +81,7 @@ void* cumalloc(int device, size_t size)
 	cudaMalloc(&ptr, size);
 	if (ptr == 0)
 	{
-		cutrigmp(); // trigger memory pressure. And then do it again.
-		CUDA_ENFORCE(cudaSetDevice(device));
+		cutrigmp(); // Trigger memory pressure. And then do it again.
 		cudaMalloc(&ptr, size);
 	}
 	return ptr;
@@ -523,7 +526,12 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	if (!device_local->cublas)
 	{
-		CUBLAS_ENFORCE(cublasCreate(&device_local->cublas));
+		cublasCreate(&device_local->cublas);
+		if (!device_local->cublas)
+		{
+			cutrigmp(); // Trigger memory pressure. And then do it again.
+			CUBLAS_ENFORCE(cublasCreate(&device_local->cublas));
+		}
 		CUBLAS_ENFORCE(cublasSetStream(device_local->cublas, device_local->stream));
 	}
 	return device_local->cublas;
@@ -546,7 +554,12 @@ static void* _ccv_nnc_stream_context_get_ones(ONES &device_ones, const int n, cu
 		if (device_ones.data)
 			cudaFree(device_ones.data);
 		device_ones.n = n;
-		CUDA_ENFORCE(cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n));
+		cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n);
+		if (!device_ones.data)
+		{
+			cutrigmp(); // Trigger memory pressure. And then do it again.
+			CUDA_ENFORCE(cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n));
+		}
 		const int block_x = (n + 255) >> 8;
 		_ones<<<block_x, 256, 0, stream>>>(device_ones.data, n);
 	}
@@ -632,7 +645,12 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* c
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	if (!device_local->cudnn)
 	{
-		CUDNN_ENFORCE(cudnnCreate(&device_local->cudnn));
+		cudnnCreate(&device_local->cudnn);
+		if (!device_local->cudnn)
+		{
+			cutrigmp(); // Trigger memory pressure. And then do it again.
+			CUDNN_ENFORCE(cudnnCreate(&device_local->cudnn));
+		}
 		CUDNN_ENFORCE(cudnnSetStream(device_local->cudnn, device_local->stream));
 	}
 	return device_local->cudnn;
