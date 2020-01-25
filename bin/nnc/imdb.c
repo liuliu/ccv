@@ -304,7 +304,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		seq_indices[i] = ccv_nnc_tensor_constant_new(dynamic_graph, seq_params);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i])), 0);
 	}
-	ccv_nnc_tensor_free(seq_indices_cpu);
 	classifier_transformer_params_t classifier_transformer_params = {
 		.layers = 2,
 		.h = 8,
@@ -387,6 +386,14 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			CCV_TENSOR_SET_DEVICE_ID(seq_params.type, j);
 			seq_indices_alias[j] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, seq_indices[j], ccv_nnc_no_ofs, DIM_ALLOC(), seq_params);
 		}
+		for (j = 0; j < batch_size; j++)
+		{
+			int k;
+			for (k = 0; k < batch_length; k++)
+				seq_indices_cpu->data.i32[j * batch_length + k] = k;
+		}
+		for (j = 0; j < device_count; j++)
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[j])), 0);
 		ccv_nnc_tensor_variable_t tvin[device_count * 2];
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = word_indices[j];
@@ -503,6 +510,14 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 					CCV_TENSOR_SET_DEVICE_ID(seq_params.type, j);
 					seq_indices_alias[j] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, seq_indices[j], ccv_nnc_no_ofs, DIM_ALLOC(), seq_params);
 				}
+				for (j = 0; j < batch_size; j++)
+				{
+					int k;
+					for (k = 0; k < batch_length; k++)
+						seq_indices_cpu->data.i32[j * batch_length + k] = k;
+				}
+				for (j = 0; j < device_count; j++)
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[j])), 0);
 				ccv_nnc_tensor_variable_t tvin[device_count * 2];
 				for (j = 0; j < device_count; j++)
 					tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = word_indices[j];
@@ -547,6 +562,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
 	}
+	ccv_nnc_tensor_free(seq_indices_cpu);
 	ccv_cnnp_model_free(transformer);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batched_data);
