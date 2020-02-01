@@ -60,8 +60,10 @@ typedef struct {
 } ccv_nnc_dy_xpu_alloc_t;
 
 typedef struct {
-	int requires_grad;
-	int is_test;
+	int8_t requires_grad;
+	int8_t is_test;
+	int8_t did_backward_but_not_apply_gradients;
+	int8_t should_free;
 	uint64_t disable_outgrad;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;

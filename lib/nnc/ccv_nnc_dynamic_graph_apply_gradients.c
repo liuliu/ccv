@@ -19,14 +19,27 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		{
 			if (!kh_exist(dynamic_graph->stateful_execs, k))
 				continue;
-			const int d = kh_key(dynamic_graph->stateful_execs, k);
-			const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
-				.graph = dynamic_graph->tape,
-				.d = d
-			});
-			const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
-			if (isa->apply_gradients)
-				isa->apply_gradients(cmd, minimizer, stream_context);
+			ccv_nnc_stateful_exec_t* const stateful_exec = kh_val(dynamic_graph->stateful_execs, k);
+			// We only apply gradients when backward round has done.
+			if (stateful_exec->did_backward_but_not_apply_gradients)
+			{
+				const int d = kh_key(dynamic_graph->stateful_execs, k);
+				const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
+					.graph = dynamic_graph->tape,
+					.d = d
+				});
+				const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
+				if (isa->apply_gradients)
+					isa->apply_gradients(cmd, minimizer, stream_context);
+				stateful_exec->did_backward_but_not_apply_gradients = 0;
+				if (stateful_exec->should_free)
+				{
+					ccfree(stateful_exec);
+					kh_del(stateful_exec, dynamic_graph->stateful_execs, k);
+					// Because we deleted, we have to start from the beginning again.
+					k = kh_begin(dynamic_graph->stateful_execs);
+				}
+			}
 		}
 	}
 	if (parameter_size == 0)

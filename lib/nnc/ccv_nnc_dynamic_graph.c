@@ -710,30 +710,30 @@ static void _ccv_nnc_update_bind_sources_destinations_when_free(ccv_nnc_dynamic_
 		if (inputs[i] >= 0 && inputs[i] < binds->rnum)
 		{
 			ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(binds, inputs[i]);
-			_ccv_nnc_update_bind_destinations_when_free(graph, freed_symbol_d, bind, inputs[i]);
 			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
 				.d = inputs[i],
 				.graph = graph->tape
 			});
 			if (alias_to.d >= 0 && alias_to.d < binds->rnum)
 				_ccv_nnc_update_bind_destinations_when_free(graph, freed_symbol_d, (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(binds, alias_to.d), alias_to.d);
+			_ccv_nnc_update_bind_destinations_when_free(graph, freed_symbol_d, bind, inputs[i]);
 		}
 	// Note that this works because there is no overlap of inputs / outputs. (What about alias?).
 	for (i = 0; i < output_size; i++)
 		if (outputs[i] >= 0 && outputs[i] < binds->rnum)
 		{
 			ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(binds, outputs[i]);
-			_ccv_nnc_update_bind_sources_when_free(graph, freed_symbol_d, bind, outputs[i]);
 			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
 				.d = outputs[i],
 				.graph = graph->tape
 			});
 			if (alias_to.d >= 0 && alias_to.d < binds->rnum)
 				_ccv_nnc_update_bind_sources_when_free(graph, freed_symbol_d, (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(binds, alias_to.d), alias_to.d);
+			_ccv_nnc_update_bind_sources_when_free(graph, freed_symbol_d, bind, outputs[i]);
 		}
 }
 
-static void _ccv_nnc_stateful_exec_free(khash_t(stateful_exec)* const stateful_execs, const ccv_nnc_graph_exec_symbol_t symbol)
+static void _ccv_nnc_stateful_exec_free_if_possible(khash_t(stateful_exec)* const stateful_execs, const ccv_nnc_graph_exec_symbol_t symbol)
 {
 	if (!stateful_execs)
 		return;
@@ -741,8 +741,16 @@ static void _ccv_nnc_stateful_exec_free(khash_t(stateful_exec)* const stateful_e
 	khiter_t k = kh_get(stateful_exec, stateful_execs, symbol.d);
 	if (k == kh_end(stateful_execs))
 		return;
-	ccfree(kh_val(stateful_execs, k));
-	kh_del(stateful_exec, stateful_execs, k);
+	ccv_nnc_stateful_exec_t* const stateful_exec = kh_val(stateful_execs, k);
+	// If there is no backward, no need to apply gradients.
+	// Otherwise, if we applied gradients, we can free it as well.
+	// We don't free this stateful exec because apply gradients doesn't require any variables alive.
+	if (!stateful_exec->did_backward_but_not_apply_gradients)
+	{
+		ccfree(kh_val(stateful_execs, k));
+		kh_del(stateful_exec, stateful_execs, k);
+	} else
+		stateful_exec->should_free = 1;
 }
 
 void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
@@ -803,7 +811,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
-						_ccv_nnc_stateful_exec_free(graph->stateful_execs, symbol);
+						_ccv_nnc_stateful_exec_free_if_possible(graph->stateful_execs, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}
@@ -840,7 +848,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						// It it has outgoings, add that for further inspection.
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
-						_ccv_nnc_stateful_exec_free(graph->stateful_execs, symbol);
+						_ccv_nnc_stateful_exec_free_if_possible(graph->stateful_execs, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}

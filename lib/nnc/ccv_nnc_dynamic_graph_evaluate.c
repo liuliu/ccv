@@ -56,6 +56,7 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 						outgrads[(k++) + i * per_outgrad_size] = outputs[j + i * model->input_size];
 			ccv_cnnp_model_backward(model, inputs, ingrad_size, outgrads, outgrad_size, 0, 0);
 		}
+		stateful_exec->did_backward_but_not_apply_gradients = 1;
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -161,6 +162,8 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
 		stateful_exec->requires_grad = 1;
 		stateful_exec->is_test = is_test;
+		stateful_exec->did_backward_but_not_apply_gradients = 0;
+		stateful_exec->should_free = 0;
 		stateful_exec->disable_outgrad = disable_outgrad;
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
