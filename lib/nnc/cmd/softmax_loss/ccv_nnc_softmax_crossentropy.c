@@ -23,7 +23,7 @@ static int _ccv_nnc_softmax_crossentropy_back_bitmask(const int input_size, cons
 {
 	// input: [gradient of loss], [gradient of softmax], [activation], label, [loss], softmax
 	// output: w.r.t activation, [label]
-	if ((input_bitmasks[0] & 41u) == 41u && (output_bitmasks[0] & 1u) == 1u)
+	if ((input_bitmasks[0] & 40u) == 40u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
 }
