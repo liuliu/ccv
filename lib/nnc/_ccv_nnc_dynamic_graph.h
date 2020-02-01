@@ -67,6 +67,7 @@ typedef struct {
 	uint64_t disable_outgrad;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;
+	ccv_nnc_cmd_t cmd;
 } ccv_nnc_stateful_exec_t;
 
 KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)

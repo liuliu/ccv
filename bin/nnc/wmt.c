@@ -251,10 +251,6 @@ ccv_cnnp_model_t* _encoder_decoder_new(const int vocab_size, const int layers, c
 	for (i = 0; i < layers; i++)
 		decoder_out = ccv_cnnp_model_apply(_decoder_block_new(k, h, b, t, ff, dropout), MODEL_IO_LIST(decoder_out, encoder_out, src_mask, tgt_mask));
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 1, 0), MODEL_IO_LIST(decoder_out)); // t, b, d -> b, t, d
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_dense(vocab_size, (ccv_cnnp_param_t){
-		.no_bias = 1,
-	}, 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(src, tgt, src_mask, tgt_mask), MODEL_IO_LIST(out), 0);
 }
 
@@ -489,7 +485,7 @@ static void train_wmt(const int epoch_limit, const int vocab_size, const int bat
 	}
 	encoder_decoder_params_t encoder_decoder_params = {
 		.vocab_size = vocab_size,
-		.layers = 6,
+		.layers = 1,
 		.h = 8,
 		.ff = 4 * 8,
 		.dropout = 0.1,
@@ -526,15 +522,15 @@ static void train_wmt(const int epoch_limit, const int vocab_size, const int bat
 	ccv_nnc_tensor_variable_t tgt_vocab_vec[device_count];
 	ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 1);
 	ccv_nnc_tensor_param_t vocab_params = GPU_TENSOR_NCHW(000, 32F, vocab_size, embedding_size);
-	src_vocab_vec[0] = ccv_nnc_tensor_variable_new(dynamic_graph, vocab_params);
-	const float bound = sqrtf(2) / sqrtf(embedding_size); // Xavier init.
+	src_vocab_vec[0] = ccv_nnc_tensor_constant_new(dynamic_graph, vocab_params);
+	const float bound = sqrtf(6) / sqrtf(embedding_size + vocab_size); // Xavier init.
 	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(src_vocab_vec[0]), 0, 0);
 	tgt_vocab_vec[0] = ccv_nnc_tensor_variable_new(dynamic_graph, vocab_params);
 	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec[0]), 0, 0);
 	for (i = 1; i < device_count; i++)
 	{
 		CCV_TENSOR_SET_DEVICE_ID(vocab_params.type, i);
-		src_vocab_vec[i] = ccv_nnc_tensor_variable_new(dynamic_graph, vocab_params);
+		src_vocab_vec[i] = ccv_nnc_tensor_constant_new(dynamic_graph, vocab_params);
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(src_vocab_vec[0]), TENSOR_VARIABLE_LIST(src_vocab_vec[i]), 0, 0);
 		tgt_vocab_vec[i] = ccv_nnc_tensor_variable_new(dynamic_graph, vocab_params);
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec[0]), TENSOR_VARIABLE_LIST(tgt_vocab_vec[i]), 0, 0);
@@ -695,7 +691,10 @@ static void train_wmt(const int epoch_limit, const int vocab_size, const int bat
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = tgt_word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(sqrt_d_model, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, tgt_combine_vec, device_count, device_count, stream);
-		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, wmt, 0, vec, device_count * 4, out, device_count, 0, stream);
+		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, wmt, 0, vec, device_count * 4, embed, device_count, 0, stream);
+		for (j = 0; j < device_count; j++)
+			tvin[j * 2] = embed_alias[j], tvin[j * 2 + 1] = tgt_vocab_vec[j];
+		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, tvin, device_count * 2, out, device_count, device_count, stream);
 		// Loss.
 		ccv_nnc_tensor_variable_t softmax[device_count];
 		ccv_nnc_tensor_variable_t src_vocab_vec_grad[device_count];
@@ -712,7 +711,8 @@ static void train_wmt(const int epoch_limit, const int vocab_size, const int bat
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = src_vocab_vec[j], tvin[j * 2 + 1] = tgt_vocab_vec[j], tvout[j * 2] = src_vocab_vec_grad[j], tvout[j * 2 + 1] = tgt_vocab_vec_grad[j];
-		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
+		// ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
+		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tgt_vocab_vec, device_count, tgt_vocab_vec_grad, device_count, stream);
 		for (j = 0; j < device_count; j++)
 		{
 			ccv_nnc_tensor_variable_free(dynamic_graph, vec[j * 4]);
@@ -732,9 +732,11 @@ static void train_wmt(const int epoch_limit, const int vocab_size, const int bat
 			ccv_nnc_tensor_variable_free(dynamic_graph, pos_vec[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, softmax[j]);
 		}
+		// ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, src_vocab_vec_grad, device_count, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = src_vocab_vec_grad[j], tvin[j * 2 + 1] = tgt_vocab_vec_grad[j], tvout[j * 2] = src_vocab_vec[j], tvout[j * 2 + 1] = tgt_vocab_vec[j];
-		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
+		// ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
+		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tgt_vocab_vec_grad, device_count, tgt_vocab_vec, device_count, saved_auxs, device_count, stream);
 		ccv_nnc_stream_context_wait(stream);
 		elapsed_token += batch_size * word_size * device_count;
 		if ((i + 1) % 50 == 0)

@@ -23,14 +23,9 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			// We only apply gradients when backward round has done.
 			if (stateful_exec->did_backward_but_not_apply_gradients)
 			{
-				const int d = kh_key(dynamic_graph->stateful_execs, k);
-				const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
-					.graph = dynamic_graph->tape,
-					.d = d
-				});
-				const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
+				const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)stateful_exec->cmd.isa;
 				if (isa->apply_gradients)
-					isa->apply_gradients(cmd, minimizer, stream_context);
+					isa->apply_gradients(stateful_exec->cmd, minimizer, stream_context);
 				stateful_exec->did_backward_but_not_apply_gradients = 0;
 				if (stateful_exec->should_free)
 				{

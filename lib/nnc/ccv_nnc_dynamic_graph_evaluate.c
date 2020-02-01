@@ -160,6 +160,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		if (count == per_input_size)
 			disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL;
 		ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)ccmalloc(sizeof(ccv_nnc_stateful_exec_t));
+		cmd.data = stateful_exec;
 		stateful_exec->requires_grad = 1;
 		stateful_exec->is_test = is_test;
 		stateful_exec->did_backward_but_not_apply_gradients = 0;
@@ -167,7 +168,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		stateful_exec->disable_outgrad = disable_outgrad;
 		stateful_exec->tensor_tape = tensor_tape;
 		stateful_exec->data = model;
-		cmd.data = stateful_exec;
+		stateful_exec->cmd = cmd;
 		ccv_nnc_graph_exec_symbol_t symbol;
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, &symbol);
 		assert(symbol.graph);

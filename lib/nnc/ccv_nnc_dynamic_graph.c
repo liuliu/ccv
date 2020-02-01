@@ -441,20 +441,31 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				enforce_idx = j;
 		if (enforce_idx >= 0)
 			{ assert(outputs[i] == inputs[enforce_idx] && outputs[i]->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL); }
-		if (outputs[i] && outputs[i]->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
+		if (outputs[i])
 		{
-			const ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, outputs[i]->symbol.d);
-			if (enforce_idx >= 0)
-				{ assert(!bind->destinations || bind->destinations->rnum == 0); }
-			if (bind->sources && bind->sources->rnum > 0)
+			if (outputs[i]->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
 			{
-				const ccv_nnc_tensor_variable_t old_var = freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(graph, outputs[i]);
-				// If this is enforce output, make sure the tensor view is taken by the output.
+				const ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, outputs[i]->symbol.d);
 				if (enforce_idx >= 0)
+					{ assert(!bind->destinations || bind->destinations->rnum == 0); }
+				if (bind->sources && bind->sources->rnum > 0)
 				{
-					outputs[i]->tensor_view = old_var->tensor_view; // Make sure the tensor view is taken over by the output.
-					old_var->tensor_view = 0;
+					const ccv_nnc_tensor_variable_t old_var = freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(graph, outputs[i]);
+					// If this is enforce output, make sure the tensor view is taken by the output.
+					if (enforce_idx >= 0)
+					{
+						outputs[i]->tensor_view = old_var->tensor_view; // Make sure the tensor view is taken over by the output.
+						old_var->tensor_view = 0;
+					}
 				}
+			} else {
+				int allow_inplace = -1;
+				for (j = 0; j < input_size; j++)
+					if (inputs[j] && inputs[j] == outputs[i])
+						allow_inplace = (ccv_nnc_cmd_allow_inplace(cmd, j, input_size, i, output_size)) ? (allow_inplace == -1 ? 1 : 0) : 0;
+				// If allow_inplace == 1, we have only 1 inplace, and it is allowed. If we have 0, that means we don't allow inplace and already have duplicates.
+				if (allow_inplace == 0) // If we don't allow inplace, but we have reuse, we need to free this.
+					freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(graph, outputs[i]);
 			}
 		}
 	}
@@ -601,7 +612,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			for (i = 0; i < per_input_size; i++)
 			{
 				ccv_nnc_tensor_variable_t const input = inputs[i + t * per_input_size];
-				if (!input)
+				if (!input || input->type == CCV_NNC_TENSOR_CONSTANT)
 					continue;
 				ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, input->symbol.d);
 				if (!bind->destinations)
