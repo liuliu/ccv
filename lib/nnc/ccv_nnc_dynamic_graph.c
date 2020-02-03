@@ -99,17 +99,17 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	ccv_nnc_symbolic_graph_free(graph->tape);
 	if (graph->ws)
 		ccv_array_free(graph->ws);
-	khiter_t k;
 	if (graph->stateful_execs)
 	{
-		for (k = kh_begin(graph->stateful_execs); k != kh_end(graph->stateful_execs); ++k)
+		for (i = 0; i < graph->stateful_execs->rnum; i++)
 		{
-			if (!kh_exist(graph->stateful_execs, k))
-				continue;
-			ccfree(kh_val(graph->stateful_execs, k));
+			ccv_nnc_stateful_exec_t* const stateful_exec = *(ccv_nnc_stateful_exec_t**)ccv_array_get(graph->stateful_execs, i);
+			if (stateful_exec)
+				ccfree(stateful_exec);
 		}
-		kh_destroy(stateful_exec, graph->stateful_execs);
+		ccv_array_free(graph->stateful_execs);
 	}
+	khiter_t k;
 	if (graph->synced_streams)
 	{
 		for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
@@ -744,22 +744,26 @@ static void _ccv_nnc_update_bind_sources_destinations_when_free(ccv_nnc_dynamic_
 		}
 }
 
-static void _ccv_nnc_stateful_exec_free_if_possible(khash_t(stateful_exec)* const stateful_execs, const ccv_nnc_graph_exec_symbol_t symbol)
+static void _ccv_nnc_stateful_exec_free_if_possible(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol)
 {
-	if (!stateful_execs)
+	if (!graph->stateful_execs)
 		return;
 	assert(symbol.d >= 0);
-	khiter_t k = kh_get(stateful_exec, stateful_execs, symbol.d);
-	if (k == kh_end(stateful_execs))
+	ccv_array_t* const stateful_execs = graph->stateful_execs;
+	ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(graph->tape, symbol);
+	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
+	if (!stateful_exec)
 		return;
-	ccv_nnc_stateful_exec_t* const stateful_exec = kh_val(stateful_execs, k);
 	// If there is no backward, no need to apply gradients.
 	// Otherwise, if we applied gradients, we can free it as well.
 	// We don't free this stateful exec because apply gradients doesn't require any variables alive.
 	if (!stateful_exec->did_backward_but_not_apply_gradients)
 	{
-		ccfree(kh_val(stateful_execs, k));
-		kh_del(stateful_exec, stateful_execs, k);
+		const int index = stateful_exec->index;
+		ccfree(stateful_exec);
+		if (index < graph->reuse_stateful_exec || graph->reuse_stateful_exec < 0)
+			graph->reuse_stateful_exec = index;
+		*(ccv_nnc_stateful_exec_t**)ccv_array_get(stateful_execs, index) = 0;
 	} else
 		stateful_exec->should_free = 1;
 }
@@ -822,7 +826,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
-						_ccv_nnc_stateful_exec_free_if_possible(graph->stateful_execs, symbol);
+						_ccv_nnc_stateful_exec_free_if_possible(graph, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}
@@ -859,7 +863,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						// It it has outgoings, add that for further inspection.
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
-						_ccv_nnc_stateful_exec_free_if_possible(graph->stateful_execs, symbol);
+						_ccv_nnc_stateful_exec_free_if_possible(graph, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}

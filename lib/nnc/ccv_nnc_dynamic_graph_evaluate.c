@@ -172,11 +172,28 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_graph_exec_symbol_t symbol;
 		ccv_nnc_dynamic_graph_exec_ret(dynamic_graph, cmd, ccv_nnc_no_hint, 0, inputs, input_size, outputs, output_size, 0, stream_context, &symbol);
 		assert(symbol.graph);
-		int ret;
 		if (!dynamic_graph->stateful_execs)
-			dynamic_graph->stateful_execs = kh_init(stateful_exec);
-		khiter_t k = kh_put(stateful_exec, dynamic_graph->stateful_execs, symbol.d, &ret);
-		kh_val(dynamic_graph->stateful_execs, k) = stateful_exec;
+		{
+			dynamic_graph->stateful_execs = ccv_array_new(sizeof(ccv_nnc_stateful_exec_t*), 1, 0);
+			ccv_array_push(dynamic_graph->stateful_execs, &stateful_exec);
+			stateful_exec->index = dynamic_graph->stateful_execs->rnum - 1;
+		} else {
+			if (dynamic_graph->reuse_stateful_exec >= 0)
+			{
+				*(ccv_nnc_stateful_exec_t**)ccv_array_get(dynamic_graph->stateful_execs, dynamic_graph->reuse_stateful_exec) = stateful_exec;
+				stateful_exec->index = dynamic_graph->reuse_stateful_exec;
+				int flag = 0;
+				for (i = dynamic_graph->reuse_stateful_exec + 1; !flag && i < dynamic_graph->stateful_execs->rnum; i++)
+					if (*(ccv_nnc_stateful_exec_t**)ccv_array_get(dynamic_graph->stateful_execs, i) == 0)
+						dynamic_graph->reuse_stateful_exec = i, flag = 1;
+				if (!flag) // Reset to 1.
+					dynamic_graph->reuse_stateful_exec = -1;
+			} else {
+				// Push new, no reuse available.
+				ccv_array_push(dynamic_graph->stateful_execs, &stateful_exec);
+				stateful_exec->index = dynamic_graph->stateful_execs->rnum - 1;
+			}
+		}
 	}
 }
 

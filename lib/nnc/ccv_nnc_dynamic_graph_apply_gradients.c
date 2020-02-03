@@ -12,14 +12,12 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	assert(gradient_size == parameter_size);
 	assert(!dynamic_graph->no_grad);
 	// Call apply gradients to stateful execs first.
+	int i, j;
 	if (dynamic_graph->stateful_execs)
 	{
-		khiter_t k;
-		for (k = kh_begin(dynamic_graph->stateful_execs); k != kh_end(dynamic_graph->stateful_execs); ++k)
+		for (i = 0; i < dynamic_graph->stateful_execs->rnum; i++)
 		{
-			if (!kh_exist(dynamic_graph->stateful_execs, k))
-				continue;
-			ccv_nnc_stateful_exec_t* const stateful_exec = kh_val(dynamic_graph->stateful_execs, k);
+			ccv_nnc_stateful_exec_t* const stateful_exec = *(ccv_nnc_stateful_exec_t**)ccv_array_get(dynamic_graph->stateful_execs, i);
 			// We only apply gradients when backward round has done.
 			if (stateful_exec->did_backward_but_not_apply_gradients)
 			{
@@ -30,9 +28,9 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				if (stateful_exec->should_free)
 				{
 					ccfree(stateful_exec);
-					kh_del(stateful_exec, dynamic_graph->stateful_execs, k);
-					// Because we deleted, we have to start from the beginning again.
-					k = kh_begin(dynamic_graph->stateful_execs);
+					*(ccv_nnc_stateful_exec_t**)ccv_array_get(dynamic_graph->stateful_execs, i) = 0;
+					if (i < dynamic_graph->reuse_stateful_exec || dynamic_graph->reuse_stateful_exec < 0)
+						dynamic_graph->reuse_stateful_exec = i;
 				}
 			}
 		}
@@ -44,7 +42,6 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	}
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	const int saved_aux_size = parameter_size * aux_size;
-	int i, j;
 	ccv_nnc_tensor_symbol_t update_inputs[aux_size + 2];
 	ccv_nnc_tensor_symbol_t update_outputs[aux_size + 1];
 	int freeable_size = 0;

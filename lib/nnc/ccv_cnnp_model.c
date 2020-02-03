@@ -1617,7 +1617,9 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	assert(model->graph);
 	assert(compiled_data->graph);
-	assert(compiled_data->backward.count > 0);
+	// Skip if there is no backward pass.
+	if (compiled_data->backward.count <= 0)
+		return;
 	if (!compiled_data->apply_gradients.graph)
 		_ccv_cnnp_model_multistage_jit_2(model);
 	else {

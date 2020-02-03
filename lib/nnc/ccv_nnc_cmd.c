@@ -125,6 +125,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_vtab_t* const isa, co
 	cmd.cmd = _cmd;
 	cmd.algorithm = -1; // This is default.
 	cmd.isa = isa;
+	cmd.data = 0;
 	return cmd;
 }
 

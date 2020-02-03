@@ -64,6 +64,7 @@ typedef struct {
 	int8_t is_test;
 	int8_t did_backward_but_not_apply_gradients;
 	int8_t should_free;
+	int index;
 	uint64_t disable_outgrad;
 	ccv_nnc_tensor_tape_t* tensor_tape;
 	void* data;
@@ -97,12 +98,13 @@ struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
 	int mp_hdr; // Memory pressure handler.
+	int reuse_stateful_exec; // -1 if no stateful exec can be reused. Otherwise first locate the reuse without increase array size.
 	ccv_array_t* vars; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.
+	ccv_array_t* stateful_execs; // Array keeps track of the stateful execs. The stateful execs type can have additional apply_gradients calls to update its internal states.
 	khash_t(dy_dev)* freed; // The freed memory allocations.
 	khash_t(dy_alloc)* allocd; // The allocated memory.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
-	khash_t(stateful_exec)* stateful_execs; // Array keeps track of the stateful execs. The stateful execs type can have additional apply_gradients calls to update its internal states.
 	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	khash_t(signal_container)* signal_container; // Signals for streams.
 	ccv_array_t* ws; // array of integers as workspace
