@@ -45,6 +45,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_tensor_symbol_t update_inputs[aux_size + 2];
 	ccv_nnc_tensor_symbol_t update_outputs[aux_size + 1];
 	int freeable_size = 0;
+	ccv_nnc_graph_exec_symbol_t sources[parameter_size];
 	ccv_nnc_graph_exec_symbol_t minimizes[parameter_size];
 	ccv_nnc_tensor_variable_t freeables[parameter_size + saved_aux_size];
 	ccv_array_t* const symbol_stack = ccv_array_new(sizeof(ccv_nnc_tape_symbol_t), 1, 0);
@@ -93,9 +94,16 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[idx], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 				int k;
+				ccv_nnc_tensor_symbol_t set_zeros[aux_size];
+				int set_zero_size = 0;
+				for (k = 0; k < aux_size; k++)
+					update_inputs[2 + k] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
+				for (k = 0; k < aux_size; k++)
+					if (!ccv_nnc_tensor_variable_contains_value(saved_aux[idx * aux_size + k])) // Need to 0 init the saved aux in this case.
+						set_zeros[set_zero_size++] = update_inputs[2 + k];
 				for (k = 0; k < aux_size; k++)
 				{
-					bind.symbol = update_inputs[2 + k] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
+					bind.symbol = update_inputs[2 + k];
 					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k], stream_context);
 					ccv_array_push(tensor_binds, &bind);
 					freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, saved_aux[idx * aux_size + k]);
@@ -103,8 +111,15 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 					bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[idx * aux_size + k], stream_context);
 					ccv_array_push(tensor_binds, &bind);
 				}
-				minimizes[idx] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
-				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, allreduces[i], minimizes[idx]);
+				sources[idx] = minimizes[idx] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
+				if (set_zero_size > 0)
+				{
+					const ccv_nnc_graph_exec_symbol_t set_zero = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(0), 0, 0, set_zeros, set_zero_size, 0);
+					ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_zero, minimizes[idx]);
+					ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, allreduces[i], set_zero);
+					sources[idx] = set_zero;
+				} else
+					ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, allreduces[i], minimizes[idx]);
 			}
 		}
 	} else {
@@ -126,9 +141,16 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			bind.symbol = update_outputs[0] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 			bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, parameters[i], stream_context);
 			ccv_array_push(tensor_binds, &bind);
+			ccv_nnc_tensor_symbol_t set_zeros[aux_size];
+			int set_zero_size = 0;
+			for (j = 0; j < aux_size; j++)
+				update_inputs[2 + j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
+			for (j = 0; j < aux_size; j++)
+				if (!ccv_nnc_tensor_variable_contains_value(saved_aux[i * aux_size + j])) // Need to 0 init the saved aux in this case.
+					set_zeros[set_zero_size++] = update_inputs[2 + j];
 			for (j = 0; j < aux_size; j++)
 			{
-				bind.symbol = update_inputs[2 + j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
+				bind.symbol = update_inputs[2 + j];
 				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 				freeables[freeable_size++] = ccv_nnc_tensor_variable_exchange_new(dynamic_graph, saved_aux[i * aux_size + j]);
@@ -136,7 +158,13 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				bind.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, saved_aux[i * aux_size + j], stream_context);
 				ccv_array_push(tensor_binds, &bind);
 			}
-			minimizes[i] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
+			sources[i] = minimizes[i] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
+			if (set_zero_size > 0)
+			{
+				const ccv_nnc_graph_exec_symbol_t set_zero = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(0), 0, 0, set_zeros, set_zero_size, 0);
+				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_zero, minimizes[i]);
+				sources[i] = set_zero;
+			}
 		}
 	}
 	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
@@ -158,7 +186,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
 		(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 		0, 0,
-		parallel_count > 1 ? allreduces : minimizes, parallel_count > 1 ? per_parameter_size : parameter_size,
+		parallel_count > 1 ? allreduces : sources, parallel_count > 1 ? per_parameter_size : parameter_size,
 		minimizes, parameter_size,
 		&graph, &tensor_arena, &exec_arena);
 	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);

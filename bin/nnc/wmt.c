@@ -605,8 +605,6 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 	for (i = 0; epoch < epoch_limit; i++)
 	{
 		// float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
-		float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf(i + 1), (float)(i + 1) / (sqrtf(warmup_steps) * warmup_steps));
-		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
 		ccv_nnc_tensor_t** tensors[device_count * 5];
 		ccv_cnnp_dataframe_iter_next(iter, (void**)tensors, device_count * 5, stream);
 		const int word_size = tensors[0][0]->info.dim[1];
@@ -739,9 +737,6 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			ccv_nnc_tensor_variable_free(dynamic_graph, vec[j * 4 + 1]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, vec[j * 4 + 2]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, vec[j * 4 + 3]);
-			ccv_nnc_tensor_variable_free(dynamic_graph, src_word_indices[j]);
-			ccv_nnc_tensor_variable_free(dynamic_graph, src_word_vec[j]);
-			ccv_nnc_tensor_variable_free(dynamic_graph, src_combine_vec[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, tgt_word_indices[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, tgt_word_vec[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, tgt_combine_vec[j]);
@@ -751,16 +746,9 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			// ccv_nnc_tensor_variable_free(dynamic_graph, embed_alias[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, pos_vec[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, softmax[j]);
-		}
-		for (j = 0; j < device_count; j++)
-			tvin[j * 2] = src_vocab_vec_grad[j], tvin[j * 2 + 1] = tgt_vocab_vec_grad[j], tvout[j * 2] = src_vocab_vec[j], tvout[j * 2 + 1] = tgt_vocab_vec[j];
-		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
-		for (j = 0; j < device_count; j++)
-		{
-			ccv_nnc_tensor_variable_free(dynamic_graph, src_vocab_vec_grad[j]);
-			ccv_nnc_tensor_variable_free(dynamic_graph, tgt_vocab_vec_grad[j]);
-			src_vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
-			tgt_vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
+			ccv_nnc_tensor_variable_free(dynamic_graph, src_combine_vec[j]);
+			ccv_nnc_tensor_variable_free(dynamic_graph, src_word_vec[j]);
+			ccv_nnc_tensor_variable_free(dynamic_graph, src_word_indices[j]);
 		}
 		// ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tgt_vocab_vec_grad, device_count, tgt_vocab_vec, device_count, saved_auxs, device_count, stream);
 		elapsed_token += batch_size * word_size * device_count;
@@ -812,6 +800,21 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			++epoch;
 			ccv_cnnp_dataframe_shuffle(train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
+		}
+		if ((i + 1) % 2 == 0)
+		{
+			float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf((i + 1) / 2), (float)((i + 1) / 2) / (sqrtf(warmup_steps) * warmup_steps));
+			adam = CMD_ADAM_FORWARD((i + 1) / 2, learn_rate, 0.9, 0.98, 0, 1e-9);
+			for (j = 0; j < device_count; j++)
+				tvin[j * 2] = src_vocab_vec_grad[j], tvin[j * 2 + 1] = tgt_vocab_vec_grad[j], tvout[j * 2] = src_vocab_vec[j], tvout[j * 2 + 1] = tgt_vocab_vec[j];
+			ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
+			for (j = 0; j < device_count; j++)
+			{
+				ccv_nnc_tensor_variable_free(dynamic_graph, src_vocab_vec_grad[j]);
+				ccv_nnc_tensor_variable_free(dynamic_graph, tgt_vocab_vec_grad[j]);
+				src_vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
+				tgt_vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
+			}
 		}
 	}
 	ccv_nnc_stream_context_free(stream);

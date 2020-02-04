@@ -774,11 +774,12 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 	if (tensor_variable->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
 	{
 		// If it is not a free variable, when can we free the symbol and the underlying variable?
-		// 1. There should be no sources (the command generate this tensor should be freed);
+		// 1. There should be no sources (the command generate this tensor should be freed) or the output of these sources is only the current one;
 		// 2. The destinations (the commands that uses this tensor) should have no other inputs, or the other inputs has no binded sources as well.
 		ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, tensor_variable->symbol.d);
 		// There should be no source associated with it no more.
 		int free_symbol = 0;
+		// TODO: identify I can free it because it is the only the output of the sources.
 		if (!bind->sources || bind->sources->rnum == 0)
 		{
 			int i, j;
