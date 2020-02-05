@@ -1675,7 +1675,8 @@ void ccv_array_resize(ccv_array_t* array, int rnum)
 		array->size = ccv_max(array->size * 3 / 2, rnum);
 		array->data = ccrealloc(array->data, (size_t)array->size * (size_t)array->rsize);
 	}
-	memset(ccv_array_get(array, array->rnum), 0, (size_t)array->rsize * (size_t)(rnum - array->rnum));
+	if (rnum > array->rnum)
+		memset(ccv_array_get(array, array->rnum), 0, (size_t)array->rsize * (size_t)(rnum - array->rnum));
 	array->rnum = rnum;
 }
 

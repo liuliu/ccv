@@ -799,7 +799,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			ccv_cnnp_dataframe_shuffle(train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
-		const int big_step = 1;
+		const int big_step = 10;
 		if ((i + 1) % big_step == 0)
 		{
 			float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf((i + 1) / big_step), (float)((i + 1) / big_step) / (sqrtf(warmup_steps) * warmup_steps));
@@ -891,7 +891,7 @@ int main(int argc, char** argv)
 		ccv_array_t* const train_set = _array_from_disk_new(src_file, tgt_file, src_vocab, src_vocab_size, tgt_vocab, tgt_vocab_size, max_length);
 		ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 		printf("%d pairs, source vocabulary size %d, target vocabulary size %d\n", train_set->rnum, src_vocab_size, tgt_vocab_size);
-		train_wmt(10, src_vocab_size, tgt_vocab_size, 16, max_length, 512, train_data);
+		train_wmt(10, src_vocab_size, tgt_vocab_size, 8, max_length, 512, train_data);
 		ccv_cnnp_dataframe_free(train_data);
 	} else {
 		eval_wmt(max_length, 512, tst_file, src_vocab, src_vocab_size, tgt_vocab, tgt_vocab_size);
