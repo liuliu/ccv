@@ -445,7 +445,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 		{
 			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 			float lr = 0.001;
-			if (i >= 100)
+			if (i >= 200)
 				lr = 0.0001;
 			else if (i >= 600)
 				lr = 0.00001;
@@ -458,7 +458,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, a), TENSOR_VARIABLE_LIST(y), 0, 0);
 	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_evaluate(graph, linear, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(z), 0, 0);
-	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], -5, 1e-2, "linear model should be trained to generate the same value as z");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], -5, 1e-1, "linear model should be trained to generate the same value as z");
 	ccv_nnc_dynamic_graph_free(graph);
 	ccv_cnnp_model_free(linear);
 }
