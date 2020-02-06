@@ -1466,8 +1466,8 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	{
 		if (!compiled_data->backward.accum)
 			_ccv_cnnp_model_multistage_jit_1(model);
-		else {
-			// Otherwise, we need to switch accumulated gradients with gradients (so we can do accumulation properly).
+		else if (compiled_data->backward.count == 1) {
+			//  On this round, we need to switch accumulated gradients with gradients (so we can do accumulation properly).
 			int i;
 			ccv_nnc_tensor_arena_clear_bindings(compiled_data->backward.tensor_arena);
 			for (i = 0; i < trainable_size * parallel_count; i++)
@@ -1519,9 +1519,8 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		assert(compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES ||
 			compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS);
 	}
-	// Bind to the gradients (if we start to accumulate at 2 (i.e. accum_gradients and gradients binding no longer changes), no need to do the binding.
-	if (compiled_data->backward.count <= 1)
-		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
+	// Bind because tensor_arena could be regenerated through ccv_cnnp_model_absorb
+	_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
 	if (!compiled_data->backward.schedule)
 		compiled_data->backward.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
 	// Run the backward pass.
