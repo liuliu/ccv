@@ -444,7 +444,12 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 		if (((i + 1) % 5) == 0)
 		{
 			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-			ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.0001, 0.001, 0, 0, 0), TENSOR_VARIABLE_LIST(a_grad), TENSOR_VARIABLE_LIST(a), &saved_aux, 0, 0);
+			float lr = 0.001;
+			if (i >= 100)
+				lr = 0.0001;
+			else if (i >= 600)
+				lr = 0.00001;
+			ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, lr, 0.001, 0, 0, 0), TENSOR_VARIABLE_LIST(a_grad), TENSOR_VARIABLE_LIST(a), &saved_aux, 0, 0);
 		}
 	}
 	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
