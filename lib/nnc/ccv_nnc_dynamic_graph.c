@@ -20,6 +20,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->allocd = kh_init(dy_alloc);
 	// These may not be used as frequent, init as needed.
 	graph->stateful_execs = 0;
+	graph->reuse_stateful_exec = -1;
 	graph->synced_streams = 0;
 	graph->signal_container = 0;
 	graph->ws = 0;

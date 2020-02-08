@@ -3825,6 +3825,7 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 {
 	assert(tensor_arena->graph_ref == (intptr_t)symbol.graph);
 	assert(symbol.d < tensor_arena->vt_tensor_size);
+	assert(symbol.d >= 0);
 	// Only allocate this on-demand because not everyone uses this ccv_nnc_tensor_bind_symbol method.
 	int i;
 	if (!tensor_arena->pb_vt_tensors)

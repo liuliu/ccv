@@ -521,22 +521,24 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 	ccv_nnc_tensor_variable_t tgt_vocab_vec[device_count];
 	ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 1);
 	ccv_nnc_tensor_param_t src_vocab_params = GPU_TENSOR_NCHW(000, 32F, src_vocab_size, embedding_size);
-	src_vocab_vec[0] = ccv_nnc_tensor_variable_new(dynamic_graph, src_vocab_params);
+	ccv_nnc_tensor_variable_t src_vocab_vec_ = ccv_nnc_tensor_constant_new(dynamic_graph, CPU_TENSOR_NCHW(32F, src_vocab_size, embedding_size));
 	const float src_bound = sqrtf(6) / sqrtf(embedding_size + src_vocab_size); // Xavier init.
-	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-src_bound, src_bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(src_vocab_vec[0]), 0, 0);
+	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-src_bound, src_bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(src_vocab_vec_), 0, 0);
 	ccv_nnc_tensor_param_t tgt_vocab_params = GPU_TENSOR_NCHW(000, 32F, tgt_vocab_size, embedding_size);
 	const float tgt_bound = sqrtf(6) / sqrtf(embedding_size + tgt_vocab_size); // Xavier init.
-	tgt_vocab_vec[0] = ccv_nnc_tensor_variable_new(dynamic_graph, tgt_vocab_params);
-	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-tgt_bound, tgt_bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec[0]), 0, 0);
-	for (i = 1; i < device_count; i++)
+	ccv_nnc_tensor_variable_t tgt_vocab_vec_ = ccv_nnc_tensor_constant_new(dynamic_graph, CPU_TENSOR_NCHW(32F, tgt_vocab_size, embedding_size));
+	ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_RANDOM_UNIFORM_FORWARD(-tgt_bound, tgt_bound), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec_), 0, 0);
+	for (i = 0; i < device_count; i++)
 	{
 		CCV_TENSOR_SET_DEVICE_ID(src_vocab_params.type, i);
 		src_vocab_vec[i] = ccv_nnc_tensor_variable_new(dynamic_graph, src_vocab_params);
-		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(src_vocab_vec[0]), TENSOR_VARIABLE_LIST(src_vocab_vec[i]), 0, 0);
+		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(src_vocab_vec_), TENSOR_VARIABLE_LIST(src_vocab_vec[i]), 0, 0);
 		CCV_TENSOR_SET_DEVICE_ID(tgt_vocab_params.type, i);
 		tgt_vocab_vec[i] = ccv_nnc_tensor_variable_new(dynamic_graph, tgt_vocab_params);
-		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec[0]), TENSOR_VARIABLE_LIST(tgt_vocab_vec[i]), 0, 0);
+		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(tgt_vocab_vec_), TENSOR_VARIABLE_LIST(tgt_vocab_vec[i]), 0, 0);
 	}
+	ccv_nnc_tensor_variable_free(dynamic_graph, src_vocab_vec_);
+	ccv_nnc_tensor_variable_free(dynamic_graph, tgt_vocab_vec_);
 	ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 0);
 	ccv_nnc_tensor_t* const seq_indices_ = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, batch_size * max_length), 0);
 	for (i = 0; i < batch_size; i++)

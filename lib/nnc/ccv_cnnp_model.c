@@ -314,6 +314,13 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	ccv_array_free(stack);
 	// After this, we get all tensors in the model graph resolved through tensor_auto.
 	ccv_nnc_symbolic_graph_tensor_auto(model->graph, TRAVERSE_FULL);
+	// Verify symbols we get matches.
+	const int trainable_size = compiled_data->trainables->rnum;
+	for (i = 0; i < trainable_size; i++)
+		{ assert(((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d == ((ccv_nnc_tensor_symbol_t*)ccv_array_get(init->compiled_data->trainables, i))->d); }
+	const int retainable_size = compiled_data->retainables->rnum;
+	for (i = 0; i < retainable_size; i++)
+		{ assert(((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retainables, i))->d == ((ccv_nnc_tensor_symbol_t*)ccv_array_get(init->compiled_data->retainables, i))->d); }
 	// Go through compiled data.
 	if (compiled_data->tensor_arena)
 	{
@@ -1519,7 +1526,9 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		assert(compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES ||
 			compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS);
 	}
-	// Bind because tensor_arena could be regenerated through ccv_cnnp_model_absorb
+	// We need to rebind here because in ccv_cnnp_evaluate, we clear bindings, that will reset all bindings for the gradients.
+	// For trainables and retainables these are fine because when we clear bindings, it restores to original bindings, which are these
+	// trainables and retainables. The same cannot be said for gradients due to the accum_gradients switching.
 	_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
 	if (!compiled_data->backward.schedule)
 		compiled_data->backward.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
