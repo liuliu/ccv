@@ -48,7 +48,7 @@ typedef struct {
 typedef struct { // Extra information kept per tensor symbol along with symbolic graph.
 	int type;
 	int index; // The index back into the tensor variable. -1 meant no associated tensor vairable.
-	int is_alias; // Whether this is an alias for this tensor view.
+	int alias_ref; // If this is an alias tensor view to a tensor.
 	ccv_array_t* sources; // array of graph_exec_symbol, use this tensor symbol as output.
 	ccv_array_t* destinations; // array of graph_exec_symbol, use this tensor symbol as input.
 	ccv_nnc_tensor_view_t* tensor_view; // Transfer ownership of the tensor view to here.

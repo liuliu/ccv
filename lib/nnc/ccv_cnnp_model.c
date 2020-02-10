@@ -1678,6 +1678,9 @@ void ccv_cnnp_model_set_trainable(ccv_cnnp_model_t* const model, const ccv_cnnp_
 		if (copy_tensor)
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
 	}
+	// Mark this symbol as init'ed.
+	const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, d))->d;
+	compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
 }
 
 void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, ccv_nnc_tensor_t* const tensor)
