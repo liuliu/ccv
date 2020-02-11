@@ -167,7 +167,18 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		for (i = 0; i < output_size; i++)
 		{
 			compiled_data->fits[i] = NO_TENSOR_SYMBOL;
-			compiled_data->f[i] = model->outputs[i];
+			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(model->graph, model->outputs[i]);
+			if (alias_to.d < 0)
+				compiled_data->f[i] = model->outputs[i];
+			else { // We cannot differentiate against an alias, therefore, we have to verify this output is full, and we can diff against the original.
+				int ofs[CCV_NNC_MAX_DIM_ALLOC];
+				int inc[CCV_NNC_MAX_DIM_ALLOC];
+				ccv_nnc_tensor_symbol_alias_params(model->graph, model->outputs[i], ofs, inc);
+				int j;
+				for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
+					{ assert(ofs[j] == 0); } // There is no ofs.
+				compiled_data->f[i] = alias_to; // Unfortunately, I cannot assert the size yet.
+			}
 		}
 	} else {
 		for (i = 0; i < output_size; i++)
@@ -1493,7 +1504,7 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	int i, j;
 	for (i = 0; i < ingrad_size_per_p; i++)
 	{
-		const ccv_nnc_tensor_symbol_t ingrad = ccv_nnc_tensor_symbol_for_backward(model->graph, model->outputs[i]);
+		const ccv_nnc_tensor_symbol_t ingrad = ccv_nnc_tensor_symbol_for_backward(model->graph, compiled_data->f[i]);
 		if (!ingrad_size || !ingrads || ingrads[i] == 0)
 		{
 			// Set it to 1 if it is not specified.
@@ -1507,6 +1518,8 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 					ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(ingrad_tensor), stream_context);
 			}
 		} else {
+			// Make sure the length matches, in case it is an alias.
+			assert(ccv_nnc_tensor_count(ingrads[i]->info) == ccv_nnc_tensor_count(ccv_nnc_tensor_symbol_params(model->graph, ingrad)));
 			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ingrad, ingrads[i]);
 			for (j = 1; j < parallel_count; j++)
 				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, ingrad, j), ingrads[i + ingrad_size_per_p * j]);

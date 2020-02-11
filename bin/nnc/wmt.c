@@ -50,6 +50,9 @@ static CCV_WARN_UNUSED(ccv_nnc_tensor_t*) _text_to_tensor_index(char* const line
 	const int beg_flag = vocab_size - 3;
 	const int end_flag = vocab_size - 2;
 	const int pad_flag = vocab_size - 1;
+	const size_t linelen = strlen(line);
+	if (line[linelen - 1] == '\n') // Remove new line.
+		line[linelen - 1] = 0;
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, max_length), 0);
 	char* saveptr;
 	const char* token = strtok_r(line, " ", &saveptr);
@@ -786,7 +789,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			ccv_cnnp_dataframe_shuffle(train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
-		const int big_step = 10;
+		const int big_step = 5;
 		if ((i + 1) % big_step == 0)
 		{
 			float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf((i + 1) / big_step), (float)((i + 1) / big_step) / (sqrtf(warmup_steps) * warmup_steps));
