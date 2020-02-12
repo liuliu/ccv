@@ -273,6 +273,33 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retainables, i))->d;
 		assert(_ccv_nnc_tensor_symbol_check_dim(model->graph, init->graph, d, d));
 	}
+	// Update inputs.
+	assert(model->input_size == init->input_size);
+	for (i = 0; i < model->input_size; i++)
+		if (model->inputs[i].d >= 0)
+		{
+			assert(init->inputs[i].d >= 0);
+			_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, init->inputs[i].d, model->inputs[i].d);
+		}
+	// Update outputs.
+	assert(model->output_size == init->output_size);
+	for (i = 0; i < model->output_size; i++)
+	{
+		if (model->outputs[i].d >= 0)
+		{
+			assert(init->outputs[i].d >= 0);
+			_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, init->outputs[i].d, model->outputs[i].d);
+		}
+		if (model->outputs[i].d != model->compiled_data->f[i].d)
+		{
+			assert(init->outputs[i].d != init->compiled_data->f[i].d);
+			if (model->compiled_data->f[i].d >= 0)
+			{
+				assert(init->compiled_data->f[i].d >= 0);
+				_ccv_nnc_tensor_symbol_reinit(init->graph, model->graph, init->compiled_data->f[i].d, model->compiled_data->f[i].d);
+			}
+		}
+	}
 	// Go through the graph to set tensor on matching symbols
 	for (i = 0; i < stack->rnum; i++)
 	{
@@ -1389,6 +1416,8 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	assert(model->graph);
 	const int target_gradient_mode = _ccv_cnnp_is_disable_outgrad_all(params.disable_outgrad, model->input_size) ? CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES : CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS;
 	const int mode_mismatch = (params.requires_grad && (compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE || compiled_data->gradient_mode != target_gradient_mode || compiled_data->disable_outgrad != params.disable_outgrad));
+	assert((output_size % parallel_count) == 0);
+	const int output_size_per_p = output_size / parallel_count;
 	if (!compiled_data->graph || mode_mismatch)
 	{
 		_ccv_cnnp_compiled_data_graph_free(compiled_data);
@@ -1410,6 +1439,9 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		const int output_size_per_p = output_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->outputs, outputs, output_size_per_p, parallel_count);
 	}
+	// If noop, that means the output can be alias, and in turn, the f can be non-alias, and in turn, we need to bind the non-alias one.
+	if (compiled_data->loss.cmd == CCV_NNC_NOOP)
+		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->f, outputs, output_size_per_p, parallel_count);
 	if (compiled_data->is_test != params.is_test)
 	{
 		compiled_data->is_test = params.is_test;
