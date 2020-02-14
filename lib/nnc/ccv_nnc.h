@@ -1302,6 +1302,11 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
  */
 CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
 /**
+ * Number of active exec symbols.
+ * @param graph The symbolic graph.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_active_op_count(const ccv_nnc_symbolic_graph_t* const graph);
+/**
  * Substitution function. Given an execution node symbol and a command, return a new command.
  */
 typedef ccv_nnc_cmd_t(*ccv_nnc_symbolic_graph_subst_f)(const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd);

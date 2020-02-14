@@ -1433,10 +1433,8 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	} else {
 		ccv_nnc_tensor_arena_clear_bindings(compiled_data->tensor_arena);
 		assert((input_size % parallel_count) == 0);
-		assert((output_size % parallel_count) == 0);
 		const int input_size_per_p = input_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->inputs, inputs, input_size_per_p, parallel_count);
-		const int output_size_per_p = output_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->outputs, outputs, output_size_per_p, parallel_count);
 	}
 	// If noop, that means the output can be alias, and in turn, the f can be non-alias, and in turn, we need to bind the non-alias one.

@@ -447,6 +447,70 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 		if (((i + 1) % 5) == 0)
 		{
 			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph), 0, "everything should be freed");
+			float lr = 0.001;
+			if (i >= 200)
+				lr = 0.0001;
+			else if (i >= 600)
+				lr = 0.00001;
+			ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, lr, 0.001, 0, 0, 0), TENSOR_VARIABLE_LIST(a_grad), TENSOR_VARIABLE_LIST(a), &saved_aux, 0, 0);
+		}
+	}
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 5;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, a), TENSOR_VARIABLE_LIST(y), 0, 0);
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_evaluate(graph, linear, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], -5, 1e-2, "linear model should be trained to generate the same value as z");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_cnnp_model_free(linear);
+}
+
+TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_cnnp_model_t* const linear = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_dense(1, (ccv_cnnp_param_t){
+			.no_bias = 1,
+		}, 0),
+		ccv_cnnp_reshape(DIM_ALLOC(1), DIM_ALLOC(), DIM_ALLOC(), 0),
+	), 0);
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(0.2485), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(a), 0, 0);
+	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(linear, &input, 1, CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_set_trainable(linear, ccv_cnnp_model_trainable_span(linear, 0), 0, ccv_nnc_tensor_from_variable(graph, a));
+	ccv_nnc_tensor_variable_t a_grad = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_t saved_aux = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	int i;
+	for (i = 0; i < 1000; i++)
+	{
+		ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+		ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = i;
+		ccv_nnc_tensor_variable_t t = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+		ccv_nnc_tensor_from_variable(graph, t)->data.f32[0] = -i;
+		ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, a), TENSOR_VARIABLE_LIST(y), 0, 0);
+		ccv_nnc_tensor_variable_t y_alias = ccv_nnc_tensor_variable_alias_new(graph, y, DIM_ALLOC(), DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, 1));
+		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_evaluate(graph, linear, 0, TENSOR_VARIABLE_LIST(y_alias), TENSOR_VARIABLE_LIST(z), 0, 0);
+		ccv_nnc_tensor_variable_t n = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z, t), TENSOR_VARIABLE_LIST(n), 0, 0);
+		ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(n, n), TENSOR_VARIABLE_LIST(f), 0, 0);
+		ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(f), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(a_grad), 0);
+		ccv_nnc_tensor_variable_free(graph, n);
+		ccv_nnc_tensor_variable_free(graph, z);
+		ccv_nnc_tensor_variable_free(graph, y);
+		ccv_nnc_tensor_variable_free(graph, y_alias);
+		ccv_nnc_tensor_variable_free(graph, x);
+		ccv_nnc_tensor_variable_free(graph, t);
+		ccv_nnc_tensor_variable_free(graph, f);
+		if (((i + 1) % 5) == 0)
+		{
+			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph), 0, "everything should be freed");
+			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 			float lr = 0.001;
 			if (i >= 200)
 				lr = 0.0001;

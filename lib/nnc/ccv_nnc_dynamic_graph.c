@@ -1010,6 +1010,11 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 	_ccv_nnc_tensor_variable_free(graph, tensor_variable, 1);
 }
 
+int ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph)
+{
+	return ccv_nnc_symbolic_graph_active_op_count(graph->tape);
+}
+
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out)
 {
 	ccv_nnc_symbolic_graph_dot(graph->tape, flags, out);

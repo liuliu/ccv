@@ -1029,6 +1029,15 @@ int ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph)
 	return graph->exec_symbol_info->rnum;
 }
 
+int ccv_nnc_symbolic_graph_active_op_count(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	int i, count = graph->exec_symbol_info->rnum;
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
+			--count;
+	return count;
+}
+
 int ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t* const graph)
 {
 	return graph->tensor_symbol_info->rnum;
