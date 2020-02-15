@@ -2676,7 +2676,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const 
  * @param len_idx_size The number of columns for len_idxs.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idx, const int vec_idx_size, const int* len_idxs, const int len_idx_size);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* len_idxs, const int len_idx_size);
 /**
  * Batch multiple tensors in a column into one tensor. This method can take multiple columns, which
  * will result a tuple of tensors. Each tensor in the tuple is a batched one from a given column.
