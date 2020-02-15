@@ -1205,7 +1205,53 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
 			}
 		}
-	// Handle binded tensors. We handle it here so the alias can reference to binded tensors.
+	// Handle binded tensors. First handle cases without aliases.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		assert(tensor_binds[i].tensor);
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
+		if (resolved_symbol.d >= 0)
+		{
+			int d = resolved_symbol.d;
+			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d]))
+				continue;
+			// This check is for in-place ops. Only in-place op could have unassigned but ref.
+			// It has nothing to do with alias.
+			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
+				d = tensor_blocks[d].ref - 1;
+			// For binded tensors, it shouldn't be assigned yet.
+			// If it is assigned, the pointer should match the ones from the binded tensor.
+			// This can only happen if an enforced in-place tensor is binded twice. If that
+			// happens, we need to make sure it is binded to the same location.
+			assert(!tensor_arena->vt_tensors[d] || tensor_arena->vt_tensors[d]->data.u8 == tensor_binds[i].tensor->data.u8);
+			// See above assertion.
+			if (tensor_arena->vt_tensors[d])
+				continue;
+			if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
+			{
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+				ccv_nnc_tensor_view_t* const tv = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				ccv_nnc_tensor_view_t* const otv = (ccv_nnc_tensor_view_t*)tensor_binds[i].tensor;
+				if (otv->off > 0) // If there is a off. This has to be the same dimensionality, or smaller at each dimension.
+					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
+						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->info.dim[j]); }
+				if (ccv_nnc_dimension_count(otv->inc) > 0)
+					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
+						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->inc[j]); }
+				else // if it doesn't have inc, it is OK to be just as a whole smaller or equal to the binded one.
+					{ assert(ccv_nnc_tensor_count(otv->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)); }
+				memcpy(tv, otv, sizeof(ccv_nnc_tensor_view_t));
+				memcpy(tv->info.dim, tensor_symbol_info[d].info.dim, sizeof(tv->info.dim));
+				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			} else {
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_symbol_info[d].info, 0);
+				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			}
+		}
+	}
+	// Handle binded tensors. We handle alias here so it can reference to binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
 		assert(tensor_binds[i].tensor);
@@ -1219,11 +1265,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			// It has nothing to do with alias.
 			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
 				d = tensor_blocks[d].ref - 1;
-			// For binded tensors, it shouldn't be assigned yet.
-			// If it is assigned, the pointer should match the ones from the binded tensor.
-			// This can only happen if an enforced in-place tensor is binded twice. If that
-			// happens, we need to make sure it is binded to the same location.
-			assert(!tensor_arena->vt_tensors[d] || tensor_arena->vt_tensors[d]->data.u8 == tensor_binds[i].tensor->data.u8);
+			if (tensor_arena->vt_tensors[d])
+				continue;
+			// Assert original alias has no ofs. Otherwise our binding will be problematic.
+			for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
+				{ assert(tensor_symbol_info[resolved_symbol.d].ofs[j] == 0); }
 			if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
 			{
 				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
@@ -1477,6 +1523,22 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assign_tensor = tensor_arena->vt_tensors[assign_ref];
 			ccv_nnc_graph_add_carry_over(graph_prep->graph, assign_tensor, tensor_arena->vt_tensors[i]);
 		}
+	// After everything handled, assertion again to make sure the tensors and tensor binds pointing to the right location. This is really just for assertion.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		assert(tensor_binds[i].tensor);
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
+		if (resolved_symbol.d >= 0)
+		{
+			int d = resolved_symbol.d;
+			// This check is for in-place ops. Only in-place op could have unassigned but ref.
+			// It has nothing to do with alias.
+			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
+				d = tensor_blocks[d].ref - 1;
+			// Note we don't trace back on alias. This is intentional.
+			assert(tensor_arena->vt_tensors[d]->data.u8 == tensor_binds[i].tensor->data.u8);
+		}
+	}
 	if (sub_arena_out_tensors)
 		ccfree(sub_arena_out_tensors);
 	// Rewire sub arena's tensor references.
@@ -2138,20 +2200,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		if (resolved_symbol.d >= 0)
 		{
 			int d = resolved_symbol.d;
+			// I cannot assert too much at this moment.
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d]))
-			{
-				// If we do this, we need to assert a few things. First, this alias should have no ofs, otherwise
-				// the pointer we bind is not from the beginning.
-				for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
-					{ assert(tensor_symbol_info[d].ofs[j] == 0); }
 				d = tensor_symbol_info[d].alias_ref - 1; // Bind back to the original.
-				if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
-					{ assert((ccv_nnc_dimension_count(((ccv_nnc_tensor_view_t*)tensor_binds[i].tensor)->inc) == 0 &&
-								ccv_nnc_tensor_count(tensor_binds[i].tensor->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)) ||
-							ccv_nnc_dimension_count(((ccv_nnc_tensor_view_t*)tensor_binds[i].tensor)->inc) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)); }
-				else
-					{ assert(ccv_nnc_tensor_count(tensor_binds[i].tensor->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)); }
-			}
 			// This check is for in-place ops. Only in-place op could have unassigned but ref.
 			// It has nothing to do with alias.
 			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
@@ -3867,13 +3918,11 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 		{ assert(ccv_nnc_tensor_count(tensor->info) >= ccv_nnc_tensor_count(tensor_arena->vt_tensors[symbol_d]->info)); }
 	if (CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[symbol.d]))
 		{ assert(((ccv_nnc_tensor_view_t*)tensor_arena->vt_tensors[symbol.d])->off == 0); }
-	printf("bind %p to %d\n", tensor->data.f32, symbol_d);
 	tensor_arena->vt_tensors[symbol_d]->data = tensor->data;
 	if (tensor_arena->vt_alias_tos[symbol_d])
 		for (i = 0; i < tensor_arena->vt_alias_tos[symbol_d]->rnum; i++)
 		{
 			const int d = *(int*)ccv_array_get(tensor_arena->vt_alias_tos[symbol_d], i);
-			printf("find alias %d %d\n", d, symbol_d);
 			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
 				d_tensor->data.u8 = tensor->data.u8 + ((ccv_nnc_tensor_view_t*)d_tensor)->off;

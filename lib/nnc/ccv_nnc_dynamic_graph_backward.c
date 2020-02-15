@@ -123,7 +123,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < dynamic_graph->vars->rnum; i++)
 	{
 		ccv_nnc_tensor_variable_t var = *(ccv_nnc_tensor_variable_t*)ccv_array_get(dynamic_graph->vars, i);
-		if (var && var->tensor_view && var->symbol.d >= 0 && !var->alias_index_ref) // TODO: Even if we overbind things, it should still do the right thing.
+		if (var && var->tensor_view && var->symbol.d >= 0)
 		{
 			ccv_nnc_tensor_bind_t bind = {
 				.symbol = var->symbol,
@@ -135,7 +135,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < dynamic_graph->binds->rnum; i++)
 	{
 		ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(dynamic_graph->binds, i);
-		if (bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED && bind->tensor_view && !bind->alias_ref) // TODO: Even if we overbind things, it should still do the right thing.
+		if (bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED && bind->tensor_view)
 		{
 			ccv_nnc_tensor_bind_t b = {
 				.symbol = {

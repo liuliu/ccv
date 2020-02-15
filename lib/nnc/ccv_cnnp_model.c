@@ -976,7 +976,13 @@ static void _ccv_cnnp_model_bind_tensors(const ccv_nnc_symbolic_graph_t* const g
 	int i, j;
 	for (i = 0; i < tensor_size; i++)
 	{
-		const ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
+		ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
+		if (graph)
+		{
+			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph, tensor_symbol);
+			if (alias_to.d != CCV_NNC_NO_TENSOR_SYMBOL)
+				tensor_symbol = alias_to;
+		}
 		ccv_nnc_tensor_t* const tensor = tensors[i];
 		if (tensor && tensor_symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
 		{
@@ -1168,10 +1174,17 @@ static void _ccv_cnnp_bind_tensors_to_arena(ccv_nnc_tensor_arena_t* const tensor
 	int i, j;
 	for (i = 0; i < tensor_size; i++)
 	{
-		ccv_nnc_tensor_bind_symbol(tensor_arena, tensor_symbols[i], tensors[i]);
+		ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
+		if (graph)
+		{
+			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph, tensor_symbol);
+			if (alias_to.d != CCV_NNC_NO_TENSOR_SYMBOL)
+				tensor_symbol = alias_to;
+		}
+		ccv_nnc_tensor_bind_symbol(tensor_arena, tensor_symbol, tensors[i]);
 		for (j = 1; j < parallel_count; j++)
 		{
-			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(graph, tensor_symbols[i], j);
+			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(graph, tensor_symbol, j);
 			if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
 				ccv_nnc_tensor_bind_symbol(tensor_arena, copy, tensors[i + tensor_size * j]);
 		}
@@ -1416,8 +1429,6 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	assert(model->graph);
 	const int target_gradient_mode = _ccv_cnnp_is_disable_outgrad_all(params.disable_outgrad, model->input_size) ? CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES : CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS;
 	const int mode_mismatch = (params.requires_grad && (compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE || compiled_data->gradient_mode != target_gradient_mode || compiled_data->disable_outgrad != params.disable_outgrad));
-	assert((output_size % parallel_count) == 0);
-	const int output_size_per_p = output_size / parallel_count;
 	if (!compiled_data->graph || mode_mismatch)
 	{
 		_ccv_cnnp_compiled_data_graph_free(compiled_data);
@@ -1435,11 +1446,10 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		assert((input_size % parallel_count) == 0);
 		const int input_size_per_p = input_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->inputs, inputs, input_size_per_p, parallel_count);
+		assert((output_size % parallel_count) == 0);
+		const int output_size_per_p = output_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->outputs, outputs, output_size_per_p, parallel_count);
 	}
-	// If noop, that means the output can be alias, and in turn, the f can be non-alias, and in turn, we need to bind the non-alias one.
-	if (compiled_data->loss.cmd == CCV_NNC_NOOP)
-		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->f, outputs, output_size_per_p, parallel_count);
 	if (compiled_data->is_test != params.is_test)
 	{
 		compiled_data->is_test = params.is_test;
