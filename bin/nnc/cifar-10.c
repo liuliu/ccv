@@ -283,7 +283,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), 0.001, 0.9, 0);
 		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, 0);
 		sgd.info.sgd.decay = 0;
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, TRAINABLE_SPAN_LIST(ccv_cnnp_model_trainable_span(cifar_10, 1)));
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, PARAMETER_SPAN_LIST(ccv_cnnp_model_parameter_span(cifar_10, 1)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		// ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)

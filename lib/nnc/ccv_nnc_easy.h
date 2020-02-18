@@ -134,10 +134,10 @@
  */
 #define MODEL_CMD_EXEC_IO_LIST(...) LIST_X(const int, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
- * Pass a list of trainable spans.
+ * Pass a list of parameter spans.
  * This method effectively gives two parameters as one.
  */
-#define TRAINABLE_SPAN_LIST(...) LIST_X(const ccv_cnnp_trainable_span_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define PARAMETER_SPAN_LIST(...) LIST_X(const ccv_cnnp_parameter_span_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of dataframe column ids to iteration function that accepts (column id array, column id array size).
  * This method effectively gives two parameters as one.
@@ -146,7 +146,7 @@
 
 #define TRAVERSE_FULL 0,0,0,0
 
-#define ALL_TRAINABLES -1
+#define ALL_PARAMETERS -1
 
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
 #define CPU_NUMA_TENSOR_NHWC(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_##dt,.dim={__VA_ARGS__}})

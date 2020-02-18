@@ -237,13 +237,13 @@ static void _ccv_cnnp_batch_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 			initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->zero_inits, i));
 }
 
-static void _ccv_cnnp_batch_norm_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_batch_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
 	if (self->bias.graph)
-		add_to_array(trainables, self->bias);
+		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
-		add_to_array(trainables, self->scale);
+		add_to_array(parameters, self->scale);
 }
 
 static void _ccv_cnnp_batch_norm_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -282,7 +282,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_batch_norm_copy(const ccv_cnnp_model_t* const
 static const ccv_cnnp_model_vtab_t ccv_cnnp_batch_norm_isa = {
 	.build = _ccv_cnnp_batch_norm_build,
 	.init_states = _ccv_cnnp_batch_norm_init_states,
-	.add_to_trainable = _ccv_cnnp_batch_norm_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_batch_norm_add_to_parameter,
 	.add_to_output = _ccv_cnnp_batch_norm_add_to_output,
 	.copy = _ccv_cnnp_batch_norm_copy,
 	.set_is_test = _ccv_cnnp_batch_norm_set_is_test,
@@ -385,14 +385,14 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
-static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_convolution_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	add_to_array(trainables, self->weights);
+	add_to_array(parameters, self->weights);
 	if (self->bias.graph)
-		add_to_array(trainables, self->bias);
+		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
-		add_to_array(trainables, self->scale);
+		add_to_array(parameters, self->scale);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super);
@@ -400,7 +400,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* cons
 static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.build = _ccv_cnnp_convolution_build,
 	.init_states = _ccv_cnnp_convolution_init_states,
-	.add_to_trainable = _ccv_cnnp_convolution_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_convolution_add_to_parameter,
 	.copy = _ccv_cnnp_convolution_copy,
 };
 
@@ -489,14 +489,14 @@ static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_s
 		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
-static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_dense_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
-	add_to_array(trainables, self->weights);
+	add_to_array(parameters, self->weights);
 	if (self->bias.graph)
-		add_to_array(trainables, self->bias);
+		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
-		add_to_array(trainables, self->scale);
+		add_to_array(parameters, self->scale);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super);
@@ -504,7 +504,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const supe
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.build = _ccv_cnnp_dense_build,
 	.init_states = _ccv_cnnp_dense_init_states,
-	.add_to_trainable = _ccv_cnnp_dense_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_dense_add_to_parameter,
 	.copy = _ccv_cnnp_dense_copy,
 };
 
@@ -880,13 +880,13 @@ static void _ccv_cnnp_layer_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
-static void _ccv_cnnp_layer_norm_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_layer_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
 	if (self->bias.graph)
-		add_to_array(trainables, self->bias);
+		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
-		add_to_array(trainables, self->scale);
+		add_to_array(parameters, self->scale);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super);
@@ -894,7 +894,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const
 static const ccv_cnnp_model_vtab_t ccv_cnnp_layer_norm_isa = {
 	.build = _ccv_cnnp_layer_norm_build,
 	.init_states = _ccv_cnnp_layer_norm_init_states,
-	.add_to_trainable = _ccv_cnnp_layer_norm_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_layer_norm_add_to_parameter,
 	.copy = _ccv_cnnp_layer_norm_copy,
 };
 

@@ -58,12 +58,12 @@ static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_init_states(self->sequence[i], graph, initializer, context);
 }
 
-static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_sequential_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable(self->sequence[i], add_to_array, trainables);
+		ccv_cnnp_model_add_to_parameter(self->sequence[i], add_to_array, parameters);
 }
 
 static void _ccv_cnnp_sequential_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -84,23 +84,23 @@ static void _ccv_cnnp_sequential_model_set_is_test(ccv_cnnp_model_t* const super
 
 static ccv_cnnp_model_t* _ccv_cnnp_sequential_model_copy(const ccv_cnnp_model_t* const super);
 
-static void _ccv_cnnp_sequential_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+static void _ccv_cnnp_sequential_model_add_to_parameter_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const parameter_indices)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable_indices(self->sequence[i], index, trainable_indices);
+		ccv_cnnp_model_add_to_parameter_indices(self->sequence[i], index, parameter_indices);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
 	.build = _ccv_cnnp_sequential_model_build,
 	.init_states = _ccv_cnnp_sequential_model_init_states,
-	.add_to_trainable = _ccv_cnnp_sequential_model_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_sequential_model_add_to_parameter,
 	.add_to_output = _ccv_cnnp_sequential_model_add_to_output,
 	.copy = _ccv_cnnp_sequential_model_copy,
 	.set_is_test = _ccv_cnnp_sequential_model_set_is_test,
-	.add_to_trainable_indices = _ccv_cnnp_sequential_model_add_to_trainable_indices,
+	.add_to_parameter_indices = _ccv_cnnp_sequential_model_add_to_parameter_indices,
 };
 
 static ccv_cnnp_model_t* _ccv_cnnp_sequential_model_copy(const ccv_cnnp_model_t* const super)
@@ -207,12 +207,12 @@ static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_init_states(self->sequence[i]->model, graph, initializer, context);
 }
 
-static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_functional_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable(self->sequence[i]->model, add_to_array, trainables);
+		ccv_cnnp_model_add_to_parameter(self->sequence[i]->model, add_to_array, parameters);
 }
 
 static void _ccv_cnnp_functional_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -231,12 +231,12 @@ static void _ccv_cnnp_functional_model_set_is_test(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_set_is_test(self->sequence[i]->model, is_test, updater, context);
 }
 
-static void _ccv_cnnp_functional_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+static void _ccv_cnnp_functional_model_add_to_parameter_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const parameter_indices)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable_indices(self->sequence[i]->model, index, trainable_indices);
+		ccv_cnnp_model_add_to_parameter_indices(self->sequence[i]->model, index, parameter_indices);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t* const super);
@@ -245,11 +245,11 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.deinit = _ccv_cnnp_functional_model_deinit,
 	.build = _ccv_cnnp_functional_model_build,
 	.init_states = _ccv_cnnp_functional_model_init_states,
-	.add_to_trainable = _ccv_cnnp_functional_model_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_functional_model_add_to_parameter,
 	.add_to_output = _ccv_cnnp_functional_model_add_to_output,
 	.copy = _ccv_cnnp_functional_model_copy,
 	.set_is_test = _ccv_cnnp_functional_model_set_is_test,
-	.add_to_trainable_indices = _ccv_cnnp_functional_model_add_to_trainable_indices,
+	.add_to_parameter_indices = _ccv_cnnp_functional_model_add_to_parameter_indices,
 };
 
 KHASH_MAP_INIT_INT64(model_io, ccv_cnnp_model_io_t)
@@ -455,11 +455,11 @@ static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, c
 	ccv_cnnp_model_init_states(self->model, graph, initializer, context);
 }
 
-static void _ccv_cnnp_dynamic_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_dynamic_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
 	assert(self->model);
-	ccv_cnnp_model_add_to_trainable(self->model, add_to_array, trainables);
+	ccv_cnnp_model_add_to_parameter(self->model, add_to_array, parameters);
 }
 
 static void _ccv_cnnp_dynamic_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -478,22 +478,22 @@ static void _ccv_cnnp_dynamic_model_set_is_test(ccv_cnnp_model_t* const super, c
 
 static ccv_cnnp_model_t* _ccv_cnnp_dynamic_model_copy(const ccv_cnnp_model_t* const super);
 
-static void _ccv_cnnp_dynamic_model_add_to_trainable_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const trainable_indices)
+static void _ccv_cnnp_dynamic_model_add_to_parameter_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const parameter_indices)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
 	assert(self->model);
-	ccv_cnnp_model_add_to_trainable_indices(self->model, index, trainable_indices);
+	ccv_cnnp_model_add_to_parameter_indices(self->model, index, parameter_indices);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
 	.deinit = _ccv_cnnp_dynamic_model_deinit,
 	.build = _ccv_cnnp_dynamic_model_build,
 	.init_states = _ccv_cnnp_dynamic_model_init_states,
-	.add_to_trainable = _ccv_cnnp_dynamic_model_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_dynamic_model_add_to_parameter,
 	.add_to_output = _ccv_cnnp_dynamic_model_add_to_output,
 	.copy = _ccv_cnnp_dynamic_model_copy,
 	.set_is_test = _ccv_cnnp_dynamic_model_set_is_test,
-	.add_to_trainable_indices = _ccv_cnnp_dynamic_model_add_to_trainable_indices,
+	.add_to_parameter_indices = _ccv_cnnp_dynamic_model_add_to_parameter_indices,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f func, void* const context, const char* const name)
@@ -577,13 +577,13 @@ static void _ccv_cnnp_cmd_exec_add_to_output(ccv_cnnp_model_t* const super, cons
 			add_to_array(outputs, self->input_symbols[i]); // Push this as retainable because it need to be init.
 }
 
-static void _ccv_cnnp_cmd_exec_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static void _ccv_cnnp_cmd_exec_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_cmd_exec_t* const self = (ccv_cnnp_model_cmd_exec_t*)super;
 	int i;
 	for (i = 0; i < self->input_size; i++)
 		if (self->inputs[i].type == CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE)
-			add_to_array(trainables, self->input_symbols[i]); // Push this as trainable.
+			add_to_array(parameters, self->input_symbols[i]); // Push this as parameter.
 }
 
 static void _ccv_cnnp_cmd_exec_deinit(ccv_cnnp_model_t* const super)
@@ -615,7 +615,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec_copy(const ccv_cnnp_model_t* const s
 static const ccv_cnnp_model_vtab_t ccv_cnnp_cmd_exec_isa = {
 	.build = _ccv_cnnp_cmd_exec_build,
 	.init_states = _ccv_cnnp_cmd_exec_init_states,
-	.add_to_trainable = _ccv_cnnp_cmd_exec_add_to_trainable,
+	.add_to_parameter = _ccv_cnnp_cmd_exec_add_to_parameter,
 	.add_to_output = _ccv_cnnp_cmd_exec_add_to_output,
 	.deinit = _ccv_cnnp_cmd_exec_deinit,
 	.copy = _ccv_cnnp_cmd_exec_copy,

@@ -21,11 +21,11 @@ typedef struct {
 	void (*deinit)(ccv_cnnp_model_t* const self); /**< It can be nil. */
 	void (*build)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size); /**< Call this graph to build computation. No need to specify input size or output size, as it is defined along in the model already. */
 	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); /**< This is called to init ccv_nnc_tensor_symbol_t with a exec. */
-	void (*add_to_trainable)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of trainables. */
+	void (*add_to_parameter)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of parameters. */
 	void (*add_to_output)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of outputs for retention. The final outputs are already added. This method is optional for any additional values we want to retain. */
 	ccv_cnnp_model_t* (*copy)(const ccv_cnnp_model_t* const self); /**< This is called to make a deep copy of itself. */
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
-	void (*add_to_trainable_indices)(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const trainable_indices); /**< This is called when we try to get trainable indices out of a given model */
+	void (*add_to_parameter_indices)(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const parameter_indices); /**< This is called when we try to get parameter indices out of a given model */
 } ccv_cnnp_model_vtab_t;
 
 struct ccv_cnnp_model_io_s {
@@ -73,11 +73,11 @@ typedef struct {
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_array_t* trainables;
-	ccv_array_t* retainables; // Additional symbols need to retain.
+	ccv_array_t* parameters;
+	ccv_array_t* internals; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* gradients;
 	ccv_nnc_tensor_symbol_t* outgrads;
-	ccv_nnc_tensor_symbol_t* updated_trainables;
+	ccv_nnc_tensor_symbol_t* updated_parameters;
 	ccv_nnc_graph_exec_symbol_t* update_nodes;
 	ccv_nnc_tensor_symbol_map_t* saved_aux;
 	ccv_array_t* rewindables;
@@ -86,14 +86,14 @@ typedef struct {
 		uint32_t* v;
 	} tensors_init;
 	struct {
-		ccv_nnc_tensor_t** retainables; // Additional need to retained tensors.
-		ccv_nnc_tensor_t** trainables;
+		ccv_nnc_tensor_t** internals; // Additional need to retained tensors.
+		ccv_nnc_tensor_t** parameters;
 		ccv_nnc_tensor_t** gradients;
 		ccv_nnc_tensor_t** accum_gradients;
 	} tensors;
 	struct {
-		ccv_array_t* trainables;
-		ccv_array_t* retainables;
+		ccv_array_t* parameters;
+		ccv_array_t* internals;
 	} ids;
 	struct {
 		int to_op_size;
@@ -123,7 +123,7 @@ typedef struct {
 	} apply_gradients;
 	struct {
 		ccv_nnc_cmd_t minimizer;
-		ccv_array_t* trainable_spans;
+		ccv_array_t* parameter_spans;
 		int max_saved_aux_size;
 	} minimize;
 	ccv_nnc_cmd_t loss;
@@ -136,7 +136,7 @@ struct ccv_cnnp_model_s {
 	int input_size;
 	int output_size;
 	ccv_array_t* io; // The opaque io that can be nil.
-	ccv_array_t* trainable_indices; // The indexes for trainables in the final model.
+	ccv_array_t* parameter_indices; // The indexes for parameters in the final model.
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;
@@ -235,29 +235,29 @@ static inline void ccv_cnnp_model_set_is_test(ccv_cnnp_model_t* const self, cons
 		self->isa->set_is_test(self, is_test, updater, context);
 }
 
-static inline void ccv_cnnp_model_add_to_trainable(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
+static inline void ccv_cnnp_model_add_to_parameter(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
-	if (self->isa->add_to_trainable)
+	if (self->isa->add_to_parameter)
 	{
-		ccv_cnnp_model_push(self, trainables);
-		self->isa->add_to_trainable(self, add_to_array, trainables);
-		ccv_cnnp_model_pop(self, trainables);
+		ccv_cnnp_model_push(self, parameters);
+		self->isa->add_to_parameter(self, add_to_array, parameters);
+		ccv_cnnp_model_pop(self, parameters);
 	}
 }
 
-static inline void ccv_cnnp_model_add_to_trainable_indices(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const trainable_indices)
+static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const parameter_indices)
 {
-	if (self->isa->add_to_trainable_indices)
-		self->isa->add_to_trainable_indices(self, index, trainable_indices);
+	if (self->isa->add_to_parameter_indices)
+		self->isa->add_to_parameter_indices(self, index, parameter_indices);
 	else {
 		int i;
-		if (!self->trainable_indices)
+		if (!self->parameter_indices)
 			return;
 		if (index == -1)
-			for (i = 0; i < self->trainable_indices->rnum; i++)
-				ccv_array_push(trainable_indices, ccv_array_get(self->trainable_indices, i));
-		else if (index < self->trainable_indices->rnum)
-			ccv_array_push(trainable_indices, ccv_array_get(self->trainable_indices, index));
+			for (i = 0; i < self->parameter_indices->rnum; i++)
+				ccv_array_push(parameter_indices, ccv_array_get(self->parameter_indices, i));
+		else if (index < self->parameter_indices->rnum)
+			ccv_array_push(parameter_indices, ccv_array_get(self->parameter_indices, index));
 	}
 }
 

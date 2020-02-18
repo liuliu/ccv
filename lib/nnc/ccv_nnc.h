@@ -2758,6 +2758,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(void);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
 /**
+ * This method exposes parameter for a model out as a potential input for another model. Since
+ * it is a ccv_cnnp_model_io_t, it can also be used by other methods.
+ * @param model A model that we can extract parameters out.
+ * @param index The index into a parameter.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter(ccv_cnnp_model_t* const model, const int index);
+/**
+ * Mark two ccv_cnnp_model_io_t as equal. Thus, we will share the underlying value between these
+ * two.
+ * @param a The ccv_cnnp_model_io_t representing the flexible tensor to be equal to b.
+ * @param b The counterpart for a.
+ */
+void ccv_cnnp_make_equal(const ccv_cnnp_model_io_t a, const ccv_cnnp_model_io_t b);
+/**
  * This method name is deceiving. It return a composed model, not a naked model.
  * This composed model takes set of inputs, and run through various other models to arrive at
  * the set of outputs.
@@ -2806,7 +2820,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f
  */
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss);
 /**
- * Absorb a new model into the existing model. This requires the new model has exactly the same trainables
+ * Absorb a new model into the existing model. This requires the new model has exactly the same parameters
  * but other dimensionality's can change. The new model has to not be compiled yet, its life-cycle management
  * will be take over by the existing model. You don't need to free it separately.
  * @param model The existing model.
@@ -2886,7 +2900,7 @@ typedef struct {
  */
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
- * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds trainable gradients.
+ * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds parameter gradients.
  * @param model The composed model.
  * @param ingrads The input gradients.
  * @param ingrad_size The size of the input gradients array.
@@ -2897,7 +2911,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
  */
 void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
- * Apply the computed gradients to the trainable tensors.
+ * Apply the computed gradients to the parameter tensors.
  * @param model The composed model.
  * @param stream_context The stream where the gradient computation can be executed upon.
  */
@@ -2954,57 +2968,57 @@ void ccv_cnnp_model_set_compile_params(ccv_cnnp_model_t* const model, const ccv_
  */
 void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
 /**
- * Representation of a collection of trainables for a model. You can regard this as a simple
+ * Representation of a collection of parameters for a model. You can regard this as a simple
  * immutable objects without thinking about its life-cycle. However, this is meaningless without
  * an valid underlying model and if the underlying model is freed, the behavior is undefined.
  */
 typedef struct {
 	int d;
 	ccv_cnnp_model_t* model;
-} ccv_cnnp_trainable_span_t;
+} ccv_cnnp_parameter_span_t;
 /**
- * Get the trainables associated with the model with some indexes. -1 means all. Otherwise
- * it is indexed. You can also get nil trainables. For functional model or sequential model,
- * the index meant for trainables of all its sub-models' at the given index.
+ * Get the parameters associated with the model with some indexes. -1 means all. Otherwise
+ * it is indexed. You can also get nil parameters. For functional model or sequential model,
+ * the index meant for parameters of all its sub-models' at the given index.
  * @param model The composed model.
- * @param index The index of a collection of trainables.
- * @return The trainable span that can be used to set minimizers.
+ * @param index The index of a collection of parameters.
+ * @return The parameter span that can be used to set minimizers.
  */
-CCV_WARN_UNUSED(ccv_cnnp_trainable_span_t) ccv_cnnp_model_trainable_span(ccv_cnnp_model_t* const model, const int index);
+CCV_WARN_UNUSED(ccv_cnnp_parameter_span_t) ccv_cnnp_model_parameter_span(ccv_cnnp_model_t* const model, const int index);
 /**
- * Set a trainable that is specified by the trainable span. This will override whatever value in that
- * trainable. The given tensor should match the dimension of the trainable. It doesn't matter whether
+ * Set a parameter that is specified by the parameter span. This will override whatever value in that
+ * parameter. The given tensor should match the dimension of the parameter. It doesn't matter whether
  * the given tensor is on CPU or GPU, it will be copied over. This method is limited, it can only set
  * tensor once the model is compiled.
  * @param model The composed model.
- * @param trainable_span The trainable span that is used to specify which trainable to override.
- * @param index The index, if any, to the trainable span (trainable span covers multiple trainables).
+ * @param parameter_span The parameter span that is used to specify which parameter to override.
+ * @param index The index, if any, to the parameter span (parameter span covers multiple parameters).
  * @param tensor The tensor contains the value we want to copy over.
  */
-void ccv_cnnp_model_set_trainable(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, const ccv_nnc_tensor_t* const tensor);
+void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, const ccv_nnc_tensor_t* const tensor);
 /**
- * Copy a trainable that is specified by the trainable span out of a model. This will override the value
- * in the tensor you provided. The given tensor should match the dimension of the trainable and should
+ * Copy a parameter that is specified by the parameter span out of a model. This will override the value
+ * in the tensor you provided. The given tensor should match the dimension of the parameter and should
  * already be allocated. It doesn't matter whether the given tensor is on CPU or GPU.
  * @param model The composed model.
- * @param trainable_span The trainable span that is used to specify which trainable to override.
- * @param index The index, if any, to the trainable span (trainable span covers multiple trainables).
+ * @param parameter_span The parameter span that is used to specify which parameter to override.
+ * @param index The index, if any, to the parameter span (parameter span covers multiple parameters).
  * @param tensor The tensor that receives value.
  */
-void ccv_cnnp_model_trainable_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_span_t trainable_span, const int index, ccv_nnc_tensor_t* const tensor);
+void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, ccv_nnc_tensor_t* const tensor);
 /**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
- * @param trainable_spans The trainables to be applied the minimizer on. 0 meant for all.
- * @param trainable_span_size The number of trainable spans.
+ * @param parameter_spans The parameters to be applied the minimizer on. 0 meant for all.
+ * @param parameter_span_size The number of parameter spans.
  */
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_trainable_span_t* const trainable_spans, const int trainable_span_size);
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_parameter_span_t* const parameter_spans, const int parameter_span_size);
 /**
  * Retrieve the default minimizer for the model. This is set either you call model compile or
- * ccv_cnnp_model_set_minimizer with no trainable spans.
+ * ccv_cnnp_model_set_minimizer with no parameter spans.
  * @param model The composed model.
  * @return The minimizer command.
  */
@@ -3063,7 +3077,7 @@ typedef struct {
 /**
  * A generic model based on the command. If the tensors are labeled as ccv_cnnp_io_t, it will participate
  * as the input / output of the model. If it is a init tensor, the model will use this tensor for that parameter.
- * More over, if it is marked as trainable, that tensor will be differentiated against when you call
+ * More over, if it is marked as parameter, that tensor will be differentiated against when you call
  * ccv_cnnp_model_fit. This model however doesn't take over ownership of the tensor. You should manage the life
  * cycle of the given tensor and it is your responsibility to make sure they outlive the model. Also, all inputs and
  * outputs marked as init tensors will be shared if you reuse this model in other places.
@@ -3103,7 +3117,7 @@ typedef struct {
 /**
  * A generic model based on the symbolic graph we provided. A list of tensor symbols are labeled whether it
  * is ccv_cnnp_io_t or not (we identify whether this is a input or output based on whether it is in the graph).
- * If it is not, we init it with a given tensor. If it is marked as trainable, that tensor will be differentiated
+ * If it is not, we init it with a given tensor. If it is marked as parameter, that tensor will be differentiated
  * against when you call ccv_cnnp_model_fit. The model doesn't take ownership over the init tensors. You are
  * responsible to make sure the init tensors outlive the model until the initialization occurred. Also, these
  * tensors will be shared if the model is reused.
