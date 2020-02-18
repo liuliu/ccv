@@ -133,9 +133,10 @@ struct ccv_nnc_tensor_arena_s {
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
 	int* vt_alias_refs; // reference to which it is alias to.
+	int* vt_alias_r_refs_p; // pointer to record which tensor this is aliased to.
+	int* vt_alias_r_refs; // array to record which tensor this is aliased to. This is first created when bind a symbol.
 	size_t* vt_sizes; // The size of each tensor.
 	ccv_numeric_data_t* pb_vt_tensors; // pre-bindings for this vt_tensors, this is optional.
-	ccv_array_t** vt_alias_tos; // array to record which tensor this is aliased to. This is first created when bind a symbol.
 	struct {
 		const ccv_nnc_symbolic_graph_compile_allocator_vtab_t* isa;
 		struct {

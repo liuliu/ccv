@@ -1029,7 +1029,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->sub_arenas + graph_prep->sub_prep_size);
 	tensor_arena->vt_alias_refs = (int*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->pb_vt_tensors = 0;
-	tensor_arena->vt_alias_tos = 0;
+	tensor_arena->vt_alias_r_refs_p = 0;
+	tensor_arena->vt_alias_r_refs = 0;
 	tensor_arena->vt_sizes = 0;
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
@@ -3861,7 +3862,7 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
 	for (i = 0; i < tensor_arena->m_tensor_idx->rnum; i++)
 	{
-		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, *(int*)ccv_array_get(tensor_arena->m_tensor_idx, i));;
+		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, *(int*)ccv_array_get(tensor_arena->m_tensor_idx, i));
 		assert(mv && CCV_IS_TENSOR_MULTIVIEW(mv));
 		ccv_nnc_tensor_multiview_free(*mv);
 	}
@@ -3869,13 +3870,8 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	ccv_array_free(tensor_arena->m_tensor_idx);
 	if (tensor_arena->pb_vt_tensors)
 		ccfree(tensor_arena->pb_vt_tensors);
-	if (tensor_arena->vt_alias_tos)
-	{
-		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
-			if (tensor_arena->vt_alias_tos[i])
-				ccv_array_free(tensor_arena->vt_alias_tos[i]);
-		ccfree(tensor_arena->vt_alias_tos);
-	}
+	if (tensor_arena->vt_alias_r_refs_p)
+		ccfree(tensor_arena->vt_alias_r_refs_p);
 	if (tensor_arena->vt_sizes)
 		ccfree(tensor_arena->vt_sizes);
 	ccfree(tensor_arena);
@@ -3895,16 +3891,33 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 			if (tensor_arena->vt_tensors[i])
 				tensor_arena->pb_vt_tensors[i] = tensor_arena->vt_tensors[i]->data;
 	}
-	if (!tensor_arena->vt_alias_tos)
+	if (!tensor_arena->vt_alias_r_refs_p)
 	{
-		tensor_arena->vt_alias_tos = (ccv_array_t**)cccalloc(tensor_arena->vt_tensor_size, sizeof(ccv_array_t*));
+		tensor_arena->vt_alias_r_refs_p = (int*)cccalloc(tensor_arena->vt_tensor_size * 2, sizeof(int));
+		tensor_arena->vt_alias_r_refs = tensor_arena->vt_alias_r_refs_p + tensor_arena->vt_tensor_size;
 		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
 			if (tensor_arena->vt_alias_refs[i])
 			{
 				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
-				if (!tensor_arena->vt_alias_tos[alias_ref])
-					tensor_arena->vt_alias_tos[alias_ref] = ccv_array_new(sizeof(int), 1, 0);
-				ccv_array_push(tensor_arena->vt_alias_tos[alias_ref], &i);
+				assert(alias_ref >= 0 && alias_ref < tensor_arena->vt_tensor_size);
+				++tensor_arena->vt_alias_r_refs_p[alias_ref]; // Count how many alias there are.
+			}
+		int refp = 0;
+		for (i = 1; i < tensor_arena->vt_tensor_size; i++) // Allocate each with aliases position on vt_alias_r_refs. It points to the end.
+			if (tensor_arena->vt_alias_r_refs_p[i])
+				refp = (tensor_arena->vt_alias_r_refs_p[i] += refp);
+			else
+				tensor_arena->vt_alias_r_refs_p[i] = -1; // This has no refs.
+		for (i = refp; i < tensor_arena->vt_tensor_size; i++)
+			tensor_arena->vt_alias_r_refs[i] = -1; // These are not allocated.
+		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+			if (tensor_arena->vt_alias_refs[i])
+			{
+				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
+				assert(alias_ref >= 0 && alias_ref < tensor_arena->vt_tensor_size);
+				const int pos = --tensor_arena->vt_alias_r_refs_p[alias_ref];
+				assert(pos >= 0);
+				tensor_arena->vt_alias_r_refs[pos] = i;
 			}
 	}
 	const int symbol_d = tensor_arena->vt_alias_refs[symbol.d] ? tensor_arena->vt_alias_refs[symbol.d] - 1 : symbol.d;
@@ -3919,10 +3932,12 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 	if (CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[symbol.d]))
 		{ assert(((ccv_nnc_tensor_view_t*)tensor_arena->vt_tensors[symbol.d])->off == 0); }
 	tensor_arena->vt_tensors[symbol_d]->data = tensor->data;
-	if (tensor_arena->vt_alias_tos[symbol_d])
-		for (i = 0; i < tensor_arena->vt_alias_tos[symbol_d]->rnum; i++)
+	if (tensor_arena->vt_alias_r_refs_p[symbol_d] >= 0)
+		for (i = tensor_arena->vt_alias_r_refs_p[symbol_d]; i < tensor_arena->vt_tensor_size; i++)
 		{
-			const int d = *(int*)ccv_array_get(tensor_arena->vt_alias_tos[symbol_d], i);
+			const int d = tensor_arena->vt_alias_r_refs[i];
+			if (d < 0 || symbol_d + 1 != tensor_arena->vt_alias_refs[d]) // Doesn't match, reached the end of it.
+				break;
 			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
 				d_tensor->data.u8 = tensor->data.u8 + ((ccv_nnc_tensor_view_t*)d_tensor)->off;
