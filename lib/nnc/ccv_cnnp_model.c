@@ -12,6 +12,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * model->output_size);
+	model_io->param_ref = 0;
 	model_io->visit = 0;
 	model_io->model = model;
 	model_io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
@@ -30,9 +31,19 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	return model_io;
 }
 
-ccv_cnnp_model_io_t ccv_cnnp_model_parameter(ccv_cnnp_model_t* const model, const int index)
+ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int index)
 {
-	return 0;
+	if (!model->io)
+		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
+	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
+	model_io->param_ref = index >= 0 ? index + 1 : ALL_PARAMETERS;
+	model_io->visit = 0;
+	model_io->model = model;
+	model_io->outputs = 0;
+	model_io->incomings = 0;
+	model_io->outgoings = 0;
+	ccv_array_push(model->io, &model_io);
+	return model_io;
 }
 
 void ccv_cnnp_make_equal(const ccv_cnnp_model_io_t a, const ccv_cnnp_model_io_t b)
@@ -722,12 +733,12 @@ static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const
 }
 
 typedef struct {
-	int parameter_span_size;
+	int parameter_size;
 	ccv_nnc_cmd_t minimizer;
-	ccv_cnnp_parameter_span_t parameter_spans[1];
-} ccv_cnnp_parameter_spans_with_minimizer_t;
+	ccv_cnnp_model_io_t parameters[1];
+} ccv_cnnp_set_minimizer_for_parameter_t;
 
-static void _ccv_cnnp_apply_parameter_spans_with_minimizer(ccv_cnnp_model_t* const model)
+static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const model)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -738,28 +749,32 @@ static void _ccv_cnnp_apply_parameter_spans_with_minimizer(ccv_cnnp_model_t* con
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
 	assert(symbolic_graph);
 	const int parallel_count = ccv_max(model->parallel_count, 1);
-	ccv_array_t* const parameter_spans = compiled_data->minimize.parameter_spans;
+	ccv_array_t* const parameters = compiled_data->minimize.parameters;
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	int i, j;
-	for (i = 0; i < parameter_spans->rnum; i++)
+	for (i = 0; i < parameters->rnum; i++)
 	{
-		ccv_cnnp_parameter_spans_with_minimizer_t* const parameter_spans_with_minimizer = *(ccv_cnnp_parameter_spans_with_minimizer_t**)ccv_array_get(parameter_spans, i);
-		for (j = 0; j < parameter_spans_with_minimizer->parameter_span_size; j++)
-			ccv_cnnp_model_add_to_parameter_indices(parameter_spans_with_minimizer->parameter_spans[j].model, parameter_spans_with_minimizer->parameter_spans[j].d, parameter_indices);
-		const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(parameter_spans_with_minimizer->minimizer);
+		ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = *(ccv_cnnp_set_minimizer_for_parameter_t**)ccv_array_get(parameters, i);
+		for (j = 0; j < set_minimizer_for_parameter->parameter_size; j++)
+		{
+			const int param_ref = set_minimizer_for_parameter->parameters[j]->param_ref > 0 ? set_minimizer_for_parameter->parameters[j]->param_ref - 1 : set_minimizer_for_parameter->parameters[j]->param_ref;
+			assert(param_ref != 0);
+			ccv_cnnp_model_add_to_parameter_indices(set_minimizer_for_parameter->parameters[j]->model, param_ref, parameter_indices);
+		}
+		const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(set_minimizer_for_parameter->minimizer);
 		// We may have duplicated indices, but that is OK, we will set it twice.
 		for (j = 0; j < parameter_indices->rnum; j++)
 		{
 			const int d = *(int*)ccv_array_get(parameter_indices, j);
 			assert(d <= parameter_size);
-			_ccv_cnnp_set_minimizer_for_parameter(symbolic_graph, compiled_data, update_nodes, compiled_data->updated_parameters, compiled_data->saved_aux, parallel_count, parameter_spans_with_minimizer->minimizer, saved_aux_size, max_saved_aux_size, d);
+			_ccv_cnnp_set_minimizer_for_parameter(symbolic_graph, compiled_data, update_nodes, compiled_data->updated_parameters, compiled_data->saved_aux, parallel_count, set_minimizer_for_parameter->minimizer, saved_aux_size, max_saved_aux_size, d);
 		}
 		ccv_array_clear(parameter_indices);
-		ccfree(parameter_spans_with_minimizer);
+		ccfree(set_minimizer_for_parameter);
 	}
 	ccv_array_free(parameter_indices);
 	// After we applied everything, we can clear this array now.
-	ccv_array_clear(parameter_spans);
+	ccv_array_clear(parameters);
 }
 
 static void _ccv_cnnp_scatter_saved_aux(ccv_nnc_tensor_symbol_map_t* const saved_aux, const int parameter_size, const int old_saved_aux_size, const int new_saved_aux_size)
@@ -845,8 +860,8 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), parameter_size, outgrads, outgrad_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
 	}
 	_ccv_cnnp_scatter_saved_aux(compiled_data->saved_aux, parameter_size, ccv_nnc_minimizer_saved_aux_size(compiled_data->minimize.minimizer), compiled_data->minimize.max_saved_aux_size);
-	if (compiled_data->minimize.parameter_spans)
-		_ccv_cnnp_apply_parameter_spans_with_minimizer(model);
+	if (compiled_data->minimize.parameters)
+		_ccv_cnnp_apply_parameters_with_minimizer(model);
 	for (i = 0; i < output_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(model->graph, compiled_data->f[i]);
@@ -1706,25 +1721,18 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 	compiled_data->backward.count = 0;
 }
 
-ccv_cnnp_parameter_span_t ccv_cnnp_model_parameter_span(ccv_cnnp_model_t* const model, const int index)
-{
-	return (ccv_cnnp_parameter_span_t){
-		.model = model,
-		.d = index
-	};
-}
-
-void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, const ccv_nnc_tensor_t* const tensor)
+void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, const ccv_nnc_tensor_t* const tensor)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
+	assert(param_ref >= 0);
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model, compiled_data);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-	ccv_cnnp_model_add_to_parameter_indices(parameter_span.model, parameter_span.d, parameter_indices);
-	assert(index < parameter_indices->rnum);
-	assert(index >= 0);
-	const int d = *(int*)ccv_array_get(parameter_indices, index);
+	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_ref, parameter_indices);
+	assert(parameter_indices->rnum == 1);
+	const int d = *(int*)ccv_array_get(parameter_indices, 0);
 	ccv_array_free(parameter_indices);
 	const int parameter_size = compiled_data->parameters->rnum;
 	assert(d >= 0);
@@ -1745,15 +1753,16 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 	compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
 }
 
-void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, ccv_nnc_tensor_t* const tensor)
+void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
+	assert(param_ref >= 0);
 	assert(compiled_data->tensors.parameters);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-	ccv_cnnp_model_add_to_parameter_indices(parameter_span.model, parameter_span.d, parameter_indices);
-	assert(index < parameter_indices->rnum);
-	assert(index >= 0);
-	const int d = *(int*)ccv_array_get(parameter_indices, index);
+	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_ref, parameter_indices);
+	assert(parameter_indices->rnum == 1);
+	const int d = *(int*)ccv_array_get(parameter_indices, 0);
 	ccv_array_free(parameter_indices);
 	const int parameter_size = compiled_data->parameters->rnum;
 	assert(d >= 0);
@@ -1771,7 +1780,7 @@ ccv_nnc_cmd_t ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model)
 	return compiled_data->minimize.minimizer;
 }
 
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_parameter_span_t* const parameter_spans, const int parameter_span_size)
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_io_t* const set_parameters, const int set_parameter_size)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -1781,21 +1790,21 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		compiled_data->minimize.max_saved_aux_size = saved_aux_size;
 	const int max_saved_aux_size = compiled_data->minimize.max_saved_aux_size;
 	// We update all parameters, at this point, we have one minimizer.
-	if (parameter_spans == 0 || parameter_span_size == 0)
+	if (set_parameters == 0 || set_parameter_size == 0)
 		compiled_data->minimize.minimizer = minimizer;
 	int i;
 	if (!compiled_data->update_nodes)
 	{
-		if (parameter_spans && parameter_span_size)
+		if (set_parameters && set_parameter_size)
 		{
 			// I need to save what's the minimizer along with this.
-			if (!compiled_data->minimize.parameter_spans)
-				compiled_data->minimize.parameter_spans = ccv_array_new(sizeof(ccv_cnnp_parameter_spans_with_minimizer_t*), 1, 0);
-			ccv_cnnp_parameter_spans_with_minimizer_t* const parameter_spans_with_minimizer = ccmalloc(sizeof(ccv_cnnp_parameter_spans_with_minimizer_t) + (parameter_span_size - 1) * sizeof(ccv_cnnp_parameter_span_t));
-			parameter_spans_with_minimizer->minimizer = minimizer;
-			parameter_spans_with_minimizer->parameter_span_size = parameter_span_size;
-			memcpy(parameter_spans_with_minimizer->parameter_spans, parameter_spans, sizeof(ccv_cnnp_parameter_span_t) * parameter_span_size);
-			ccv_array_push(compiled_data->minimize.parameter_spans, &parameter_spans_with_minimizer);
+			if (!compiled_data->minimize.parameters)
+				compiled_data->minimize.parameters = ccv_array_new(sizeof(ccv_cnnp_set_minimizer_for_parameter_t*), 1, 0);
+			ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = ccmalloc(sizeof(ccv_cnnp_set_minimizer_for_parameter_t) + (set_parameter_size - 1) * sizeof(ccv_cnnp_model_io_t));
+			set_minimizer_for_parameter->minimizer = minimizer;
+			set_minimizer_for_parameter->parameter_size = set_parameter_size;
+			memcpy(set_minimizer_for_parameter->parameters, set_parameters, sizeof(ccv_cnnp_model_io_t) * set_parameter_size);
+			ccv_array_push(compiled_data->minimize.parameters, &set_minimizer_for_parameter);
 		}
 		return;
 	}
@@ -1814,11 +1823,15 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	}
 	int flag = 0;
 	const int parallel_count = ccv_max(model->parallel_count, 1);
-	if (parameter_spans && parameter_span_size)
+	if (set_parameters && set_parameter_size)
 	{
 		ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-		for (i = 0; i < parameter_span_size; i++)
-			ccv_cnnp_model_add_to_parameter_indices(parameter_spans[i].model, parameter_spans[i].d, parameter_indices);
+		for (i = 0; i < set_parameter_size; i++)
+		{
+			const int param_ref = set_parameters[i]->param_ref > 0 ? set_parameters[i]->param_ref - 1 : set_parameters[i]->param_ref;
+			assert(param_ref != 0);
+			ccv_cnnp_model_add_to_parameter_indices(set_parameters[i]->model, param_ref, parameter_indices);
+		}
 		// We may have duplicated indices, but that is OK, we will set it twice.
 		for (i = 0; i < parameter_indices->rnum; i++)
 		{
@@ -1895,11 +1908,11 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 		}
 		ccfree(compiled_data->tensors.gradients);
 	}
-	if (compiled_data->minimize.parameter_spans)
+	if (compiled_data->minimize.parameters)
 	{
-		for (i = 0; i < compiled_data->minimize.parameter_spans->rnum; i++)
-			ccfree(*(ccv_cnnp_parameter_spans_with_minimizer_t**)ccv_array_get(compiled_data->minimize.parameter_spans, i));
-		ccv_array_free(compiled_data->minimize.parameter_spans);
+		for (i = 0; i < compiled_data->minimize.parameters->rnum; i++)
+			ccfree(*(ccv_cnnp_set_minimizer_for_parameter_t**)ccv_array_get(compiled_data->minimize.parameters, i));
+		ccv_array_free(compiled_data->minimize.parameters);
 	}
 	if (compiled_data->rewindables)
 		ccv_array_free(compiled_data->rewindables);

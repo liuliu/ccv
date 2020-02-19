@@ -134,11 +134,6 @@
  */
 #define MODEL_CMD_EXEC_IO_LIST(...) LIST_X(const int, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
- * Pass a list of parameter spans.
- * This method effectively gives two parameters as one.
- */
-#define PARAMETER_SPAN_LIST(...) LIST_X(const ccv_cnnp_parameter_span_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-/**
  * Pass a list of dataframe column ids to iteration function that accepts (column id array, column id array size).
  * This method effectively gives two parameters as one.
  */

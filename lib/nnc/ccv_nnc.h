@@ -2761,9 +2761,9 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* cons
  * This method exposes parameter for a model out as a potential input for another model. Since
  * it is a ccv_cnnp_model_io_t, it can also be used by other methods.
  * @param model A model that we can extract parameters out.
- * @param index The index into a parameter.
+ * @param index The index into a parameter. ALL_PARAMETERS means all parameters.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter(ccv_cnnp_model_t* const model, const int index);
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int index);
 /**
  * Mark two ccv_cnnp_model_io_t as equal. Thus, we will share the underlying value between these
  * two.
@@ -2968,54 +2968,34 @@ void ccv_cnnp_model_set_compile_params(ccv_cnnp_model_t* const model, const ccv_
  */
 void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
 /**
- * Representation of a collection of parameters for a model. You can regard this as a simple
- * immutable objects without thinking about its life-cycle. However, this is meaningless without
- * an valid underlying model and if the underlying model is freed, the behavior is undefined.
- */
-typedef struct {
-	int d;
-	ccv_cnnp_model_t* model;
-} ccv_cnnp_parameter_span_t;
-/**
- * Get the parameters associated with the model with some indexes. -1 means all. Otherwise
- * it is indexed. You can also get nil parameters. For functional model or sequential model,
- * the index meant for parameters of all its sub-models' at the given index.
- * @param model The composed model.
- * @param index The index of a collection of parameters.
- * @return The parameter span that can be used to set minimizers.
- */
-CCV_WARN_UNUSED(ccv_cnnp_parameter_span_t) ccv_cnnp_model_parameter_span(ccv_cnnp_model_t* const model, const int index);
-/**
  * Set a parameter that is specified by the parameter span. This will override whatever value in that
  * parameter. The given tensor should match the dimension of the parameter. It doesn't matter whether
  * the given tensor is on CPU or GPU, it will be copied over. This method is limited, it can only set
  * tensor once the model is compiled.
  * @param model The composed model.
- * @param parameter_span The parameter span that is used to specify which parameter to override.
- * @param index The index, if any, to the parameter span (parameter span covers multiple parameters).
+ * @param parameter The parameter that is used to specify which parameter to override.
  * @param tensor The tensor contains the value we want to copy over.
  */
-void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, const ccv_nnc_tensor_t* const tensor);
+void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, const ccv_nnc_tensor_t* const tensor);
 /**
  * Copy a parameter that is specified by the parameter span out of a model. This will override the value
  * in the tensor you provided. The given tensor should match the dimension of the parameter and should
  * already be allocated. It doesn't matter whether the given tensor is on CPU or GPU.
  * @param model The composed model.
- * @param parameter_span The parameter span that is used to specify which parameter to override.
- * @param index The index, if any, to the parameter span (parameter span covers multiple parameters).
+ * @param parameter The parameter that is used to specify which parameter to override.
  * @param tensor The tensor that receives value.
  */
-void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_parameter_span_t parameter_span, const int index, ccv_nnc_tensor_t* const tensor);
+void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor);
 /**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
- * @param parameter_spans The parameters to be applied the minimizer on. 0 meant for all.
- * @param parameter_span_size The number of parameter spans.
+ * @param parameters The parameters to be applied the minimizer on. 0 meant for all.
+ * @param parameter_size The number of parameter spans.
  */
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_parameter_span_t* const parameter_spans, const int parameter_span_size);
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_io_t* const parameters, const int parameter_size);
 /**
  * Retrieve the default minimizer for the model. This is set either you call model compile or
  * ccv_cnnp_model_set_minimizer with no parameter spans.

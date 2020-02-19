@@ -391,7 +391,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0);
 		ccv_cnnp_model_set_minimizer(imagenet, sgd, 0, 0);
 		sgd.info.sgd.decay = 0;
-		ccv_cnnp_model_set_minimizer(imagenet, sgd, PARAMETER_SPAN_LIST(ccv_cnnp_model_parameter_span(imagenet, 1)));
+		ccv_cnnp_model_set_minimizer(imagenet, sgd, MODEL_IO_LIST(ccv_cnnp_model_parameters(imagenet, 1)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		// Re-layout data for model fitting.

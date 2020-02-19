@@ -280,6 +280,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 		else
 			model_copy = kh_val(model_map, k);
 		ccv_cnnp_model_io_t model_io = functional_model->sequence[i] = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * sub_model->output_size);
+		model_io->param_ref = 0;
 		model_io->visit = 0;
 		model_io->incomings = 0;
 		model_io->outgoings = 0;
@@ -296,6 +297,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 	{
 		const ccv_cnnp_model_io_t model_io = self->sequence[i];
 		ccv_cnnp_model_io_t model_io_copy = functional_model->sequence[i];
+		model_io_copy->param_ref = model_io->param_ref;
 		if (model_io->incomings)
 		{
 			model_io_copy->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), model_io->incomings->rnum, 0);
@@ -403,6 +405,7 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	input->isa = &ccv_cnnp_input_isa;
 	input->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t input_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t));
+	input_io->param_ref = 0;
 	input_io->visit = 0;
 	input_io->incomings = 0;
 	input_io->outgoings = 0;

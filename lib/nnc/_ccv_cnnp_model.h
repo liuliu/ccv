@@ -29,6 +29,7 @@ typedef struct {
 } ccv_cnnp_model_vtab_t;
 
 struct ccv_cnnp_model_io_s {
+	int param_ref; // Reference to parameter in the model, starts with 1. 0 means no reference.
 	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
@@ -123,7 +124,7 @@ typedef struct {
 	} apply_gradients;
 	struct {
 		ccv_nnc_cmd_t minimizer;
-		ccv_array_t* parameter_spans;
+		ccv_array_t* parameters;
 		int max_saved_aux_size;
 	} minimize;
 	ccv_nnc_cmd_t loss;

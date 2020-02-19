@@ -419,7 +419,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(0.2485), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(a), 0, 0);
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1);
 	ccv_cnnp_model_compile(linear, &input, 1, CMD_NOOP(), CMD_NOOP());
-	ccv_cnnp_model_set_parameter(linear, ccv_cnnp_model_parameter_span(linear, 0), 0, ccv_nnc_tensor_from_variable(graph, a));
+	ccv_cnnp_model_set_parameter(linear, ccv_cnnp_model_parameters(linear, 0), ccv_nnc_tensor_from_variable(graph, a));
 	ccv_nnc_tensor_variable_t a_grad = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_variable_t saved_aux = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	int i;
@@ -480,7 +480,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases"
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(0.2485), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(a), 0, 0);
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1);
 	ccv_cnnp_model_compile(linear, &input, 1, CMD_NOOP(), CMD_NOOP());
-	ccv_cnnp_model_set_parameter(linear, ccv_cnnp_model_parameter_span(linear, 0), 0, ccv_nnc_tensor_from_variable(graph, a));
+	ccv_cnnp_model_set_parameter(linear, ccv_cnnp_model_parameters(linear, 0), ccv_nnc_tensor_from_variable(graph, a));
 	ccv_nnc_tensor_variable_t a_grad = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_variable_t saved_aux = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	int i;
