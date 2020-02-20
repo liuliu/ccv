@@ -2761,9 +2761,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* cons
  * This method exposes parameter for a model out as a potential input for another model. Since
  * it is a ccv_cnnp_model_io_t, it can also be used by other methods.
  * @param model A model that we can extract parameters out.
+ * @param selector The selector for a parameter. ALL_PARAMETERS means all parameters, or you can select CCV_CNNP_PARAMETER_SELECT_WEIGHT or CCV_CNNP_PARAMETER_SELECT_BIAS.
  * @param index The index into a parameter. ALL_PARAMETERS means all parameters.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int index);
+enum {
+	CCV_CNNP_PARAMETER_SELECT_WEIGHT = 0,
+	CCV_CNNP_PARAMETER_SELECT_BIAS = 1,
+};
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index);
 /**
  * Mark two ccv_cnnp_model_io_t as equal. Thus, we will share the underlying value between these
  * two.

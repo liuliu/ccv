@@ -11,6 +11,7 @@
 #define GUARD_ccv_cnnp_model_internal_h
 
 #include "ccv_nnc.h"
+#include <3rdparty/khash/khash.h>
 
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
 typedef void(*ccv_cnnp_add_to_array_f)(void* const context, const ccv_nnc_tensor_symbol_t symbol);
@@ -29,7 +30,7 @@ typedef struct {
 } ccv_cnnp_model_vtab_t;
 
 struct ccv_cnnp_model_io_s {
-	int param_ref; // Reference to parameter in the model, starts with 1. 0 means no reference.
+	int param_sel; // Reference to parameter in the model, starts with 1. 0 means no selector.
 	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
@@ -146,58 +147,53 @@ struct ccv_cnnp_model_s {
 	int parallel_count; // How many parallel devices.
 	int memory_compression; // Whether to enable memory compression for training phase.
 	size_t workspace_size; // Set the default workspace size.
+	void* data; // Temporary storage for some internal functions.
 };
 
-enum {
-	CCV_CNNP_MODEL_SEQUENCE,
-	CCV_CNNP_MODEL_NAME,
-};
+KHASH_MAP_INIT_STR(ccv_cnnp_model_name_bank, int)
 
 typedef struct {
-	int type;
-	union {
-		const char* name;
-		int sequence;
-	};
+	int sequence;
+	khash_t(ccv_cnnp_model_name_bank)* bank;
+	const char* name;
 } ccv_cnnp_model_name_t;
 
 typedef struct {
 	int it;
 	ccv_cnnp_model_t* model;
+	khash_t(ccv_cnnp_model_name_bank)* bank;
 	ccv_array_t* sequences;
 } ccv_cnnp_model_sequence_t;
 
-static inline void ccv_cnnp_model_push(ccv_cnnp_model_t* const self, void* const context)
+static inline void ccv_cnnp_model_push(ccv_cnnp_model_t* const self, ccv_cnnp_model_sequence_t* const model_sequence)
 {
-	ccv_cnnp_model_sequence_t* const model_sequence = (ccv_cnnp_model_sequence_t*)context;
 	// Reset to 0.
 	if (!model_sequence->sequences)
 		model_sequence->sequences = ccv_array_new(sizeof(ccv_cnnp_model_name_t), 1, 0);
+	khash_t(ccv_cnnp_model_name_bank)* bank = model_sequence->sequences->rnum > 0 ? ((ccv_cnnp_model_name_t*)ccv_array_get(model_sequence->sequences, model_sequence->sequences->rnum - 1))->bank : model_sequence->bank;
+	int ret;
+	khiter_t k = kh_put(ccv_cnnp_model_name_bank, bank, self->name ? self->name : "", &ret);
+	int sequence;
+	if (ret != 0)
+		sequence = kh_val(bank, k) = 0;
+	else
+		sequence = ++kh_val(bank, k);
 	ccv_cnnp_model_name_t name = {
-		.type = CCV_CNNP_MODEL_SEQUENCE,
-		.sequence = 0,
+		.bank = kh_init(ccv_cnnp_model_name_bank),
+		.name = self->name,
+		.sequence = sequence,
 	};
-	if (self->name)
-	{
-		name.type = CCV_CNNP_MODEL_NAME;
-		name.name = self->name;
-	}
 	ccv_array_push(model_sequence->sequences, &name);
-	model_sequence->it = 0;
 	model_sequence->model = self;
 }
 
-static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, void* const context)
+static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, ccv_cnnp_model_sequence_t* const model_sequence)
 {
-	ccv_cnnp_model_sequence_t* const model_sequence = (ccv_cnnp_model_sequence_t*)context;
+	khash_t(ccv_cnnp_model_name_bank)* const bank = ((ccv_cnnp_model_name_t*)ccv_array_get(model_sequence->sequences, model_sequence->sequences->rnum - 1))->bank;
+	kh_destroy(ccv_cnnp_model_name_bank, bank);
 	--model_sequence->sequences->rnum;
 	assert(model_sequence->sequences->rnum >= 0);
-	if (model_sequence->sequences->rnum > 0)
-	{
-		ccv_cnnp_model_name_t* const name = (ccv_cnnp_model_name_t*)ccv_array_get(model_sequence->sequences, model_sequence->sequences->rnum - 1);
-		if (name->type == CCV_CNNP_MODEL_SEQUENCE)
-			++name->sequence;
-	}
+	model_sequence->model = 0;
 }
 
 static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const char* const name)
@@ -213,6 +209,27 @@ static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const 
 	}
 }
 
+static inline void ccv_cnnp_model_add_to_parameter(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+{
+	if (self->isa->add_to_parameter)
+		self->isa->add_to_parameter(self, add_to_array, parameters);
+}
+
+static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
+{
+	if (self->isa->add_to_output)
+		self->isa->add_to_output(self, add_to_array, outputs);
+}
+
+typedef struct {
+	ccv_cnnp_model_sequence_t* model_sequence;
+	ccv_cnnp_add_to_array_f add_to_array;
+	struct {
+		void* add_to_parameter;
+		void* add_to_output;
+	} context;
+} ccv_cnnp_model_build_data_t; // Host temporary data for building models.
+
 static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	if (outputs && output_size)
@@ -222,6 +239,14 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		memcpy(self->outputs, outputs, sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	} else
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
+	assert(self->data);
+	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
+	ccv_cnnp_model_push(self, build_data->model_sequence);
+	build_data->model_sequence->it = 0;
+	ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter);
+	build_data->model_sequence->it = 0;
+	ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);
+	ccv_cnnp_model_pop(self, build_data->model_sequence);
 }
 
 static inline void ccv_cnnp_model_init_states(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -234,16 +259,6 @@ static inline void ccv_cnnp_model_set_is_test(ccv_cnnp_model_t* const self, cons
 {
 	if (self->isa->set_is_test)
 		self->isa->set_is_test(self, is_test, updater, context);
-}
-
-static inline void ccv_cnnp_model_add_to_parameter(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
-{
-	if (self->isa->add_to_parameter)
-	{
-		ccv_cnnp_model_push(self, parameters);
-		self->isa->add_to_parameter(self, add_to_array, parameters);
-		ccv_cnnp_model_pop(self, parameters);
-	}
 }
 
 static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const parameter_indices)
@@ -259,16 +274,6 @@ static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* con
 				ccv_array_push(parameter_indices, ccv_array_get(self->parameter_indices, i));
 		else if (index < self->parameter_indices->rnum)
 			ccv_array_push(parameter_indices, ccv_array_get(self->parameter_indices, index));
-	}
-}
-
-static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
-{
-	if (self->isa->add_to_output)
-	{
-		ccv_cnnp_model_push(self, outputs);
-		self->isa->add_to_output(self, add_to_array, outputs);
-		ccv_cnnp_model_pop(self, outputs);
 	}
 }
 

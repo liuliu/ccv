@@ -12,7 +12,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * model->output_size);
-	model_io->param_ref = 0;
+	model_io->param_sel = 0;
 	model_io->visit = 0;
 	model_io->model = model;
 	model_io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
@@ -31,12 +31,12 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	return model_io;
 }
 
-ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int index)
+ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index)
 {
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
-	model_io->param_ref = index >= 0 ? index + 1 : ALL_PARAMETERS;
+	model_io->param_sel = selector >= 0 ? selector + 1 : ALL_PARAMETERS;
 	model_io->visit = 0;
 	model_io->model = model;
 	model_io->outputs = 0;
@@ -75,7 +75,7 @@ static int _ccv_nnc_array_dedup_graph_exec_symbols(ccv_nnc_graph_exec_symbol_t* 
 }
 
 typedef struct {
-	ccv_cnnp_model_sequence_t sequence;
+	ccv_cnnp_model_sequence_t* sequence;
 	char prefix;
 	ccv_array_t* symbols;
 	ccv_array_t* ids;
@@ -84,7 +84,7 @@ typedef struct {
 static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_symbol_t symbol)
 {
 	ccv_cnnp_model_add_to_array_context_t* const add_to_array_context = (ccv_cnnp_model_add_to_array_context_t*)context;
-	ccv_cnnp_model_t* const model = add_to_array_context->sequence.model;
+	ccv_cnnp_model_t* const model = add_to_array_context->sequence->model;
 	if (!model->parameter_indices)
 		model->parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	int i;
@@ -100,29 +100,29 @@ static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_sym
 	// This is a new one, no need to add_unique_int, it is unique.
 	ccv_array_push(model->parameter_indices, &add_to_array_context->symbols->rnum);
 	ccv_array_push(add_to_array_context->symbols, &symbol);
-	char id[1024];
+	char id[2048];
 	id[0] = add_to_array_context->prefix;
 	id[1] = '-';
 	int total_len = 2;
-	for (i = 0; i < add_to_array_context->sequence.sequences->rnum; i++)
+	for (i = 0; i < add_to_array_context->sequence->sequences->rnum; i++)
 	{
-		const ccv_cnnp_model_name_t* const name = (ccv_cnnp_model_name_t*)ccv_array_get(add_to_array_context->sequence.sequences, i);
+		const ccv_cnnp_model_name_t* const name = (ccv_cnnp_model_name_t*)ccv_array_get(add_to_array_context->sequence->sequences, i);
 		int len;
-		if (name->type == CCV_CNNP_MODEL_NAME)
-			len = snprintf(id + total_len, 1024 - total_len, "%s-", name->name);
+		if (name->name && name->name[0] != '\0')
+			len = snprintf(id + total_len, 2048 - total_len, "%s-%d-", name->name, name->sequence);
 		else
-			len = snprintf(id + total_len, 1024 - total_len, "%d-", name->sequence);
+			len = snprintf(id + total_len, 2048 - total_len, "%d-", name->sequence);
 		total_len += len;
-		if (total_len >= 1023)
+		if (total_len >= 2047)
 			break;
 	}
-	if (total_len < 1023)
-		total_len += snprintf(id + total_len, 1024 - total_len, "%d", add_to_array_context->sequence.it);
-	assert(total_len < 1024);
+	if (total_len < 2047)
+		total_len += snprintf(id + total_len, 2048 - total_len, "%d", add_to_array_context->sequence->it);
+	assert(total_len < 2048);
 	char *heap_id = (char*)ccmalloc(total_len + 1);
 	memcpy(heap_id, id, total_len + 1);
 	ccv_array_push(add_to_array_context->ids, &heap_id);
-	++add_to_array_context->sequence.it;
+	++add_to_array_context->sequence->it;
 }
 
 static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t loss)
@@ -132,16 +132,38 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	int i;
 	for (i = 0; i < input_size; i++)
 		model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
-	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
 	ccv_array_t* const parameters = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const parameter_ids = ccv_array_new(sizeof(char*), 0, 0);
-	ccv_cnnp_model_add_to_array_context_t context = {
-		.sequence = {},
+	ccv_cnnp_model_sequence_t model_sequence = {
+		.bank = kh_init(ccv_cnnp_model_name_bank)
+	};
+	ccv_cnnp_model_add_to_array_context_t add_to_parameter_context = {
+		.sequence = &model_sequence,
 		.prefix = 't',
 		.symbols = parameters,
 		.ids = parameter_ids,
 	};
-	ccv_cnnp_model_add_to_parameter(model, _ccv_cnnp_add_to_array, &context);
+	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
+	ccv_cnnp_model_add_to_array_context_t add_to_output_context = {
+		.sequence = &model_sequence,
+		.prefix = 'r',
+		.symbols = internals,
+		.ids = internal_ids,
+	};
+	ccv_cnnp_model_build_data_t build_data = {
+		.model_sequence = &model_sequence,
+		.add_to_array = _ccv_cnnp_add_to_array,
+		.context = {
+			.add_to_parameter = &add_to_parameter_context,
+			.add_to_output = &add_to_output_context,
+		},
+	};
+	model->data = &build_data;
+	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
+	model->data = 0;
+	kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
+	ccv_array_free(model_sequence.sequences);
 	// Assert no parameter is alias.
 	for (i = 0; i < parameters->rnum; i++)
 	{
@@ -149,15 +171,6 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(parameter.graph, parameter);
 		assert(alias_to.graph == 0); // Cannot find the one alias to.
 	}
-	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
-	if (context.sequence.sequences)
-		ccv_array_clear(context.sequence.sequences);
-	context.prefix = 'r';
-	context.symbols = internals;
-	context.ids = internal_ids;
-	ccv_cnnp_model_add_to_output(model, _ccv_cnnp_add_to_array, &context);
-	ccv_array_free(context.sequence.sequences);
 	// Assert no internal is alias.
 	for (i = 0; i < internals->rnum; i++)
 	{
@@ -757,9 +770,9 @@ static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const mo
 		ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = *(ccv_cnnp_set_minimizer_for_parameter_t**)ccv_array_get(parameters, i);
 		for (j = 0; j < set_minimizer_for_parameter->parameter_size; j++)
 		{
-			const int param_ref = set_minimizer_for_parameter->parameters[j]->param_ref > 0 ? set_minimizer_for_parameter->parameters[j]->param_ref - 1 : set_minimizer_for_parameter->parameters[j]->param_ref;
-			assert(param_ref != 0);
-			ccv_cnnp_model_add_to_parameter_indices(set_minimizer_for_parameter->parameters[j]->model, param_ref, parameter_indices);
+			const int param_sel = set_minimizer_for_parameter->parameters[j]->param_sel > 0 ? set_minimizer_for_parameter->parameters[j]->param_sel - 1 : set_minimizer_for_parameter->parameters[j]->param_sel;
+			assert(param_sel != 0);
+			ccv_cnnp_model_add_to_parameter_indices(set_minimizer_for_parameter->parameters[j]->model, param_sel, parameter_indices);
 		}
 		const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(set_minimizer_for_parameter->minimizer);
 		// We may have duplicated indices, but that is OK, we will set it twice.
@@ -1724,13 +1737,13 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, const ccv_nnc_tensor_t* const tensor)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
-	assert(param_ref >= 0);
+	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
+	assert(param_sel >= 0);
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model, compiled_data);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_ref, parameter_indices);
+	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
 	assert(parameter_indices->rnum == 1);
 	const int d = *(int*)ccv_array_get(parameter_indices, 0);
 	ccv_array_free(parameter_indices);
@@ -1756,11 +1769,11 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
-	assert(param_ref >= 0);
+	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
+	assert(param_sel >= 0);
 	assert(compiled_data->tensors.parameters);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_ref, parameter_indices);
+	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
 	assert(parameter_indices->rnum == 1);
 	const int d = *(int*)ccv_array_get(parameter_indices, 0);
 	ccv_array_free(parameter_indices);
@@ -1828,9 +1841,9 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 		for (i = 0; i < set_parameter_size; i++)
 		{
-			const int param_ref = set_parameters[i]->param_ref > 0 ? set_parameters[i]->param_ref - 1 : set_parameters[i]->param_ref;
-			assert(param_ref != 0);
-			ccv_cnnp_model_add_to_parameter_indices(set_parameters[i]->model, param_ref, parameter_indices);
+			const int param_sel = set_parameters[i]->param_sel > 0 ? set_parameters[i]->param_sel - 1 : set_parameters[i]->param_sel;
+			assert(param_sel != 0);
+			ccv_cnnp_model_add_to_parameter_indices(set_parameters[i]->model, param_sel, parameter_indices);
 		}
 		// We may have duplicated indices, but that is OK, we will set it twice.
 		for (i = 0; i < parameter_indices->rnum; i++)

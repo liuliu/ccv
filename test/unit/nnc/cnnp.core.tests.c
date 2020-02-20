@@ -767,7 +767,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate conve
 	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
 	// Train add exclusively.
-	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS, ALL_PARAMETERS)));
 	ccv_nnc_tensor_param_t o = {};
 	ccv_cnnp_model_tensor_auto(final, &o, 1);
 	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
@@ -787,8 +787,8 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate conve
 	}
 	REQUIRE_NOT_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 12, 1e-5, "after 10 iterations, output should not be the original");
 	// Switch to train mul exclusively.
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS)));
-	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(add, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(add, ALL_PARAMETERS, ALL_PARAMETERS)));
 	float old_o = o_tensor->data.f32[0];
 	for (i = 0; i < 10; i++)
 	{
@@ -799,7 +799,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate conve
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
 	REQUIRE(o_tensor->data.f32[0] < old_o, "we should be closer to 0 at this point");
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0.001, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0.001, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS, ALL_PARAMETERS)));
 	for (i = 0; i < 1000; i++)
 	{
 		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
@@ -852,9 +852,9 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
-	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(mul, 0), x);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(mul, 0, 0), x);
 	// Train add exclusively.
-	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS, ALL_PARAMETERS)));
 	ccv_nnc_tensor_param_t o = {};
 	ccv_cnnp_model_tensor_auto(final, &o, 1);
 	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
@@ -873,12 +873,12 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 0, 5e-3, "the mean squared error should be 0 at this point");
-	ccv_cnnp_model_parameter_copy(final, ccv_cnnp_model_parameters(add, 0), x);
+	ccv_cnnp_model_parameter_copy(final, ccv_cnnp_model_parameters(add, 0, 0), x);
 	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 10, 1e-1, "the weight on add should be 10");
 	// Switch to train mul exclusively. Reset its value.
-	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(add, 0), y);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS)));
-	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(add, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(add, 0, 0), y);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(mul, ALL_PARAMETERS, ALL_PARAMETERS)));
+	ccv_cnnp_model_set_minimizer(final, CMD_NOOP(), MODEL_IO_LIST(ccv_cnnp_model_parameters(add, ALL_PARAMETERS, ALL_PARAMETERS)));
 	for (i = 0; i < 1000; i++)
 	{
 		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
@@ -888,7 +888,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 0, 5e-3, "the mean squared error should be 0 at this point");
-	ccv_cnnp_model_parameter_copy(final, ccv_cnnp_model_parameters(mul, 0), x);
+	ccv_cnnp_model_parameter_copy(final, ccv_cnnp_model_parameters(mul, 0, 0), x);
 	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 5, 1e-2, "the weight on add should be 10");
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_free(a_tensor);

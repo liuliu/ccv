@@ -44,7 +44,9 @@ static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_
 		ccv_nnc_tensor_symbol_t output;
 		ccv_cnnp_model_t* const sub_model = self->sequence[i];
 		// Go through each sub model to build the graph.
+		sub_model->data = self->super.data;
 		ccv_cnnp_model_build(sub_model, graph, &input, 1, &output, 1);
+		sub_model->data = 0;
 		input = output;
 	}
 	outputs[0] = input;
@@ -56,22 +58,6 @@ static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
 		ccv_cnnp_model_init_states(self->sequence[i], graph, initializer, context);
-}
-
-static void _ccv_cnnp_sequential_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
-{
-	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
-	int i;
-	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_parameter(self->sequence[i], add_to_array, parameters);
-}
-
-static void _ccv_cnnp_sequential_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
-{
-	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
-	int i;
-	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_output(self->sequence[i], add_to_array, outputs);
 }
 
 static void _ccv_cnnp_sequential_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
@@ -96,8 +82,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
 	.build = _ccv_cnnp_sequential_model_build,
 	.init_states = _ccv_cnnp_sequential_model_init_states,
-	.add_to_parameter = _ccv_cnnp_sequential_model_add_to_parameter,
-	.add_to_output = _ccv_cnnp_sequential_model_add_to_output,
 	.copy = _ccv_cnnp_sequential_model_copy,
 	.set_is_test = _ccv_cnnp_sequential_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_sequential_model_add_to_parameter_indices,
@@ -184,7 +168,9 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 				ccv_array_push(input_symbols, &input->outputs[k]);
 		}
 		// Go through each sub model to build the graph.
+		sub_model->data = self->super.data;
 		ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, self->sequence[i]->outputs, sub_model->output_size);
+		sub_model->data = 0;
 	}
 	ccv_array_free(input_symbols);
 	for (i = output_size, k = self->sequence_size - 1; k >= 0; k--)
@@ -205,22 +191,6 @@ static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
 		ccv_cnnp_model_init_states(self->sequence[i]->model, graph, initializer, context);
-}
-
-static void _ccv_cnnp_functional_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
-{
-	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
-	int i;
-	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_parameter(self->sequence[i]->model, add_to_array, parameters);
-}
-
-static void _ccv_cnnp_functional_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
-{
-	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
-	int i;
-	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_output(self->sequence[i]->model, add_to_array, outputs);
 }
 
 static void _ccv_cnnp_functional_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
@@ -245,8 +215,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.deinit = _ccv_cnnp_functional_model_deinit,
 	.build = _ccv_cnnp_functional_model_build,
 	.init_states = _ccv_cnnp_functional_model_init_states,
-	.add_to_parameter = _ccv_cnnp_functional_model_add_to_parameter,
-	.add_to_output = _ccv_cnnp_functional_model_add_to_output,
 	.copy = _ccv_cnnp_functional_model_copy,
 	.set_is_test = _ccv_cnnp_functional_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_functional_model_add_to_parameter_indices,
@@ -280,7 +248,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 		else
 			model_copy = kh_val(model_map, k);
 		ccv_cnnp_model_io_t model_io = functional_model->sequence[i] = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * sub_model->output_size);
-		model_io->param_ref = 0;
+		model_io->param_sel = 0;
 		model_io->visit = 0;
 		model_io->incomings = 0;
 		model_io->outgoings = 0;
@@ -297,7 +265,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 	{
 		const ccv_cnnp_model_io_t model_io = self->sequence[i];
 		ccv_cnnp_model_io_t model_io_copy = functional_model->sequence[i];
-		model_io_copy->param_ref = model_io->param_ref;
+		model_io_copy->param_sel = model_io->param_sel;
 		if (model_io->incomings)
 		{
 			model_io_copy->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), model_io->incomings->rnum, 0);
@@ -405,7 +373,7 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	input->isa = &ccv_cnnp_input_isa;
 	input->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t input_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t));
-	input_io->param_ref = 0;
+	input_io->param_sel = 0;
 	input_io->visit = 0;
 	input_io->incomings = 0;
 	input_io->outgoings = 0;
@@ -448,7 +416,9 @@ static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc
 		self->super.outputs = self->model->outputs;
 		self->super.output_size = self->model->output_size;
 	}
+	self->model->data = self->super.data;
 	ccv_cnnp_model_build(self->model, graph, inputs, input_size, outputs, output_size);
+	self->model->data = 0;
 }
 
 static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
