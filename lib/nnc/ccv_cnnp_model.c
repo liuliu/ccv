@@ -12,6 +12,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * model->output_size);
+	model_io->param_ref = 0;
 	model_io->param_sel = 0;
 	model_io->visit = 0;
 	model_io->model = model;
@@ -36,6 +37,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, con
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
+	model_io->param_ref = index >= 0 ? index + 1 : ALL_PARAMETERS;
 	model_io->param_sel = selector >= 0 ? selector + 1 : ALL_PARAMETERS;
 	model_io->visit = 0;
 	model_io->model = model;
@@ -154,6 +156,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	ccv_cnnp_model_build_data_t build_data = {
 		.model_sequence = &model_sequence,
 		.add_to_array = _ccv_cnnp_add_to_array,
+		.parameters = parameters,
 		.context = {
 			.add_to_parameter = &add_to_parameter_context,
 			.add_to_output = &add_to_output_context,
@@ -438,8 +441,7 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 
 ccv_cnnp_model_t* ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model)
 {
-	assert(model->isa->copy);
-	return model->isa->copy(model);
+	return _ccv_cnnp_model_copy(model, 0);
 }
 
 void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_param_t* const outputs, const int output_size)
@@ -771,8 +773,17 @@ static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const mo
 		for (j = 0; j < set_minimizer_for_parameter->parameter_size; j++)
 		{
 			const int param_sel = set_minimizer_for_parameter->parameters[j]->param_sel > 0 ? set_minimizer_for_parameter->parameters[j]->param_sel - 1 : set_minimizer_for_parameter->parameters[j]->param_sel;
-			assert(param_sel != 0);
+			assert(set_minimizer_for_parameter->parameters[j]->param_sel != 0);
+			const int old_rnum = parameter_indices->rnum;
 			ccv_cnnp_model_add_to_parameter_indices(set_minimizer_for_parameter->parameters[j]->model, param_sel, parameter_indices);
+			const int param_ref = set_minimizer_for_parameter->parameters[j]->param_ref > 0 ? set_minimizer_for_parameter->parameters[j]->param_ref - 1 : set_minimizer_for_parameter->parameters[j]->param_ref;
+			assert(set_minimizer_for_parameter->parameters[j]->param_ref != 0);
+			if (param_ref >= 0)
+			{
+				assert(param_ref + old_rnum < parameter_indices->rnum);
+				*(int*)ccv_array_get(parameter_indices, old_rnum) = *(int*)ccv_array_get(parameter_indices, param_ref + old_rnum);
+				parameter_indices->rnum = old_rnum + 1;
+			}
 		}
 		const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(set_minimizer_for_parameter->minimizer);
 		// We may have duplicated indices, but that is OK, we will set it twice.
@@ -1738,14 +1749,18 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
-	assert(param_sel >= 0);
+	assert(parameter->param_sel != 0);
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model, compiled_data);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
-	assert(parameter_indices->rnum == 1);
-	const int d = *(int*)ccv_array_get(parameter_indices, 0);
+	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
+	if (param_ref < 0)
+		{ assert(parameter_indices->rnum == 1); }
+	else
+		{ assert(param_ref < parameter_indices->rnum); }
+	const int d = *(int*)ccv_array_get(parameter_indices, param_ref >= 0 ? param_ref : 0);
 	ccv_array_free(parameter_indices);
 	const int parameter_size = compiled_data->parameters->rnum;
 	assert(d >= 0);
@@ -1770,12 +1785,16 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
-	assert(param_sel >= 0);
+	assert(parameter->param_sel != 0);
 	assert(compiled_data->tensors.parameters);
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
-	assert(parameter_indices->rnum == 1);
-	const int d = *(int*)ccv_array_get(parameter_indices, 0);
+	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
+	if (param_ref < 0)
+		{ assert(parameter_indices->rnum == 1); }
+	else
+		{ assert(param_ref < parameter_indices->rnum); }
+	const int d = *(int*)ccv_array_get(parameter_indices, param_ref >= 0 ? param_ref : 0);
 	ccv_array_free(parameter_indices);
 	const int parameter_size = compiled_data->parameters->rnum;
 	assert(d >= 0);
@@ -1842,8 +1861,17 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		for (i = 0; i < set_parameter_size; i++)
 		{
 			const int param_sel = set_parameters[i]->param_sel > 0 ? set_parameters[i]->param_sel - 1 : set_parameters[i]->param_sel;
-			assert(param_sel != 0);
+			assert(set_parameters[i]->param_sel != 0);
+			const int old_rnum = parameter_indices->rnum;
 			ccv_cnnp_model_add_to_parameter_indices(set_parameters[i]->model, param_sel, parameter_indices);
+			const int param_ref = set_parameters[i]->param_ref > 0 ? set_parameters[i]->param_ref - 1 : set_parameters[i]->param_ref;
+			assert(set_parameters[i]->param_ref != 0);
+			if (param_ref >= 0)
+			{
+				assert(param_ref + old_rnum < parameter_indices->rnum);
+				*(int*)ccv_array_get(parameter_indices, old_rnum) = *(int*)ccv_array_get(parameter_indices, param_ref + old_rnum);
+				parameter_indices->rnum = old_rnum + 1;
+			}
 		}
 		// We may have duplicated indices, but that is OK, we will set it twice.
 		for (i = 0; i < parameter_indices->rnum; i++)

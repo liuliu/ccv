@@ -957,4 +957,73 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 	ccv_cnnp_model_free(multi_layer);
 }
 
+TEST_CASE("use linear model's parameter as the input for more computation")
+{
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0);
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
+		linear,
+	), "multi_layer");
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(multi_layer, MODEL_IO_LIST(input));
+	out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0), MODEL_IO_LIST(out, ccv_cnnp_model_parameters(linear, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)));
+	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
+	// Because we don't have L2 loss function available yet, manually create L2 loss.
+	ccv_cnnp_model_io_t diff = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+		MODEL_IO_LIST(out, fit));
+	ccv_cnnp_model_io_t sqr = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+		MODEL_IO_LIST(diff, diff));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32F, 1);
+	const ccv_nnc_tensor_param_t t_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(x_params, t_params), CMD_SGD_FORWARD(0, 0.05, 1, 0, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_copy(model);
+	ccv_cnnp_model_free(model);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(x_params, t_params), CMD_SGD_FORWARD(0, 0.05, 1, 0, 0, 0), CMD_NOOP());
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	x->data.f32[0] = 1.4;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(final, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0), x);
+	x->data.f32[0] = 0;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(final, CCV_CNNP_PARAMETER_SELECT_BIAS, 0), x);
+	int i;
+	for (i = 0; i < 1000; i++)
+	{
+		if (i % 2 == 0)
+		{
+			x->data.f32[0] = 1;
+			t->data.f32[0] = 3;
+		} else {
+			x->data.f32[0] = 2;
+			t->data.f32[0] = 4;
+		}
+		float lr = 0.05;
+		if (i >= 100)
+			lr = 0.01;
+		else if (i >= 500)
+			lr = 0.001;
+		ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, lr, 1, 0, 0, 0), 0, 0);
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(x, t), TENSOR_LIST(y), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	x->data.f32[0] = 1;
+	t->data.f32[0] = 3;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x, t), TENSOR_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[0], 0, 1e-2, "the mean squared error should be 0 at this point");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(t);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

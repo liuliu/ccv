@@ -24,13 +24,14 @@ typedef struct {
 	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); /**< This is called to init ccv_nnc_tensor_symbol_t with a exec. */
 	void (*add_to_parameter)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of parameters. */
 	void (*add_to_output)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of outputs for retention. The final outputs are already added. This method is optional for any additional values we want to retain. */
-	ccv_cnnp_model_t* (*copy)(const ccv_cnnp_model_t* const self); /**< This is called to make a deep copy of itself. */
+	ccv_cnnp_model_t* (*copy)(const ccv_cnnp_model_t* const self, void* const context); /**< This is called to make a deep copy of itself. */
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
 	void (*add_to_parameter_indices)(ccv_cnnp_model_t* const self, const int index, ccv_array_t* const parameter_indices); /**< This is called when we try to get parameter indices out of a given model */
 } ccv_cnnp_model_vtab_t;
 
 struct ccv_cnnp_model_io_s {
-	int param_sel; // Reference to parameter in the model, starts with 1. 0 means no selector.
+	int param_ref; // Reference to parameter in the model, starts with 1. 0 means no such thing.
+	int param_sel; // Selector to parameter in the model, starts with 1. 0 means no selector.
 	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
@@ -196,6 +197,12 @@ static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, ccv_cn
 	model_sequence->model = 0;
 }
 
+static inline ccv_cnnp_model_t* _ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model, void* const context)
+{
+	assert(model->isa->copy);
+	return model->isa->copy(model, context);
+}
+
 static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const char* const name)
 {
 	if (name)
@@ -224,11 +231,20 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, co
 typedef struct {
 	ccv_cnnp_model_sequence_t* model_sequence;
 	ccv_cnnp_add_to_array_f add_to_array;
+	ccv_array_t* parameters;
 	struct {
 		void* add_to_parameter;
 		void* add_to_output;
 	} context;
 } ccv_cnnp_model_build_data_t; // Host temporary data for building models.
+
+static inline ccv_nnc_tensor_symbol_t ccv_cnnp_parameter_from_indice(ccv_cnnp_model_t* const self, const int indice)
+{
+	assert(self->data);
+	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
+	assert(indice < build_data->parameters->rnum);
+	return *(ccv_nnc_tensor_symbol_t*)ccv_array_get(build_data->parameters, indice);
+}
 
 static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
