@@ -48,10 +48,6 @@ ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, con
 	return model_io;
 }
 
-void ccv_cnnp_make_equal(const ccv_cnnp_model_io_t a, const ccv_cnnp_model_io_t b)
-{
-}
-
 static int _ccv_nnc_array_dedup_graph_exec_symbols(ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols, int graph_exec_symbol_size)
 {
 	int i, j;

@@ -2770,13 +2770,6 @@ enum {
 };
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index);
 /**
- * Mark two ccv_cnnp_model_io_t as equal. Thus, we will share the underlying value between these
- * two.
- * @param a The ccv_cnnp_model_io_t representing the flexible tensor to be equal to b.
- * @param b The counterpart for a.
- */
-void ccv_cnnp_make_equal(const ccv_cnnp_model_io_t a, const ccv_cnnp_model_io_t b);
-/**
  * This method name is deceiving. It return a composed model, not a naked model.
  * This composed model takes set of inputs, and run through various other models to arrive at
  * the set of outputs.
