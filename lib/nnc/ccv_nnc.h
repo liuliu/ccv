@@ -3241,6 +3241,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const char* c
  * @return A masked fill model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_masked_fill(const float eq, const float fill, const char* const name);
+/**
+ * A index select model.
+ * @param datatype The data type of the vocabulary.
+ * @param vocab_size The size of the vocabulary.
+ * @param embed_size The size of the embedding.
+ * @param name The unique name of the model.
+ * @return A index select model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const int datatype, const int vocab_size, const int embed_size, const char* const name);
 
 /** @} */
 
