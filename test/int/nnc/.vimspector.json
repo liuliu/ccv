@@ -1,0 +1,32 @@
+{
+  "configurations": {
+    "Run This Unit Test": {
+      "adapter": "lldb-vscode",
+      "configuration": {
+        "name": "Run This Unit Test",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileBasenameNoExtension}",
+        "args": ["${TestIdentifier}"],
+        "cwd": ".",
+        "environment": [],
+        "stopOnEntry": true,
+        "MIMode": "lldb"
+      }
+    },
+    "Run Unit Tests": {
+      "adapter": "lldb-vscode",
+      "configuration": {
+        "name": "Run Unit Tests",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileBasenameNoExtension}",
+        "args": [],
+        "cwd": ".",
+        "environment": [],
+        "stopOnEntry": true,
+        "MIMode": "lldb"
+      }
+    }
+  }
+}
