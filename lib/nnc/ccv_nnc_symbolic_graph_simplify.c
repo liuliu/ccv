@@ -536,6 +536,7 @@ typedef struct {
 	uint32_t fused_op; // The final fused op id.
 	uint32_t ops_seq[2]; // The sequence of commands to identify.
 	int ops_seq_size;
+	int ops_info_select; // Which ops' info will be selected.
 	struct {
 		int type; // Whether it is input, or output. It doesn't make sense for example, input in ops_seq, but output in fused_op.
 		int op_idx; // Index into the ops_seq.
@@ -558,6 +559,7 @@ const static ccv_nnc_ops_fusion_t ccv_nnc_ops_fusions[] = {
 			CCV_NNC_SOFTMAX_FORWARD, CCV_NNC_CATEGORICAL_CROSSENTROPY_FORWARD,
 		},
 		.ops_seq_size = 2,
+		.ops_info_select = 1,
 		.pos = {
 			{
 				.type = CCV_NNC_OPS_FUSION_INPUT_INDEX,
@@ -652,9 +654,11 @@ static void _ccv_nnc_symbolic_graph_ops_fusion(ccv_nnc_symbolic_graph_simplify_t
 							break;
 					}
 				}
-				// Modify the first node so it is the correct type and value.
+				const ccv_nnc_cmd_param_t info = exec_symbol_info[fusing_exec_symbols[ops_fusion->ops_info_select]].cmd.info;
+				// Modify the first node so it is the correct type and value. I need to look back to the actual graph to get the info.
 				ccv_nnc_graph_exec_symbol_info_t* const actual_node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx);
 				actual_node->cmd.cmd = node->cmd.cmd = ops_fusion->fused_op;
+				actual_node->cmd.info = node->cmd.info = info;
 				if (node->input_size + node->output_size < input_size + output_size)
 					actual_node->inputs = node->inputs = node->inputs ? ccrealloc(node->inputs, sizeof(int) * (input_size + output_size)) : ccmalloc(sizeof(int) * (input_size + output_size));
 				actual_node->outputs = node->outputs = node->inputs + input_size;
