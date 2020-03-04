@@ -33,12 +33,31 @@ static int _ccv_nnc_categorical_crossentropy_forw(const ccv_nnc_cmd_t cmd, const
 		{
 			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 				{ assert(b->info.dim[i] == c->info.dim[i]); }
-			parallel_for(i, batch_size) {
-				const int label = (int)(b->data.f32[i] + 0.5);
-				assert(label >= 0 && label < count);
-				const float p = a->data.f32[i * count + label];
-				c->data.f32[i] = -logf(p);
-			} parallel_endfor
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				parallel_for(i, batch_size) {
+					const int label = (int)(b->data.f32[i] + 0.5);
+					assert(label >= 0 && label < count);
+					const float p = a->data.f32[i * count + label];
+					c->data.f32[i] = -logf(p);
+				} parallel_endfor
+			} else {
+				parallel_for(i, batch_size) {
+					const int label = (int)(b->data.f32[i] + 0.5);
+					assert(label >= 0 && label < count);
+					int j;
+					float p = 0;
+					float* const ap = a->data.f32 + i * count;
+					for (j = 0; j < label; j++)
+						p += -trim0 * logf(ap[j]);
+					p += -trim1 * logf(ap[label]);
+					for (j = label + 1; j < count; j++)
+						p += -trim0 * logf(ap[j]);
+					c->data.f32[i] = p;
+				} parallel_endfor
+			}
 		} else {
 			assert(range == count);
 			parallel_for(i, batch_size) {
@@ -54,12 +73,31 @@ static int _ccv_nnc_categorical_crossentropy_forw(const ccv_nnc_cmd_t cmd, const
 	} else if (b->info.datatype == CCV_32S) {
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 			{ assert(b->info.dim[i] == c->info.dim[i]); }
-		parallel_for(i, batch_size) {
-			const int label = b->data.i32[i];
-			assert(label >= 0 && label < count);
-			const float p = a->data.f32[i * count + label];
-			c->data.f32[i] = -logf(p);
-		} parallel_endfor
+		const float trim0 = cmd.info.label_smoothing.trim0;
+		const float trim1 = cmd.info.label_smoothing.trim1;
+		if (trim0 == 0 && trim1 == 1)
+		{
+			parallel_for(i, batch_size) {
+				const int label = b->data.i32[i];
+				assert(label >= 0 && label < count);
+				const float p = a->data.f32[i * count + label];
+				c->data.f32[i] = -logf(p);
+			} parallel_endfor
+		} else {
+			parallel_for(i, batch_size) {
+				const int label = b->data.i32[i];
+				assert(label >= 0 && label < count);
+				int j;
+				float p = 0;
+				float* const ap = a->data.f32 + i * count;
+				for (j = 0; j < label; j++)
+					p += -trim0 * logf(ap[j]);
+				p += -trim1 * logf(ap[label]);
+				for (j = label + 1; j < count; j++)
+					p += -trim0 * logf(ap[j]);
+				c->data.f32[i] = p;
+			} parallel_endfor
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -91,16 +129,34 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 			{
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == h->info.dim[i]); }
-				parallel_for(i, batch_size) {
-					int j;
-					const float gp = g->data.f32[i];
-					const int label = (int)(b->data.f32[i] + 0.5);
-					float* const hp = h->data.f32 + i * count;
-					for (j = 0; j < count; j++)
-						hp[j] = 0;
-					const float p = a->data.f32[i * count + label];
-					hp[label] = -gp / p;
-				} parallel_endfor
+				const float trim0 = cmd.info.label_smoothing.trim0;
+				const float trim1 = cmd.info.label_smoothing.trim1;
+				if (trim0 == 0 && trim1 == 1)
+				{
+					parallel_for(i, batch_size) {
+						int j;
+						const float gp = g->data.f32[i];
+						const int label = (int)(b->data.f32[i] + 0.5);
+						float* const hp = h->data.f32 + i * count;
+						for (j = 0; j < count; j++)
+							hp[j] = 0;
+						const float p = a->data.f32[i * count + label];
+						hp[label] = -gp / p;
+					} parallel_endfor
+				} else {
+					parallel_for(i, batch_size) {
+						int j;
+						const float gp = g->data.f32[i];
+						const int label = (int)(b->data.f32[i] + 0.5);
+						float* const hp = h->data.f32 + i * count;
+						float* const ap = a->data.f32 + i * count;
+						for (j = 0; j < label; j++)
+							hp[j] = -gp * trim0 / ap[j];
+						hp[label] = -gp * trim1 / ap[label];
+						for (j = label + 1; j < count; j++)
+							hp[j] = -gp * trim0 / ap[j];
+					} parallel_endfor
+				}
 			} else {
 				assert(range == count);
 				parallel_for(i, batch_size) {
@@ -116,16 +172,34 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 		} else if (b->info.datatype == CCV_32S) {
 			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 				{ assert(a->info.dim[i] == h->info.dim[i]); }
-			parallel_for(i, batch_size) {
-				int j;
-				const float gp = g->data.f32[i];
-				const int label = b->data.i32[i];
-				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = 0;
-				const float p = a->data.f32[i * count + label];
-				hp[label] = -gp / p;
-			} parallel_endfor
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				parallel_for(i, batch_size) {
+					int j;
+					const float gp = g->data.f32[i];
+					const int label = b->data.i32[i];
+					float* const hp = h->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = 0;
+					const float p = a->data.f32[i * count + label];
+					hp[label] = -gp / p;
+				} parallel_endfor
+			} else {
+				parallel_for(i, batch_size) {
+					int j;
+					const float gp = g->data.f32[i];
+					const int label = b->data.i32[i];
+					float* const hp = h->data.f32 + i * count;
+					float* const ap = a->data.f32 + i * count;
+					for (j = 0; j < label; j++)
+						hp[j] = -gp * trim0 / ap[j];
+					hp[label] = -gp * trim1 / ap[label];
+					for (j = label + 1; j < count; j++)
+						hp[j] = -gp * trim0 / ap[j];
+				} parallel_endfor
+			}
 		}
 	} else {
 		if (b->info.datatype == CCV_32F)
@@ -137,15 +211,32 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 			{
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == h->info.dim[i]); }
-				parallel_for(i, batch_size) {
-					int j;
-					const int label = (int)(b->data.f32[i] + 0.5);
-					float* const hp = h->data.f32 + i * count;
-					for (j = 0; j < count; j++)
-						hp[j] = 0;
-					const float p = a->data.f32[i * count + label];
-					hp[label] = -1. / p;
-				} parallel_endfor
+				const float trim0 = cmd.info.label_smoothing.trim0;
+				const float trim1 = cmd.info.label_smoothing.trim1;
+				if (trim0 == 0 && trim1 == 1)
+				{
+					parallel_for(i, batch_size) {
+						int j;
+						const int label = (int)(b->data.f32[i] + 0.5);
+						float* const hp = h->data.f32 + i * count;
+						for (j = 0; j < count; j++)
+							hp[j] = 0;
+						const float p = a->data.f32[i * count + label];
+						hp[label] = -1. / p;
+					} parallel_endfor
+				} else {
+					parallel_for(i, batch_size) {
+						int j;
+						const int label = (int)(b->data.f32[i] + 0.5);
+						float* const hp = h->data.f32 + i * count;
+						float* const ap = a->data.f32 + i * count;
+						for (j = 0; j < label; j++)
+							hp[j] = -trim0 / ap[j];
+						hp[label] = -trim1 / ap[label];
+						for (j = label + 1; j < count; j++)
+							hp[j] = -trim0 / ap[j];
+					} parallel_endfor
+				}
 			} else {
 				assert(range == count);
 				parallel_for(i, batch_size) {
@@ -158,17 +249,36 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 				} parallel_endfor
 			}
 		} else if (b->info.datatype == CCV_32S) {
-			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
-				{ assert(a->info.dim[i] == h->info.dim[i]); }
-			parallel_for(i, batch_size) {
-				int j;
-				const int label = b->data.i32[i];
-				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = 0;
-				const float p = a->data.f32[i * count + label];
-				hp[label] = -1. / p;
-			} parallel_endfor
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				parallel_for(i, batch_size) {
+					int j;
+					const int label = b->data.i32[i];
+					float* const hp = h->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = 0;
+					const float p = a->data.f32[i * count + label];
+					hp[label] = -1. / p;
+				} parallel_endfor
+			} else {
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				parallel_for(i, batch_size) {
+					int j;
+					const int label = b->data.i32[i];
+					float* const hp = h->data.f32 + i * count;
+					float* const ap = a->data.f32 + i * count;
+					for (j = 0; j < label; j++)
+						hp[j] = -trim0 / ap[j];
+					hp[label] = -trim1 / ap[label];
+					for (j = label + 1; j < count; j++)
+						hp[j] = -trim0 / ap[j];
+				} parallel_endfor
+			}
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

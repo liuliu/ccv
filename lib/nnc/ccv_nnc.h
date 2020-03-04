@@ -112,6 +112,10 @@ typedef struct {
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */
 		} blas;
 		struct {
+			float trim0; /**< [label_smoothing.trim0] The smoothed label for 0. */
+			float trim1; /**< [label_smoothing.trim1] The smoothed label for 1. */
+		} label_smoothing;
+		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;

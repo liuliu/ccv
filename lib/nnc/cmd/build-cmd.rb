@@ -168,9 +168,16 @@ Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
 		f.each_line do |line|
 			find_file_parser.parse line
 			unless command_macro.nil?
-				command_macro[:macro] = line
-				register_easy_command_macros << command_macro
-				command_macro = nil
+				if line.start_with? '#define'
+					if command_macro[:macro].nil?
+						command_macro[:macro] = line
+						register_easy_command_macros << command_macro
+					else
+						command_macro[:macro] = command_macro[:macro] + line
+					end
+				else
+					command_macro = nil
+				end
 			end
 			parsers.each do |parser|
 				break if line.nil?
