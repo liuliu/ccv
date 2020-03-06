@@ -26,12 +26,12 @@ __global__ void _ccv_nnc_categorical_crossentropy_forw_kernel_trim(const int bat
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = (int)((float)label[i] + 0.5);
-		float p = trim1 * (float)log(a[i * count + idx]);;
+		NUM2 p = (NUM2)trim1 * log(a[i * count + idx]);;
 		for (int j = 0; j < idx; j++)
-			p += trim0 * (float)log(a[i * count + j]);
+			p += (NUM2)trim0 * log(a[i * count + j]);
 		for (int j = idx + 1; j < count; j++)
-			p += trim0 * (float)log(a[i * count + j]);
-		c[i] = (NUM2)-p;
+			p += (NUM2)trim0 * log(a[i * count + j]);
+		c[i] = -p;
 	}
 }
 
@@ -59,11 +59,11 @@ __global__ void _ccv_nnc_categorical_crossentropy_forw_kernel_trim(const int bat
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = label[i];
-		float p = trim1 * (float)log(a[i * count + idx]);
+		NUM p = (NUM)trim1 * log(a[i * count + idx]);
 		for (int j = 0; j < idx; j++)
-			p += trim0 * (float)log(a[i * count + j]);
+			p += (NUM)trim0 * log(a[i * count + j]);
 		for (int j = idx + 1; j < count; j++)
-			p += trim0 * (float)log(a[i * count + j]);
+			p += (NUM)trim0 * log(a[i * count + j]);
 		c[i] = -p;
 	}
 }
@@ -167,6 +167,20 @@ __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_si
 	}
 }
 
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_categorical_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const NUM2* const g, const NUM1* const label, const NUM2* const a, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = (int)((float)label[idx] + 0.5);
+		if (batch_idx == lbl)
+			h[i] = -g[idx] * (NUM2)trim1 / a[i];
+		else
+			h[i] = -g[idx] * (NUM2)trim0 / a[i];
+	}
+}
+
 template<typename NUM>
 __global__ void _ccv_nnc_categorical_crossentropy_one_hot_back_kernel(const int batch_size_count, const int count, const NUM* const g, const NUM* const label, const NUM* const a, NUM* const h)
 {
@@ -185,12 +199,40 @@ __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_si
 	}
 }
 
+template<typename NUM>
+__global__ void _ccv_nnc_categorical_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const NUM* const g, const int* const label, const NUM* const a, NUM* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = label[idx];
+		if (batch_idx == lbl)
+			h[i] = -g[idx] * (NUM)trim1 / a[i];
+		else
+			h[i] = -g[idx] * (NUM)trim0 / a[i];
+	}
+}
+
 template<typename NUM1, typename NUM2>
 __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_size, const int count, const NUM1* const label, const NUM2* const a, NUM2* const h)
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = (int)((float)label[i] + 0.5);
 		h[i * count + idx] = (NUM2)-1. / a[i * count + idx];
+	}
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_categorical_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const NUM1* const label, const NUM2* const a, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = (int)((float)label[idx] + 0.5);
+		if (batch_idx == lbl)
+			h[i] = (NUM2)-trim1 / a[i];
+		else
+			h[i] = (NUM2)-trim0 / a[i];
 	}
 }
 
@@ -208,6 +250,20 @@ __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_si
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = label[i];
 		h[i * count + idx] = (NUM)-1. / a[i * count + idx];
+	}
+}
+
+template<typename NUM>
+__global__ void _ccv_nnc_categorical_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const int* const label, const NUM* const a, NUM* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = label[idx];
+		if (batch_idx == lbl)
+			h[i] = (NUM)-trim1 / a[i];
+		else
+			h[i] = (NUM)-trim0 / a[i];
 	}
 }
 
@@ -231,10 +287,6 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	assert(a->info.datatype == h->info.datatype);
 	const int datatype = a->info.datatype;
-	if (datatype == CCV_16F)
-		_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half *)h->data.f16);
-	else
-		_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
 	if (g)
 	{
 		assert(g->info.datatype == datatype);
@@ -247,16 +299,37 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 			{
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == h->info.dim[i]); }
-				if (b->info.datatype == CCV_32F)
+				const float trim0 = cmd.info.label_smoothing.trim0;
+				const float trim1 = cmd.info.label_smoothing.trim1;
+				if (trim0 == 0 && trim1 == 1)
 				{
 					if (datatype == CCV_16F)
-						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half *)h->data.f16);
 					else
-						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
+						_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
+					if (b->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						else
+							_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
+					} else {
+						assert(b->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					}
 				} else {
-					assert(b->info.datatype == CCV_16F);
-					assert(datatype == CCV_16F);
-					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					if (b->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, (__half*)g->data.f16, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						else
+							_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
+					} else {
+						assert(b->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, (__half*)g->data.f16, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					}
 				}
 			} else {
 				assert(range == count);
@@ -269,10 +342,24 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 		} else if (b->info.datatype == CCV_32S) {
 			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 				{ assert(a->info.dim[i] == h->info.dim[i]); }
-			if (datatype == CCV_16F)
-				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
-			else
-				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.i32, a->data.f32, h->data.f32);
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				if (datatype == CCV_16F)
+					_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half *)h->data.f16);
+				else
+					_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
+				if (datatype == CCV_16F)
+					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)g->data.f16, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
+				else
+					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.i32, a->data.f32, h->data.f32);
+			} else {
+				if (datatype == CCV_16F)
+					_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, (__half*)g->data.f16, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
+				else
+					_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, g->data.f32, b->data.i32, a->data.f32, h->data.f32);
+			}
 		}
 	} else {
 		if (b->info.datatype == CCV_32F || b->info.datatype == CCV_16F)
@@ -284,16 +371,37 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 			{
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == h->info.dim[i]); }
-				if (b->info.datatype == CCV_32F)
+				const float trim0 = cmd.info.label_smoothing.trim0;
+				const float trim1 = cmd.info.label_smoothing.trim1;
+				if (trim0 == 0 && trim1 == 1)
 				{
 					if (datatype == CCV_16F)
-						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half *)h->data.f16);
 					else
-						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, h->data.f32);
+						_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
+					if (b->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						else
+							_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, h->data.f32);
+					} else {
+						assert(b->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					}
 				} else {
-					assert(b->info.datatype == CCV_16F);
-					assert(datatype == CCV_16F);
-					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					if (b->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.f32, (__half*)a->data.f16, (__half*)h->data.f16);
+						else
+							_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.f32, a->data.f32, h->data.f32);
+					} else {
+						assert(b->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, (__half*)b->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+					}
 				}
 			} else {
 				assert(range == count);
@@ -306,10 +414,24 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 		} else if (b->info.datatype == CCV_32S) {
 			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 				{ assert(a->info.dim[i] == h->info.dim[i]); }
-			if (datatype == CCV_16F)
-				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
-			else
-				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, a->data.f32, h->data.f32);
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				if (datatype == CCV_16F)
+					_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half *)h->data.f16);
+				else
+					_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
+				if (datatype == CCV_16F)
+					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
+				else
+					_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, a->data.f32, h->data.f32);
+			} else {
+				if (datatype == CCV_16F)
+					_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.i32, (__half*)a->data.f16, (__half*)h->data.f16);
+				else
+					_ccv_nnc_categorical_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.i32, a->data.f32, h->data.f32);
+			}
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

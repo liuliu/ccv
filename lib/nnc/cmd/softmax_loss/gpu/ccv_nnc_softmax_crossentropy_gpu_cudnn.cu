@@ -18,6 +18,21 @@ __global__ void _ccv_nnc_softmax_crossentropy_forw_kernel(const int batch_size, 
 	}
 }
 
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_softmax_crossentropy_forw_kernel_trim(const int batch_size, const int count, const float trim0, const float trim1, const NUM1* const label, const NUM2* const a, NUM2* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size) {
+		const int idx = (int)((float)label[i] + 0.5);
+		const NUM2 maxval = c[i];
+		NUM2 p = (NUM2)trim1 * (maxval - a[i * count + idx]);
+		for (int j = 0; j < idx; j++)
+			p += (NUM2)trim0 * (maxval - a[i * count + j]);
+		for (int j = idx + 1; j < count; j++)
+			p += (NUM2)trim0 * (maxval - a[i * count + j]);
+		c[i] = p;
+	}
+}
+
 template<typename NUM>
 __global__ void _ccv_nnc_softmax_crossentropy_one_hot_forw_kernel(const int batch_size, const int count, const NUM* const label, const NUM* const a, NUM* const c)
 {
@@ -35,6 +50,21 @@ __global__ void _ccv_nnc_softmax_crossentropy_forw_kernel(const int batch_size, 
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		c[i] -= a[i * count + label[i]];
+	}
+}
+
+template<typename NUM>
+__global__ void _ccv_nnc_softmax_crossentropy_forw_kernel_trim(const int batch_size, const int count, const float trim0, const float trim1, const int* const label, const NUM* const a, NUM* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size) {
+		const int idx = label[i];
+		const NUM maxval = c[i];
+		NUM p = (NUM)trim1 * (maxval - a[i * count + idx]);
+		for (int j = 0; j < idx; j++)
+			p += (NUM)trim0 * (maxval - a[i * count + j]);
+		for (int j = idx + 1; j < count; j++)
+			p += (NUM)trim0 * (maxval - a[i * count + j]);
+		c[i] = p;
 	}
 }
 
@@ -80,16 +110,33 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 			const int range = ccv_nnc_tensor_nd(inputs[1]->info.dim) > 1 ? ccv_nnc_tensor_get_c(inputs[1]->info) : (batch_size == 1 ? inputs[1]->info.dim[0] : 1);
 			if (range == 1)
 			{
-				if (inputs[1]->info.datatype == CCV_32F)
+				const float trim0 = cmd.info.label_smoothing.trim0;
+				const float trim1 = cmd.info.label_smoothing.trim1;
+				if (trim0 == 0 && trim1 == 1)
 				{
-					if (datatype == CCV_16F)
-						_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
-					else
-						_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
+					if (inputs[1]->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+						else
+							_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
+					} else {
+						assert(inputs[1]->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)inputs[1]->data.f16, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+					}
 				} else {
-					assert(inputs[1]->info.datatype == CCV_16F);
-					assert(datatype == CCV_16F);
-					_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)inputs[1]->data.f16, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+					if (inputs[1]->info.datatype == CCV_32F)
+					{
+						if (datatype == CCV_16F)
+							_ccv_nnc_softmax_crossentropy_forw_kernel_trim<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, trim0, trim1, inputs[1]->data.f32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+						else
+							_ccv_nnc_softmax_crossentropy_forw_kernel_trim<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, trim0, trim1, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
+					} else {
+						assert(inputs[1]->info.datatype == CCV_16F);
+						assert(datatype == CCV_16F);
+						_ccv_nnc_softmax_crossentropy_forw_kernel_trim<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, trim0, trim1, (__half*)inputs[1]->data.f16, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+					}
 				}
 			} else {
 				assert(inputs[1]->info.datatype == datatype);
@@ -99,10 +146,20 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 					_ccv_nnc_softmax_crossentropy_one_hot_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
 			}
 		} else if (inputs[1]->info.datatype == CCV_32S) {
-			if (datatype == CCV_16F)
-				_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
-			else
-				_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, inputs[0]->data.f32, outputs[0]->data.f32);
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
+			{
+				if (datatype == CCV_16F)
+					_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+				else
+					_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, inputs[0]->data.f32, outputs[0]->data.f32);
+			} else {
+				if (datatype == CCV_16F)
+					_ccv_nnc_softmax_crossentropy_forw_kernel_trim<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, trim0, trim1, inputs[1]->data.i32, (__half*)inputs[0]->data.f16, (__half*)outputs[0]->data.f16);
+				else
+					_ccv_nnc_softmax_crossentropy_forw_kernel_trim<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, trim0, trim1, inputs[1]->data.i32, inputs[0]->data.f32, outputs[0]->data.f32);
+			}
 		}
 	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
@@ -126,6 +183,20 @@ __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, 
 	}
 }
 
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_softmax_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const NUM1* const label, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = (int)((float)label[idx] + 0.5);
+		if (batch_idx == lbl)
+			h[i] -= (NUM2)trim1;
+		else
+			h[i] -= (NUM2)trim0;
+	}
+}
+
 template<typename NUM>
 __global__ void _ccv_nnc_softmax_crossentropy_one_hot_back_kernel(const int batch_size_count, const int count, const NUM* const label, NUM* const h)
 {
@@ -139,6 +210,20 @@ __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, 
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		h[i * count + label[i]] -= 1;
+	}
+}
+
+template<typename NUM>
+__global__ void _ccv_nnc_softmax_crossentropy_back_kernel_trim(const int batch_size_count, const int count, const float trim0, const float trim1, const int* const label, NUM* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		const int batch_idx = i % count;
+		const int lbl = label[idx];
+		if (batch_idx == lbl)
+			h[i] -= (NUM)trim1;
+		else
+			h[i] -= (NUM)trim0;
 	}
 }
 
@@ -172,16 +257,33 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 		const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
 		if (range == 1)
 		{
-			if (b->info.datatype == CCV_32F)
+			const float trim0 = cmd.info.label_smoothing.trim0;
+			const float trim1 = cmd.info.label_smoothing.trim1;
+			if (trim0 == 0 && trim1 == 1)
 			{
-				if (h->info.datatype == CCV_16F)
-					_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, (__half*)h->data.f16);
-				else
-					_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);
+				if (b->info.datatype == CCV_32F)
+				{
+					if (h->info.datatype == CCV_16F)
+						_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, (__half*)h->data.f16);
+					else
+						_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);
+				} else {
+					assert(b->info.datatype == CCV_16F);
+					assert(h->info.datatype == CCV_16F);
+					_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)b->data.f16, (__half*)h->data.f16);
+				}
 			} else {
-				assert(b->info.datatype == CCV_16F);
-				assert(h->info.datatype == CCV_16F);
-				_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, (__half*)b->data.f16, (__half*)h->data.f16);
+				if (b->info.datatype == CCV_32F)
+				{
+					if (h->info.datatype == CCV_16F)
+						_ccv_nnc_softmax_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.f32, (__half*)h->data.f16);
+					else
+						_ccv_nnc_softmax_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.f32, h->data.f32);
+				} else {
+					assert(b->info.datatype == CCV_16F);
+					assert(h->info.datatype == CCV_16F);
+					_ccv_nnc_softmax_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, (__half*)b->data.f16, (__half*)h->data.f16);
+				}
 			}
 		} else {
 			assert(b->info.datatype == h->info.datatype);
@@ -191,10 +293,20 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 				_ccv_nnc_softmax_crossentropy_one_hot_back_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, b->data.f32, h->data.f32);
 		}
 	} else if (b->info.datatype == CCV_32S) {
-		if (h->info.datatype == CCV_16F)
-			_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, (__half*)h->data.f16);
-		else
-			_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, h->data.f32);
+		const float trim0 = cmd.info.label_smoothing.trim0;
+		const float trim1 = cmd.info.label_smoothing.trim1;
+		if (trim0 == 0 && trim1 == 1)
+		{
+			if (h->info.datatype == CCV_16F)
+				_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, (__half*)h->data.f16);
+			else
+				_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, h->data.f32);
+		} else {
+			if (h->info.datatype == CCV_16F)
+				_ccv_nnc_softmax_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.i32, (__half*)h->data.f16);
+			else
+				_ccv_nnc_softmax_crossentropy_back_kernel_trim<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, trim0, trim1, b->data.i32, h->data.f32);
+		}
 	}
 	if (inputs[0])
 	{
