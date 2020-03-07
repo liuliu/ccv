@@ -24,7 +24,6 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == b->info.dim[i]); }
-
 	parallel_for(i, batch_size) {
 		int j;
 		float* const ap = a->data.f32 + i * count;

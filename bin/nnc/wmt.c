@@ -710,7 +710,10 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		ccv_nnc_tensor_variable_t tvout[device_count * 2];
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = out[j], tvin[j * 2 + 1] = out_word_indices[j], tvout[j * 2] = 0, tvout[j * 2 + 1] = softmax[j];
-		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
+		const float eta = 0.1;
+		const float trim0 = eta / tgt_vocab_size;
+		const float trim1 = 1.0 - eta + trim0;
+		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(trim0, trim1), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = src_vocab_vec[j], tvin[j * 2 + 1] = tgt_vocab_vec[j], tvout[j * 2] = src_vocab_vec_grad[j], tvout[j * 2 + 1] = tgt_vocab_vec_grad[j];
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
