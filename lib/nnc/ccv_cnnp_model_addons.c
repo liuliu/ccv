@@ -29,7 +29,7 @@ ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
 {
 	ccv_cnnp_model_add_t* const model_add = (ccv_cnnp_model_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_add_t));
 	model_add->super.isa = &ccv_cnnp_add_isa;
-	model_add->super.input_size = 1;
+	model_add->super.input_size = 0;
 	model_add->super.outputs = &model_add->output;
 	model_add->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_add->super, name);
@@ -63,7 +63,7 @@ ccv_cnnp_model_t* ccv_cnnp_concat(const char* const name)
 {
 	ccv_cnnp_model_concat_t* const model_concat = (ccv_cnnp_model_concat_t*)cccalloc(1, sizeof(ccv_cnnp_model_concat_t));
 	model_concat->super.isa = &ccv_cnnp_concat_isa;
-	model_concat->super.input_size = 1;
+	model_concat->super.input_size = 0;
 	model_concat->super.outputs = &model_concat->output;
 	model_concat->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_concat->super, name);
@@ -677,6 +677,51 @@ static ccv_cnnp_model_t* _ccv_cnnp_relu_copy(const ccv_cnnp_model_t* const self,
 	return ccv_cnnp_relu(self->name);
 }
 
+#pragma mark - Sigmoid Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_sigmoid_t;
+
+static void _ccv_cnnp_sigmoid_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t sigmoid = CMD_SIGMOID_FORWARD();
+	ccv_nnc_hint_tensor_auto(sigmoid, (ccv_nnc_tensor_param_t []){
+			params,
+		}, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t sigmoid_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, sigmoid, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(sigmoid_output), 0);
+	outputs[0] = sigmoid_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_sigmoid_isa = {
+	.build = _ccv_cnnp_sigmoid_build,
+	.copy = _ccv_cnnp_sigmoid_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_sigmoid(const char* const name)
+{
+	ccv_cnnp_model_sigmoid_t* const model_sigmoid = (ccv_cnnp_model_sigmoid_t*)cccalloc(1, sizeof(ccv_cnnp_model_sigmoid_t));
+	model_sigmoid->super.isa = &ccv_cnnp_sigmoid_isa;
+	model_sigmoid->super.input_size = 1;
+	model_sigmoid->super.outputs = &model_sigmoid->output;
+	model_sigmoid->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_sigmoid->super, name);
+	return (ccv_cnnp_model_t*)model_sigmoid;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_sigmoid(self->name);
+}
+
 #pragma mark - Softmax Layer
 
 typedef struct {
@@ -720,6 +765,51 @@ ccv_cnnp_model_t* ccv_cnnp_softmax(const char* const name)
 static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const self, void* const context)
 {
 	return ccv_cnnp_softmax(self->name);
+}
+
+#pragma mark - Mul Layer
+
+static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t mul = CMD_MUL_FORWARD(1);
+	ccv_nnc_hint_tensor_auto(mul, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, mul, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_mul_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_mul_isa = {
+	.build = _ccv_cnnp_mul_build,
+	.copy = _ccv_cnnp_mul_copy,
+};
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_mul_t;
+
+ccv_cnnp_model_t* ccv_cnnp_mul(const char* const name)
+{
+	ccv_cnnp_model_mul_t* const model_mul = (ccv_cnnp_model_mul_t*)cccalloc(1, sizeof(ccv_cnnp_model_mul_t));
+	model_mul->super.isa = &ccv_cnnp_mul_isa;
+	model_mul->super.input_size = 2;
+	model_mul->super.outputs = &model_mul->output;
+	model_mul->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_mul->super, name);
+	return (ccv_cnnp_model_t*)model_mul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_mul_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_mul(self->name);
 }
 
 #pragma mark - Scalar Mul Layer

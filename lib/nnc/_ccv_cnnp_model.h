@@ -136,7 +136,7 @@ typedef struct {
 
 struct ccv_cnnp_model_s {
 	const ccv_cnnp_model_vtab_t* isa;
-	int input_size;
+	int input_size; // This is the best effort number, mostly just for subclass to use.
 	int output_size;
 	ccv_array_t* io; // The opaque io that can be nil.
 	ccv_array_t* parameter_indices; // The indexes for parameters in the final model.

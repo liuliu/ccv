@@ -3163,6 +3163,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_batch_norm(const float momentum, con
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
 /**
+ * A sigmoid activation layer model.
+ * @return A sigmoid activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
+/**
  * A softmax activation layer model.
  * @return A softmax activation layer model.
  */
@@ -3207,6 +3212,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
  * @return A layer norm model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
+/**
+ * Multiple two input tensors together.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_mul(const char* const name);
 /**
  * A scalar multiplication model. Y = aX where a is a scalar.
  * @param a The scalar parameter.
