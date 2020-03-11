@@ -360,11 +360,13 @@ static double _accuracy_from_gpu(ccv_nnc_tensor_t* const* const gpu_outputs, ccv
 	return (double)correct / (device_count * batch_size);
 }
 
+#define CCV_TRAIN_DT CCV_32F
+
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
 	// Prepare model.
-	ccv_cnnp_model_t* const imagenet = _imagenet_resnet50_v1d(); // _efficientnet_b0();
-	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 224, 224);
+	ccv_cnnp_model_t* const imagenet = _efficientnet_b0();
+	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, TRAIN_DT, batch_size, 3, 224, 224);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	float learn_rate = 0.0001;
 	const float wd = 0.0001;
@@ -401,12 +403,12 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		},
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
-	ccv_nnc_tensor_param_t fp16_params = CPU_TENSOR_NHWC(16F, 224, 224, 3);
+	ccv_nnc_tensor_param_t fp16_params = CPU_TENSOR_NHWC(TRAIN_DT, 224, 224, 3);
 	const int image_jitter_in_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(image_jitter_idx));
 	const int image_jitter_out_fp16_idx = ccv_cnnp_dataframe_cmd_exec(train_data, image_jitter_in_idx, CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &fp16_params, 1, 0);
 	const int image_jitter_fp16_idx = ccv_cnnp_dataframe_extract_tuple(train_data, image_jitter_out_fp16_idx, 0);
 	const float eta = 0.1;
-	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1 - eta + eta / 1000, eta / 1000, CCV_16F, CCV_TENSOR_FORMAT_NCHW);
+	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1 - eta + eta / 1000, eta / 1000, CCV_TRAIN_DT, CCV_TENSOR_FORMAT_NCHW);
 	ccv_cnnp_dataframe_shuffle(train_data);
 	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_fp16_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int t, i, j;
@@ -414,7 +416,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	for (i = 0; i < device_count; i++)
 	{
 		train_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_train_data, 0, i * 2, 2, i);
-		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 16F, batch_size, 1000);
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, TRAIN_DT, batch_size, 1000);
 		CCV_TENSOR_SET_DEVICE_ID(params.type, i);
 		train_device_columns[device_count + i] = ccv_cnnp_dataframe_add_aux(batch_train_data, params);
 	}
@@ -449,7 +451,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	int test_device_columns[device_count * 2];
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 16F, batch_size, 1000);
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, TRAIN_DT, batch_size, 1000);
 		CCV_TENSOR_SET_DEVICE_ID(params.type, i);
 		test_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_test_data, 0, i, 1, i);
 		test_device_columns[device_count + i] = ccv_cnnp_dataframe_add_aux(batch_test_data, params);
@@ -471,7 +473,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* outputs_fp32[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, batch_size, 1000), 0);
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(TRAIN_DT, batch_size, 1000), 0);
 		outputs_fp32[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1000), 0);
 	}
 	ccv_nnc_tensor_t* fit_fp32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1000), 0);
@@ -652,7 +654,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imagenet(128, train_data, test_data, test_set);
+	train_imagenet(96, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;
