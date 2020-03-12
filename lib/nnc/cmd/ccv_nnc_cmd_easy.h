@@ -150,6 +150,10 @@
 #define CMD_SIGMOID_FORWARD() ccv_nnc_cmd(CCV_NNC_SIGMOID_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SIGMOID_BACKWARD
 #define CMD_SIGMOID_BACKWARD() ccv_nnc_cmd(CCV_NNC_SIGMOID_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_SWISH_FORWARD
+#define CMD_SWISH_FORWARD() ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_SWISH_BACKWARD
+#define CMD_SWISH_BACKWARD() ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_MAX_POOL_FORWARD
 #define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_MAX_POOL_BACKWARD
