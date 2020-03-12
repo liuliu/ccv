@@ -722,6 +722,51 @@ static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const se
 	return ccv_cnnp_sigmoid(self->name);
 }
 
+#pragma mark - Swish Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_swish_t;
+
+static void _ccv_cnnp_swish_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t swish = CMD_SWISH_FORWARD();
+	ccv_nnc_hint_tensor_auto(swish, (ccv_nnc_tensor_param_t []){
+			params,
+		}, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t swish_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, swish, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(swish_output), 0);
+	outputs[0] = swish_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swish_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_swish_isa = {
+	.build = _ccv_cnnp_swish_build,
+	.copy = _ccv_cnnp_swish_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_swish(const char* const name)
+{
+	ccv_cnnp_model_swish_t* const model_swish = (ccv_cnnp_model_swish_t*)cccalloc(1, sizeof(ccv_cnnp_model_swish_t));
+	model_swish->super.isa = &ccv_cnnp_swish_isa;
+	model_swish->super.input_size = 1;
+	model_swish->super.outputs = &model_swish->output;
+	model_swish->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_swish->super, name);
+	return (ccv_cnnp_model_t*)model_swish;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swish_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_swish(self->name);
+}
+
 #pragma mark - Softmax Layer
 
 typedef struct {

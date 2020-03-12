@@ -3168,6 +3168,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
 /**
+ * A swish activation layer model.
+ * @return A swish activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const char* const name);
+/**
  * A softmax activation layer model.
  * @return A softmax activation layer model.
  */
