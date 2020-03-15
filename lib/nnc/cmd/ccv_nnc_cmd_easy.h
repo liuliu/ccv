@@ -76,6 +76,8 @@
 #define CMD_COMPRESSION_LSSC_FORWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMPRESSION_LSSC_BACKWARD
 #define CMD_COMPRESSION_LSSC_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_RMSPROP_FORWARD
+#define CMD_RMSPROP_FORWARD(_rate, _decay, _alpha, _momentum, _epsilon) ccv_nnc_cmd(CCV_NNC_RMSPROP_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsprop={.rate=_rate,.decay=_decay,.alpha=_alpha,.momentum=_momentum,.epsilon=_epsilon}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD

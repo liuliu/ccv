@@ -107,6 +107,13 @@ typedef struct {
 			float epsilon; /**< [adam.epsilon] The epsilon for standard derivation. */
 		} adam;
 		struct {
+			float rate; /**< [rmsprop.rate] The learning rate. */
+			float decay; /**< [rmsprop.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
+			float alpha; /**< [rmsprop.momentum] The alpha hyper-parameter. */
+			float momentum; /**< [rmsprop.momentum] The momentum hyper-parameter. */
+			float epsilon; /**< [rmsprop.epsilon] The epsilon for standard derivation. */
+		} rmsprop;
+		struct {
 			int transpose_a[2]; /**< [blas.transpose_a[2]] The axis we'd like to transpose for input a. */
 			int transpose_b[2]; /**< [blas.transpose_b[2]] The axis we'd like to transpose for input b. */
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */

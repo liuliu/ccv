@@ -227,7 +227,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 				.hint = HINT((1, 1), (0, 0)),
 			}, 0),
 			ccv_cnnp_batch_norm(0.9, 1e-4, 0),
-			ccv_cnnp_relu(0)
+			ccv_cnnp_swish(0)
 		), 0);
 		x = ccv_cnnp_model_apply(expand_conv, MODEL_IO_LIST(x));
 	}
@@ -238,7 +238,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 			.hint = HINT((strides, strides), (paddings, paddings)),
 		}, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
-		ccv_cnnp_relu(0)
+		ccv_cnnp_swish(0)
 	), 0);
 	x = ccv_cnnp_model_apply(depthwise_conv, MODEL_IO_LIST(x));
 	const int se_filters = ccv_max(1, (int)(input_filters * se_ratio + 0.5));
@@ -247,7 +247,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 		ccv_cnnp_convolution(1, se_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.hint = HINT((1, 1), (0, 0)),
 		}, 0),
-		ccv_cnnp_relu(0),
+		ccv_cnnp_swish(0),
 		ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.hint = HINT((1, 1), (0, 0)),
 		}, 0),
@@ -291,7 +291,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 			.hint = HINT((2, 2), (1, 1)),
 		}, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
-		ccv_cnnp_relu(0)
+		ccv_cnnp_swish(0)
 	), 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_mconv_block_layer_new(1, 3, 1, 1, 32, 16, 0.25), MODEL_IO_LIST(output));
@@ -307,7 +307,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 			.hint = HINT((1, 1), (0, 0)),
 		}, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
-		ccv_cnnp_relu(0)
+		ccv_cnnp_swish(0)
 	), 0);
 	output = ccv_cnnp_model_apply(head_conv, MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
@@ -654,7 +654,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imagenet(96, train_data, test_data, test_set);
+	train_imagenet(64, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;
