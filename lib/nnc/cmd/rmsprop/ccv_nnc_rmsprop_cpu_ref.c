@@ -52,7 +52,7 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	ccv_nnc_tensor_view_get_inc(u, uinc);
 	const float rate = cmd.info.rmsprop.rate;
 	const float decay = cmd.info.rmsprop.decay;
-	const float alpha = cmd.info.rmsprop.decay;
+	const float alpha = cmd.info.rmsprop.alpha;
 	const float momentum = cmd.info.rmsprop.momentum;
 	const float epsilon = cmd.info.rmsprop.epsilon;
 	int i[CCV_NNC_MAX_DIM + 1];
@@ -75,8 +75,8 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 					float grad = gp[x];
 					grad += decay * ap[x];
 					const float vel = up[x] = alpha * vp[x] + (1 - alpha) * grad * grad;
-					const float mom = np[x] = momentum * mp[x] + rate * grad / (sqrtf(vel) + epsilon);
-					bp[x] = ap[x] - mom;
+					const float mom = np[x] = momentum * mp[x] + grad / (sqrtf(vel) + epsilon);
+					bp[x] = ap[x] - rate * mom;
 				}
 				gp += ginc[3];
 				ap += ainc[3];

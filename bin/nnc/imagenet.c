@@ -360,7 +360,48 @@ static double _accuracy_from_gpu(ccv_nnc_tensor_t* const* const gpu_outputs, ccv
 	return (double)correct / (device_count * batch_size);
 }
 
+float _resnet_learn_rate(const int epoch, const int t, const int epoch_end)
+{
+	const int warmup_epoch = 5;
+	float learn_rate = 0.0001;
+	if (epoch < warmup_epoch)
+	{
+		learn_rate = ccv_max(0.0001, 0.4 * t / (epoch_end * 5));
+	} else if (epoch < 40) {
+		learn_rate = 0.4 - (0.4 - 0.2) * (epoch - 5) / 35;
+	} else if (epoch < 60) {
+		learn_rate = 0.2 - (0.2 - 0.1) * (epoch - 40) / 20;
+	} else if (epoch < 100) {
+		learn_rate = 0.1 - (0.1 - 0.001) * (epoch - 60) / 40;
+	} else {
+		learn_rate = 0.001 - (0.001 - 0.00001) * (epoch - 100) / 20;
+	}
+	learn_rate = ccv_max(learn_rate, 0.00004);
+	return learn_rate;
+}
+
+ccv_nnc_cmd_t _resnet_optimizer(const float learn_rate, const int batch_size, const float wd)
+{
+	return CMD_SGD_FORWARD(1, learn_rate, 1. / batch_size, wd, 0.9, 0);
+}
+
+float _efficientnet_learn_rate(const int epoch, const int t, const int epoch_end)
+{
+	const int warmup_epoch = 5;
+	if (epoch < warmup_epoch)
+		return ccv_max(0.00001, 0.001 * t / (epoch_end * 5));
+	else
+		return 0.001 * powf(0.97, (t - warmup_epoch * epoch_end) / (epoch_end * 2.4));
+}
+
+ccv_nnc_cmd_t _efficientnet_optimizer(const float learn_rate, const int batch_size, const float wd)
+{
+	return CMD_RMSPROP_FORWARD(learn_rate, wd, 0.9, 0.9, 1e-5);
+}
+
 #define CCV_TRAIN_DT CCV_32F
+#define _net_learn_rate _efficientnet_learn_rate
+#define _net_optimizer _efficientnet_optimizer
 
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
@@ -368,9 +409,8 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_cnnp_model_t* const imagenet = _efficientnet_b0();
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, TRAIN_DT, batch_size, 3, 224, 224);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
-	float learn_rate = 0.0001;
-	const float wd = 0.0001;
-	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	const float wd = 0.00001; // 0.0001;
+	ccv_cnnp_model_compile(imagenet, &input, 1, _net_optimizer(0.0001, batch_size * device_count, wd), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE *w = fopen("imagenet.dot", "w+");
 	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
@@ -483,27 +523,12 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* outputs[device_count];
 	int epoch = 0;
 	double overall_accuracy = 0;
-	const int warmup_epoch = 5;
 	// Start 100 epoch of training.
 	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
-		if (epoch < warmup_epoch)
-		{
-			learn_rate = ccv_max(0.0001, 0.4 * t / (epoch_end * 5));
-		} else if (epoch < 40) {
-			learn_rate = 0.4 - (0.4 - 0.2) * (epoch - 5) / 35;
-		} else if (epoch < 60) {
-			learn_rate = 0.2 - (0.2 - 0.1) * (epoch - 40) / 20;
-		} else if (epoch < 100) {
-			learn_rate = 0.1 - (0.1 - 0.001) * (epoch - 60) / 40;
-		} else {
-			learn_rate = 0.001 - (0.001 - 0.00001) * (epoch - 100) / 20;
-		}
-		learn_rate = ccv_max(learn_rate, 0.00004);
-		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0);
-		ccv_cnnp_model_set_minimizer(imagenet, sgd, 0, 0);
-		sgd.info.sgd.decay = 0;
-		ccv_cnnp_model_set_minimizer(imagenet, sgd, MODEL_IO_LIST(ccv_cnnp_model_parameters(imagenet, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
+		const float learn_rate = _net_learn_rate(epoch, t, epoch_end);
+		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, wd), 0, 0);
+		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(imagenet, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		// Re-layout data for model fitting.

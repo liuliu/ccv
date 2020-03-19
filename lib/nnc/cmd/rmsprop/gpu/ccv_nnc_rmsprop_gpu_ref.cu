@@ -16,8 +16,8 @@ __global__ void _ccv_nnc_rmsprop_kernel(const size_t tensor_count, const float r
 		float grad = (float)g[i];
 		grad += decay * (float)a[i];
 		const float v = alpha * (float)vel[i] + (1 - alpha) * grad * grad;
-		const float m = momentum * (float)mom[i] + rate * grad / (sqrtf(v) + epsilon);
-		b[i] = (NUM2)((float)a[i] - m);
+		const float m = momentum * (float)mom[i] + grad / (sqrtf(v) + epsilon);
+		b[i] = (NUM2)((float)a[i] - rate * m);
 		new_mom[i] = (NUM2)m;
 		new_vel[i] = (NUM2)v;
 	}
@@ -30,7 +30,7 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	const float rate = cmd.info.rmsprop.rate;
 	const float decay = cmd.info.rmsprop.decay;
-	const float alpha = cmd.info.rmsprop.decay;
+	const float alpha = cmd.info.rmsprop.alpha;
 	const float momentum = cmd.info.rmsprop.momentum;
 	const float epsilon = cmd.info.rmsprop.epsilon;
 	assert(inputs[1]->info.datatype == inputs[2]->info.datatype &&
