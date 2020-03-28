@@ -9,10 +9,25 @@ extern "C" {
 #include <curand_kernel.h>
 
 template<typename NUM>
+__global__ void _ccv_nnc_random_uniform_kernel_x4(const int count, const int seed, const float l, const float u, NUM* const a)
+{
+	const int id = blockIdx.x * blockDim.x + threadIdx.x;
+	curandStatePhilox4_32_10_t state;
+	curand_init(seed, id, 0, &state);
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const float4 r = curand_uniform4(&state); // This is from 0 to 1 open close.
+		a[i * 4] = r.x * u + (1 - r.x) * l;
+		a[i * 4 + 1] = r.y * u + (1 - r.y) * l;
+		a[i * 4 + 2] = r.z * u + (1 - r.z) * l;
+		a[i * 4 + 3] = r.w * u + (1 - r.w) * l;
+	}
+}
+
+template<typename NUM>
 __global__ void _ccv_nnc_random_uniform_kernel(const int count, const int seed, const float l, const float u, NUM* const a)
 {
 	const int id = blockIdx.x * blockDim.x + threadIdx.x;
-	curandState_t state;
+	curandStatePhilox4_32_10_t state;
 	curand_init(seed, id, 0, &state);
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		const float r = curand_uniform(&state); // This is from 0 to 1 open close.
@@ -30,10 +45,19 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	if (a->info.datatype == CCV_32F)
-		_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
-	else if (a->info.datatype == CCV_16F)
-		_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, (__half*)a->data.f16);
+	if (count % 4 == 0)
+	{
+		const int count_4 = count / 4;
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_random_uniform_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, l, u, a->data.f32);
+		else if (a->info.datatype == CCV_16F)
+			_ccv_nnc_random_uniform_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, l, u, (__half*)a->data.f16);
+	} else {
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
+		else if (a->info.datatype == CCV_16F)
+			_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, (__half*)a->data.f16);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
