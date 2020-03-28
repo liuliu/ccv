@@ -390,7 +390,7 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 {
 	_ccv_nnc_graph_exec_unwrap_io(graph, node);
 	ccv_nnc_tensor_t** inputs = node->inputs;
-	ccv_nnc_tensor_t** outputs = inputs + node->input_size;
+	ccv_nnc_tensor_t** outputs = inputs ? inputs + node->input_size : 0;
 	if (tensor_tape)
 		ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size);
 	/* Broadcast the updates to all subscribed references for input / output, even though at th
@@ -735,7 +735,7 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 	int i;
 	_ccv_nnc_graph_exec_unwrap_io(graph, node);
 	ccv_nnc_tensor_t** inputs = node->inputs;
-	ccv_nnc_tensor_t** outputs = inputs + node->input_size;
+	ccv_nnc_tensor_t** outputs = inputs ? inputs + node->input_size : 0;
 	if (tensor_tape)
 		ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size);
 	/* Broadcast the updates to all subscribed references for input / output, even though at th

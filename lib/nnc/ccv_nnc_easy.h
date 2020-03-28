@@ -322,8 +322,8 @@ static inline int ccv_nnc_is_matrix_transpose(const ccv_nnc_tensor_param_t param
 	if (transpose[0] != transpose[1])
 	{
 		assert(nd > 1);
-		assert(((transpose[0] == (nd == 2) ? 0 : 1) && (transpose[1] == (nd == 2) ? 1 : 2)) ||
-			((transpose[1] == (nd == 2) ? 0 : 1) && (transpose[0] == (nd == 2) ? 1 : 2)));
+		assert(((transpose[0] == ((nd == 2) ? 0 : 1)) && (transpose[1] == ((nd == 2) ? 1 : 2))) ||
+			((transpose[1] == ((nd == 2) ? 0 : 1)) && (transpose[0] == ((nd == 2) ? 1 : 2))));
 		return 1;
 	}
 	return 0;
@@ -343,8 +343,8 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	if (transpose[0] != transpose[1])
 	{
 		assert(nd > 1);
-		assert(((transpose[0] == (nd == 2) ? 0 : 1) && (transpose[1] == (nd == 2) ? 1 : 2)) ||
-			((transpose[1] == (nd == 2) ? 0 : 1) && (transpose[0] == (nd == 2) ? 1 : 2)));
+		assert(((transpose[0] == ((nd == 2) ? 0 : 1)) && (transpose[1] == ((nd == 2) ? 1 : 2))) ||
+			((transpose[1] == ((nd == 2) ? 0 : 1)) && (transpose[0] == ((nd == 2) ? 1 : 2))));
 		int t;
 		CCV_SWAP(rows, cols, t);
 		CCV_SWAP(rows_inc, cols_inc, t);

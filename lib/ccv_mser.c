@@ -79,7 +79,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				if (!_for_get_h(hptr, j, 0)) \
+				if (_for_get_h(hptr, j, 0) == 0) \
 					++buck[_for_get_a(aptr, j, 0)]; \
 			aptr += a->step; \
 			hptr += h->step; \
@@ -94,7 +94,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 			for (j = 0; j < a->cols; j++) \
 			{ \
 				_ccv_mser_init_node(pnode, j, i); \
-				if (!_for_get_h(hptr, j, 0)) \
+				if (_for_get_h(hptr, j, 0) == 0) \
 					rnode[--buck[_for_get_a(aptr, j, 0)]] = pnode; \
 				else \
 					pnode->shortcut = 0; /* this means the pnode is not available */ \
