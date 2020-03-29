@@ -69,4 +69,61 @@ TEST_CASE("dropout gradient for 40% of a 20x30 matrix")
 	ccv_nnc_tensor_free(ht);
 }
 
+TEST_CASE("dropout entire matrix with 20% chance")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	int i;
+	for (i = 0; i < 20 * 50; i++)
+		a->data.f32[i] = (i + 1) * 0.01;
+	ccv_nnc_tensor_param_t output_info[2];
+	ccv_nnc_hint_tensor_auto(CMD_DROPOUT_FORWARD(0.4), &a->info, 1, ccv_nnc_no_hint, output_info, 2);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, output_info[1], 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_FORWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, c), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	if (b->data.f32[0] == 0)
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = 0;
+	else
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = a->data.f32[i] / 0.8;
+	REQUIRE_TENSOR_EQ(b, d, "dropout chance should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+}
+
+TEST_CASE("dropout gradient entire matrix with 20% chance")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	int i;
+	for (i = 0; i < 20 * 50; i++)
+		a->data.f32[i] = (i + 1) * 0.01;
+	ccv_nnc_tensor_param_t output_info[2];
+	ccv_nnc_hint_tensor_auto(CMD_DROPOUT_FORWARD(0.4), &a->info, 1, ccv_nnc_no_hint, output_info, 2);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, output_info[1], 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_FORWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, c), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	for (i = 0; i < 20 * 50; i++)
+		g->data.f32[i] = i + 1;
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_BACKWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, 0, 0, c), TENSOR_LIST(h), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	if (b->data.f32[0] == 0)
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = 0;
+	else
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = g->data.f32[i] / 0.8;
+	REQUIRE_TENSOR_EQ(h, d, "dropout chance should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(d);
+}
+
 #include "case_main.h"

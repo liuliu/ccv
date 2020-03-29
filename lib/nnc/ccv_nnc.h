@@ -131,6 +131,7 @@ typedef struct {
 		} transpose;
 		struct {
 			float p; /**< [dropout.p] Dropout probability. */
+			int entirety; /**< [dropout.entirety] Drop the whole layer with the given probability. */
 		} dropout;
 		void* userdata;
 	};
@@ -3256,10 +3257,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], con
 /**
  * A dropout model.
  * @param p The probability to drop the current value.
+ * @param entirety Drop the whole layer with the given probability.
  * @param name The unique name of the model.
  * @return A dropout model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const int entirety, const char* const name);
 /**
  * A masked fill model.
  * @param eq If a value in the given mask tensor is equal to this.

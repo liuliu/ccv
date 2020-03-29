@@ -165,8 +165,16 @@
 // CCV_NNC_AVERAGE_POOL_BACKWARD
 #define CMD_AVERAGE_POOL_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_DROPOUT_FORWARD
-#define CMD_DROPOUT_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p}}), 0)
+#define CMD_DROPOUT_FORWARD_X_F(...) ("This should not be used, you should have either 1 parameter or 2 parameters for CMD_DROPOUT_FORWARD")
+#define CMD_DROPOUT_FORWARD_X_1(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=0}}), 0)
+#define CMD_DROPOUT_FORWARD_X_2(_p, _entirety) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=_entirety}}), 0)
+#define CMD_DROPOUT_FORWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
+#define CMD_DROPOUT_FORWARD(...) CMD_DROPOUT_FORWARD_X_SEL(CMD_DROPOUT_FORWARD_X_F, ##__VA_ARGS__, CMD_DROPOUT_FORWARD_X_2, CMD_DROPOUT_FORWARD_X_1, CMD_DROPOUT_FORWARD_X_F)(__VA_ARGS__)
 // CCV_NNC_DROPOUT_BACKWARD
-#define CMD_DROPOUT_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p}}), 0)
+#define CMD_DROPOUT_BACKWARD_X_F(...) ("This should not be used, you should have either 1 parameter or 2 parameters for CMD_DROPOUT_FORWARD")
+#define CMD_DROPOUT_BACKWARD_X_1(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=0}}), 0)
+#define CMD_DROPOUT_BACKWARD_X_2(_p, _entirety) ccv_nnc_cmd(CCV_NNC_DROPOUT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=_entirety}}), 0)
+#define CMD_DROPOUT_BACKWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
+#define CMD_DROPOUT_BACKWARD(...) CMD_DROPOUT_BACKWARD_X_SEL(CMD_DROPOUT_BACKWARD_X_F, ##__VA_ARGS__, CMD_DROPOUT_BACKWARD_X_2, CMD_DROPOUT_BACKWARD_X_1, CMD_DROPOUT_BACKWARD_X_F)(__VA_ARGS__)
 
 /** @} */

@@ -1636,6 +1636,83 @@ TEST_CASE("compare dropout gradient with cudnn in half precision")
 	ccv_nnc_tensor_free(dx16_tensor);
 }
 
+TEST_CASE("dropout entire matrix with 20% chance")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DROPOUT_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	int i;
+	for (i = 0; i < 20 * 50; i++)
+		ha->data.f32[i] = (i + 1) * 0.01;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_tensor_param_t output_info[2];
+	ccv_nnc_hint_tensor_auto(CMD_DROPOUT_FORWARD(0.4), &a->info, 1, ccv_nnc_no_hint, output_info, 2);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, output_info[1], 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_FORWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, c), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	if (hb->data.f32[0] == 0)
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = 0;
+	else
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = ha->data.f32[i] / 0.8;
+	REQUIRE_TENSOR_EQ(hb, d, "dropout chance should be equal");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+}
+
+TEST_CASE("dropout gradient entire matrix with 20% chance")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DROPOUT_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_DROPOUT_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	int i;
+	for (i = 0; i < 20 * 50; i++)
+		ha->data.f32[i] = (i + 1) * 0.01;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_tensor_param_t output_info[2];
+	ccv_nnc_hint_tensor_auto(CMD_DROPOUT_FORWARD(0.4), &a->info, 1, ccv_nnc_no_hint, output_info, 2);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, output_info[1], 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_FORWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, c), 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	for (i = 0; i < 20 * 50; i++)
+		hg->data.f32[i] = i + 1;
+	ccv_nnc_tensor_t* const hh = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg), TENSOR_LIST(g), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 20, 50), 0);
+	ccv_nnc_cmd_exec(CMD_DROPOUT_BACKWARD(0.2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, 0, 0, c), TENSOR_LIST(h), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, h), TENSOR_LIST(hb, hh), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
+	if (hb->data.f32[0] == 0)
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = 0;
+	else
+		for (i = 0; i < 20 * 50; i++)
+			d->data.f32[i] = hg->data.f32[i] / 0.8;
+	REQUIRE_TENSOR_EQ(hh, d, "dropout chance should be equal");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(hh);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(d);
+}
+
 TEST_CASE("compare softmax with cudnn")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOFTMAX_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));

@@ -1119,6 +1119,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_graph_exec_symbol_t dropout;
 	float p;
+	int entirety;
 } ccv_cnnp_model_dropout_t;
 
 static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -1128,7 +1129,7 @@ static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t output_params[2];
 	ccv_cnnp_model_dropout_t* const self = (ccv_cnnp_model_dropout_t*)super;
-	const ccv_nnc_cmd_t dropout = CMD_DROPOUT_FORWARD(self->p);
+	const ccv_nnc_cmd_t dropout = CMD_DROPOUT_FORWARD(self->p, self->entirety);
 	ccv_nnc_hint_tensor_auto(dropout, (ccv_nnc_tensor_param_t []){
 			params,
 		}, 1, ccv_nnc_no_hint, output_params, 2);
@@ -1147,7 +1148,7 @@ static void _ccv_cnnp_dropout_is_test(ccv_cnnp_model_t* const super, const int i
 			// During test, the dropout is not applied. Data transfer is perfect because if these are the same tensor, it will skip.
 			updater(context, self->dropout, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint);
 		else
-			updater(context, self->dropout, CMD_DROPOUT_FORWARD(self->p), ccv_nnc_no_hint);
+			updater(context, self->dropout, CMD_DROPOUT_FORWARD(self->p, self->entirety), ccv_nnc_no_hint);
 	}
 }
 
@@ -1159,7 +1160,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dropout_isa = {
 	.copy = _ccv_cnnp_dropout_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const int entirety, const char* const name)
 {
 	ccv_cnnp_model_dropout_t* const model_dropout = (ccv_cnnp_model_dropout_t*)cccalloc(1, sizeof(ccv_cnnp_model_dropout_t));
 	model_dropout->super.isa = &ccv_cnnp_dropout_isa;
@@ -1167,6 +1168,7 @@ ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)
 	model_dropout->super.outputs = &model_dropout->output;
 	model_dropout->super.output_size = 1;
 	model_dropout->p = p;
+	model_dropout->entirety = entirety;
 	ccv_cnnp_model_copy_name(&model_dropout->super, name);
 	return (ccv_cnnp_model_t*)model_dropout;
 }
@@ -1174,7 +1176,7 @@ ccv_cnnp_model_t* ccv_cnnp_dropout(const float p, const char* const name)
 static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_dropout_t* const self = (const ccv_cnnp_model_dropout_t*)super;
-	return ccv_cnnp_dropout(self->p, self->super.name);
+	return ccv_cnnp_dropout(self->p, self->entirety, self->super.name);
 }
 
 #pragma mark - Masked Fill Layer
