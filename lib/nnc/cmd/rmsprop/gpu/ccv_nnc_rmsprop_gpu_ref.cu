@@ -7,7 +7,7 @@ extern "C" {
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
 
-#ifdef HAVE_CUDNN
+#ifdef HAVE_CUDA
 
 template<typename NUM1, typename NUM2>
 __global__ void _ccv_nnc_rmsprop_kernel(const size_t tensor_count, const float rate, const float decay, const float alpha, const float momentum, const float epsilon, const NUM1* const g, const NUM2* const a, const NUM2* const mom, const NUM2* const vel, NUM2* const b, NUM2* const new_mom, NUM2* const new_vel)
@@ -38,12 +38,17 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		inputs[3]->info.datatype == outputs[0]->info.datatype &&
 		outputs[0]->info.datatype == outputs[1]->info.datatype &&
 		outputs[1]->info.datatype == outputs[2]->info.datatype);
+	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
+	assert(!CCV_IS_TENSOR_VIEW(inputs[1]));
+	assert(!CCV_IS_TENSOR_VIEW(inputs[2]));
+	assert(!CCV_IS_TENSOR_VIEW(inputs[3]));
+	assert(!CCV_IS_TENSOR_VIEW(outputs[0]));
 	assert(!CCV_IS_TENSOR_VIEW(outputs[1]));
 	assert(!CCV_IS_TENSOR_VIEW(outputs[2]));
-	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_view_t* const m = (ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[3];
+	const ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
+	const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[1];
+	const ccv_nnc_tensor_view_t* const m = (ccv_nnc_tensor_view_t*)inputs[2];
+	const ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[3];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const n = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* const u = (ccv_nnc_tensor_view_t*)outputs[2];
@@ -59,12 +64,12 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		if (b->info.datatype == CCV_16F)
 			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
 		else if (b->info.datatype == CCV_32F)
-			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, outputs[0]->data.f32, n->data.f32, u->data.f32);
+			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
 	} else if (g->info.datatype == CCV_32F) {
 		if (b->info.datatype == CCV_16F)
 			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
 		else if (b->info.datatype == CCV_32F)
-			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, outputs[0]->data.f32, n->data.f32, u->data.f32);
+			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -78,7 +83,7 @@ static int _ccv_nnc_rmsprop_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_RMSPROP_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#ifdef HAVE_CUDNN
+#ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
@@ -89,7 +94,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RMSPROP_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_n
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_RMSPROP_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#ifdef HAVE_CUDNN
+#ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;

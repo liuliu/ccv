@@ -37,7 +37,7 @@ static void _ccv_nnc_sgd_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const c
 }
 
 REGISTER_COMMAND(CCV_NNC_SGD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_sgd_cpu_ref.c, gpu/ccv_nnc_sgd_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_sgd_cpu_ref.c, gpu/ccv_nnc_sgd_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_sgd_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_sgd_tensor_auto_forw;
@@ -45,7 +45,7 @@ REGISTER_COMMAND(CCV_NNC_SGD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_SGD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_sgd_cpu_ref.c, gpu/ccv_nnc_sgd_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_sgd_cpu_ref.c, gpu/ccv_nnc_sgd_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_sgd_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_sgd_tensor_auto_back;

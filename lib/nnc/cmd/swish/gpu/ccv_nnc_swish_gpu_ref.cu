@@ -8,7 +8,7 @@ extern "C" {
 #include <nnc/gpu/ccv_nnc_compat.h>
 
 template<typename NUM>
-__global__ void _ccv_nnc_swish_forw_kernel(const int count, const __half* const a, NUM* const b)
+__global__ void _ccv_nnc_swish_forw_kernel(const size_t count, const __half* const a, NUM* const b)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		b[i] = (NUM)(a[i] / ((__half)1. + hexp(-a[i])));
@@ -16,7 +16,7 @@ __global__ void _ccv_nnc_swish_forw_kernel(const int count, const __half* const 
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_swish_forw_kernel(const int count, const float* const a, NUM* const b)
+__global__ void _ccv_nnc_swish_forw_kernel(const size_t count, const float* const a, NUM* const b)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		b[i] = (NUM)(a[i] / (1. + exp(-a[i])));
@@ -31,7 +31,7 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const b = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	const int count = ccv_nnc_tensor_count(a->info);
+	const size_t count = ccv_nnc_tensor_count(a->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 	{
@@ -52,7 +52,7 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_swish_back_kernel(const int count, const __half* const a, const NUM* const g, __half* const h)
+__global__ void _ccv_nnc_swish_back_kernel(const size_t count, const __half* const a, const NUM* const g, __half* const h)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		const __half x = a[i];
@@ -63,7 +63,7 @@ __global__ void _ccv_nnc_swish_back_kernel(const int count, const __half* const 
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_swish_back_kernel(const int count, const float* const a, const NUM* const g, float* const h)
+__global__ void _ccv_nnc_swish_back_kernel(const size_t count, const float* const a, const NUM* const g, float* const h)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		const float x = a[i];
@@ -83,7 +83,7 @@ static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const h = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(h));
-	const int count = ccv_nnc_tensor_count(g->info);
+	const size_t count = ccv_nnc_tensor_count(g->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
 	{

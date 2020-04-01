@@ -289,7 +289,7 @@ static ccv_cnnp_model_t* _mconv_block_layer_new(const int num_repeats, const int
 ccv_cnnp_model_t* _efficientnet_b0(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	const float dropout = 0.2;
+	const float dropout = 0.05;
 	ccv_cnnp_model_t* const init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.no_bias = 1,
@@ -373,7 +373,7 @@ float _resnet_learn_rate(const int epoch, const int t, const int epoch_end)
 	float learn_rate = 0.0001;
 	if (epoch < warmup_epoch)
 	{
-		learn_rate = ccv_max(0.0001, t / (epoch_end * 5));
+		learn_rate = ccv_max(0.0001, (float)t / (epoch_end * warmup_epoch));
 	} else if (epoch < 40) {
 		learn_rate = 1 - (1 - 0.5) * (epoch - 5) / 35;
 	} else if (epoch < 60) {
@@ -384,7 +384,7 @@ float _resnet_learn_rate(const int epoch, const int t, const int epoch_end)
 		learn_rate = 0.025 - (0.025 - 0.00025) * (epoch - 100) / 20;
 	}
 	learn_rate = ccv_max(learn_rate, 0.00004);
-	return 0.4 * learn_rate;
+	return 0.2 * learn_rate;
 }
 
 ccv_nnc_cmd_t _resnet_optimizer(const float learn_rate, const int batch_size, const float wd)
@@ -399,7 +399,7 @@ float _efficientnet_learn_rate(const int epoch, const int t, const int epoch_end
 	if (epoch < warmup_epoch)
 		return ccv_max(0.00001, scaled_lr * t / (epoch_end * 5));
 	else
-		return scaled_lr * powf(0.97, (t - warmup_epoch * epoch_end) / (epoch_end * 2.4));
+		return scaled_lr * powf(0.97, (t - warmup_epoch * epoch_end) / (epoch_end * 0.8));
 }
 
 ccv_nnc_cmd_t _efficientnet_optimizer(const float learn_rate, const int batch_size, const float wd)
@@ -408,8 +408,8 @@ ccv_nnc_cmd_t _efficientnet_optimizer(const float learn_rate, const int batch_si
 }
 
 #define CCV_TRAIN_DT CCV_32F
-#define _net_learn_rate _efficientnet_learn_rate
-#define _net_optimizer _efficientnet_optimizer
+#define _net_learn_rate _resnet_learn_rate
+#define _net_optimizer _resnet_optimizer
 #define _net_model _efficientnet_b0
 
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
@@ -530,10 +530,10 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	int epoch = 0;
+	int epoch = 90;
 	double overall_accuracy = 0;
 	// Start 100 epoch of training.
-	for (t = epoch * epoch_end; epoch < 350; t++)
+	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
 		const float learn_rate = _net_learn_rate(epoch, t, epoch_end);
 		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, wd), 0, 0);
