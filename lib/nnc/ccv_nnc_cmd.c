@@ -371,14 +371,11 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 		return cmd;
 	_ccv_nnc_cmd_set_device_id(inputs, input_size, outputs, output_size, stream_context);
 	// Allocate inputs / outputs and fill them in.
-	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size * 2));
+	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)cccalloc((input_size + output_size) * 2, sizeof(ccv_nnc_tensor_t*));
 	ccv_nnc_tensor_t** const copy_outputs = copy_inputs + input_size;
-	ccv_nnc_tensor_t** const allocated_outputs = copy_outputs + output_size;
-	for (i = 0; i < input_size; i++)
-		copy_inputs[i] = (inputs[i]) ? ccv_nnc_tensor_new(0, inputs[i]->info, 0) : 0;
+	ccv_nnc_tensor_t** const allocated_inputs = copy_outputs + output_size;
+	ccv_nnc_tensor_t** const allocated_outputs = allocated_inputs + input_size;
 	for (i = 0; i < output_size; i++)
-	{
-		allocated_outputs[i] = copy_outputs[i] = 0;
 		if (outputs[i])
 		{
 			for (j = 0; j < input_size; j++)
@@ -386,10 +383,14 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 				{
 					if (outputs[i] == inputs[j])
 					{
+						if (!copy_inputs[j])
+							allocated_inputs[j] = copy_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
 						copy_outputs[i] = copy_inputs[j];
 						break;
 					} else if (outputs[i]->data.u8 == inputs[j]->data.u8 &&
 						ccv_nnc_tensor_count(outputs[i]->info) == ccv_nnc_tensor_count(inputs[j]->info)) {
+						if (!copy_inputs[j])
+							allocated_inputs[j] = copy_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
 						allocated_outputs[i] = copy_outputs[i] = ccv_nnc_tensor_new(copy_inputs[j]->data.u8, outputs[i]->info, 0);
 						break;
 					}
@@ -397,7 +398,9 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			if (!copy_outputs[i])
 				allocated_outputs[i] = copy_outputs[i] = ccv_nnc_tensor_new(0, outputs[i]->info, 0);
 		}
-	}
+	for (i = 0; i < input_size; i++)
+		if (inputs[i] && !copy_inputs[i])
+			copy_inputs[i] = inputs[i];
 	if (flag == 1)
 	{
 		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
@@ -423,8 +426,8 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			}
 		}
 		for (i = 0; i < input_size; i++)
-			if (copy_inputs[i])
-				ccv_nnc_tensor_free(copy_inputs[i]);
+			if (allocated_inputs[i])
+				ccv_nnc_tensor_free(allocated_inputs[i]);
 		for (i = 0; i < output_size; i++)
 			if (allocated_outputs[i])
 				ccv_nnc_tensor_free(allocated_outputs[i]);
@@ -490,8 +493,8 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 		}
 	}
 	for (i = 0; i < input_size; i++)
-		if (copy_inputs[i])
-			ccv_nnc_tensor_free(copy_inputs[i]);
+		if (allocated_inputs[i])
+			ccv_nnc_tensor_free(allocated_inputs[i]);
 	for (i = 0; i < output_size; i++)
 		if (allocated_outputs[i])
 			ccv_nnc_tensor_free(allocated_outputs[i]);

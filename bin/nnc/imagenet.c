@@ -289,7 +289,7 @@ static ccv_cnnp_model_t* _mconv_block_layer_new(const int num_repeats, const int
 ccv_cnnp_model_t* _efficientnet_b0(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	const float dropout = 0.05;
+	const float dropout = 0.1;
 	ccv_cnnp_model_t* const init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.no_bias = 1,
@@ -687,7 +687,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imagenet(64, train_data, test_data, test_set);
+	train_imagenet(96, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;
