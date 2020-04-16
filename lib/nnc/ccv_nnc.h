@@ -133,6 +133,10 @@ typedef struct {
 			float p; /**< [dropout.p] Dropout probability. */
 			int entirety; /**< [dropout.entirety] Drop the whole layer with the given probability. */
 		} dropout;
+		struct {
+			float width_scale; /**< [upsample.width_scale] scale for width parameter. It is between 1 and 2 at the moment. */
+			float height_scale; /**< [upsample.height_scale] scale for height parameter. It is between 1 and 2 at the moment. */
+		} upsample;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;

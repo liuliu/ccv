@@ -4,7 +4,7 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet imdb wmt iwslt
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 

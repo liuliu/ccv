@@ -915,6 +915,23 @@ inline static int ccv_rect_is_zero(ccv_rect_t rect)
 }
 
 typedef struct {
+	float x;
+	float y;
+	float width;
+	float height;
+} ccv_decimal_rect_t;
+
+inline static ccv_decimal_rect_t ccv_decimal_rect(float x, float y, float width, float height)
+{
+	ccv_decimal_rect_t rect;
+	rect.x = x;
+	rect.y = y;
+	rect.width = width;
+	rect.height = height;
+	return rect;
+}
+
+typedef struct {
 	int type;
 	uint64_t sig;
 	int refcount;
@@ -1524,7 +1541,7 @@ CCV_WARN_UNUSED(ccv_array_t*) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_sw
 typedef struct {
 	char* filename;
 	union {
-		ccv_rect_t box;
+		ccv_decimal_rect_t bbox;
 		ccv_decimal_pose_t pose;
 	};
 } ccv_file_info_t;
