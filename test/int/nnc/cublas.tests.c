@@ -2871,4 +2871,12 @@ TEST_CASE("adam in mixed precision")
 	ccv_nnc_tensor_free(gut);
 }
 
+TEST_CASE("upsample NCHW in float")
+{
+}
+
+TEST_CASE("upsample NHWC in float")
+{
+}
+
 #include "case_main.h"
