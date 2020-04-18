@@ -81,7 +81,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	assert(a->info.datatype == b->info.datatype);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(b->info);
 		const float rheight = (float)adim[2] / bdim[2];
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
@@ -98,7 +98,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		const float rwidth = (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		const size_t tensor_count = ccv_nnc_tensor_count(a->info) / adim[3];
+		const size_t tensor_count = ccv_nnc_tensor_count(b->info) / adim[3];
 		if (a->info.datatype == CCV_16F)
 		{
 			_ccv_nnc_upsample_linear_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], (__half*)a->data.f16, bdim[1], binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], (__half*)b->data.f16);
