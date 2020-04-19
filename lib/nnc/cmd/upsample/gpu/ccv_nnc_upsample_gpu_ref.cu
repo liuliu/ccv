@@ -10,15 +10,13 @@ extern "C" {
 #ifdef HAVE_CUDA
 
 template<typename NUM>
-__global__ void _ccv_nnc_upsample_bilinear_forw_nchw(const size_t tensor_count, const float rwidth, const float rheight, const int adim2, const int ainc2, const int adim3, const int ainc3, const NUM* const a, const int bdim2, const int binc2, const int bdim3, const int binc3, NUM* const b)
+__global__ void _ccv_nnc_upsample_bilinear_forw_nchw(const int hw, const float rwidth, const float rheight, const int nc, const int adim2, const int ainc2, const int adim3, const int ainc3, const NUM* const a, const int binc2, const int bdim3, const int binc3, NUM* const b)
 {
-	CUDA_1D_KERNEL_LOOP(i, tensor_count) {
+	CUDA_1D_KERNEL_LOOP(i, hw) {
 		const int xd = i % bdim3;
-		const int idxyd = i / bdim3;
-		const int yd = idxyd % bdim2;
-		const int idx = idxyd / bdim2;
-		const NUM* const ap = a + idx * ainc2;
-		NUM* const bp = b + idx * binc2;
+		const int yd = i / bdim3;
+		const NUM* ap = a;
+		NUM* bp = b;
 		const float xs = (xd + 0.5) * rwidth - 0.5;
 		const int xsi0 = (int)xs;
 		const int xsi1 = ccv_min(xsi0 + 1, adim3 - 1);
@@ -29,20 +27,23 @@ __global__ void _ccv_nnc_upsample_bilinear_forw_nchw(const size_t tensor_count, 
 		const int ysi1 = ccv_min(ysi0 + 1, adim2 - 1);
 		const float ysc1 = ys - ysi0;
 		const float ysc0 = 1.0 - ysc1;
-		bp[xd + yd * binc3] = (NUM)((float)ap[xsi0 + ysi0 * ainc3] * xsc0 * ysc0 + (float)ap[xsi1 + ysi0 * ainc3] * xsc1 * ysc0 + (float)ap[xsi0 + ysi1 * ainc3] * xsc0 * ysc1 + (float)ap[xsi1 + ysi1 * ainc3] * xsc1 * ysc1);
+		for (int j = 0; j < nc; j++)
+		{
+			bp[xd + yd * binc3] = (NUM)((float)ap[xsi0 + ysi0 * ainc3] * xsc0 * ysc0 + (float)ap[xsi1 + ysi0 * ainc3] * xsc1 * ysc0 + (float)ap[xsi0 + ysi1 * ainc3] * xsc0 * ysc1 + (float)ap[xsi1 + ysi1 * ainc3] * xsc1 * ysc1);
+			ap += ainc2;
+			bp += binc2;
+		}
 	}
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_upsample_bilinear_forw_nhwc(const size_t tensor_count, const float rwidth, const float rheight, const int ch, const int adim1, const int ainc1, const int adim2, const int ainc2, const int ainc3, const NUM* const a, const int bdim1, const int binc1, const int bdim2, const int binc2, const int binc3, NUM* const b)
+__global__ void _ccv_nnc_upsample_bilinear_forw_nhwc(const int hw, const float rwidth, const float rheight, const int n, const int c, const int adim1, const int ainc1, const int adim2, const int ainc2, const int ainc3, const NUM* const a, const int binc1, const int bdim2, const int binc2, const int binc3, NUM* const b)
 {
-	CUDA_1D_KERNEL_LOOP(i, tensor_count) {
+	CUDA_1D_KERNEL_LOOP(i, hw) {
 		const int xd = i % bdim2;
-		const int idxyd = i / bdim2;
-		const int yd = idxyd % bdim1;
-		const int idx = idxyd / bdim1;
-		const NUM* const ap = a + idx * ainc1;
-		NUM* const bp = b + idx * binc1;
+		const int yd = i / bdim2;
+		const NUM* ap = a;
+		NUM* bp = b;
 		const float xs = (xd + 0.5) * rwidth - 0.5;
 		const int xsi0 = (int)xs;
 		const int xsi1 = ccv_min(xsi0 + 1, adim2 - 1);
@@ -53,8 +54,13 @@ __global__ void _ccv_nnc_upsample_bilinear_forw_nhwc(const size_t tensor_count, 
 		const int ysi1 = ccv_min(ysi0 + 1, adim1 - 1);
 		const float ysc1 = ys - ysi0;
 		const float ysc0 = 1.0 - ysc1;
-		for (int c = 0; c < ch; c++)
-			bp[c + xd * binc3 + yd * binc2] = (NUM)((float)ap[c + xsi0 * ainc3 + ysi0 * ainc2] * xsc0 * ysc0 + (float)ap[c + xsi1 * ainc3 + ysi0 * ainc2] * xsc1 * ysc0 + (float)ap[c + xsi0 * ainc3 + ysi1 * ainc2] * xsc0 * ysc1 + (float)ap[c + xsi1 * ainc3 + ysi1 * ainc2] * xsc1 * ysc1);
+		for (int j = 0; j < n; j++)
+		{
+			for (int k = 0; k < c; k++)
+				bp[k + xd * binc3 + yd * binc2] = (NUM)((float)ap[k + xsi0 * ainc3 + ysi0 * ainc2] * xsc0 * ysc0 + (float)ap[k + xsi1 * ainc3 + ysi0 * ainc2] * xsc1 * ysc0 + (float)ap[k + xsi0 * ainc3 + ysi1 * ainc2] * xsc0 * ysc1 + (float)ap[k + xsi1 * ainc3 + ysi1 * ainc2] * xsc1 * ysc1);
+			ap += ainc1;
+			bp += binc1;
+		}
 	}
 }
 
@@ -150,20 +156,22 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	assert(a->info.datatype == CCV_32F);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const size_t tensor_count = ccv_nnc_tensor_count(b->info);
+		assert(adim[0] == bdim[0]);
+		assert(adim[1] == bdim[1]);
+		const int hw = bdim[2] * bdim[3];
 		const float rheight = (float)adim[2] / bdim[2];
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, bdim[2], binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
 		const float rwidth = (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		const size_t tensor_count = ccv_nnc_tensor_count(b->info) / adim[3];
-		_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, bdim[1], binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
+		const int hw = bdim[1] * bdim[2];
+		_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
