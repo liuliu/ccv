@@ -67,7 +67,29 @@ static ccv_cnnp_model_t* _resnet_block_layer_new(const int filters, const int ex
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
 
-ccv_cnnp_model_t* _imagenet_resnet50_v1d(void)
+static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_size, ccv_cnnp_model_io_t* const p)
+{
+	int i;
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+		.hint = HINT((1, 1), (0, 0)),
+	}, 0), MODEL_IO_LIST(c[c_size - 1]));
+	p[c_size - 1] = output;
+	for (i = c_size - 2; i >= 0; i--)
+	{
+		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+			.hint = HINT((1, 1), (0, 0)),
+		}, 0), MODEL_IO_LIST(c[i]));
+		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
+		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(lateral, up));
+		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((1, 1), (1, 1)),
+		}, 0), MODEL_IO_LIST(sum));
+		p[i] = output;
+	}
+}
+
+ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
@@ -95,18 +117,97 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d(void)
 	), 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
+	const ccv_cnnp_model_io_t c2 = output;
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
+	const ccv_cnnp_model_io_t c3 = output;
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(256, 4, 2, 6), MODEL_IO_LIST(output));
+	const ccv_cnnp_model_io_t c4 = output;
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
+	const ccv_cnnp_model_io_t c5 = output;
+	const ccv_cnnp_model_io_t c[] = { c2, c3, c4, c5 };
+	ccv_cnnp_model_io_t p[5];
+	_fpn(256, c, 4, p);
+	p[4] = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(2, 2), (ccv_cnnp_param_t){
+		.hint = HINT((2, 2), (0, 0)),
+	}, 0), MODEL_IO_LIST(p[3]));
+	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 2 (x, y, w, h, object, non-object), total 18.
+	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 18, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+		.hint = HINT((1, 1), (0, 0)),
+	}, "rpn");
+	ccv_cnnp_model_io_t proposals[5];
+	int i;
+	for (i = 0; i < 5; i++)
+		proposals[i] = ccv_cnnp_model_apply(rpn_proposals, MODEL_IO_LIST(p[i]));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
+}
+
+static void _adjust_bbox(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	parallel_for(i, batch_size) {
+		ccv_dense_matrix_t* const input_image = column_data[0][i];
+		ccv_dense_matrix_t* const jitter_image = column_data[1][i];
+		const float width_scale = (float)jitter_image->cols / input_image->cols;
+		const float height_scale = (float)jitter_image->rows / input_image->rows;
+		const ccv_categorized_t* const info = column_data[2][i];
+		if (!data[i])
+			data[i] = cccalloc(1, sizeof(ccv_decimal_rect_t));
+		ccv_decimal_rect_t* const bbox = (ccv_decimal_rect_t*)data[i];
+		bbox->x = info->file.bbox.x * width_scale;
+		bbox->y = info->file.bbox.y * height_scale;
+		bbox->width = info->file.bbox.width * width_scale;
+		bbox->height = info->file.bbox.height * height_scale;
+	} parallel_endfor
+}
+
+static void _bbox_deinit(void* const data, void* const context)
+{
+	ccfree(data);
 }
 
 static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const val_data)
 {
+	ccv_cnnp_model_t* rpn = _imagenet_resnet50_v1d_fpn();
+	ccv_cnnp_model_set_workspace_size(rpn, 1llu * 1024 * 1024 * 1024);
+	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
+	ccv_cnnp_random_jitter_t random_jitter = {
+		.brightness = 0.4,
+		.contrast = 0.4,
+		.saturation = 0.4,
+		.lighting = 0.1,
+		.symmetric = 0, // If it is flipped, I cannot distinguish.
+		.resize = {
+			.min = 600,
+			.max = 800,
+		},
+		.normalize = {
+			.mean = {
+				123.68, 116.779, 103.939
+			},
+			.std = {
+				58.393, 57.12, 57.375
+			},
+		},
+		.aspect_ratio = 0.5,
+		.size = {}, // 0 means no cropping at this point.
+	};
+	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
+	const int adjusted_bbox_idx = ccv_cnnp_dataframe_map(train_data, _adjust_bbox, 0, _bbox_deinit, COLUMN_ID_LIST(read_image_idx, image_jitter_idx, 0), 0, 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(image_jitter_idx, adjusted_bbox_idx));
+	void* data[2];
+	ccv_cnnp_dataframe_iter_next(iter, data, 2, 0);
+	ccv_dense_matrix_t* const input = (ccv_dense_matrix_t*)data[0];
+	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NCHW(000, 32F, 4, 3, input->rows, input->cols);
+	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	FILE* w = fopen("rpn.dot", "w+");
+	ccv_cnnp_model_dot(rpn, CCV_NNC_LONG_DOT_GRAPH, &w,1);
+	fclose(w);
+	ccv_nnc_tensor_param_t output_params[5];
+	ccv_cnnp_model_tensor_auto(rpn, output_params, 5);
+	printf("input %d %d\n", input->rows, input->cols);
+	int i;
+	for (i = 0; i < 5; i++)
+		printf("output %d, %d %d\n", i, output_params[i].dim[2], output_params[i].dim[3]);
+	ccv_cnnp_dataframe_iter_free(iter);
 }
 
 static ccv_array_t* _array_from_disk_new(const char* const list, const char* const base_dir)

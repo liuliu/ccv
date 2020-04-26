@@ -75,26 +75,58 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 	if (SQLITE_ROW != sqlite3_step(tensor_select_stmt))
 		return CCV_IO_ERROR;
 	ccv_nnc_tensor_t* tensor = *tensor_out;
+	int datatype = 0;
 	if (!tensor) // If the tensor is not provided, we need to create one.
 	{
 		ccv_nnc_tensor_param_t info;
 		info.type = sqlite3_column_int(tensor_select_stmt, 1);
 		info.format = sqlite3_column_int(tensor_select_stmt, 2);
-		info.datatype = sqlite3_column_int(tensor_select_stmt, 3);
+		datatype = info.datatype = sqlite3_column_int(tensor_select_stmt, 3);
 		const void* const dim = sqlite3_column_blob(tensor_select_stmt, 4);
 		memcpy(info.dim, dim, ccv_min(sizeof(info.dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
 		*tensor_out = tensor = ccv_nnc_tensor_new(0, info, 0);
-	}
+	} else
+		datatype = sqlite3_column_int(tensor_select_stmt, 3);
 	const void* const data = sqlite3_column_blob(tensor_select_stmt, 0);
-	size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+	if (datatype != tensor->info.datatype)
+	{
+		// Only ever works for 16F to 32F or 32F to 16F transparently.
+		assert((datatype == CCV_16F && tensor->info.datatype == CCV_32F) || (datatype == CCV_32F && tensor->info.datatype == CCV_16F));
+		const size_t tensor_count = ccv_nnc_tensor_count(tensor->info);
 #ifdef HAVE_CUDA
-	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
-		cumemcpy(tensor->data.u8, tensor->info.type, data, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
-	else
-		memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+		{
+			size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+			void* const workspace = ccmalloc(data_size);
+			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
+				ccv_half_precision_to_float((uint16_t*)data, (float*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+			else
+				ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+				cumemcpy(tensor->data.u8, tensor->info.type, workspace, CCV_TENSOR_CPU_MEMORY, data_size);
+		} else {
+			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
+				ccv_half_precision_to_float((uint16_t*)data, tensor->data.f32, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+			else
+				ccv_float_to_half_precision((float*)data, (uint16_t*)tensor->data.f16, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+		}
 #else
-	memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+		if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
+			ccv_half_precision_to_float((uint16_t*)data, tensor->data.f32, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+		else
+			ccv_float_to_half_precision((float*)data, (uint16_t*)tensor->data.f16, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
 #endif
+	} else {
+		size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+#ifdef HAVE_CUDA
+		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+			cumemcpy(tensor->data.u8, tensor->info.type, data, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+		else
+			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+#else
+		memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+#endif
+	}
 	tensor->type &= ~CCV_GARBAGE; // If it is marked as garbage, remove that mark now.
 	sqlite3_reset(tensor_select_stmt);
 	sqlite3_clear_bindings(tensor_select_stmt);

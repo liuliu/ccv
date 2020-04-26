@@ -388,9 +388,10 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	// Do topological sort.
 	ccv_array_t* const reverse_top = ccv_array_new(sizeof(ccv_cnnp_model_io_t), output_size, 0);
 	ccv_array_resize(reverse_top, output_size);
-	memcpy(ccv_array_get(reverse_top, 0), outputs, sizeof(ccv_cnnp_model_io_t) * output_size);
-	// Go from the output, until we meet inputs.
 	int i, j, k;
+	for (i = 0; i < output_size; i++) // We will assign sequence in reverse order, thus, reverse the reverse top when copying the outputs.
+		*(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, i) = outputs[output_size - 1 - i];
+	// Go from the output, until we meet inputs.
 	uint64_t input_bitmask[((input_size - 1) >> 6) + 1];
 	memset(input_bitmask, 0, sizeof(uint64_t) * (((input_size - 1) >> 6) + 1));
 	int tensor_output_size = 0; // io can be mapped to multiple tensor outputs, therefore, need to compute the exact tensor output size.

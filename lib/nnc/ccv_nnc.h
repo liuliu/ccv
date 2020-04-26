@@ -3283,6 +3283,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_masked_fill(const float eq, const fl
  * @return A index select model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const int datatype, const int vocab_size, const int embed_size, const char* const name);
+/**
+ * A upsample model.
+ * @param width_scale The scale of the width of the input.
+ * @param height_scale The scale of the height of the input.
+ * @param name The unique name of the model.
+ * @return A upsample model.
+ */
+ccv_cnnp_model_t* ccv_cnnp_upsample(const float width_scale, const float height_scale, const char* const name);
 
 /** @} */
 

@@ -1308,3 +1308,52 @@ static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* con
 	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
 	return ccv_cnnp_index_select(self->datatype, self->vocab_size, self->embed_size, self->super.name);
 }
+
+#pragma mark - Pool Layers
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float width_scale;
+	float height_scale;
+} ccv_cnnp_model_upsample_t;
+
+static void _ccv_cnnp_upsample_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_cnnp_model_upsample_t* const self = (ccv_cnnp_model_upsample_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_cmd_t cmd = CMD_UPSAMPLE_BILINEAR_FORWARD(self->width_scale, self->height_scale);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_hint_tensor_auto(cmd, &params, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(output), 0);
+	outputs[0] = output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_upsample_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_upsample_isa = {
+	.build = _ccv_cnnp_upsample_build,
+	.copy = _ccv_cnnp_upsample_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_upsample(const float width_scale, const float height_scale, const char* const name)
+{
+	ccv_cnnp_model_upsample_t* const model_upsample = (ccv_cnnp_model_upsample_t*)cccalloc(1, sizeof(ccv_cnnp_model_upsample_t));
+	model_upsample->super.isa = &ccv_cnnp_upsample_isa;
+	model_upsample->super.input_size = 1;
+	model_upsample->super.outputs = &model_upsample->output;
+	model_upsample->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_upsample->super, name);
+	model_upsample->width_scale = width_scale;
+	model_upsample->height_scale = height_scale;
+	return (ccv_cnnp_model_t*)model_upsample;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_upsample_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_upsample_t* const self = (const ccv_cnnp_model_upsample_t*)super;
+	return ccv_cnnp_upsample(self->width_scale, self->height_scale, self->super.name);
+}
