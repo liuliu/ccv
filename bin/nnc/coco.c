@@ -141,34 +141,29 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
 }
 
-static void _adjust_bbox(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+typedef struct {
+	int c;
+	ccv_decimal_rect_t rect;
+} ccv_nnc_bbox_t;
+
+typedef struct {
+	const char* filename;
+	ccv_array_t* bboxes;
+} ccv_nnc_annotation_t;
+
+static void _rpn_data_batching(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
-	parallel_for(i, batch_size) {
-		ccv_dense_matrix_t* const input_image = column_data[0][i];
-		ccv_dense_matrix_t* const jitter_image = column_data[1][i];
-		const float width_scale = (float)jitter_image->cols / input_image->cols;
-		const float height_scale = (float)jitter_image->rows / input_image->rows;
-		const ccv_categorized_t* const info = column_data[2][i];
-		if (!data[i])
-			data[i] = cccalloc(1, sizeof(ccv_decimal_rect_t));
-		ccv_decimal_rect_t* const bbox = (ccv_decimal_rect_t*)data[i];
-		bbox->x = info->file.bbox.x * width_scale;
-		bbox->y = info->file.bbox.y * height_scale;
-		bbox->width = info->file.bbox.width * width_scale;
-		bbox->height = info->file.bbox.height * height_scale;
-	} parallel_endfor
 }
 
-static void _bbox_deinit(void* const data, void* const context)
+static void _rpn_data_deinit(void* const self, void* const context)
 {
-	ccfree(data);
 }
 
 static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const val_data)
 {
 	ccv_cnnp_model_t* rpn = _imagenet_resnet50_v1d_fpn();
 	ccv_cnnp_model_set_workspace_size(rpn, 1llu * 1024 * 1024 * 1024);
-	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
+	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_nnc_annotation_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {
 		.brightness = 0.4,
 		.contrast = 0.4,
@@ -191,23 +186,14 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.size = {}, // 0 means no cropping at this point.
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
-	const int adjusted_bbox_idx = ccv_cnnp_dataframe_map(train_data, _adjust_bbox, 0, _bbox_deinit, COLUMN_ID_LIST(read_image_idx, image_jitter_idx, 0), 0, 0);
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(image_jitter_idx, adjusted_bbox_idx));
-	void* data[2];
-	ccv_cnnp_dataframe_iter_next(iter, data, 2, 0);
-	ccv_dense_matrix_t* const input = (ccv_dense_matrix_t*)data[0];
-	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NCHW(000, 32F, 4, 3, input->rows, input->cols);
+	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, image_jitter_idx));
+	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, rpn, 0);
+	ccv_cnnp_dataframe_free(batch_data);
+	/*
 	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
-	FILE* w = fopen("rpn.dot", "w+");
-	ccv_cnnp_model_dot(rpn, CCV_NNC_LONG_DOT_GRAPH, &w,1);
-	fclose(w);
 	ccv_nnc_tensor_param_t output_params[5];
 	ccv_cnnp_model_tensor_auto(rpn, output_params, 5);
-	printf("input %d %d\n", input->rows, input->cols);
-	int i;
-	for (i = 0; i < 5; i++)
-		printf("output %d, %d %d\n", i, output_params[i].dim[2], output_params[i].dim[3]);
-	ccv_cnnp_dataframe_iter_free(iter);
+	*/
 }
 
 static ccv_array_t* _array_from_disk_new(const char* const list, const char* const base_dir)
@@ -215,8 +201,9 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 	FILE *r = fopen(list, "r");
 	assert(r && "list doesn't exists");
 	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
-	ccv_array_t* categorizeds = ccv_array_new(sizeof(ccv_categorized_t), 64, 0);
+	ccv_array_t* categorizeds = ccv_array_new(sizeof(ccv_nnc_annotation_t), 64, 0);
 	int c;
+	ccv_nnc_annotation_t* last_annotation = 0;
 	char* file = (char*)malloc(1024);
 	float x, y, width, height;
 	while (fscanf(r, "%d %s %f %f %f %f", &c, file, &x, &y, &width, &height) != EOF)
@@ -228,13 +215,24 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 			filename[dirlen - 1] = '/';
 		}
 		strncpy(filename + dirlen, file, 1024 - dirlen);
-		ccv_file_info_t file_info = {
-			.filename = filename,
-			.bbox = ccv_decimal_rect(x, y, width, height),
+		// Coco's category class starts from 1, thus, minus 1 to get 0-index
+		ccv_nnc_bbox_t bbox = {
+			.c = c - 1,
+			.rect = ccv_decimal_rect(x, y, width, height),
 		};
-		// imageNet's category class starts from 1, thus, minus 1 to get 0-index
-		ccv_categorized_t categorized = ccv_categorized(c - 1, 0, &file_info);
-		ccv_array_push(categorizeds, &categorized);
+		if (!last_annotation->filename || memcmp(last_annotation->filename, filename, strnlen(filename, 1024)) != 0)
+		{
+			ccv_nnc_annotation_t annotation = {
+				.filename = filename,
+				.bboxes = ccv_array_new(sizeof(ccv_nnc_bbox_t), 1, 0),
+			};
+			ccv_array_push(annotation.bboxes, &bbox);
+			ccv_array_push(categorizeds, &annotation);
+			last_annotation = (ccv_nnc_annotation_t*)ccv_array_get(categorizeds, categorizeds->rnum - 1);
+		} else {
+			ccfree(filename);
+			ccv_array_push(last_annotation->bboxes, &bbox);
+		}
 	}
 	free(file);
 	fclose(r);

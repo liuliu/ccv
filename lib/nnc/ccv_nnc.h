@@ -2454,7 +2454,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const da
 /**
  * A reduce function that takes multiple rows of one column, and reduce to one row.
  */
-typedef void (*ccv_cnnp_column_data_reduce_f)(void** const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+typedef void (*ccv_cnnp_column_data_reduce_f)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
  * one specific column. This will also reduce the multi-column dataframe down to 1 column

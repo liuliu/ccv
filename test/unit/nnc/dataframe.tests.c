@@ -400,7 +400,7 @@ TEST_CASE("data is shuffled")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
-static void _ccv_iter_reduce_int(void** const input_data, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_iter_reduce_int(void* const* const input_data, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	int total = 0;

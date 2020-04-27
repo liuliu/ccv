@@ -634,7 +634,7 @@ typedef struct {
 	int group_count;
 } ccv_cnnp_batch_context_t;
 
-static void _ccv_cnnp_batching_new(void** const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_batching_new(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)context;
 	const int output_tuple_size = batch->tuple.size;
