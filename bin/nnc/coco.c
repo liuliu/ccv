@@ -151,8 +151,184 @@ typedef struct {
 	ccv_array_t* bboxes;
 } ccv_nnc_annotation_t;
 
+typedef struct {
+	int batch_count;
+	ccv_cnnp_model_t* rpn;
+} ccv_nnc_rpn_data_batching_t;
+
+typedef struct {
+	struct {
+		float iou;
+		float* val;
+		int x;
+		int y;
+		int anchor_width;
+		int anchor_height;
+	} gt;
+	ccv_decimal_rect_t rect;
+} ccv_nnc_rpn_rect_t;
+
+static void _rpn_gt(const int width, const int height, const int scale, const int offset_x, const int offset_y, const int anchor_width, const int anchor_height, ccv_nnc_rpn_rect_t* const rects, const int rect_size, float* const cp, const int cp_step)
+{
+	float* cp0 = cp;
+	int k, x, y;
+	for (y = 0; y < height; y++)
+	{
+		const int ry = y * scale - offset_y;
+		for (x = 0; x < width; x++)
+		{
+			const int rx = x * scale - offset_x;
+			float best_iou = 0;
+			int bbox_idx = -1;
+			for (k = 0; k < rect_size; k++)
+			{
+				const float iarea = ccv_max(0, ccv_min(rx + anchor_width, rects[k].rect.x + rects[k].rect.width) - ccv_max(rx, rects[k].rect.x)) * ccv_max(0, ccv_min(ry + anchor_height, rects[k].rect.y + rects[k].rect.height) - ccv_max(ry, rects[k].rect.y));
+				const float iou = iarea / (rects[k].rect.width * rects[k].rect.height + anchor_width * anchor_height - iarea);
+				if (iou > best_iou)
+				{
+					bbox_idx = k;
+					best_iou = iou;
+				}
+				if (iou > rects[k].gt.iou)
+				{
+					rects[k].gt.iou = iou;
+					rects[k].gt.val = cp0;
+					rects[k].gt.x = x * scale;
+					rects[k].gt.y = y * scale;
+					rects[k].gt.anchor_width = anchor_width;
+					rects[k].gt.anchor_height = anchor_height;
+				}
+			}
+			if (best_iou >= 0.7)
+			{
+				cp0[0] = 1;
+				cp0[1] = 0;
+				cp0[2] = (rects[bbox_idx].rect.x + rects[bbox_idx].rect.width * 0.5 - x * scale) / anchor_width;
+				cp0[3] = (rects[bbox_idx].rect.y + rects[bbox_idx].rect.height * 0.5 - y * scale) / anchor_height;
+				cp0[4] = log(rects[bbox_idx].rect.width / anchor_width);
+				cp0[5] = log(rects[bbox_idx].rect.height / anchor_height);
+			} else if (best_iou <= 0.3) {
+				cp0[0] = 0;
+				cp0[1] = 1;
+				cp0[2] = cp0[3] = cp0[4] = cp0[5] = 0;
+			} else {
+				cp0[0] = cp0[1] = cp0[2] = cp0[3] = cp0[4] = cp0[5] = 0;
+			}
+			cp0 += cp_step;
+		}
+	}
+}
+
+static void _rpn_rect_missing_gt(ccv_nnc_rpn_rect_t* const rects, const int rect_size)
+{
+	int i;
+	for (i = 0; i < rect_size; i++)
+		if (rects[i].gt.val && rects[i].gt.val[0] != 1) // The best matching one hasn't assigned yet.
+		{
+			float* const cp = rects[i].gt.val;
+			cp[0] = 1;
+			cp[1] = 0;
+			cp[2] = (rects[i].rect.x + rects[i].rect.width * 0.5 - rects[i].gt.x) / rects[i].gt.anchor_width;
+			cp[3] = (rects[i].rect.y + rects[i].rect.height * 0.5 - rects[i].gt.y) / rects[i].gt.anchor_height;
+			cp[4] = log(rects[i].rect.width / rects[i].gt.anchor_width);
+			cp[5] = log(rects[i].rect.height / rects[i].gt.anchor_height);
+		}
+}
+
+// Batching to NCHW format.
 static void _rpn_data_batching(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
+	int i;
+	int max_rows = 0;
+	int max_cols = 0;
+	int max_bbox_size = 0;
+	for (i = 0; i < input_size; i++)
+	{
+		void* const* const tuple = input_data[i];
+		ccv_dense_matrix_t* const jitter_image = tuple[2];
+		max_rows = ccv_max(max_rows, jitter_image->rows);
+		max_cols = ccv_max(max_cols, jitter_image->cols);
+		ccv_nnc_annotation_t* const annotation = tuple[0];
+		ccv_array_t* const bboxes = annotation->bboxes;
+		max_bbox_size = ccv_max(max_bbox_size, bboxes->rnum);
+	}
+	ccv_nnc_rpn_data_batching_t* const rpn_data = (ccv_nnc_rpn_data_batching_t*)context;
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 4, 3, max_rows, max_cols), 0);
+	ccv_cnnp_model_compile(rpn_data->rpn, TENSOR_PARAM_LIST(input->info), CMD_NOOP(), CMD_NOOP());
+	static const int fpn_size = 5;
+	ccv_nnc_tensor_param_t gt_params[fpn_size];
+	ccv_cnnp_model_tensor_auto(rpn_data->rpn, gt_params, fpn_size);
+	int total_proposals = 0;
+	for (i = 0; i < fpn_size; i++)
+		total_proposals += gt_params[i].dim[2] * gt_params[i].dim[3];
+	// 3 means: 1:1, 1:2, 2:1 aspect ratios.
+	ccv_nnc_tensor_t* const gt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3 * 6), 0);
+	int j, x, y;
+	ccv_nnc_rpn_rect_t* const rects = (ccv_nnc_rpn_rect_t*)ccmalloc(sizeof(ccv_nnc_rpn_rect_t) * max_bbox_size);
+	for (i = 0; i < rpn_data->batch_count; i++)
+	{
+		void* const* const tuple = input_data[i % input_size];
+		ccv_dense_matrix_t* const image = tuple[1];
+		ccv_dense_matrix_t* const jitter_image = tuple[2];
+		assert(jitter_image->cols <= max_cols);
+		assert(jitter_image->rows <= max_rows);
+		const int pad_x = (max_cols - jitter_image->cols + 1) / 2;
+		const int pad_y = (max_rows - jitter_image->rows + 1) / 2;
+		const int plane_size = max_cols * max_rows;
+		float* bp = input->data.f32 + i * plane_size * 3;
+		memset(bp, 0, sizeof(float) * plane_size * 3);
+		bp += max_cols * pad_y + pad_x;
+		const float* ap = jitter_image->data.f32;
+		for (y = 0; y < jitter_image->rows; y++)
+		{
+			for (x = 0; x < jitter_image->cols; x++)
+			{
+				bp[x] = ap[x * 3];
+				bp[x + plane_size] = ap[x * 3 + 1];
+				bp[x + plane_size * 2] = ap[x * 3 + 2];
+			}
+			ap += jitter_image->cols * 3;
+			bp += max_cols;
+		}
+		ccv_nnc_annotation_t* const annotation = tuple[0];
+		ccv_array_t* const bboxes = annotation->bboxes;
+		const float width_scale = (float)jitter_image->cols / image->cols;
+		const float height_scale = (float)jitter_image->rows / image->rows;
+		// Generate ground truth.
+		float* cp = gt->data.f32 + i * 3 * 6 * total_proposals;
+		memset(rects, 0, sizeof(ccv_nnc_rpn_rect_t) * bboxes->rnum);
+		for (j = 0; j < bboxes->rnum; j++)
+		{
+			const ccv_nnc_bbox_t* const bbox = (ccv_nnc_bbox_t*)ccv_array_get(bboxes, j);
+			rects[j].rect = ccv_decimal_rect(bbox->rect.x * width_scale + pad_x, bbox->rect.y * height_scale + pad_y, bbox->rect.width * width_scale, bbox->rect.height * height_scale);
+		}
+		// Input scaled down twice to get to the first layer. Since we always padding beginning
+		// for convolution, we don't need to have extra shift for x-y axis. Simply scale up is
+		// sufficient.
+		// Because the size is 32x32, 64x64, 128x128, 256x256, 512x512, it is all even number.
+		// The anchor is in the middle, assuming 0 index, it is (15, 15), (31, 31) etc.
+		int scale = 4;
+		int box_size = 8;
+		for (j = 0; j < fpn_size; j++)
+		{
+			// 1:1
+			const int anchor_size = box_size * scale;
+			const int offset = (anchor_size - 1) / 2;
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset, offset, anchor_size, anchor_size, rects, bboxes->rnum, cp, 3 * 6);
+			// 1:2
+			const int anchor_size_1 = (float)(sqrt(box_size * scale * box_size * scale / 2.0) + 0.5);
+			const int anchor_size_2 = anchor_size_1 * 2;
+			const int offset_1 = (anchor_size_1 - 1) / 2;
+			const int offset_2 = anchor_size_1 - 1;
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_1, offset_2, anchor_size_1, anchor_size_2, rects, bboxes->rnum, cp + 6, 3 * 6);
+			// 2:1
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_2, offset_1, anchor_size_2, anchor_size_1, rects, bboxes->rnum, cp + 2 * 6, 3 * 6);
+			scale *= 2;
+			cp += gt_params[j].dim[2] * gt_params[j].dim[3] * 3 * 6;
+		}
+		_rpn_rect_missing_gt(rects, bboxes->rnum);
+	}
+	ccfree(rects);
 }
 
 static void _rpn_data_deinit(void* const self, void* const context)
@@ -186,8 +362,16 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.size = {}, // 0 means no cropping at this point.
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
-	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, image_jitter_idx));
-	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, rpn, 0);
+	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx));
+	ccv_nnc_rpn_data_batching_t rpn_data = {
+		.batch_count = 4,
+		.rpn = ccv_cnnp_model_copy(rpn)
+	};
+	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(0));
+	void* data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_data);
 	/*
 	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
@@ -220,7 +404,7 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 			.c = c - 1,
 			.rect = ccv_decimal_rect(x, y, width, height),
 		};
-		if (!last_annotation->filename || memcmp(last_annotation->filename, filename, strnlen(filename, 1024)) != 0)
+		if (!last_annotation || memcmp(last_annotation->filename, filename, strnlen(filename, 1024)) != 0)
 		{
 			ccv_nnc_annotation_t annotation = {
 				.filename = filename,
