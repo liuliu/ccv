@@ -68,14 +68,6 @@ fi
 
 # check for blas
 blas_ok=no
-# check for Generic BLAS library
-if test "$blas_ok" = no; then
-	AC_CHECK_LIB(blas, sgemm, [blas_ok=yes; BLAS_LIBS="-lblas"])
-fi
-# check for OpenBLAS library
-if test "$blas_ok" = no; then
-	AC_CHECK_LIB(openblas, cblas_sgemm, [blas_ok=yes; BLAS_LIBS="-lopenblas"])
-fi
 # check for ATLAS library
 if test "$blas_ok" = no; then
 	AC_CHECK_LIB(atlas, ATL_xerbla,
@@ -83,6 +75,14 @@ if test "$blas_ok" = no; then
 		[blas_ok=yes
 		BLAS_LIBS="-lcblas -latlas"],
 		[], [-latlas])])
+fi
+# check for Generic BLAS library
+if test "$blas_ok" = no; then
+	AC_CHECK_LIB(blas, sgemm, [blas_ok=yes; BLAS_LIBS="-lblas"])
+fi
+# check for OpenBLAS library
+if test "$blas_ok" = no; then
+	AC_CHECK_LIB(openblas, cblas_sgemm, [blas_ok=yes; BLAS_LIBS="-lopenblas"])
 fi
 if test "$blas_ok" = yes; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CBLAS "])
