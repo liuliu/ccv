@@ -76,7 +76,7 @@ REGISTER_COMMAND(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD)(ccv_nnc_cmd_regis
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_sigmoid_binary_crossentropy_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_sigmoid_binary_crossentropy_tensor_auto_back;
-	registry->allow_inplace = _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_forw;
+	registry->allow_inplace = _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_back;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD)
