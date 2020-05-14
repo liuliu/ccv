@@ -587,6 +587,41 @@ const static ccv_nnc_ops_fusion_t ccv_nnc_ops_fusions[] = {
 			},
 		},
 		.pos_size = 4,
+	},
+	{
+		.fused_op = CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD,
+		.ops_seq = {
+			CCV_NNC_SIGMOID_FORWARD, CCV_NNC_BINARY_CROSSENTROPY_FORWARD,
+		},
+		.ops_seq_size = 2,
+		.ops_info_select = 1,
+		.pos = {
+			{
+				.type = CCV_NNC_OPS_FUSION_INPUT_INDEX,
+				.op_idx = 0,
+				.from = 0,
+				.to = 0,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_INPUT_INDEX,
+				.op_idx = 1,
+				.from = 1,
+				.to = 1,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_OUTPUT_INDEX,
+				.op_idx = 0,
+				.from = 0,
+				.to = 1,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_OUTPUT_INDEX,
+				.op_idx = 1,
+				.from = 0,
+				.to = 0,
+			},
+		},
+		.pos_size = 4,
 	}
 };
 
