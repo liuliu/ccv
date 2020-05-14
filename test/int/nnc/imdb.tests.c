@@ -205,6 +205,34 @@ static ccv_cnnp_model_t* _dynamic_classifier_transformer(const ccv_nnc_tensor_pa
 	return _classifier_transformer_new(params->layers, k, params->h, b, t, ff, params->dropout);
 }
 
+static ccv_cnnp_model_t* _binary_classifier_transformer_new(const int layers, const int k, const int h, const int b, const int t, const int ff, const float dropout)
+{
+	ccv_cnnp_model_io_t const x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t const mask = ccv_cnnp_input();
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 1, 0), MODEL_IO_LIST(x));
+	int i;
+	for (i = 0; i < layers; i++)
+		out = ccv_cnnp_model_apply(_transformer_block_new(k, h, b, t, ff, dropout), MODEL_IO_LIST(out, mask));
+	out = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 1, 0), MODEL_IO_LIST(out)); // t, b, k -> b, t, k
+	out = ccv_cnnp_model_apply(ccv_cnnp_transpose(1, 2, 0), MODEL_IO_LIST(out)); // b, t, k -> b, k, t
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b, k, t, 1), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
+	// Last layer, get it to 1.
+	out = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(x, mask), MODEL_IO_LIST(out), "classifier");
+}
+
+static ccv_cnnp_model_t* _dynamic_binary_classifier_transformer(const ccv_nnc_tensor_param_t* const inputs, const int input_size, void* const context)
+{
+	const classifier_transformer_params_t* const params = (classifier_transformer_params_t*)context;
+	const int b = inputs[0].dim[0];
+	const int t = inputs[0].dim[1];
+	const int k = inputs[0].dim[2];
+	const int ff = params->ff * k;
+	return _binary_classifier_transformer_new(params->layers, k, params->h, b, t, ff, params->dropout);
+}
+
 static void _vocab_init(const char* const vocab_file, khash_t(vocab_map)** const vocab_ref, int* const vocab_size_ref)
 {
 	FILE* const vocab_ptr = fopen(vocab_file, "r");
@@ -506,7 +534,7 @@ static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int
 	return correct;
 }
 
-TEST_CASE("train a transformer classifier on imdb reviews to 80% with mix of dynamic graph and cnnp model")
+TEST_CASE("train a categorical transformer classifier on imdb reviews to 80% with mix of dynamic graph and cnnp model")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
 			ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
@@ -571,12 +599,12 @@ TEST_CASE("train a transformer classifier on imdb reviews to 80% with mix of dyn
 static int train_imdb_flex(const int epoch_limit, const int vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
 	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
+	const int one_hot_idx = ccv_cnnp_dataframe_copy_scalar(train_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
 	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx, mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
+	const int test_one_hot_idx = ccv_cnnp_dataframe_copy_scalar(test_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
 	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
 	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_one_hot_idx, test_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int gpu_batched[device_count * 3];
@@ -641,7 +669,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 		.ff = 4,
 		.dropout = 0.1,
 	};
-	ccv_cnnp_model_t* const transformer = ccv_cnnp_dynamic_new(_dynamic_classifier_transformer, &classifier_transformer_params, 0);
+	ccv_cnnp_model_t* const transformer = ccv_cnnp_dynamic_new(_dynamic_binary_classifier_transformer, &classifier_transformer_params, 0);
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);
@@ -663,8 +691,8 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 			saved_auxs[i* aux_size * 2 + aux_size + j] = ccv_nnc_tensor_variable_new(dynamic_graph, saved_aux_params);
 		}
 	}
-	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
-	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
+	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1), 0);
+	ccv_nnc_tensor_t* const fit_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1), 0);
 	ccv_nnc_tensor_t** tensor[device_count * 3];
 	int epoch = 0;
 	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
@@ -732,13 +760,13 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 			ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 2 + 1], &mask_tensor[j]);
 		}
 		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, transformer, 0, vec, device_count * 2, out, device_count, 0, stream);
-		ccv_nnc_tensor_variable_t softmax[device_count];
+		ccv_nnc_tensor_variable_t sigmoid[device_count];
 		ccv_nnc_tensor_variable_t fit[device_count];
 		ccv_nnc_tensor_variable_t vocab_vec_grad[device_count];
 		ccv_nnc_tensor_variable_t seq_vec_grad[device_count];
 		for (j = 0; j < device_count; j++)
 		{
-			softmax[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
+			sigmoid[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 			fit[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 			ccv_nnc_tensor_variable_set(dynamic_graph, fit[j], tensor[j + device_count * 2][0]);
 			vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
@@ -746,11 +774,11 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 		}
 		ccv_nnc_tensor_variable_t tvout[device_count * 2];
 		for (j = 0; j < device_count; j++)
-			tvin[j * 2] = out[j], tvin[j * 2 + 1] = fit[j], tvout[j * 2] = 0, tvout[j * 2 + 1] = softmax[j];
-		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
+			tvin[j * 2] = out[j], tvin[j * 2 + 1] = fit[j], tvout[j * 2] = 0, tvout[j * 2 + 1] = sigmoid[j];
+		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = seq_vec[j], tvout[j * 2] = vocab_vec_grad[j], tvout[j * 2 + 1] = seq_vec_grad[j];
-		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
+		ccv_nnc_dynamic_graph_backward(dynamic_graph, sigmoid, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec_grad[j], tvin[j * 2 + 1] = seq_vec_grad[j], tvout[j * 2] = vocab_vec[j], tvout[j * 2 + 1] = seq_vec[j];
 		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
@@ -764,7 +792,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 			ccv_nnc_tensor_variable_free(dynamic_graph, out[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, fit[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, pos_vec[j]);
-			ccv_nnc_tensor_variable_free(dynamic_graph, softmax[j]);
+			ccv_nnc_tensor_variable_free(dynamic_graph, sigmoid[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, vocab_vec_grad[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, seq_vec_grad[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, seq_indices_alias[j]);
@@ -850,8 +878,8 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor[d + device_count * 2][0]), TENSOR_LIST(fit_cpu), 0);
 			for (j = 0; j < ccv_min(row_count - k - d * batch_size, batch_size); j++)
 			{
-				const int truth = (fit_cpu->data.f32[j * 2] < fit_cpu->data.f32[j * 2 + 1]);
-				const int prediction = (out_cpu->data.f32[j * 2] < out_cpu->data.f32[j * 2 + 1]);
+				const int truth = (fit_cpu->data.f32[j] > 0.5);
+				const int prediction = (out_cpu->data.f32[j] > 0);
 				if (truth == prediction)
 					++correct;
 			}
@@ -881,7 +909,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 	return correct;
 }
 
-TEST_CASE("train a transformer classifier on imdb reviews to 80% with mix of dynamic graph and cnnp model and dynamic inputs")
+TEST_CASE("train a binary transformer classifier on imdb reviews to 80% with mix of dynamic graph and cnnp model and dynamic inputs")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
 			ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
