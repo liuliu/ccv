@@ -40,6 +40,33 @@ TEST_CASE("derive one-hot tensor from label")
 	ccv_array_free(array);
 }
 
+TEST_CASE("derive a scalar tensor from a struct")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_array_t* const array = ccv_array_new(sizeof(int), 8, 0);
+	ccv_array_resize(array, 8);
+	memcpy(ccv_array_get(array, 0), int_array, sizeof(int) * 8);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const int st = ccv_cnnp_dataframe_copy_scalar(dataframe, 0, 0, CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
+	assert(st > 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(st));
+	ccv_nnc_tensor_t* const scalar = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	void* data;
+	int i = 0;
+	while (0 == ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+	{
+		scalar->data.f32[0] = int_array[i];
+		REQUIRE_TENSOR_EQ(scalar, (ccv_nnc_tensor_t*)data, "The scalar tensor should be the same");
+		++i;
+	}
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+	ccv_nnc_tensor_free(scalar);
+	ccv_array_free(array);
+}
+
 TEST_CASE("batching tensors")
 {
 	int int_array[8] = {

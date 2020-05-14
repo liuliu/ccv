@@ -2671,6 +2671,18 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format);
 /**
+ * Generate a scalar tensor (a tensor with one value) off a value from a struct.
+ * @param dataframe The dataframe object that contains the value.
+ * @param column_idx The column which contains the value (as datatype).
+ * @param structof The offset to the label (as int) from that column. For example, the column
+ *        could be a struct and label could be one of the field. You can pass offsetof(S, filename)
+ * @param from_dt The datatype of the value.
+ * @param to_dt The datatype of the tensor.
+ * @param format The format of the tensor.
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format);
+/**
  * Generate vector with ones up to a given length, the rest will be zeros. When applied to batched lengths
  * array, this will generate a matrix of these vectors, squared. The derived column will be a tuple of vectors
  * for the given number of columns.
@@ -3043,7 +3055,6 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
  * @defgroup level_5_model_add_ons Model Add-ons
  * @{
  */
-
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */

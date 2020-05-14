@@ -433,6 +433,63 @@ int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
+typedef struct {
+	int from_dt;
+	int to_dt;
+	int format;
+	off_t structof;
+} ccv_cnnp_copy_scalar_context_t;
+
+static void _ccv_cnnp_copy_scalar(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_cnnp_copy_scalar_context_t* const copy_scalar = (ccv_cnnp_copy_scalar_context_t*)context;
+	ccv_nnc_tensor_param_t params = {
+		.datatype = copy_scalar->to_dt,
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = copy_scalar->format,
+		.dim = {1},
+	};
+	parallel_for(i, batch_size) {
+		const ccv_numeric_data_t value = {
+			.u8 = (unsigned char *)((const char*)column_data[0][i] + copy_scalar->structof),
+		};
+		if (!data[i])
+			data[i] = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];
+		if (copy_scalar->from_dt == CCV_32S)
+		{
+			if (tensor->info.datatype == CCV_32F)
+				tensor->data.f32[0] = value.i32[0];
+			else if (tensor->info.datatype == CCV_16F) {
+				float fval = value.i32[0];
+				ccv_float_to_half_precision(&fval, (uint16_t*)tensor->data.f16, 1);
+			}
+		} else if (copy_scalar->from_dt == CCV_32F) {
+			if (tensor->info.datatype == CCV_32F)
+				tensor->data.f32[0] = value.f32[0];
+			else if (tensor->info.datatype == CCV_16F)
+				ccv_float_to_half_precision(value.f32, (uint16_t*)tensor->data.f16, 1);
+		} else if (copy_scalar->from_dt == CCV_16F) {
+			if (tensor->info.datatype == CCV_32F)
+				ccv_half_precision_to_float((uint16_t*)value.f16, tensor->data.f32, 1);
+			else if (tensor->info.datatype == CCV_16F)
+				tensor->data.f16[0] = value.f16[0];
+		}
+	} parallel_endfor
+}
+
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format)
+{
+	assert(from_dt == CCV_32S || from_dt == CCV_32F || from_dt == CCV_16F);
+	assert(to_dt == CCV_32F || to_dt == CCV_16F);
+	ccv_cnnp_copy_scalar_context_t* const copy_scalar = (ccv_cnnp_copy_scalar_context_t*)ccmalloc(sizeof(ccv_cnnp_copy_scalar_context_t));
+	copy_scalar->from_dt = from_dt;
+	copy_scalar->to_dt = to_dt;
+	copy_scalar->format = format;
+	copy_scalar->structof = structof;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_scalar, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), copy_scalar, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
 #pragma mark - Matrix of Ones
 
 typedef struct {
