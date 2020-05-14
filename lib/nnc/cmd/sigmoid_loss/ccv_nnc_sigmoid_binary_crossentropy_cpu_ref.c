@@ -40,7 +40,7 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_forw(const ccv_nnc_cmd_t cmd, co
 		int cinc[CCV_NNC_MAX_DIM_ALLOC];
 		assert(ccv_nnc_tensor_count(c->info) == batch_size);
 		ccv_nnc_tensor_view_get_inc(c, cinc);
-		const int cstep = cinc[CCV_NNC_MAX_DIM + 1];
+		const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
 		parallel_for(i, batch_size) {
 			int j;
 			const float* const ap = a->data.f32 + i * astep;
@@ -96,7 +96,7 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_back(const ccv_nnc_cmd_t cmd, co
 		int ginc[CCV_NNC_MAX_DIM_ALLOC];
 		ccv_nnc_tensor_view_get_inc(g, ginc);
 		assert(ccv_nnc_tensor_count(g->info) == batch_size);
-		const int gstep = ginc[CCV_NNC_MAX_DIM + 1];
+		const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
 		parallel_for(i, batch_size) {
 			int j;
 			const float gp = g->data.f32[i * gstep];

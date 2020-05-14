@@ -44,14 +44,14 @@ static void _ccv_nnc_binary_crossentropy_tensor_auto_back(const ccv_nnc_cmd_para
 }
 
 REGISTER_COMMAND(CCV_NNC_BINARY_CROSSENTROPY_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_binary_crossentropy_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_binary_crossentropy_cpu_ref.c, gpu/ccv_nnc_binary_crossentropy_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_binary_crossentropy_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_binary_crossentropy_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_binary_crossentropy_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_binary_crossentropy_cpu_ref.c, gpu/ccv_nnc_binary_crossentropy_gpu_ref.cu)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_binary_crossentropy_back_bitmask;
