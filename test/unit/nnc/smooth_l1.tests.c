@@ -66,6 +66,8 @@ TEST_CASE("compare smooth L1")
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_symbolic_graph_free(graph);
+	ccv_nnc_tensor_free(da1_tensor);
+	ccv_nnc_tensor_free(loss1_tensor);
 }
 
 #include "case_main.h"
