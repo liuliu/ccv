@@ -153,6 +153,7 @@ typedef struct {
 
 typedef struct {
 	int batch_count;
+	int select_count;
 	ccv_cnnp_model_t* rpn;
 } ccv_nnc_rpn_data_batching_t;
 
@@ -202,17 +203,16 @@ static void _rpn_gt(const int width, const int height, const int scale, const in
 			if (best_iou >= 0.7)
 			{
 				cp0[0] = 1;
-				cp0[1] = 0;
-				cp0[2] = (rects[bbox_idx].rect.x + rects[bbox_idx].rect.width * 0.5 - x * scale) / anchor_width;
-				cp0[3] = (rects[bbox_idx].rect.y + rects[bbox_idx].rect.height * 0.5 - y * scale) / anchor_height;
-				cp0[4] = log(rects[bbox_idx].rect.width / anchor_width);
-				cp0[5] = log(rects[bbox_idx].rect.height / anchor_height);
+				cp0[1] = (rects[bbox_idx].rect.x + rects[bbox_idx].rect.width * 0.5 - x * scale) / anchor_width;
+				cp0[2] = (rects[bbox_idx].rect.y + rects[bbox_idx].rect.height * 0.5 - y * scale) / anchor_height;
+				cp0[3] = log(rects[bbox_idx].rect.width / anchor_width);
+				cp0[4] = log(rects[bbox_idx].rect.height / anchor_height);
 			} else if (best_iou <= 0.3) {
 				cp0[0] = 0;
-				cp0[1] = 1;
-				cp0[2] = cp0[3] = cp0[4] = cp0[5] = 0;
+				cp0[1] = cp0[2] = cp0[3] = cp0[4] = 0;
 			} else {
-				cp0[0] = cp0[1] = cp0[2] = cp0[3] = cp0[4] = cp0[5] = 0;
+				cp0[0] = -1; // Ignore.
+				cp0[1] = cp0[2] = cp0[3] = cp0[4] = 0;
 			}
 			cp0 += cp_step;
 		}
@@ -227,11 +227,10 @@ static void _rpn_rect_missing_gt(ccv_nnc_rpn_rect_t* const rects, const int rect
 		{
 			float* const cp = rects[i].gt.val;
 			cp[0] = 1;
-			cp[1] = 0;
-			cp[2] = (rects[i].rect.x + rects[i].rect.width * 0.5 - rects[i].gt.x) / rects[i].gt.anchor_width;
-			cp[3] = (rects[i].rect.y + rects[i].rect.height * 0.5 - rects[i].gt.y) / rects[i].gt.anchor_height;
-			cp[4] = log(rects[i].rect.width / rects[i].gt.anchor_width);
-			cp[5] = log(rects[i].rect.height / rects[i].gt.anchor_height);
+			cp[1] = (rects[i].rect.x + rects[i].rect.width * 0.5 - rects[i].gt.x) / rects[i].gt.anchor_width;
+			cp[2] = (rects[i].rect.y + rects[i].rect.height * 0.5 - rects[i].gt.y) / rects[i].gt.anchor_height;
+			cp[3] = log(rects[i].rect.width / rects[i].gt.anchor_width);
+			cp[4] = log(rects[i].rect.height / rects[i].gt.anchor_height);
 		}
 }
 
@@ -253,8 +252,8 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		max_bbox_size = ccv_max(max_bbox_size, bboxes->rnum);
 	}
 	ccv_nnc_rpn_data_batching_t* const rpn_data = (ccv_nnc_rpn_data_batching_t*)context;
-	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 4, 3, max_rows, max_cols), 0);
-	ccv_cnnp_model_compile(rpn_data->rpn, TENSOR_PARAM_LIST(input->info), CMD_NOOP(), CMD_NOOP());
+	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NCHW(32F, rpn_data->batch_count, 3, max_rows, max_cols);
+	ccv_cnnp_model_compile(rpn_data->rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	static const int fpn_size = 5;
 	ccv_nnc_tensor_param_t gt_params[fpn_size];
 	ccv_cnnp_model_tensor_auto(rpn_data->rpn, gt_params, fpn_size);
@@ -262,7 +261,22 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 	for (i = 0; i < fpn_size; i++)
 		total_proposals += gt_params[i].dim[2] * gt_params[i].dim[3];
 	// 3 means: 1:1, 1:2, 2:1 aspect ratios.
-	ccv_nnc_tensor_t* const gt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3 * 6), 0);
+	ccv_nnc_tensor_t* input;
+	ccv_nnc_tensor_t* gt;
+	ccv_nnc_tensor_t* select;
+	if (!output_data[0])
+	{
+		ccv_nnc_tensor_t** tensors = output_data[0] = ccmalloc(sizeof(ccv_nnc_tensor_t*) * 3);
+		input = tensors[0] = ccv_nnc_tensor_new(0, input_params, 0);
+		gt = tensors[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3, 5), 0);
+		select = tensors[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, rpn_data->batch_count, rpn_data->select_count), 0);
+	} else {
+		ccv_nnc_tensor_t** tensors = output_data[0];
+		input = tensors[0] = ccv_nnc_tensor_resize(tensors[0], input_params);
+		gt = tensors[1] = ccv_nnc_tensor_resize(tensors[1], CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3, 5));
+		select = tensors[2] = ccv_nnc_tensor_resize(tensors[2], CPU_TENSOR_NCHW(32S, rpn_data->batch_count, rpn_data->select_count));
+	}
+	printf("%p %p\n", gt, select);
 	int j, x, y;
 	ccv_nnc_rpn_rect_t* const rects = (ccv_nnc_rpn_rect_t*)ccmalloc(sizeof(ccv_nnc_rpn_rect_t) * max_bbox_size);
 	for (i = 0; i < rpn_data->batch_count; i++)
@@ -295,7 +309,7 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		const float width_scale = (float)jitter_image->cols / image->cols;
 		const float height_scale = (float)jitter_image->rows / image->rows;
 		// Generate ground truth.
-		float* cp = gt->data.f32 + i * 3 * 6 * total_proposals;
+		float* cp = gt->data.f32 + i * 3 * 5 * total_proposals;
 		memset(rects, 0, sizeof(ccv_nnc_rpn_rect_t) * bboxes->rnum);
 		for (j = 0; j < bboxes->rnum; j++)
 		{
@@ -314,25 +328,43 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 			// 1:1
 			const int anchor_size = box_size * scale;
 			const int offset = (anchor_size - 1) / 2;
-			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset, offset, anchor_size, anchor_size, rects, bboxes->rnum, cp, 3 * 6);
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset, offset, anchor_size, anchor_size, rects, bboxes->rnum, cp, 3 * 5);
 			// 1:2
 			const int anchor_size_1 = (float)(sqrt(box_size * scale * box_size * scale / 2.0) + 0.5);
 			const int anchor_size_2 = anchor_size_1 * 2;
 			const int offset_1 = (anchor_size_1 - 1) / 2;
 			const int offset_2 = anchor_size_1 - 1;
-			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_1, offset_2, anchor_size_1, anchor_size_2, rects, bboxes->rnum, cp + 6, 3 * 6);
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_1, offset_2, anchor_size_1, anchor_size_2, rects, bboxes->rnum, cp + 5, 3 * 5);
 			// 2:1
-			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_2, offset_1, anchor_size_2, anchor_size_1, rects, bboxes->rnum, cp + 2 * 6, 3 * 6);
+			_rpn_gt(gt_params[j].dim[3], gt_params[j].dim[2], scale, offset_2, offset_1, anchor_size_2, anchor_size_1, rects, bboxes->rnum, cp + 2 * 5, 3 * 5);
 			scale *= 2;
-			cp += gt_params[j].dim[2] * gt_params[j].dim[3] * 3 * 6;
+			cp += gt_params[j].dim[2] * gt_params[j].dim[3] * 3 * 5;
 		}
 		_rpn_rect_missing_gt(rects, bboxes->rnum);
+		cp = gt->data.f32 + i * 3 * 5 * total_proposals;
+		const int half_select_count = rpn_data->select_count / 2;
+		int k = 0;
+		int* const sp = select->data.i32 + i * rpn_data->select_count;
+		// First, select half of the positives.
+		for (j = 0; k < half_select_count && j < total_proposals * 3; j++)
+			if (cp[j * 5] == 1)
+				sp[k++] = j + i * total_proposals * 3;
+		// Fill the rest with negatives.
+		for (j = 0; k < rpn_data->select_count && j < total_proposals * 3; j++)
+			if (cp[j * 5] == 0)
+				sp[k++] = j + i * total_proposals * 3;
+		assert(k == rpn_data->select_count);
 	}
 	ccfree(rects);
 }
 
 static void _rpn_data_deinit(void* const self, void* const context)
 {
+	ccv_nnc_tensor_t** const data = (ccv_nnc_tensor_t**)self;
+	ccv_nnc_tensor_free(data[0]);
+	ccv_nnc_tensor_free(data[1]);
+	ccv_nnc_tensor_free(data[2]);
+	ccfree(data);
 }
 
 static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const val_data)
@@ -365,12 +397,13 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx));
 	ccv_nnc_rpn_data_batching_t rpn_data = {
 		.batch_count = 4,
+		.select_count = 256,
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(0));
-	void* data = 0;
-	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	ccv_nnc_tensor_t** data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void **)&data, 1, 0);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_data);
 	/*
