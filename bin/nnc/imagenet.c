@@ -20,10 +20,14 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 	ccv_cnnp_model_io_t shortcut = input;
 	if (projection_shortcut)
 	{
-		ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
-			.hint = HINT((strides, strides), (0, 0))
-		}, 0);
-		shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
+		shortcut = input;
+		if (strides > 1)
+		{
+			ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
+				.hint = HINT((strides, strides), (0, 0))
+			}, 0);
+			shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
+		}
 		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.no_bias = 1,
 			.hint = HINT((1, 1), (0, 0)),

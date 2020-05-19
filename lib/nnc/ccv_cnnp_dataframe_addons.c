@@ -286,6 +286,13 @@ static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const
 			resize_rows = (int)(resize_rows * aspect_ratio + 0.5);
 			resize_cols = (int)(resize_cols / aspect_ratio + 0.5);
 		}
+		if (random_jitter.resize.roundup > 0)
+		{
+			const int roundup = random_jitter.resize.roundup;
+			const int roundup_2 = roundup / 2;
+			resize_rows = (resize_rows + roundup_2) / roundup * roundup;
+			resize_cols = (resize_cols + roundup_2) / roundup * roundup;
+		}
 		const int need_crop = (random_jitter.size.cols > 0 && random_jitter.size.rows > 0 &&
 			((resize_cols != random_jitter.size.cols || resize_rows != random_jitter.size.rows) ||
 			 (random_jitter.offset.x != 0 || random_jitter.offset.y != 0)));

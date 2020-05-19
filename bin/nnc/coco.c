@@ -13,10 +13,14 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 	ccv_cnnp_model_io_t shortcut = input;
 	if (projection_shortcut)
 	{
-		ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
-			.hint = HINT((strides, strides), (0, 0))
-		}, 0);
-		shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
+		shortcut = input;
+		if (strides > 1)
+		{
+			ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
+				.hint = HINT((strides, strides), (0, 0))
+			}, 0);
+			shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
+		}
 		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.no_bias = 1,
 			.hint = HINT((1, 1), (0, 0)),
@@ -276,7 +280,6 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		gt = tensors[1] = ccv_nnc_tensor_resize(tensors[1], CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3, 5));
 		select = tensors[2] = ccv_nnc_tensor_resize(tensors[2], CPU_TENSOR_NCHW(32S, rpn_data->batch_count, rpn_data->select_count));
 	}
-	printf("%p %p\n", gt, select);
 	int j, x, y;
 	ccv_nnc_rpn_rect_t* const rects = (ccv_nnc_rpn_rect_t*)ccmalloc(sizeof(ccv_nnc_rpn_rect_t) * max_bbox_size);
 	for (i = 0; i < rpn_data->batch_count; i++)
@@ -381,6 +384,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.resize = {
 			.min = 600,
 			.max = 800,
+			.roundup = 64,
 		},
 		.normalize = {
 			.mean = {
@@ -396,21 +400,34 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
 	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx));
 	ccv_nnc_rpn_data_batching_t rpn_data = {
-		.batch_count = 4,
+		.batch_count = 1,
 		.select_count = 256,
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(0));
+	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0);
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(train_image_column));
 	ccv_nnc_tensor_t** data = 0;
 	ccv_cnnp_dataframe_iter_next(iter, (void **)&data, 1, 0);
-	ccv_cnnp_dataframe_iter_free(iter);
-	ccv_cnnp_dataframe_free(batch_data);
+	ccv_nnc_tensor_variable_t input = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_set(graph, input, data[0]);
+	ccv_nnc_tensor_variable_t outputs[5];
+	int i;
+	for (i = 0; i < 5; i++)
+		outputs[i] = ccv_nnc_tensor_variable_new(graph);
+	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+	ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, TENSOR_VARIABLE_LIST(input), outputs, 5, 0, 0);
+	for (i = 0; i < 5; i++)
+	{
+	}
 	/*
 	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_param_t output_params[5];
 	ccv_cnnp_model_tensor_auto(rpn, output_params, 5);
 	*/
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(batch_data);
 }
 
 static ccv_array_t* _array_from_disk_new(const char* const list, const char* const base_dir)

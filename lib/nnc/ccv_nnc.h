@@ -2633,6 +2633,7 @@ typedef struct {
 	struct {
 		int min; /**< The minimal dimension of resize */
 		int max; /**< The maximal dimension of resize. The final resize can be computed from min + (max - min) * random_unit */
+		int roundup; /**< The dimension on both height / width are a multiple of roundup value. */
 	} resize;
 	struct {
 		int rows; /**< The height of the final image. */
