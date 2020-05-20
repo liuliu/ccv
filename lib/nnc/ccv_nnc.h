@@ -255,21 +255,21 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
 /**
  * Create a tensor view. A tensor view can be non-continuous. Essentially, it provides a view into a tensor.
  * @param tensor The tensor that we want to view into.
- * @param dim The new dimension of the tensor view.
+ * @param params The tensor parameters for the tensor view.
  * @param ofs The offset on each of the dimension.
  * @param inc The line size of each dimension.
  * @return The newly created tensor view.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Create a tensor view on stack.
  * @param tensor The tensor that we want to view into.
- * @param dim The new dimension of the tensor view.
+ * @param params The tensor parameters for the tensor view.
  * @param ofs The offset on each of the dimension.
  * @param inc The line size of each dimension.
  * @return The tensor view struct.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Free a tensor view object.
  * @param tensor_view The tensor view to be freed.

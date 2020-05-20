@@ -81,17 +81,17 @@ TEST_CASE("index select a tensor view")
 		3, 4, 5, 6,
 	};
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 3, 4), 0);
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, DIM_ALLOC(3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
 	int ip[] = {1, 1};
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, 2), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
 	memset(b->data.f32, 0, 2 * 4 * sizeof(float));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, DIM_ALLOC(2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
 	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 4), 0);
-	ccv_nnc_tensor_view_t* const gav = ccv_nnc_tensor_view_new(ga, DIM_ALLOC(3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
+	ccv_nnc_tensor_view_t* const gav = ccv_nnc_tensor_view_new(ga, GPU_TENSOR_NHWC(000, 32F, 3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
 	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
 	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4), 0);
-	ccv_nnc_tensor_view_t* const gbv = ccv_nnc_tensor_view_new(gb, DIM_ALLOC(2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
+	ccv_nnc_tensor_view_t* const gbv = ccv_nnc_tensor_view_new(gb, GPU_TENSOR_NHWC(000, 32F, 2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, b), TENSOR_LIST(ga, gindices, gb), 0);
 	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gav, gindices), TENSOR_LIST((ccv_nnc_tensor_t*)gbv), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
@@ -185,16 +185,16 @@ TEST_CASE("backward index select a tensor view")
 	int i;
 	for (i = 0; i < 3 * 4; i++)
 		a->data.f32[i] = i;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, DIM_ALLOC(3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
 	int ip[] = {1, 1};
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, 2), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 4), 0);
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, DIM_ALLOC(2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
 	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 4), 0);
-	ccv_nnc_tensor_view_t* const gav = ccv_nnc_tensor_view_new(ga, DIM_ALLOC(3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
+	ccv_nnc_tensor_view_t* const gav = ccv_nnc_tensor_view_new(ga, GPU_TENSOR_NHWC(000, 32F, 3, 2), DIM_ALLOC(0, 1), DIM_ALLOC(3, 4));
 	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
 	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4), 0);
-	ccv_nnc_tensor_view_t* const gbv = ccv_nnc_tensor_view_new(gb, DIM_ALLOC(2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
+	ccv_nnc_tensor_view_t* const gbv = ccv_nnc_tensor_view_new(gb, GPU_TENSOR_NHWC(000, 32F, 2, 2), DIM_ALLOC(0, 1), DIM_ALLOC(2, 4));
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, b), TENSOR_LIST(ga, gindices, gb), 0);
 	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gbv, 0, gindices), TENSOR_LIST((ccv_nnc_tensor_t*)gav), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga), TENSOR_LIST(a), 0);

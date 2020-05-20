@@ -14,7 +14,7 @@ TEST_SETUP()
 
 TEST_CASE("zero out a tensor")
 {
-	ccv_nnc_tensor_param_t params = {
+	const ccv_nnc_tensor_param_t params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = CCV_32F,
@@ -34,7 +34,7 @@ TEST_CASE("zero out a tensor")
 
 TEST_CASE("zero out a tensor view")
 {
-	ccv_nnc_tensor_param_t params = {
+	const ccv_nnc_tensor_param_t params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = CCV_32F,
@@ -49,15 +49,20 @@ TEST_CASE("zero out a tensor view")
 	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {
 		1, 2, 5, 1, 1, 1,
 	};
-	int dim[CCV_NNC_MAX_DIM_ALLOC] = {
-		8, 12, 15, 2, 3, 4,
+	const ccv_nnc_tensor_param_t new_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = CCV_32F,
+		.dim = {
+			8, 12, 15, 2, 3, 4,
+		},
 	};
-	ccv_nnc_tensor_view_t a_tensor_view = ccv_nnc_tensor_view(a_tensor, dim, ofs, a_tensor->info.dim);
+	ccv_nnc_tensor_view_t a_tensor_view = ccv_nnc_tensor_view(a_tensor, new_params, ofs, a_tensor->info.dim);
 	ccv_nnc_tensor_zero(&a_tensor_view);
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_new(0, params, 0);
 	for (c = 0; c < 10 * 20 * 30 * 4 * 5 * 6; c++)
 		b_tensor->data.f32[c] = 1;
-	ccv_nnc_tensor_view_t b_tensor_view = ccv_nnc_tensor_view(b_tensor, dim, ofs, b_tensor->info.dim);
+	ccv_nnc_tensor_view_t b_tensor_view = ccv_nnc_tensor_view(b_tensor, new_params, ofs, b_tensor->info.dim);
 	int i[6];
 	float* tvp[6];
 	tvp[5] = b_tensor_view.data.f32;

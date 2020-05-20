@@ -217,10 +217,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 		.d = graph->tensor_symbol_info->rnum,
 		.graph = graph
 	};
-	int i;
-	// Alias comes in two shapes: 1). the total tensor count is strictly smaller or equal to, and without ofs; 2). with ofs, and each dimension is strictly smaller or equal to.
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		{ assert(info.dim[i] + ofs[i] <= inc[i]); }
+	// Alias comes in two shapes: the total tensor count is strictly smaller or equal to.
 	// If it is not auto, check dimensions.
 	if (!ccv_nnc_is_tensor_auto(info_d->info))
 		{ assert(ccv_nnc_dimension_count(inc) <= ccv_nnc_tensor_count(info_d->info)); }

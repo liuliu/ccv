@@ -193,7 +193,7 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	tv->data.u8 = p + off;
 }
 
-ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
@@ -201,23 +201,27 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const ten
 	tv->refcount = 1;
 	tv->sig = 0;
 	tv->data_size = 0;
-	tv->info = tensor->info;
-	_ccv_nnc_tensor_view_set(tv, tensor, dim, ofs, inc);
+	assert(params.type == tensor->info.type);
+	assert(params.datatype == tensor->info.datatype);
+	tv->info = params;
+	_ccv_nnc_tensor_view_set(tv, tensor, params.dim, ofs, inc);
 	return tv;
 }
 
-ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
+	assert(params.type == tensor->info.type);
+	assert(params.datatype == tensor->info.datatype);
 	ccv_nnc_tensor_view_t tv = {
 		.alias_ref = (uintptr_t)tensor,
 		.type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW, // clean up the channel bits, and then add CCV_TENSOR_VIEW identifier
 		.refcount = 1,
 		.sig = 0,
-		.info = tensor->info,
+		.info = params,
 		.data_size = 0,
 	};
-	_ccv_nnc_tensor_view_set(&tv, tensor, dim, ofs, inc);
+	_ccv_nnc_tensor_view_set(&tv, tensor, params.dim, ofs, inc);
 	return tv;
 }
 

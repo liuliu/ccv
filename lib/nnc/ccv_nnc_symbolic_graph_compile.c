@@ -1401,7 +1401,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
 					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 					// Otherwise initialize a tensor view
-					*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
+					*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
 					tensor_view->alias_ref = (uintptr_t)alias_pos;
 				}
 				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;

@@ -134,8 +134,8 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 	p[4] = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(2, 2), (ccv_cnnp_param_t){
 		.hint = HINT((2, 2), (0, 0)),
 	}, 0), MODEL_IO_LIST(p[3]));
-	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 2 (x, y, w, h, object, non-object), total 18.
-	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 18, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 1 (x, y, w, h, objectness), total 15.
+	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 15, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 		.hint = HINT((1, 1), (0, 0)),
 	}, "rpn");
 	ccv_cnnp_model_io_t proposals[5];
@@ -272,12 +272,12 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 	{
 		ccv_nnc_tensor_t** tensors = output_data[0] = ccmalloc(sizeof(ccv_nnc_tensor_t*) * 3);
 		input = tensors[0] = ccv_nnc_tensor_new(0, input_params, 0);
-		gt = tensors[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3, 5), 0);
+		gt = tensors[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals * 3, 5), 0);
 		select = tensors[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, rpn_data->batch_count, rpn_data->select_count), 0);
 	} else {
 		ccv_nnc_tensor_t** tensors = output_data[0];
 		input = tensors[0] = ccv_nnc_tensor_resize(tensors[0], input_params);
-		gt = tensors[1] = ccv_nnc_tensor_resize(tensors[1], CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals, 3, 5));
+		gt = tensors[1] = ccv_nnc_tensor_resize(tensors[1], CPU_TENSOR_NCHW(32F, rpn_data->batch_count, total_proposals * 3, 5));
 		select = tensors[2] = ccv_nnc_tensor_resize(tensors[2], CPU_TENSOR_NCHW(32S, rpn_data->batch_count, rpn_data->select_count));
 	}
 	int j, x, y;
@@ -406,21 +406,33 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	};
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
 	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0);
+	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0);
+	const int train_select_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 2, 1, 0);
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(train_image_column));
-	ccv_nnc_tensor_t** data = 0;
-	ccv_cnnp_dataframe_iter_next(iter, (void **)&data, 1, 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(train_image_column, train_gt_column, train_select_column));
+	ccv_nnc_tensor_t** data[3] = {};
+	ccv_cnnp_dataframe_iter_next(iter, (void **)data, 3, 0);
 	ccv_nnc_tensor_variable_t input = ccv_nnc_tensor_variable_new(graph);
-	ccv_nnc_tensor_variable_set(graph, input, data[0]);
+	ccv_nnc_tensor_t* const train_image = data[0][0];
+	ccv_nnc_tensor_t* const train_gt = data[1][0];
+	ccv_nnc_tensor_t* const train_select = data[2][0];
+	ccv_nnc_tensor_variable_set(graph, input, train_image);
 	ccv_nnc_tensor_variable_t outputs[5];
 	int i;
 	for (i = 0; i < 5; i++)
 		outputs[i] = ccv_nnc_tensor_variable_new(graph);
-	// CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, TENSOR_VARIABLE_LIST(input), outputs, 5, 0, 0);
+	ccv_nnc_tensor_variable_t remap_gt = ccv_nnc_tensor_variable_new(graph, train_gt->info);
+	int off = 0;
+	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	for (i = 0; i < 5; i++)
 	{
+		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_variable(graph, outputs[i]);
+		ccv_nnc_tensor_variable_t remap_alias = ccv_nnc_tensor_variable_alias_new(graph, remap_gt, DIM_ALLOC(0, 0, off, 0), DIM_ALLOC(1, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]), GPU_TENSOR_NHWC(000, 32F, 1, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]));
+		off += tensor->info.dim[2] * tensor->info.dim[3];
+		ccv_nnc_dynamic_graph_exec(graph, CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(outputs[i]), TENSOR_VARIABLE_LIST(remap_alias), 0, 0);
 	}
+	printf("%d %d %d %d\n", train_select->info.dim[0], train_select->info.dim[1], train_select->info.dim[2], train_select->info.dim[3]);
 	/*
 	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_param_t output_params[5];
