@@ -722,14 +722,11 @@ static void _ccv_cnnp_batching_new(void* const* const input_data, const int inpu
 				if (batch->format == inputs[j]->info.format)
 				{
 					const int nd = ccv_nnc_tensor_nd(params.dim);
-					if (nd == 3 || nd == 1)
-					{
-						memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-						memcpy(params.dim + 1, inputs[j]->info.dim, sizeof(int) * nd);
-					}
+					memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+					memcpy(params.dim + 1, inputs[j]->info.dim, sizeof(int) * nd);
 				} else {
 					const int nd = ccv_nnc_tensor_nd(params.dim);
-					if (nd == 1)
+					if (nd < 3)
 					{
 						memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 						memcpy(params.dim + 1, inputs[j]->info.dim, sizeof(int) * nd);
