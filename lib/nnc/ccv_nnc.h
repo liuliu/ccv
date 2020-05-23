@@ -959,6 +959,13 @@ enum {
 	CCV_NNC_NO_GRAPH_EXEC_SYMBOL = -1, /**< Special symbol reference for no exec symbol. */
 };
 
+
+enum {
+	CCV_NNC_SYMBOL_TENSOR, /**< Identifier for tensor symbol */
+	CCV_NNC_SYMBOL_TENSOR_ALIAS, /**< Identifier for tensor alias symbol */
+	CCV_NNC_SYMBOL_GRAPH_EXEC, /**< Identifier for exec symbol */
+};
+
 #define CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(d) (((uint32_t)(d) & 0xf) == 0xe)
 
 /**
@@ -1320,8 +1327,9 @@ CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_grap
 /**
  * Number of active exec symbols.
  * @param graph The symbolic graph.
+ * @param type The type of op, can be CCV_NNC_SYMBOL_TENSOR, CCV_NNC_SYMBOL_GRAPH_EXEC (will error out on CCV_NNC_SYMBOL_TENSOR_ALIAS)
  */
-CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_active_op_count(const ccv_nnc_symbolic_graph_t* const graph);
+CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_active_symbol_count(const ccv_nnc_symbolic_graph_t* const graph, const int type);
 /**
  * Substitution function. Given an execution node symbol and a command, return a new command.
  */
@@ -2316,9 +2324,10 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  * Count how many ops we kept for gradient computation purpose. This method is useful when we
  * want to assert at end of some train loop, we shouldn't have any gradient computation left.
  * @param graph The dynamic graph.
+ * @param type The type of variables to trace. CCV_NNC_SYMBOL_TENSOR / CCV_NNC_SYMBOL_GRAPH_EXEC
  * @return How many gradient computations we kept.
  */
-CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph);
+CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph, const int type);
 
 /** @} */
 

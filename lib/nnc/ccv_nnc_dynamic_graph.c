@@ -1002,17 +1002,27 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 		// If this symbol is not freed, move the tensor view to the bind.
 		if (!free_symbol)
 		{
-			bind->index = CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED; // This tensor variable will be freed, but this symbol extra will continue exists.
-			bind->tensor_view = tensor_variable->tensor_view; // Transfer the ownership to the bind.
-			tensor_variable->tensor_view = 0;
+			// If current bind is an alias, and it doesn't have any sources or destinations. We cannot find this alias
+			// through any exec. This is not only safe to delete, but has to be deleted. We don't need to handle this
+			// if free_symbol is true, because when that happens, root_bind will be deleted, and we will clean up the
+			// alias in that process.
+			if (bind->alias_ref && (!bind->sources || bind->sources->rnum == 0) && (!bind->destinations || bind->destinations->rnum == 0))
+			{
+				_ccv_nnc_tensor_variable_graph_bind_free(graph, bind, 1);
+				ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
+			} else {
+				bind->index = CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED; // This tensor variable will be freed, but this symbol extra will continue exists.
+				bind->tensor_view = tensor_variable->tensor_view; // Transfer the ownership to the bind.
+				tensor_variable->tensor_view = 0;
+			}
 		}
 	}
 	_ccv_nnc_tensor_variable_free(graph, tensor_variable, 1);
 }
 
-int ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph)
+int ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph, const int type)
 {
-	return ccv_nnc_symbolic_graph_active_op_count(graph->tape);
+	return ccv_nnc_symbolic_graph_active_symbol_count(graph->tape, type);
 }
 
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out)

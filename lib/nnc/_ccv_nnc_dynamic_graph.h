@@ -240,12 +240,6 @@ static inline void ccv_nnc_remove_if_prior_to_any(const ccv_nnc_symbolic_graph_t
 		}
 }
 
-enum {
-	CCV_NNC_SYMBOL_TENSOR,
-	CCV_NNC_SYMBOL_TENSOR_ALIAS,
-	CCV_NNC_SYMBOL_GRAPH_EXEC,
-};
-
 typedef struct {
 	int type;
 	int d;

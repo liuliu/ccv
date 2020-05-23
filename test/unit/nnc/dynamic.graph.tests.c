@@ -447,7 +447,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models")
 		if (((i + 1) % 5) == 0)
 		{
 			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph), 0, "everything should be freed");
+			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
 			float lr = 0.001;
 			if (i >= 200)
 				lr = 0.0001;
@@ -509,7 +509,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases"
 		ccv_nnc_tensor_variable_free(graph, f);
 		if (((i + 1) % 5) == 0)
 		{
-			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph), 0, "everything should be freed");
+			REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
 			DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 			float lr = 0.001;
 			if (i >= 200)
@@ -560,6 +560,33 @@ TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) and sum o
 	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(f), 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(dx), 0);
 	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, dx)->data.f32[0], logf(19) + 1 + 1.2 + logf(10) + 1 + 1.2, 1e-5, "f'(x) = 1.2 + log(19) + 19 * 1 / 19 + 1.2 + log(19) + 19 * 1 / 19");
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 * z, z = [2], x = [10, 10], should free all variables")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(z), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(10), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, 0);
+	ccv_nnc_tensor_variable_t y_1 = ccv_nnc_tensor_variable_alias_new(graph, y, ccv_nnc_no_ofs, DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y_2 = ccv_nnc_tensor_variable_alias_new(graph, y, DIM_ALLOC(1), DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(10), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y_1), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y_2), 0, 0);
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(f), 0, 0);
+	float gt[] = {10 * 2 + 10, 2 * 2 + 10};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ccv_nnc_tensor_from_variable(graph, f)->data.f32, gt, 2, 1e-5, "should be equal");
+	ccv_nnc_tensor_variable_free(graph, z);
+	ccv_nnc_tensor_variable_free(graph, y_1);
+	ccv_nnc_tensor_variable_free(graph, y_2);
+	ccv_nnc_tensor_variable_free(graph, x);
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_tensor_variable_free(graph, f);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
