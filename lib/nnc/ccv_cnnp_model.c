@@ -290,7 +290,8 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	init->compiled_data->stream_type = model->compiled_data->stream_type;
 	init->compiled_data->minimize.minimizer = model->compiled_data->minimize.minimizer;
 	init->compiled_data->minimize.max_saved_aux_size = model->compiled_data->minimize.max_saved_aux_size;
-	_ccv_cnnp_model_gradient_init(init, model->compiled_data->gradient_mode, model->compiled_data->disable_outgrad, 0, 0);
+	if (model->compiled_data->gradient_mode != CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
+		_ccv_cnnp_model_gradient_init(init, model->compiled_data->gradient_mode, model->compiled_data->disable_outgrad, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0);
 	ccv_nnc_symbolic_graph_tensor_auto(init->graph, TRAVERSE_FULL);
 	int i, j;
