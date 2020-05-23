@@ -101,11 +101,26 @@ static int _ccv_nnc_add_back_bitmask(const int input_size, const int output_size
 	return 0;
 }
 
+static void _ccv_nnc_broadcast_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	assert(input_size >= 2);
+	assert(output_size == 1);
+	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
+	const int b_nd = ccv_nnc_tensor_nd(inputs[1].dim);
+	outputs[0] = inputs[0];
+	const int c_nd = ccv_max(a_nd, b_nd);
+	int i;
+	for (i = a_nd - 1; i >= 0; i--)
+		outputs[0].dim[i + c_nd - a_nd] = inputs[0].dim[i];
+	for (i = b_nd - 1; i >= 0; i--)
+		outputs[0].dim[i + c_nd - b_nd] = ccv_max(outputs[0].dim[i + c_nd - b_nd], inputs[1].dim[i]);
+}
+
 REGISTER_COMMAND(CCV_NNC_ADD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_add_cpu_ref.c, gpu/ccv_nnc_add_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_add_forw_bitmask;
-	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
 	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
@@ -118,9 +133,9 @@ REGISTER_COMMAND(CCV_NNC_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADD_FORWARD)
-#define CMD_ADD_FORWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, CMD_BLAS(_p, _q), 0)
+#define CMD_ADD_FORWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p, _q}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADD_BACKWARD)
-#define CMD_ADD_BACKWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, CMD_BLAS(_p, _q), 0)
+#define CMD_ADD_BACKWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p, _q}}}, 0)
 
 static int _ccv_nnc_mul_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -147,7 +162,7 @@ REGISTER_COMMAND(CCV_NNC_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_mul_cpu_ref.c, gpu/ccv_nnc_mul_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_mul_forw_bitmask;
-	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
 	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
@@ -160,9 +175,9 @@ REGISTER_COMMAND(CCV_NNC_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MUL_FORWARD)
-#define CMD_MUL_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, CMD_BLAS(_p), 0)
+#define CMD_MUL_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p,}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MUL_BACKWARD)
-#define CMD_MUL_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(_p), 0)
+#define CMD_MUL_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p,}}}, 0)
 
 static int _ccv_nnc_scalar_mul_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -196,6 +211,6 @@ REGISTER_COMMAND(CCV_NNC_SCALAR_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCALAR_MUL_FORWARD)
-#define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, CMD_BLAS(_a), 0)
+#define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCALAR_MUL_BACKWARD)
-#define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, CMD_BLAS(_a), 0)
+#define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)

@@ -3,9 +3,9 @@
  * @{
  */
 // CCV_NNC_RANDOM_UNIFORM_FORWARD
-#define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, CMD_BLAS(_lb, _ub), 0)
+#define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)
 // CCV_NNC_RANDOM_UNIFORM_BACKWARD
-#define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, CMD_BLAS(_lb, _ub), 0)
+#define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)
 // CCV_NNC_CONVOLUTION_FORWARD
 #define CMD_CONVOLUTION_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 // CCV_NNC_CONVOLUTION_BACKWARD
@@ -107,17 +107,17 @@
 // CCV_NNC_GEMM_BACKWARD
 #define CMD_GEMM_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_BACKWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_ADD_FORWARD
-#define CMD_ADD_FORWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, CMD_BLAS(_p, _q), 0)
+#define CMD_ADD_FORWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p, _q}}}, 0)
 // CCV_NNC_ADD_BACKWARD
-#define CMD_ADD_BACKWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, CMD_BLAS(_p, _q), 0)
+#define CMD_ADD_BACKWARD(_p, _q) ccv_nnc_cmd(CCV_NNC_ADD_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p, _q}}}, 0)
 // CCV_NNC_MUL_FORWARD
-#define CMD_MUL_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, CMD_BLAS(_p), 0)
+#define CMD_MUL_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p,}}}, 0)
 // CCV_NNC_MUL_BACKWARD
-#define CMD_MUL_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(_p), 0)
+#define CMD_MUL_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_p,}}}, 0)
 // CCV_NNC_SCALAR_MUL_FORWARD
-#define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, CMD_BLAS(_a), 0)
+#define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 // CCV_NNC_SCALAR_MUL_BACKWARD
-#define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, CMD_BLAS(_a), 0)
+#define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 // CCV_NNC_UPSAMPLE_BILINEAR_FORWARD
 #define CMD_UPSAMPLE_BILINEAR_FORWARD(_width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BILINEAR_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
 // CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD
@@ -135,13 +135,13 @@
 // CCV_NNC_COMM_REDUCE_BACKWARD
 #define CMD_COMM_REDUCE_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMM_REDUCE_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SET_FORWARD
-#define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(_val), 0)
+#define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_val,}}}, 0)
 // CCV_NNC_SET_BACKWARD
-#define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, CMD_BLAS(_val), 0)
+#define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_val,}}}, 0)
 // CCV_NNC_MASKED_FILL_FORWARD
-#define CMD_MASKED_FILL_FORWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_FORWARD, 0, CMD_BLAS(_eq, _fill), 0)
+#define CMD_MASKED_FILL_FORWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_eq, _fill}}}, 0)
 // CCV_NNC_MASKED_FILL_BACKWARD
-#define CMD_MASKED_FILL_BACKWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_BACKWARD, 0, CMD_BLAS(_eq, _fill), 0)
+#define CMD_MASKED_FILL_BACKWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_eq, _fill}}}, 0)
 // CCV_NNC_DATA_TRANSFER_FORWARD
 #define CMD_DATA_TRANSFER_FORWARD() ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_DATA_TRANSFER_BACKWARD

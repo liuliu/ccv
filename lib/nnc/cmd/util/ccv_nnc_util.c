@@ -43,9 +43,9 @@ REGISTER_COMMAND(CCV_NNC_SET_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SET_FORWARD)
-#define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(_val), 0)
+#define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_val,}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SET_BACKWARD)
-#define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, CMD_BLAS(_val), 0)
+#define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_val,}}}, 0)
 
 static int _ccv_nnc_masked_fill_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -78,9 +78,9 @@ REGISTER_COMMAND(CCV_NNC_MASKED_FILL_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MASKED_FILL_FORWARD)
-#define CMD_MASKED_FILL_FORWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_FORWARD, 0, CMD_BLAS(_eq, _fill), 0)
+#define CMD_MASKED_FILL_FORWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_eq, _fill}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MASKED_FILL_BACKWARD)
-#define CMD_MASKED_FILL_BACKWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_BACKWARD, 0, CMD_BLAS(_eq, _fill), 0)
+#define CMD_MASKED_FILL_BACKWARD(_eq, _fill) ccv_nnc_cmd(CCV_NNC_MASKED_FILL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_eq, _fill}}}, 0)
 
 static int _ccv_nnc_data_transfer_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {

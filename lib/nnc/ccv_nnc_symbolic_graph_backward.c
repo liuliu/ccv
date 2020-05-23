@@ -1718,11 +1718,10 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 							ccv_array_push(symbol_map, &symbol);
 						} else {
 							// Create a new tensor in sub-graph and set it to be 0.
-							const ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0);
 							const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->outputs[j]);
 							// autograd_symbol->d points to the corresponding forward tensor.
 							ccv_nnc_tensor_symbol_t zero_symbol = ccv_nnc_tensor_symbol_new(sub_graph, tensor_symbol_info[autograd_symbol->d].info, 0);
-							ccv_nnc_graph_exec_symbol_new(sub_graph, cmd, 0, 0, &zero_symbol, 1, 0);
+							ccv_nnc_graph_exec_symbol_new(sub_graph, CMD_SET_FORWARD(0), 0, 0, &zero_symbol, 1, 0);
 							ccv_nnc_tensor_symbol_map_t symbol = {
 								.source = zero_symbol,
 								.destination = autograd_symbol->symbol,
@@ -1832,10 +1831,8 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, sum_or_set_exec->inputs[j]))->symbol));
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0);
 			sum_or_set_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, cmd, ccv_array_get(symbols, 0), sum_or_set_exec->input_size, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, sum_or_set_exec->output))->symbol), 1, 0);
-		} else {
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(sum_or_set_exec->value), 0);
-			sum_or_set_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, cmd, 0, 0, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, sum_or_set_exec->output))->symbol), 1, 0);
-		}
+		} else
+			sum_or_set_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, CMD_SET_FORWARD(sum_or_set_exec->value), 0, 0, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, sum_or_set_exec->output))->symbol), 1, 0);
 	}
 	ccv_array_free(symbol_map);
 	ccv_array_free(symbols);

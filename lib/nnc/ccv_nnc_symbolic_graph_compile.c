@@ -3635,9 +3635,9 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			// Now, we have the original tensor, we can get the actual tensor, and construct the set command.
 			ccv_nnc_graph_exec_t set_exec;
 			if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
-				set_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
+				set_exec = ccv_nnc_graph_exec_new(graph, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
 			else if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ONES)
-				set_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1), 0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
+				set_exec = ccv_nnc_graph_exec_new(graph, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, &tensor, 1);
 			for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
 			{
 				const int outgoing = *(int*)ccv_array_get(tensor_blocks[ref].head, j);

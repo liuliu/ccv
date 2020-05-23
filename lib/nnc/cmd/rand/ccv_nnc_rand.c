@@ -24,6 +24,6 @@ REGISTER_COMMAND(CCV_NNC_RANDOM_UNIFORM_BACKWARD)(ccv_nnc_cmd_registry_t* const 
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RANDOM_UNIFORM_FORWARD)
-#define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, CMD_BLAS(_lb, _ub), 0)
+#define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RANDOM_UNIFORM_BACKWARD)
-#define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, CMD_BLAS(_lb, _ub), 0)
+#define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)

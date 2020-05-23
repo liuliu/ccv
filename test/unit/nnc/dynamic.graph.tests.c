@@ -563,10 +563,10 @@ TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) and sum o
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
-TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 * z, z = [2], x = [10, 10], should free all variables")
+TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 * z, z = [2], x = [10], should free all variables")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
 	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(z), 0, 0);
@@ -576,8 +576,8 @@ TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(10), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y_1), 0, 0);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(z), TENSOR_VARIABLE_LIST(y_2), 0, 0);
 	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
-	ccv_nnc_dynamic_graph_exec(graph, CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(f), 0, 0);
-	float gt[] = {10 * 2 + 10, 2 * 2 + 10};
+	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(f), 0, 0);
+	float gt[] = {10 * 2 * 10, 2 * 2 * 10};
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ccv_nnc_tensor_from_variable(graph, f)->data.f32, gt, 2, 1e-5, "should be equal");
 	ccv_nnc_tensor_variable_free(graph, z);
 	ccv_nnc_tensor_variable_free(graph, y_1);
