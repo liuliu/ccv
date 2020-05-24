@@ -41,19 +41,38 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_forw(const ccv_nnc_cmd_t cmd, co
 		assert(ccv_nnc_tensor_count(c->info) == batch_size);
 		ccv_nnc_tensor_view_get_inc(c, cinc);
 		const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
-		parallel_for(i, batch_size) {
-			int j;
-			const float* const ap = a->data.f32 + i * astep;
-			const float* const bp = b->data.f32 + i * bstep;
-			float* const dp = d->data.f32 + i * dstep;
-			float cp = 0;
-			for (j = 0; j < count; j++)
-			{
-				cp += (1 - bp[j]) * ap[j] + log(1. + exp(-ap[j]));
-				dp[j] = 1. / (1. + exp(-ap[j]));
-			}
-			c->data.f32[i * cstep] = cp;
-		} parallel_endfor
+		const float pos_weight = cmd.info.binary_crossentropy.pos_weight;
+		if (pos_weight == 1)
+		{
+			parallel_for(i, batch_size) {
+				int j;
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const dp = d->data.f32 + i * dstep;
+				float cp = 0;
+				for (j = 0; j < count; j++)
+				{
+					cp += (1 - bp[j]) * ap[j] + log(1. + exp(-ap[j]));
+					dp[j] = 1. / (1. + exp(-ap[j]));
+				}
+				c->data.f32[i * cstep] = cp;
+			} parallel_endfor
+		} else {
+			const float pos_weight_1 = pos_weight - 1;
+			parallel_for(i, batch_size) {
+				int j;
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const dp = d->data.f32 + i * dstep;
+				float cp = 0;
+				for (j = 0; j < count; j++)
+				{
+					cp += (1 - bp[j]) * ap[j] + (1 + bp[j] * pos_weight_1) * log(1. + exp(-ap[j]));
+					dp[j] = 1. / (1. + exp(-ap[j]));
+				}
+				c->data.f32[i * cstep] = cp;
+			} parallel_endfor
+		}
 	} else {
 		parallel_for(i, batch_size) {
 			int j;
@@ -91,30 +110,60 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_back(const ccv_nnc_cmd_t cmd, co
 	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
 	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
 	const int hstep = hinc[CCV_NNC_MAX_DIM + 1];
-	if (g)
+	const float pos_weight = cmd.info.binary_crossentropy.pos_weight;
+	if (pos_weight == 1)
 	{
-		int ginc[CCV_NNC_MAX_DIM_ALLOC];
-		ccv_nnc_tensor_view_get_inc(g, ginc);
-		assert(ccv_nnc_tensor_count(g->info) == batch_size);
-		const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
-		parallel_for(i, batch_size) {
-			int j;
-			const float gp = g->data.f32[i * gstep];
-			const float* const ap = a->data.f32 + i * astep;
-			const float* const bp = b->data.f32 + i * bstep;
-			float* const hp = h->data.f32 + i * hstep;
-			for (j = 0; j < count; j++)
-				hp[j] = gp * (ap[j] - bp[j]);
-		} parallel_endfor
+		if (g)
+		{
+			int ginc[CCV_NNC_MAX_DIM_ALLOC];
+			ccv_nnc_tensor_view_get_inc(g, ginc);
+			assert(ccv_nnc_tensor_count(g->info) == batch_size);
+			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
+			parallel_for(i, batch_size) {
+				int j;
+				const float gp = g->data.f32[i * gstep];
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const hp = h->data.f32 + i * hstep;
+				for (j = 0; j < count; j++)
+					hp[j] = gp * (ap[j] - bp[j]);
+			} parallel_endfor
+		} else {
+			parallel_for(i, batch_size) {
+				int j;
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const hp = h->data.f32 + i * hstep;
+				for (j = 0; j < count; j++)
+					hp[j] = ap[j] - bp[j];
+			} parallel_endfor
+		}
 	} else {
-		parallel_for(i, batch_size) {
-			int j;
-			const float* const ap = a->data.f32 + i * astep;
-			const float* const bp = b->data.f32 + i * bstep;
-			float* const hp = h->data.f32 + i * hstep;
-			for (j = 0; j < count; j++)
-				hp[j] = ap[j] - bp[j];
-		} parallel_endfor
+		if (g)
+		{
+			int ginc[CCV_NNC_MAX_DIM_ALLOC];
+			ccv_nnc_tensor_view_get_inc(g, ginc);
+			assert(ccv_nnc_tensor_count(g->info) == batch_size);
+			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
+			parallel_for(i, batch_size) {
+				int j;
+				const float gp = g->data.f32[i * gstep];
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const hp = h->data.f32 + i * hstep;
+				for (j = 0; j < count; j++)
+					hp[j] = gp * ((ap[j] - 1) * bp[j] * pos_weight + ap[j] * (1 - bp[j]));
+			} parallel_endfor
+		} else {
+			parallel_for(i, batch_size) {
+				int j;
+				const float* const ap = a->data.f32 + i * astep;
+				const float* const bp = b->data.f32 + i * bstep;
+				float* const hp = h->data.f32 + i * hstep;
+				for (j = 0; j < count; j++)
+					hp[j] = (ap[j] - 1) * bp[j] * pos_weight + ap[j] * (1 - bp[j]);
+			} parallel_endfor
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

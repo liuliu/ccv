@@ -59,14 +59,14 @@ REGISTER_COMMAND(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD)(ccv_nnc_cmd_registry_t* c
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_BINARY_CROSSENTROPY_FORWARD)
-#define CMD_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_BINARY_CROSSENTROPY_FORWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 2 parameters for CMD_BINARY_CROSSENTROPY_FORWARD")
-#define CMD_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_BINARY_CROSSENTROPY_FORWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_BINARY_CROSSENTROPY_FORWARD(...) CMD_BINARY_CROSSENTROPY_FORWARD_X_SEL(CMD_BINARY_CROSSENTROPY_FORWARD_X_F, ##__VA_ARGS__, CMD_BINARY_CROSSENTROPY_FORWARD_X_1, CMD_BINARY_CROSSENTROPY_FORWARD_X_0)(__VA_ARGS__)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD)
-#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_BINARY_CROSSENTROPY_BACKWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 2 parameters for CMD_BINARY_CROSSENTROPY_BACKWARD")
-#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_BINARY_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_BINARY_CROSSENTROPY_BACKWARD(...) CMD_BINARY_CROSSENTROPY_BACKWARD_X_SEL(CMD_BINARY_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_BINARY_CROSSENTROPY_BACKWARD_X_1, CMD_BINARY_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)

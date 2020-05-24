@@ -123,6 +123,9 @@ typedef struct {
 			float trim1; /**< [label_smoothing.trim1] The smoothed label for 1. */
 		} label_smoothing;
 		struct {
+			float pos_weight; /**< [binary_crossentropy.pos_weight] The pos_weight on the loss: -(pos_weight * y * log(x) + (1 - y) * log(1 - x)) */
+		} binary_crossentropy;
+		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;

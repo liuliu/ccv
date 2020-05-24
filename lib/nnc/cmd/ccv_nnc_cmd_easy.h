@@ -49,15 +49,15 @@
 // CCV_NNC_AVERAGE_POOL_BACKWARD
 #define CMD_AVERAGE_POOL_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD
-#define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},}), 0)
+#define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 1 parameters for CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD")
-#define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_bias) ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD(...) CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_SEL(CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_F, ##__VA_ARGS__, CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_1, CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_0)(__VA_ARGS__)
 // CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD
-#define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 2 parameters for CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD")
-#define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_bias) ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},}), 0)
+#define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD(...) CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_SEL(CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_1, CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
 // CCV_NNC_COMPRESSION_LSSC_FORWARD
@@ -69,15 +69,15 @@
 // CCV_NNC_SOFTMAX_BACKWARD
 #define CMD_SOFTMAX_BACKWARD() ccv_nnc_cmd(CCV_NNC_SOFTMAX_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_BINARY_CROSSENTROPY_FORWARD
-#define CMD_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_BINARY_CROSSENTROPY_FORWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 2 parameters for CMD_BINARY_CROSSENTROPY_FORWARD")
-#define CMD_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_FORWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_BINARY_CROSSENTROPY_FORWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_BINARY_CROSSENTROPY_FORWARD(...) CMD_BINARY_CROSSENTROPY_FORWARD_X_SEL(CMD_BINARY_CROSSENTROPY_FORWARD_X_F, ##__VA_ARGS__, CMD_BINARY_CROSSENTROPY_FORWARD_X_1, CMD_BINARY_CROSSENTROPY_FORWARD_X_0)(__VA_ARGS__)
 // CCV_NNC_BINARY_CROSSENTROPY_BACKWARD
-#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_0() ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_BINARY_CROSSENTROPY_BACKWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 2 parameters for CMD_BINARY_CROSSENTROPY_BACKWARD")
-#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_BINARY_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_BINARY_CROSSENTROPY_BACKWARD(...) CMD_BINARY_CROSSENTROPY_BACKWARD_X_SEL(CMD_BINARY_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_BINARY_CROSSENTROPY_BACKWARD_X_1, CMD_BINARY_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
 // CCV_NNC_CATEGORICAL_CROSSENTROPY_FORWARD
