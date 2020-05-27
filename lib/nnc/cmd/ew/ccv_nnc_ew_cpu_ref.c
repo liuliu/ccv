@@ -542,7 +542,7 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	// D[x / y, x] = 1 / y, D[x / y, y] = -x / y^2
 	if (output_size == 1 || outputs[1] == 0)
 	{
-		// When we only need D[x / y, y]
+		// When we only need D[x / y, x]
 		_ccv_nnc_ewdiv_forw_cpu_ref(1, (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
