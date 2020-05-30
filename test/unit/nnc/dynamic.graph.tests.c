@@ -563,6 +563,56 @@ TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) and sum o
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph to compute f(x) = x * log(x) + y' where y = 1.2 * x and y' is an alias to y")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 19;
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, f), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, z)->data.f32[0] = 1.2;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y_hat = ccv_nnc_tensor_variable_alias_new(graph, y, ccv_nnc_no_ofs, DIM_ALLOC(), CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, z), TENSOR_VARIABLE_LIST(y), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(f, y_hat), TENSOR_VARIABLE_LIST(f), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, f)->data.f32[0], 19 * logf(19) + 1.2 * 19, 1e-5, "f(x) = 1.2 * 19 + 19 * log(19)");
+	ccv_nnc_tensor_variable_free(graph, y_hat);
+	ccv_nnc_tensor_variable_free(graph, f);
+	ccv_nnc_tensor_variable_free(graph, x);
+	ccv_nnc_tensor_variable_free(graph, z);
+	ccv_nnc_tensor_variable_free(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "should have no tensor left");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to compute f(x) = x * log(x) + y' where y'' = 1.2 * x and both y'' and y' are aliases to y")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 19;
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, f), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, z)->data.f32[0] = 1.2;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y_hat = ccv_nnc_tensor_variable_alias_new(graph, y, ccv_nnc_no_ofs, DIM_ALLOC(), CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y_double_hat = ccv_nnc_tensor_variable_alias_new(graph, y, ccv_nnc_no_ofs, DIM_ALLOC(), CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, z), TENSOR_VARIABLE_LIST(y_double_hat), 0, 0);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(f, y_hat), TENSOR_VARIABLE_LIST(f), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, f)->data.f32[0], 19 * logf(19) + 1.2 * 19, 1e-5, "f(x) = 1.2 * 19 + 19 * log(19)");
+	ccv_nnc_tensor_variable_free(graph, y_hat);
+	ccv_nnc_tensor_variable_free(graph, y_double_hat);
+	ccv_nnc_tensor_variable_free(graph, f);
+	ccv_nnc_tensor_variable_free(graph, x);
+	ccv_nnc_tensor_variable_free(graph, z);
+	ccv_nnc_tensor_variable_free(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "should have no tensor left");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 * z, z = [2], x = [10], should free all variables")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();

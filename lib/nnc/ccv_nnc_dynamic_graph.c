@@ -723,7 +723,8 @@ static void _ccv_nnc_update_bind_destinations_when_free(ccv_nnc_dynamic_graph_t*
 				if (root_bind->index == CCV_NNC_TENSOR_NO_VARIABLE)
 					root_bind = bind;
 			}
-			// If the alias_ref is not freed, we cannot free this.
+			// If the alias_ref is not freed, we cannot free this, unless it is very clear there is no reference to this any more.
+			// It is possible because exec will be freed already, thus, it is safe to remove this alias out.
 			if (root_bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED &&
 				((!root_bind->sources || root_bind->sources->rnum == 0) || _ccv_nnc_tensor_variable_is_only_output(graph, bind, tensor_index)) &&
 				root_bind->destinations->rnum == 0)
@@ -731,6 +732,13 @@ static void _ccv_nnc_update_bind_destinations_when_free(ccv_nnc_dynamic_graph_t*
 				if (root_bind->sources)
 					for (i = 0; i < root_bind->sources->rnum; i++)
 						ccv_array_add_unique_int(ws, *(int*)ccv_array_get(root_bind->sources, i));
+				_ccv_nnc_tensor_variable_graph_bind_free(graph, bind, 1);
+				ccv_nnc_tensor_symbol_free(graph->tape, (ccv_nnc_tensor_symbol_t){
+					.d = tensor_index,
+					.graph = graph->tape
+				});
+			} else if (bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED && // Handle the case the bind is already freed, and it doesn't have any sources or destinations.
+				bind->alias_ref && (!bind->sources || bind->sources->rnum == 0) && (!bind->destinations || bind->destinations->rnum == 0)) {
 				_ccv_nnc_tensor_variable_graph_bind_free(graph, bind, 1);
 				ccv_nnc_tensor_symbol_free(graph->tape, (ccv_nnc_tensor_symbol_t){
 					.d = tensor_index,
@@ -768,13 +776,21 @@ static void _ccv_nnc_update_bind_sources_when_free(ccv_nnc_dynamic_graph_t* cons
 				if (root_bind->index == CCV_NNC_TENSOR_NO_VARIABLE)
 					root_bind = bind;
 			}
-			// If the alias_ref is not freed, we cannot free this.
+			// If the alias_ref is not freed, we cannot free this, unless it is very clear there is no reference to this any more.
+			// It is possible because exec will be freed already, thus, it is safe to remove this alias out.
 			if (root_bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED &&
 				(root_bind->sources->rnum == 0 || _ccv_nnc_tensor_variable_is_only_output(graph, bind, tensor_index)) &&
 				(!root_bind->destinations || root_bind->destinations->rnum == 0))
 			{
 				for (i = 0; i < root_bind->sources->rnum; i++)
 					ccv_array_add_unique_int(ws, *(int*)ccv_array_get(root_bind->sources, i));
+				_ccv_nnc_tensor_variable_graph_bind_free(graph, bind, 1);
+				ccv_nnc_tensor_symbol_free(graph->tape, (ccv_nnc_tensor_symbol_t){
+					.d = tensor_index,
+					.graph = graph->tape
+				});
+			} else if (bind->index == CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED && // Handle the case the bind is already freed, and it doesn't have any sources or destinations.
+				bind->alias_ref && (!bind->sources || bind->sources->rnum == 0) && (!bind->destinations || bind->destinations->rnum == 0)) {
 				_ccv_nnc_tensor_variable_graph_bind_free(graph, bind, 1);
 				ccv_nnc_tensor_symbol_free(graph->tape, (ccv_nnc_tensor_symbol_t){
 					.d = tensor_index,
