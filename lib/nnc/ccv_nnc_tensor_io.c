@@ -24,7 +24,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	if (!conn)
 		return CCV_IO_ERROR;
 	const char tensor_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensors "
-		"(name STRING, type INTEGER, format INTEGER, datatype INTEGER, "
+		"(name TEXT, type INTEGER, format INTEGER, datatype INTEGER, "
 		"dim BLOB, data BLOB, PRIMARY KEY (name))";
 	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, tensor_create_table_qs, 0, 0, 0));
 	const char tensor_insert_qs[] =
