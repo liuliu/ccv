@@ -362,15 +362,15 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 		{ \
 			for (j = 0; j < a->cols; j++) \
 			{ \
-				float fdx = _for_get_d(dx_ptr, j, 0), fdy = _for_get_d(dy_ptr, j, 0); \
-				float fdu = _for_get_d(du_ptr, j, 0), fdv = _for_get_d(dv_ptr, j, 0); \
+				float fdx = _for_get_d(dx_ptr, j), fdy = _for_get_d(dy_ptr, j); \
+				float fdu = _for_get_d(du_ptr, j), fdv = _for_get_d(dv_ptr, j); \
 				float adx = fabsf(fdx), ady = fabsf(fdy); \
 				float adu = fabsf(fdu), adv = fabsf(fdv); \
 				dbp[0] = fdx, dbp[1] = fdy; \
 				dbp[2] = fdu, dbp[3] = fdv; \
 				dbp[4] = adx, dbp[5] = ady; \
 				dbp[6] = adu, dbp[7] = adv; \
-				dbp[8] = _for_get_a(a_ptr, j, 0) / 255.0; \
+				dbp[8] = _for_get_a(a_ptr, j) / 255.0; \
 				dbp[9] = dbp[10] = 0; \
 				dbp += 11; \
 			} \
@@ -388,31 +388,31 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 		{ \
 			for (j = 0; j < a->cols; j++) \
 			{ \
-				float fdx = _for_get_d(dx_ptr, j * ch, 0), fdy = _for_get_d(dy_ptr, j * ch, 0); \
-				float fdu = _for_get_d(du_ptr, j * ch, 0), fdv = _for_get_d(dv_ptr, j * ch, 0); \
+				float fdx = _for_get_d(dx_ptr, j * ch), fdy = _for_get_d(dy_ptr, j * ch); \
+				float fdu = _for_get_d(du_ptr, j * ch), fdv = _for_get_d(dv_ptr, j * ch); \
 				float adx = fabsf(fdx), ady = fabsf(fdy); \
 				float adu = fabsf(fdu), adv = fabsf(fdv); \
 				/* select the strongest ones from all the channels */ \
 				for (k = 1; k < ch; k++) \
 				{ \
-					if (fabsf((float)_for_get_d(dx_ptr, j * ch + k, 0)) > adx) \
+					if (fabsf((float)_for_get_d(dx_ptr, j * ch + k)) > adx) \
 					{ \
-						fdx = _for_get_d(dx_ptr, j * ch + k, 0); \
+						fdx = _for_get_d(dx_ptr, j * ch + k); \
 						adx = fabsf(fdx); \
 					} \
-					if (fabsf((float)_for_get_d(dy_ptr, j * ch + k, 0)) > ady) \
+					if (fabsf((float)_for_get_d(dy_ptr, j * ch + k)) > ady) \
 					{ \
-						fdy = _for_get_d(dy_ptr, j * ch + k, 0); \
+						fdy = _for_get_d(dy_ptr, j * ch + k); \
 						ady = fabsf(fdy); \
 					} \
-					if (fabsf((float)_for_get_d(du_ptr, j * ch + k, 0)) > adu) \
+					if (fabsf((float)_for_get_d(du_ptr, j * ch + k)) > adu) \
 					{ \
-						fdu = _for_get_d(du_ptr, j * ch + k, 0); \
+						fdu = _for_get_d(du_ptr, j * ch + k); \
 						adu = fabsf(fdu); \
 					} \
-					if (fabsf((float)_for_get_d(dv_ptr, j * ch + k, 0)) > adv) \
+					if (fabsf((float)_for_get_d(dv_ptr, j * ch + k)) > adv) \
 					{ \
-						fdv = _for_get_d(dv_ptr, j * ch + k, 0); \
+						fdv = _for_get_d(dv_ptr, j * ch + k); \
 						adv = fabsf(fdv); \
 					} \
 				} \
@@ -420,9 +420,9 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 				dbp[2] = fdu, dbp[3] = fdv; \
 				dbp[4] = adx, dbp[5] = ady; \
 				dbp[6] = adu, dbp[7] = adv; \
-				_ccv_rgb_to_luv(_for_get_a(a_ptr, j * ch, 0) / 255.0, \
-								_for_get_a(a_ptr, j * ch + 1, 0) / 255.0, \
-								_for_get_a(a_ptr, j * ch + 2, 0) / 255.0, \
+				_ccv_rgb_to_luv(_for_get_a(a_ptr, j * ch) / 255.0, \
+								_for_get_a(a_ptr, j * ch + 1) / 255.0, \
+								_for_get_a(a_ptr, j * ch + 2) / 255.0, \
 								dbp + 8, dbp + 9, dbp + 10); \
 				dbp += 11; \
 			} \

@@ -152,7 +152,7 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 			int dxn = xofs[k].di; \
 			float alpha = xofs[k].alpha; \
 			for (i = 0; i < ch; i++) \
-				buf[dxn + i] += _for_get(a_ptr, xofs[k].si + i, 0) * alpha; \
+				buf[dxn + i] += _for_get(a_ptr, xofs[k].si + i) * alpha; \
 		} \
 		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1) \
 		{ \
@@ -163,13 +163,13 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 			{ \
 				for (dx = 0; dx < b->cols * ch; dx++) \
 				{ \
-					_for_set(b_ptr, dx, sum[dx] + buf[dx], 0); \
+					_for_set(b_ptr, dx, sum[dx] + buf[dx]); \
 					sum[dx] = buf[dx] = 0; \
 				} \
 			} else { \
 				for (dx = 0; dx < b->cols * ch; dx++) \
 				{ \
-					_for_set(b_ptr, dx, sum[dx] + buf[dx] * beta1, 0); \
+					_for_set(b_ptr, dx, sum[dx] + buf[dx] * beta1); \
 					sum[dx] = buf[dx] * beta; \
 					buf[dx] = 0; \
 				} \
@@ -246,10 +246,10 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 				unsigned char* row = buf + (siy & 0x3) * b->step; \
 				for (j = 0; j < b->cols; j++) \
 					for (k = 0; k < ch; k++) \
-						_for_set_b(row, j * ch + k, _for_get(a_ptr, xofs[j].si[0] * ch + k, 0) * xofs[j].coeffs[0] + \
-													_for_get(a_ptr, xofs[j].si[1] * ch + k, 0) * xofs[j].coeffs[1] + \
-													_for_get(a_ptr, xofs[j].si[2] * ch + k, 0) * xofs[j].coeffs[2] + \
-													_for_get(a_ptr, xofs[j].si[3] * ch + k, 0) * xofs[j].coeffs[3], 0); \
+						_for_set_b(row, j * ch + k, _for_get(a_ptr, xofs[j].si[0] * ch + k) * xofs[j].coeffs[0] + \
+													_for_get(a_ptr, xofs[j].si[1] * ch + k) * xofs[j].coeffs[1] + \
+													_for_get(a_ptr, xofs[j].si[2] * ch + k) * xofs[j].coeffs[2] + \
+													_for_get(a_ptr, xofs[j].si[3] * ch + k) * xofs[j].coeffs[3]); \
 				a_ptr += a->step; \
 			} \
 			psi = yofs.si[3]; \
@@ -261,8 +261,8 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 			buf + (yofs.si[3] & 0x3) * b->step, \
 		}; \
 		for (j = 0; j < b->cols * ch; j++) \
-			_for_set_b(b_ptr, j, _for_get_b(row[0], j, 0) * yofs.coeffs[0] + _for_get_b(row[1], j, 0) * yofs.coeffs[1] + \
-								 _for_get_b(row[2], j, 0) * yofs.coeffs[2] + _for_get_b(row[3], j, 0) * yofs.coeffs[3], 0); \
+			_for_set_b(b_ptr, j, _for_get_b(row[0], j, 0) * yofs.coeffs[0] + _for_get_b(row[1], j) * yofs.coeffs[1] + \
+								 _for_get_b(row[2], j, 0) * yofs.coeffs[2] + _for_get_b(row[3], j) * yofs.coeffs[3]); \
 		b_ptr += b->step; \
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_float_only, b->type, for_block);
@@ -319,10 +319,10 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 				unsigned char* row = buf + (siy & 0x3) * bufstep; \
 				for (j = 0; j < b->cols; j++) \
 					for (k = 0; k < ch; k++) \
-						_for_set(row, j * ch + k, _for_get_a(a_ptr, xofs[j].si[0] * ch + k, 0) * xofs[j].coeffs[0] + \
-												  _for_get_a(a_ptr, xofs[j].si[1] * ch + k, 0) * xofs[j].coeffs[1] + \
-												  _for_get_a(a_ptr, xofs[j].si[2] * ch + k, 0) * xofs[j].coeffs[2] + \
-												  _for_get_a(a_ptr, xofs[j].si[3] * ch + k, 0) * xofs[j].coeffs[3], 0); \
+						_for_set(row, j * ch + k, _for_get_a(a_ptr, xofs[j].si[0] * ch + k) * xofs[j].coeffs[0] + \
+												  _for_get_a(a_ptr, xofs[j].si[1] * ch + k) * xofs[j].coeffs[1] + \
+												  _for_get_a(a_ptr, xofs[j].si[2] * ch + k) * xofs[j].coeffs[2] + \
+												  _for_get_a(a_ptr, xofs[j].si[3] * ch + k) * xofs[j].coeffs[3]); \
 				a_ptr += a->step; \
 			} \
 			psi = yofs.si[3]; \
@@ -334,8 +334,8 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 			buf + (yofs.si[3] & 0x3) * bufstep, \
 		}; \
 		for (j = 0; j < b->cols * ch; j++) \
-			_for_set_b(b_ptr, j, ccv_descale(_for_get(row[0], j, 0) * yofs.coeffs[0] + _for_get(row[1], j, 0) * yofs.coeffs[1] + \
-											 _for_get(row[2], j, 0) * yofs.coeffs[2] + _for_get(row[3], j, 0) * yofs.coeffs[3], 12), 0); \
+			_for_set_b(b_ptr, j, ccv_descale(_for_get(row[0], j) * yofs.coeffs[0] + _for_get(row[1], j) * yofs.coeffs[1] + \
+											 _for_get(row[2], j) * yofs.coeffs[2] + _for_get(row[3], j) * yofs.coeffs[3], 12)); \
 		b_ptr += b->step; \
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_integer_only, no_8u_type, ccv_matrix_setter_integer_only, b->type, for_block);
@@ -415,17 +415,17 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 			int _sy = (sy < 0) ? -1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
 			unsigned char* a_ptr = a->data.u8 + a->step * _sy; \
 			for (k = 0; k < ch; k++) \
-				_for_set(row, k, _for_get_a(a_ptr, sx + k, 0) * 10 + _for_get_a(a_ptr, ch + sx + k, 0) * 5 + _for_get_a(a_ptr, 2 * ch + sx + k, 0), 0); \
+				_for_set(row, k, _for_get_a(a_ptr, sx + k) * 10 + _for_get_a(a_ptr, ch + sx + k) * 5 + _for_get_a(a_ptr, 2 * ch + sx + k)); \
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
 				for (k = 0; k < ch; k++) \
-					_for_set(row, dx + k, _for_get_a(a_ptr, dx * 2 + sx + k, 0) * 6 + (_for_get_a(a_ptr, dx * 2 + sx + k - ch, 0) + _for_get_a(a_ptr, dx * 2 + sx + k + ch, 0)) * 4 + _for_get_a(a_ptr, dx * 2 + sx + k - ch * 2, 0) + _for_get_a(a_ptr, dx * 2 + sx + k + ch * 2, 0), 0); \
+					_for_set(row, dx + k, _for_get_a(a_ptr, dx * 2 + sx + k) * 6 + (_for_get_a(a_ptr, dx * 2 + sx + k - ch) + _for_get_a(a_ptr, dx * 2 + sx + k + ch)) * 4 + _for_get_a(a_ptr, dx * 2 + sx + k - ch * 2) + _for_get_a(a_ptr, dx * 2 + sx + k + ch * 2)); \
 			x_block(_for_get_a, _for_set, _for_get, _for_set_b); \
 		} \
 		unsigned char* rows[5]; \
 		for(k = 0; k < 5; k++) \
 			rows[k] = buf + ((dy * 2 + k) % 5) * bufstep; \
 		for(dx = 0; dx < db->cols * ch; dx++) \
-			_for_set_b(b_ptr, dx, (_for_get(rows[2], dx, 0) * 6 + (_for_get(rows[1], dx, 0) + _for_get(rows[3], dx, 0)) * 4 + _for_get(rows[0], dx, 0) + _for_get(rows[4], dx, 0)) / 256, 0); \
+			_for_set_b(b_ptr, dx, (_for_get(rows[2], dx) * 6 + (_for_get(rows[1], dx) + _for_get(rows[3], dx)) * 4 + _for_get(rows[0], dx) + _for_get(rows[4], dx)) / 256); \
 		b_ptr += db->step; \
 	}
 	int no_8u_type = (a->type & CCV_8U) ? CCV_32S : a->type;
@@ -434,13 +434,13 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 #define x_block(_for_get_a, _for_set, _for_get, _for_set_b) \
 		for (dx = cols0 * ch; dx < db->cols * ch; dx += ch) \
 			for (k = 0; k < ch; k++) \
-				_for_set(row, dx + k, _for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (_for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + _for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0);
+				_for_set(row, dx + k, _for_get_a(a_ptr, tab[dx * 2 + sx + k]) * 6 + (_for_get_a(a_ptr, tab[dx * 2 + sx + k - ch]) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch])) * 4 + _for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2]) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2]));
 		ccv_matrix_getter_a(a->type, ccv_matrix_setter_getter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	} else {
 #define x_block(_for_get_a, _for_set, _for_get, _for_set_b) \
 		for (k = 0; k < ch; k++) \
-			_for_set(row, (db->cols - 1) * ch + k, _for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + _for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + _for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0);
+			_for_set(row, (db->cols - 1) * ch + k, _for_get_a(a_ptr, a->cols * ch + sx - ch + k) * 10 + _for_get_a(a_ptr, (a->cols - 2) * ch + sx + k) * 5 + _for_get_a(a_ptr, (a->cols - 3) * ch + sx + k));
 		ccv_matrix_getter_a(a->type, ccv_matrix_setter_getter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	}
@@ -481,8 +481,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			{ \
 				for (k = 0; k < ch; k++) \
 				{ \
-					_for_set(row, k, _for_get_a(a_ptr, k, 0) * (G025 + G075 + G125), 0); \
-					_for_set(row, k + ch, _for_get_a(a_ptr, k, 0) * (G025 + G075 + G125), 0); \
+					_for_set(row, k, _for_get_a(a_ptr, k) * (G025 + G075 + G125)); \
+					_for_set(row, k + ch, _for_get_a(a_ptr, k) * (G025 + G075 + G125)); \
 				} \
 				continue; \
 			} \
@@ -490,8 +490,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			{ \
 				for (k = 0; k < ch; k++) \
 				{ \
-					_for_set(row, k, _for_get_a(a_ptr, k + sx, 0) * (G025 + G075) + _for_get_a(a_ptr, k + sx + ch, 0) * G125, 0); \
-					_for_set(row, k + ch, _for_get_a(a_ptr, k + sx, 0) * (G125 + G025) + _for_get_a(a_ptr, k + sx + ch, 0) * G075, 0); \
+					_for_set(row, k, _for_get_a(a_ptr, k + sx) * (G025 + G075) + _for_get_a(a_ptr, k + sx + ch) * G125); \
+					_for_set(row, k + ch, _for_get_a(a_ptr, k + sx) * (G125 + G025) + _for_get_a(a_ptr, k + sx + ch) * G075); \
 				} \
 			} \
 			/* some serious flaw in computing Gaussian weighting in previous version
@@ -504,8 +504,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			{ \
 				for (k = 0; k < ch; k++) \
 				{ \
-					_for_set(row, x * 2 + k, _for_get_a(a_ptr, x + sx - ch + k, 0) * G075 + _for_get_a(a_ptr, x + sx + k, 0) * G025 + _for_get_a(a_ptr, x + sx + ch + k, 0) * G125, 0); \
-					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, x + sx - ch + k, 0) * G125 + _for_get_a(a_ptr, x + sx + k, 0) * G025 + _for_get_a(a_ptr, x + sx + ch + k, 0) * G075, 0); \
+					_for_set(row, x * 2 + k, _for_get_a(a_ptr, x + sx - ch + k) * G075 + _for_get_a(a_ptr, x + sx + k) * G025 + _for_get_a(a_ptr, x + sx + ch + k) * G125); \
+					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, x + sx - ch + k) * G125 + _for_get_a(a_ptr, x + sx + k) * G025 + _for_get_a(a_ptr, x + sx + ch + k) * G075); \
 				} \
 			} \
 			x_block(_for_get_a, _for_set, _for_get, _for_set_b); \
@@ -515,8 +515,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			rows[k] = buf + ((y + k) % 3) * bufstep; \
 		for (x = 0; x < db->cols * ch; x++) \
 		{ \
-			_for_set_b(b_ptr, x, (_for_get(rows[0], x, 0) * G075 + _for_get(rows[1], x, 0) * G025 + _for_get(rows[2], x, 0) * G125) / GALL, 0); \
-			_for_set_b(b_ptr + db->step, x, (_for_get(rows[0], x, 0) * G125 + _for_get(rows[1], x, 0) * G025 + _for_get(rows[2], x, 0) * G075) / GALL, 0); \
+			_for_set_b(b_ptr, x, (_for_get(rows[0], x) * G075 + _for_get(rows[1], x) * G025 + _for_get(rows[2], x) * G125) / GALL); \
+			_for_set_b(b_ptr + db->step, x, (_for_get(rows[0], x) * G125 + _for_get(rows[1], x) * G025 + _for_get(rows[2], x) * G075) / GALL); \
 		} \
 		b_ptr += 2 * db->step; \
 	}
@@ -534,8 +534,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			for (x = cols0 * ch; x < a->cols * ch; x += ch) \
 				for (k = 0; k < ch; k++) \
 				{ \
-					_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) * G075 + _for_get_a(a_ptr, tab[x + sx + k], 0) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0) * G125, 0); \
-					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) * G125 + _for_get_a(a_ptr, tab[x + sx + k], 0) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0) * G075, 0); \
+					_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k]) * G075 + _for_get_a(a_ptr, tab[x + sx + k]) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k]) * G125); \
+					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, tab[x + sx - ch + k]) * G125 + _for_get_a(a_ptr, tab[x + sx + k]) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0) * G075); \
 			}
 			ccv_matrix_getter_integer_only(a->type, ccv_matrix_setter_getter_integer_only, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
@@ -543,8 +543,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 #define x_block(_for_get_a, _for_set, _for_get, _for_set_b) \
 			for (k = 0; k < ch; k++) \
 			{ \
-				_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * G075 + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * (G025 + G125), 0); \
-				_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * G125 + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * (G025 + G075), 0); \
+				_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k) * G075 + _for_get_a(a_ptr, (a->cols - 1) * ch + k) * (G025 + G125)); \
+				_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k) * G125 + _for_get_a(a_ptr, (a->cols - 1) * ch + k) * (G025 + G075)); \
 			}
 			ccv_matrix_getter_integer_only(a->type, ccv_matrix_setter_getter_integer_only, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
@@ -564,8 +564,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			for (x = cols0 * ch; x < a->cols * ch; x += ch) \
 				for (k = 0; k < ch; k++) \
 				{ \
-					_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) * G075 + _for_get_a(a_ptr, tab[x + sx + k], 0) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0) * G125, 0); \
-					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) * G125 + _for_get_a(a_ptr, tab[x + sx + k], 0) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0) * G075, 0); \
+					_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k]) * G075 + _for_get_a(a_ptr, tab[x + sx + k]) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k]) * G125); \
+					_for_set(row, x * 2 + ch + k, _for_get_a(a_ptr, tab[x + sx - ch + k]) * G125 + _for_get_a(a_ptr, tab[x + sx + k]) * G025 + _for_get_a(a_ptr, tab[x + sx + ch + k]) * G075); \
 			}
 			ccv_matrix_getter_float_only(a->type, ccv_matrix_setter_getter_float_only, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
@@ -573,8 +573,8 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 #define x_block(_for_get_a, _for_set, _for_get, _for_set_b) \
 			for (k = 0; k < ch; k++) \
 			{ \
-				_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * G075 + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * (G025 + G125), 0); \
-				_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * G125 + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * (G025 + G075), 0); \
+				_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k) * G075 + _for_get_a(a_ptr, (a->cols - 1) * ch + k) * (G025 + G125)); \
+				_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k) * G125 + _for_get_a(a_ptr, (a->cols - 1) * ch + k) * (G025 + G075)); \
 			}
 			ccv_matrix_getter_float_only(a->type, ccv_matrix_setter_getter_float_only, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block

@@ -79,8 +79,8 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				if (_for_get_h(hptr, j, 0) == 0) \
-					++buck[_for_get_a(aptr, j, 0)]; \
+				if (_for_get_h(hptr, j) == 0) \
+					++buck[_for_get_a(aptr, j)]; \
 			aptr += a->step; \
 			hptr += h->step; \
 		} \
@@ -94,8 +94,8 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 			for (j = 0; j < a->cols; j++) \
 			{ \
 				_ccv_mser_init_node(pnode, j, i); \
-				if (_for_get_h(hptr, j, 0) == 0) \
-					rnode[--buck[_for_get_a(aptr, j, 0)]] = pnode; \
+				if (_for_get_h(hptr, j) == 0) \
+					rnode[--buck[_for_get_a(aptr, j)]] = pnode; \
 				else \
 					pnode->shortcut = 0; /* this means the pnode is not available */ \
 				++pnode; \
@@ -111,7 +111,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				++buck[_for_get(aptr, j, 0)]; \
+				++buck[_for_get(aptr, j)]; \
 			aptr += a->step; \
 		} \
 		for (i = 1; i <= params.range; i++) \
@@ -123,7 +123,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 			for (j = 0; j < a->cols; j++) \
 			{ \
 				_ccv_mser_init_node(pnode, j, i); \
-				rnode[--buck[_for_get(aptr, j, 0)]] = pnode; \
+				rnode[--buck[_for_get(aptr, j)]] = pnode; \
 				++pnode; \
 			} \
 			aptr += a->step; \
@@ -322,8 +322,8 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 						max_point = node->point; \
 			for (j = 0; j < er->size; j++) \
 			{ \
-				if (_for_get(b_ptr + node->point.y * b->step, node->point.x, 0) == 0) \
-					_for_set(b_ptr + node->point.y * b->step, node->point.x, seq_no, 0); \
+				if (_for_get(b_ptr + node->point.y * b->step, node->point.x) == 0) \
+					_for_set(b_ptr + node->point.y * b->step, node->point.x, seq_no); \
 				min_point.x = ccv_min(min_point.x, node->point.x); \
 				min_point.y = ccv_min(min_point.y, node->point.y); \
 				max_point.x = ccv_max(max_point.x, node->point.x); \
@@ -463,10 +463,10 @@ static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int typ
 		{ \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				double v = (double)((_for_get_a(aptr, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr, j * ch + ch, 0) + 1e-10); \
+				double v = (double)((_for_get_a(aptr, j * ch + ch) - _for_get_a(aptr, j * ch)) * (_for_get_a(aptr, j * ch + ch) - _for_get_a(aptr, j * ch))) / (double)(_for_get_a(aptr, j * ch) + _for_get_a(aptr, j * ch + ch) + 1e-10); \
 				for (k = 1; k < ch; k++) \
-					v += (double)((_for_get_a(aptr, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr, j * ch + ch + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, sqrt(v), 0); \
+					v += (double)((_for_get_a(aptr, j * ch + ch + k) - _for_get_a(aptr, j * ch + k)) * (_for_get_a(aptr, j * ch + ch + k) - _for_get_a(aptr, j * ch + k))) / (double)(_for_get_a(aptr, j * ch + k) + _for_get_a(aptr, j * ch + ch + k) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v)); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
@@ -479,10 +479,10 @@ static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int typ
 		{ \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				double v = (double)((_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr + a->step, j * ch, 0) + 1e-10); \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch) - _for_get_a(aptr, j * ch)) * (_for_get_a(aptr + a->step, j * ch) - _for_get_a(aptr, j * ch))) / (double)(_for_get_a(aptr, j * ch) + _for_get_a(aptr + a->step, j * ch) + 1e-10); \
 				for (k = 1; k < ch; k++) \
-					v += (double)((_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr + a->step, j * ch + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, sqrt(v), 0); \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + k) - _for_get_a(aptr, j * ch + k)) * (_for_get_a(aptr + a->step, j * ch + k) - _for_get_a(aptr, j * ch + k))) / (double)(_for_get_a(aptr, j * ch + k) + _for_get_a(aptr + a->step, j * ch + k) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v)); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
@@ -495,10 +495,10 @@ static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int typ
 		{ \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				double v = (double)((_for_get_a(aptr + a->step, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr + a->step, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr + a->step, j * ch + ch, 0) + 1e-10); \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch + ch) - _for_get_a(aptr, j * ch)) * (_for_get_a(aptr + a->step, j * ch + ch) - _for_get_a(aptr, j * ch))) / (double)(_for_get_a(aptr, j * ch) + _for_get_a(aptr + a->step, j * ch + ch) + 1e-10); \
 				for (k = 1; k < ch; k++) \
-					v += (double)((_for_get_a(aptr + a->step, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr + a->step, j * ch + ch + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, sqrt(v * 0.5), 0); \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + ch + k) - _for_get_a(aptr, j * ch + k)) * (_for_get_a(aptr + a->step, j * ch + ch + k) - _for_get_a(aptr, j * ch + k))) / (double)(_for_get_a(aptr, j * ch + k) + _for_get_a(aptr + a->step, j * ch + ch + k) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v * 0.5)); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
@@ -511,10 +511,10 @@ static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int typ
 		{ \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				double v = (double)((_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch + ch, 0)) * (_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch + ch, 0))) / (double)(_for_get_a(aptr, j * ch + ch, 0) + _for_get_a(aptr + a->step, j * ch, 0) + 1e-10); \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch) - _for_get_a(aptr, j * ch + ch)) * (_for_get_a(aptr + a->step, j * ch) - _for_get_a(aptr, j * ch + ch))) / (double)(_for_get_a(aptr, j * ch + ch) + _for_get_a(aptr + a->step, j * ch) + 1e-10); \
 				for (k = 1; k < ch; k++) \
-					v += (double)((_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + ch + k, 0) + _for_get_a(aptr + a->step, j * ch + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, sqrt(v * 0.5), 0); \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + k) - _for_get_a(aptr, j * ch + ch + k)) * (_for_get_a(aptr + a->step, j * ch + k) - _for_get_a(aptr, j * ch + ch + k))) / (double)(_for_get_a(aptr, j * ch + ch + k) + _for_get_a(aptr + a->step, j * ch + k) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v * 0.5)); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
@@ -823,8 +823,8 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 						max_point = node->point; \
 			for (j = 0; j < mscr_area->size; j++) \
 			{ \
-				if (_for_get(b_ptr + node->point.y * b->step, node->point.x, 0) == 0) \
-					_for_set(b_ptr + node->point.y * b->step, node->point.x, mscr_area->seq_no, 0); \
+				if (_for_get(b_ptr + node->point.y * b->step, node->point.x) == 0) \
+					_for_set(b_ptr + node->point.y * b->step, node->point.x, mscr_area->seq_no); \
 				min_point.x = ccv_min(min_point.x, node->point.x); \
 				min_point.y = ccv_min(min_point.y, node->point.y); \
 				max_point.x = ccv_max(max_point.x, node->point.x); \

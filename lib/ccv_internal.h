@@ -168,11 +168,25 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 #define ccv_function_state_finish() }
 
 /* the factor used to provide higher accuracy in integer type (all integer computation in some cases) */
-#define _ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
-#define _ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
-#define _ccv_get_64s_value(ptr, i, factor) (((int64_t*)(ptr))[(i)] << factor)
-#define _ccv_get_64f_value(ptr, i, factor) ((double*)(ptr))[(i)]
-#define _ccv_get_8u_value(ptr, i, factor) (((unsigned char*)(ptr))[(i)] << factor)
+#define _ccv_get_32s_value_1(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
+#define _ccv_get_32f_value_1(ptr, i, factor) ((float*)(ptr))[(i)]
+#define _ccv_get_64s_value_1(ptr, i, factor) (((int64_t*)(ptr))[(i)] << factor)
+#define _ccv_get_64f_value_1(ptr, i, factor) ((double*)(ptr))[(i)]
+#define _ccv_get_8u_value_1(ptr, i, factor) (((unsigned char*)(ptr))[(i)] << factor)
+
+#define _ccv_get_32s_value_0(ptr, i) (((int*)(ptr))[(i)])
+#define _ccv_get_32f_value_0(ptr, i) ((float*)(ptr))[(i)]
+#define _ccv_get_64s_value_0(ptr, i) (((int64_t*)(ptr))[(i)])
+#define _ccv_get_64f_value_0(ptr, i) ((double*)(ptr))[(i)]
+#define _ccv_get_8u_value_0(ptr, i) (((unsigned char*)(ptr))[(i)])
+
+#define _ccv_get_value_x(A, B, C, ...) C
+
+#define _ccv_get_32s_value(ptr, i, ...) _ccv_get_value_x(0, ##__VA_ARGS__, _ccv_get_32s_value_1, _ccv_get_32s_value_0)(ptr, i, ##__VA_ARGS__)
+#define _ccv_get_32f_value(ptr, i, ...) _ccv_get_value_x(0, ##__VA_ARGS__, _ccv_get_32f_value_1, _ccv_get_32f_value_0)(ptr, i, ##__VA_ARGS__)
+#define _ccv_get_64s_value(ptr, i, ...) _ccv_get_value_x(0, ##__VA_ARGS__, _ccv_get_64s_value_1, _ccv_get_64s_value_0)(ptr, i, ##__VA_ARGS__)
+#define _ccv_get_64f_value(ptr, i, ...) _ccv_get_value_x(0, ##__VA_ARGS__, _ccv_get_64f_value_1, _ccv_get_64f_value_0)(ptr, i, ##__VA_ARGS__)
+#define _ccv_get_8u_value(ptr, i, ...) _ccv_get_value_x(0, ##__VA_ARGS__, _ccv_get_8u_value_1, _ccv_get_8u_value_0)(ptr, i, ##__VA_ARGS__)
 
 #define ccv_matrix_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, _ccv_get_32s_value); break; } \
@@ -239,11 +253,25 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 	case CCV_64F: { block(__VA_ARGS__, double); break; } \
 	default: { block(__VA_ARGS__, unsigned char); } } }
 
-#define _ccv_set_32s_value(ptr, i, value, factor) (((int*)(ptr))[(i)] = (int)(value) >> factor)
-#define _ccv_set_32f_value(ptr, i, value, factor) (((float*)(ptr))[(i)] = (float)(value))
-#define _ccv_set_64s_value(ptr, i, value, factor) (((int64_t*)(ptr))[(i)] = (int64_t)(value) >> factor)
-#define _ccv_set_64f_value(ptr, i, value, factor) (((double*)(ptr))[(i)] = (double)(value))
-#define _ccv_set_8u_value(ptr, i, value, factor) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255))
+#define _ccv_set_32s_value_1(ptr, i, value, factor) (((int*)(ptr))[(i)] = (int)(value) >> factor)
+#define _ccv_set_32f_value_1(ptr, i, value, factor) (((float*)(ptr))[(i)] = (float)(value))
+#define _ccv_set_64s_value_1(ptr, i, value, factor) (((int64_t*)(ptr))[(i)] = (int64_t)(value) >> factor)
+#define _ccv_set_64f_value_1(ptr, i, value, factor) (((double*)(ptr))[(i)] = (double)(value))
+#define _ccv_set_8u_value_1(ptr, i, value, factor) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255))
+
+#define _ccv_set_32s_value_0(ptr, i, value) (((int*)(ptr))[(i)] = (int)(value))
+#define _ccv_set_32f_value_0(ptr, i, value) (((float*)(ptr))[(i)] = (float)(value))
+#define _ccv_set_64s_value_0(ptr, i, value) (((int64_t*)(ptr))[(i)] = (int64_t)(value))
+#define _ccv_set_64f_value_0(ptr, i, value) (((double*)(ptr))[(i)] = (double)(value))
+#define _ccv_set_8u_value_0(ptr, i, value) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value), 0, 255))
+
+#define _ccv_set_value_x(A, B, C, ...) C
+
+#define _ccv_set_32s_value(ptr, i, value, ...) _ccv_set_value_x(0, ##__VA_ARGS__, _ccv_set_32s_value_1, _ccv_set_32s_value_0)(ptr, i, value, ##__VA_ARGS__)
+#define _ccv_set_32f_value(ptr, i, value, ...) _ccv_set_value_x(0, ##__VA_ARGS__, _ccv_set_32f_value_1, _ccv_set_32f_value_0)(ptr, i, value, ##__VA_ARGS__)
+#define _ccv_set_64s_value(ptr, i, value, ...) _ccv_set_value_x(0, ##__VA_ARGS__, _ccv_set_64s_value_1, _ccv_set_64s_value_0)(ptr, i, value, ##__VA_ARGS__)
+#define _ccv_set_64f_value(ptr, i, value, ...) _ccv_set_value_x(0, ##__VA_ARGS__, _ccv_set_64f_value_1, _ccv_set_64f_value_0)(ptr, i, value, ##__VA_ARGS__)
+#define _ccv_set_8u_value(ptr, i, value, ...) _ccv_set_value_x(0, ##__VA_ARGS__, _ccv_set_8u_value_1, _ccv_set_8u_value_0)(ptr, i, value, ##__VA_ARGS__)
 
 #define ccv_matrix_setter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value); break; } \

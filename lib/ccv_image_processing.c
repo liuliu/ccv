@@ -11,9 +11,9 @@ static void _ccv_rgb_to_yuv(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 	{ \
 		for (j = 0; j < a->cols; j++) \
 		{ \
-			_for_set_b(b_ptr, j * 3, (_for_get(a_ptr, j * 3, 0) * 1225 + _for_get(a_ptr, j * 3 + 1, 0) * 2404 + _for_get(a_ptr, j * 3 + 2, 0) * 467) / 4096, 0); \
-			_for_set_b(b_ptr, j * 3 + 1, (_for_get(a_ptr, j * 3 + 2, 0) - _for_get_b(b_ptr, j * 3, 0)) * 2015 / 4096 + 128, 0); \
-			_for_set_b(b_ptr, j * 3 + 2, (_for_get(a_ptr, j * 3, 0) - _for_get_b(b_ptr, j * 3, 0)) * 3592 / 4096 + 128, 0); \
+			_for_set_b(b_ptr, j * 3, (_for_get(a_ptr, j * 3) * 1225 + _for_get(a_ptr, j * 3 + 1) * 2404 + _for_get(a_ptr, j * 3 + 2) * 467) / 4096); \
+			_for_set_b(b_ptr, j * 3 + 1, (_for_get(a_ptr, j * 3 + 2) - _for_get_b(b_ptr, j * 3)) * 2015 / 4096 + 128); \
+			_for_set_b(b_ptr, j * 3 + 2, (_for_get(a_ptr, j * 3) - _for_get_b(b_ptr, j * 3)) * 3592 / 4096 + 128); \
 		} \
 		a_ptr += a->step; \
 		b_ptr += b->step; \
@@ -58,10 +58,10 @@ void ccv_saturation(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, dou
 	{ \
 		for (j = 0; j < a->cols; j++) \
 		{ \
-			double gs = _for_get(aptr, j * 3, 0) * 0.299 + _for_get(aptr, j * 3 + 1, 0) * 0.587 + _for_get(aptr, j * 3 + 2, 0) * 0.114; \
-			_for_set(bptr, j * 3, (_for_get(aptr, j * 3, 0) - gs) * ds + gs, 0); \
-			_for_set(bptr, j * 3 + 1, (_for_get(aptr, j * 3 + 1, 0) - gs) * ds + gs, 0); \
-			_for_set(bptr, j * 3 + 2, (_for_get(aptr, j * 3 + 2, 0) - gs) * ds + gs, 0); \
+			double gs = _for_get(aptr, j * 3) * 0.299 + _for_get(aptr, j * 3 + 1) * 0.587 + _for_get(aptr, j * 3 + 2) * 0.114; \
+			_for_set(bptr, j * 3, (_for_get(aptr, j * 3) - gs) * ds + gs); \
+			_for_set(bptr, j * 3 + 1, (_for_get(aptr, j * 3 + 1) - gs) * ds + gs); \
+			_for_set(bptr, j * 3 + 2, (_for_get(aptr, j * 3 + 2) - gs) * ds + gs); \
 		} \
 		aptr += a->step; \
 		bptr += db->step; \
@@ -85,7 +85,7 @@ void ccv_contrast(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, doubl
 	{ \
 		for (j = 0; j < a->cols; j++) \
 			for (k = 0; k < ch; k++) \
-				ms[k] += _for_get(aptr, j * ch + k, 0); \
+				ms[k] += _for_get(aptr, j * ch + k); \
 		aptr += a->step; \
 	}
 	ccv_matrix_getter(a->type, for_block);
@@ -114,7 +114,7 @@ void ccv_contrast(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, doubl
 		{ \
 			for (j = 0; j < a->cols; j++) \
 				for (k = 0; k < ch; k++) \
-					_for_set(bptr, j * ch + k, (_for_get(aptr, j * ch + k, 0) - ms[k]) * ds + ms[k], 0); \
+					_for_set(bptr, j * ch + k, (_for_get(aptr, j * ch + k) - ms[k]) * ds + ms[k]); \
 			aptr += a->step; \
 			bptr += db->step; \
 		}

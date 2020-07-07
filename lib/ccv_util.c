@@ -38,8 +38,8 @@ void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 	{ \
 		for (j = 0; j < da->cols; j++) \
 		{ \
-			minval = ccv_min(minval, _for_get(aptr, j, 0)); \
-			maxval = ccv_max(maxval, _for_get(aptr, j, 0)); \
+			minval = ccv_min(minval, _for_get(aptr, j)); \
+			maxval = ccv_max(maxval, _for_get(aptr, j)); \
 		} \
 		aptr += da->step; \
 	} \
@@ -47,7 +47,7 @@ void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 	for (i = 0; i < da->rows; i++) \
 	{ \
 		for (j = 0; j < da->cols; j++) \
-			bptr[j] = ccv_clamp((_for_get(aptr, j, 0) - minval) * 255.0 / (maxval - minval), 0, 255); \
+			bptr[j] = ccv_clamp((_for_get(aptr, j) - minval) * 255.0 / (maxval - minval), 0, 255); \
 		aptr += da->step; \
 		bptr += db->step; \
 	}
@@ -104,8 +104,8 @@ void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
 		{ \
 			_for_type sum = 0; \
 			for (k = 0; k < ch; k++) \
-				sum += _for_get(aptr, j * ch + k, 0); \
-			_for_set(bptr, j, sum, 0); \
+				sum += _for_get(aptr, j * ch + k); \
+			_for_set(bptr, j, sum); \
 		} \
 		aptr += da->step; \
 		bptr += db->step; \
@@ -142,7 +142,7 @@ void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, int type, ccv_margin_t margin
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
 			{ \
-				_for_set(bptr, j, _for_get(aptr, j, 0), 0); \
+				_for_set(bptr, j, _for_get(aptr, j)); \
 			} \
 			aptr += da->step; \
 			bptr += db->step; \
@@ -1054,7 +1054,7 @@ void ccv_compress_sparse_matrix(const ccv_sparse_matrix_t* mat, ccv_compressed_s
 				for (j = 0; j < vector->rnum; j++) \
 					if (_for_get(vector->data.u8, j, 0) != 0) \
 					{ \
-						_for_set(m_ptr, k, _for_get(vector->data.u8, j, 0), 0); \
+						_for_set(m_ptr, k, _for_get(vector->data.u8, j)); \
 						idx[k] = j; \
 						k++; \
 					}
@@ -1072,7 +1072,7 @@ void ccv_compress_sparse_matrix(const ccv_sparse_matrix_t* mat, ccv_compressed_s
 					ccv_sparse_matrix_index_t* const index_j = (ccv_sparse_matrix_index_t*)(index + index_size * j); \
 					if (index_j->ifbit > 1) \
 					{ \
-						_for_set(m_ptr, k, _for_get((uint8_t*)(index_j + 1), 0, 0), 0); \
+						_for_set(m_ptr, k, _for_get((uint8_t*)(index_j + 1), 0)); \
 						idx[k] = index_j->i; \
 						k++; \
 					} \
@@ -1185,8 +1185,10 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 			{ \
 				for (j = 0; j < da->cols * ch; j++) \
 				{ \
-					if (llabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1) \
+					if (llabs(_for_get(b_ptr, j) - _for_get(a_ptr, j)) > 1) { \
+						printf("%d %d\n", (int)_for_get(b_ptr, j), (int)_for_get(a_ptr, j)); \
 						return -1; \
+					} \
 				} \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
@@ -1225,7 +1227,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int r
 		{ \
 			for (j = 0; j < cols * ch; j++) \
 			{ \
-				_for_set(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+				_for_set(b_ptr, j, _for_get(a_ptr, j)); \
 			} \
 			a_ptr += da->step; \
 			b_ptr += db->step; \
@@ -1272,7 +1274,7 @@ void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
 		{ \
 			for (j = abs(x) * ch; j < db->cols * ch; j++) \
 			{ \
-				_for_set(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+				_for_set(b_ptr, j, _for_get(a_ptr, j)); \
 			} \
 			a_ptr += da->step; \
 			b_ptr += db->step; \

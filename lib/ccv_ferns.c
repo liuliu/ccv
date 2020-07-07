@@ -65,7 +65,7 @@ void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uin
 		uint32_t leaf = 0; \
 		for (j = 0; j < ferns->features; j++) \
 		{ \
-			if (_for_get(a_ptr + fern_feature[0].y * a->step, fern_feature[0].x, 0) > _for_get(a_ptr + fern_feature[1].y * a->step, fern_feature[1].x, 0)) \
+			if (_for_get(a_ptr + fern_feature[0].y * a->step, fern_feature[0].x) > _for_get(a_ptr + fern_feature[1].y * a->step, fern_feature[1].x)) \
 				leaf = (leaf << 1) | 1; \
 			else \
 				leaf = leaf << 1; \

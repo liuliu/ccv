@@ -36,7 +36,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					sum += fabs((double)_for_get(a_ptr, j, 0)); \
+					sum += fabs((double)_for_get(a_ptr, j)); \
 				a_ptr += da->step; \
 			} \
 			inv = 1.0 / sum; \
@@ -44,7 +44,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					_for_set(b_ptr, j, _for_get(a_ptr, j, 0) * inv, 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr, j) * inv); \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
 			}
@@ -56,7 +56,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					sum += _for_get(a_ptr, j, 0) * _for_get(a_ptr, j, 0); \
+					sum += _for_get(a_ptr, j) * _for_get(a_ptr, j); \
 				a_ptr += da->step; \
 			} \
 			sum = sqrt(sum); \
@@ -65,7 +65,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					_for_set(b_ptr, j, _for_get(a_ptr, j, 0) * inv, 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr, j) * inv); \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
 			}
@@ -94,17 +94,17 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 			b_ptr = db->data.u8;
 #define for_block(_for_set_b, _for_get_b, _for_get) \
 			for (j = 0; j < ch; j++) \
-				_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+				_for_set_b(b_ptr, j, _for_get(a_ptr, j)); \
 			for (j = ch; j < a->cols * ch; j++) \
-				_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) + _for_get(a_ptr, j, 0), 0); \
+				_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch) + _for_get(a_ptr, j)); \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
 			for (i = 1; i < a->rows; i++) \
 			{ \
 				for (j = 0; j < ch; j++) \
-					_for_set_b(b_ptr, j, _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j, 0), 0); \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr - db->step, j) + _for_get(a_ptr, j)); \
 				for (j = ch; j < a->cols * ch; j++) \
-					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) - _for_get_b(b_ptr - db->step, j - ch, 0) + _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j, 0), 0); \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch) - _for_get_b(b_ptr - db->step, j - ch) + _for_get_b(b_ptr - db->step, j) + _for_get(a_ptr, j)); \
 				a_ptr += a->step; \
 				b_ptr += db->step; \
 			}
@@ -117,14 +117,14 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 			b_ptr = db->data.u8;
 #define for_block(_for_set_b, _for_get_b, _for_get) \
 			for (j = 0; j < db->cols * ch; j++) \
-				_for_set_b(b_ptr, j, 0, 0); \
+				_for_set_b(b_ptr, j, 0); \
 			b_ptr += db->step; \
 			for (i = 0; i < a->rows; i++) \
 			{ \
 				for (j = 0; j < ch; j++) \
-					_for_set_b(b_ptr, j, 0, 0); \
+					_for_set_b(b_ptr, j, 0); \
 				for (j = ch; j < db->cols * ch; j++) \
-					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) - _for_get_b(b_ptr - db->step, j - ch, 0) + _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j - ch, 0), 0); \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch) - _for_get_b(b_ptr - db->step, j - ch) + _for_get_b(b_ptr - db->step, j) + _for_get(a_ptr, j - ch)); \
 				a_ptr += a->step; \
 				b_ptr += db->step; \
 			}
@@ -147,7 +147,7 @@ double ccv_sum(ccv_matrix_t* mat, int flag)
 			for (i = 0; i < dmt->rows; i++) \
 			{ \
 				for (j = 0; j < dmt->cols * ch; j++) \
-					sum += fabs((double)(_for_get(m_ptr, j, 0))); \
+					sum += fabs((double)(_for_get(m_ptr, j))); \
 				m_ptr += dmt->step; \
 			} \
 			break; \
@@ -156,7 +156,7 @@ double ccv_sum(ccv_matrix_t* mat, int flag)
 			for (i = 0; i < dmt->rows; i++) \
 			{ \
 				for (j = 0; j < dmt->cols * ch; j++) \
-					sum += _for_get(m_ptr, j, 0); \
+					sum += _for_get(m_ptr, j); \
 				m_ptr += dmt->step; \
 			} \
 	}
@@ -176,8 +176,8 @@ double ccv_variance(ccv_matrix_t* mat)
 	{ \
 		for (j = 0; j < dmt->cols * ch; j++) \
 		{ \
-			mean += _for_get(m_ptr, j, 0); \
-			variance += _for_get(m_ptr, j, 0) * _for_get(m_ptr, j, 0); \
+			mean += _for_get(m_ptr, j); \
+			variance += _for_get(m_ptr, j) * _for_get(m_ptr, j); \
 		} \
 		m_ptr += dmt->step; \
 	}
@@ -206,7 +206,7 @@ void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	for (i = 0; i < da->rows; i++) \
 	{ \
 		for (j = 0; j < da->cols * ch; j++) \
-			_for_set(cptr, j, _for_get(aptr, j, 0) * _for_get(bptr, j, 0), 0); \
+			_for_set(cptr, j, _for_get(aptr, j) * _for_get(bptr, j)); \
 		aptr += da->step; \
 		bptr += db->step; \
 		cptr += dc->step; \
@@ -233,7 +233,7 @@ void ccv_add(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	for (i = 0; i < da->rows; i++) \
 	{ \
 		for (j = 0; j < da->cols * ch; j++) \
-			_for_set(cptr, j, _for_get_a(aptr, j, 0) + _for_get_b(bptr, j, 0), 0); \
+			_for_set(cptr, j, _for_get_a(aptr, j) + _for_get_b(bptr, j)); \
 		aptr += da->step; \
 		bptr += db->step; \
 		cptr += dc->step; \
@@ -260,7 +260,7 @@ void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	for (i = 0; i < da->rows; i++) \
 	{ \
 		for (j = 0; j < da->cols * ch; j++) \
-			_for_set(cptr, j, _for_get(aptr, j, 0) - _for_get(bptr, j, 0), 0); \
+			_for_set(cptr, j, _for_get(aptr, j) - _for_get(bptr, j)); \
 		aptr += da->step; \
 		bptr += db->step; \
 		cptr += dc->step; \
@@ -296,7 +296,7 @@ void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds)
 		for (i = 0; i < da->rows; i++) \
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
-				_for_set(bptr, j, ds * _for_get(aptr, j, 0), 0); \
+				_for_set(bptr, j, ds * _for_get(aptr, j)); \
 			aptr += da->step; \
 			bptr += db->step; \
 		}

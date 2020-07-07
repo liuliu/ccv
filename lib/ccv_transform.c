@@ -42,10 +42,10 @@ void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, 
 	{ \
 		for (j = 0; j < cols * ch; j++) \
 		{ \
-			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * G00 + _for_get(a_ptr, j + ch, 0) * G01 + _for_get(a_ptr + a->step, j, 0) * G10 + _for_get(a_ptr + a->step, j + ch, 0) * G11) / GALL, 0); \
+			_for_set(b_ptr, j, (_for_get(a_ptr, j) * G00 + _for_get(a_ptr, j + ch) * G01 + _for_get(a_ptr + a->step, j) * G10 + _for_get(a_ptr + a->step, j + ch) * G11) / GALL); \
 		} \
 		if (cols_1) \
-			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * (G00 + G01) + _for_get(a_ptr + a->step, j, 0) * G10 + _for_get(a_ptr + a->step, j + ch, 0) * G11) / GALL, 0); \
+			_for_set(b_ptr, j, (_for_get(a_ptr, j) * (G00 + G01) + _for_get(a_ptr + a->step, j) * G10 + _for_get(a_ptr + a->step, j + ch) * G11) / GALL); \
 		a_ptr += a->step; \
 		b_ptr += db->step; \
 	} \
@@ -53,10 +53,10 @@ void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, 
 	{ \
 		for (j = 0; j < cols * ch; j++) \
 		{ \
-			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * (G00 + G10) + _for_get(a_ptr, j + ch, 0) * (G01 + G11)) / GALL, 0); \
+			_for_set(b_ptr, j, (_for_get(a_ptr, j) * (G00 + G10) + _for_get(a_ptr, j + ch) * (G01 + G11)) / GALL); \
 		} \
 		if (cols_1) \
-			_for_set(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+			_for_set(b_ptr, j, _for_get(a_ptr, j)); \
 	}
 	/* unswitch in the manual way so that we can use integer interpolation */
 	if ((a->type & CCV_8U) || (a->type & CCV_32S) || (a->type & CCV_64S))
@@ -159,13 +159,13 @@ void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, in
 			int iwy1 = ccv_min(iwy + 1, a->rows - 1); \
 			if (iwx >= 0 && iwx < a->cols && iwy >= 0 && iwy < a->rows) \
 				for (k = 0; k < ch; k++) \
-					_for_set(b_ptr, j * ch + k, _for_get(a_ptr + iwy * a->step, iwx * ch + k, 0) * (1 - wx) * (1 - wy) + \
-												_for_get(a_ptr + iwy * a->step, iwx1 * ch + k, 0) * wx * (1 - wy) + \
-												_for_get(a_ptr + iwy1 * a->step, iwx * ch + k, 0) * (1 - wx) * wy + \
-												_for_get(a_ptr + iwy1 * a->step, iwx1 * ch + k, 0) * wx * wy, 0); \
+					_for_set(b_ptr, j * ch + k, _for_get(a_ptr + iwy * a->step, iwx * ch + k) * (1 - wx) * (1 - wy) + \
+												_for_get(a_ptr + iwy * a->step, iwx1 * ch + k) * wx * (1 - wy) + \
+												_for_get(a_ptr + iwy1 * a->step, iwx * ch + k) * (1 - wx) * wy + \
+												_for_get(a_ptr + iwy1 * a->step, iwx1 * ch + k) * wx * wy); \
 			else \
 				for (k = 0; k < ch; k++) \
-					_for_set(b_ptr, j * ch + k, 0, 0); \
+					_for_set(b_ptr, j * ch + k, 0); \
 		} \
 		b_ptr += db->step; \
 	}

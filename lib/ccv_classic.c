@@ -321,7 +321,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				_for_set(b_ptr, j, (map_ptr[j] == 2), 0); \
+				_for_set(b_ptr, j, (map_ptr[j] == 2)); \
 			map_ptr += map_cols; \
 			b_ptr += db->step; \
 		}
@@ -358,28 +358,28 @@ void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	{ \
 		for (j = 0; j < a->cols - 1; j++) \
 		{ \
-			if (_for_get_b(b_ptr, j, 0) == 0) \
-				_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
-			if (_for_get(a_ptr, j, 0) != 0 && _for_get(a_ptr + a->step, j + 1, 0) != 0) \
+			if (_for_get_b(b_ptr, j) == 0) \
+				_for_set_b(b_ptr, j, _for_get(a_ptr, j)); \
+			if (_for_get(a_ptr, j) != 0 && _for_get(a_ptr + a->step, j + 1) != 0) \
 			{ \
-				_for_set_b(b_ptr + a->step, j, 1, 0); \
-				_for_set_b(b_ptr, j + 1, 1, 0); \
+				_for_set_b(b_ptr + a->step, j, 1); \
+				_for_set_b(b_ptr, j + 1, 1); \
 			} \
-			if (_for_get(a_ptr + a->step, j, 0) != 0 && _for_get(a_ptr, j + 1, 0) != 0) \
+			if (_for_get(a_ptr + a->step, j) != 0 && _for_get(a_ptr, j + 1) != 0) \
 			{ \
-				_for_set_b(b_ptr, j, 1, 0); \
-				_for_set_b(b_ptr + a->step, j + 1, 1, 0); \
+				_for_set_b(b_ptr, j, 1); \
+				_for_set_b(b_ptr + a->step, j + 1, 1); \
 			} \
 		} \
-		if (_for_get_b(b_ptr, a->cols - 1, 0) == 0) \
-			_for_set_b(b_ptr, a->cols - 1, _for_get(a_ptr, a->cols - 1, 0), 0); \
+		if (_for_get_b(b_ptr, a->cols - 1) == 0) \
+			_for_set_b(b_ptr, a->cols - 1, _for_get(a_ptr, a->cols - 1)); \
 		a_ptr += a->step; \
 		b_ptr += db->step; \
 	} \
 	for (j = 0; j < a->cols; j++) \
 	{ \
-		if (_for_get_b(b_ptr, j, 0) == 0) \
-			_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+		if (_for_get_b(b_ptr, j) == 0) \
+			_for_set_b(b_ptr, j, _for_get(a_ptr, j)); \
 	}
 	ccv_matrix_getter_integer_only(a->type, ccv_matrix_setter_getter_integer_only, db->type, for_block);
 #undef for_block
@@ -396,7 +396,7 @@ int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
 	for (i = 0; i < a->rows; i++) \
 	{ \
 		for (j = 0; j < a->cols; j++) \
-			histogram[ccv_clamp((int)_for_get(a_ptr, j, 0), 0, range - 1)]++; \
+			histogram[ccv_clamp((int)_for_get(a_ptr, j), 0, range - 1)]++; \
 		a_ptr += a->step; \
 	}
 	ccv_matrix_getter(a->type, for_block);

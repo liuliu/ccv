@@ -338,7 +338,7 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 		{ \
 			for (j = 0; j < a->cols; j++) \
 			{ \
-				dbp[0] = _for_get(a_ptr, j, 0); \
+				dbp[0] = _for_get(a_ptr, j); \
 				dbp[1] = mgp[j] * magnitude_scaling; \
 				float agr = (ccv_clamp(agp[j] <= 180 ? agp[j] : agp[j] - 180, 0, 179.99) / 180.0) * 6; \
 				int ag0 = (int)agr; \
@@ -361,9 +361,9 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 		{ \
 			for (j = 0; j < a->cols; j++) \
 			{ \
-				_ccv_rgb_to_luv(_for_get(a_ptr, j * ch, 0) / 255.0, \
-								_for_get(a_ptr, j * ch + 1, 0) / 255.0, \
-								_for_get(a_ptr, j * ch + 2, 0) / 255.0, \
+				_ccv_rgb_to_luv(_for_get(a_ptr, j * ch) / 255.0, \
+								_for_get(a_ptr, j * ch + 1) / 255.0, \
+								_for_get(a_ptr, j * ch + 2) / 255.0, \
 								dbp, dbp + 1, dbp + 2); \
 				float agv = agp[j * ch]; \
 				float mgv = mgp[j * ch]; \

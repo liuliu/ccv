@@ -96,8 +96,8 @@ static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, cc
 	}
 	int rdx, rdy, flag;
 #define ray_emit(xx, xy, yx, yy, _for_get_d, _for_set_b, _for_get_b) \
-	rdx = _for_get_d(dx_ptr, j, 0) * (xx) + _for_get_d(dy_ptr, j, 0) * (xy); \
-	rdy = _for_get_d(dx_ptr, j, 0) * (yx) + _for_get_d(dy_ptr, j, 0) * (yy); \
+	rdx = _for_get_d(dx_ptr, j) * (xx) + _for_get_d(dy_ptr, j) * (xy); \
+	rdy = _for_get_d(dx_ptr, j) * (yx) + _for_get_d(dy_ptr, j) * (yy); \
 	adx = abs(rdx); \
 	ady = abs(rdy); \
 	sx = rdx > 0 ? -params.direction : params.direction; \
@@ -139,10 +139,10 @@ static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, cc
 		flag = 0; \
 		for (k = 0; k < 9; k++) \
 		{ \
-			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) - \
-					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
-			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) + \
-					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
+			int tn = _for_get_d(dy_ptr, j) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k]) - \
+					 _for_get_d(dx_ptr, j) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k]); \
+			int td = _for_get_d(dx_ptr, j) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k]) + \
+					 _for_get_d(dy_ptr, j) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k]); \
 			if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
 			{ \
 				flag = 1; \
@@ -157,8 +157,8 @@ static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, cc
 			/* extend the line to be width of 1 */ \
 			for (;;) \
 			{ \
-				if (_for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) == 0 || _for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > w) \
-					_for_set_b(b_ptr + (y0 - i) * db->step, x0, w, 0); \
+				if (_for_get_b(b_ptr + (y0 - i) * db->step, x0) == 0 || _for_get_b(b_ptr + (y0 - i) * db->step, x0) > w) \
+					_for_set_b(b_ptr + (y0 - i) * db->step, x0, w); \
 				if (x0 == x1 && y0 == y1) \
 					break; \
 				ray_increment(); \
@@ -198,7 +198,7 @@ static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, cc
 		int n = 0; \
 		for (;;) \
 		{ \
-			buf[n++] = _for_get_b(b_ptr + y0 * db->step, x0, 0); \
+			buf[n++] = _for_get_b(b_ptr + y0 * db->step, x0); \
 			if (x0 == stroke->x1 && y0 == stroke->y1) \
 				break; \
 			ray_increment(); \
@@ -209,7 +209,7 @@ static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, cc
 			ray_reset_by_stroke(stroke); \
 			for (;;) \
 			{ \
-				_for_set_b(b_ptr + y0 * db->step, x0, nw, 0); \
+				_for_set_b(b_ptr + y0 * db->step, x0, nw); \
 				if (x0 == stroke->x1 && y0 == stroke->y1) \
 					break; \
 				ray_increment(); \
