@@ -61,7 +61,15 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
 			break;
 		default: // -1: Using preferences to find a suitable algorithm
+#if CUDNN_VERSION >= 7000
+			int algo_count;
+			cudnnConvolutionFwdAlgoPerf_t perf;
+			CUDNN_ENFORCE(cudnnGetConvolutionForwardAlgorithm_v7(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, 1, &algo_count, &perf));
+			assert(algo_count > 0);
+			algo = perf.algo;
+#else
 			CUDNN_ENFORCE(cudnnGetConvolutionForwardAlgorithm(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, 0, &algo));
+#endif
 	}
 
 	size_t workspace_size = 0;
@@ -196,7 +204,15 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED;
 			break;
 		default: // -1: Using preferences to find a suitable algorithm
+#if CUDNN_VERSION >= 7000
+			int filter_algo_count;
+			cudnnConvolutionBwdFilterAlgoPerf_t filter_perf;
+			CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm_v7(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, 1, &filter_algo_count, &filter_perf));
+			assert(filter_algo_count > 0);
+			filter_algo = filter_perf.algo;
+#else
 			CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
+#endif
 	}
 
 	size_t workspace_size = 0;
@@ -252,7 +268,15 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				data_algo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED;
 				break;
 			default: // -1: Using preferences to find a suitable algorithm
+#if CUDNN_VERSION >= 7000
+				int data_algo_count;
+				cudnnConvolutionBwdDataAlgoPerf_t data_perf;
+				CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataAlgorithm_v7(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, 1, &data_algo_count, &data_perf));
+				assert(data_algo_count > 0);
+				data_algo = data_perf.algo;
+#else
 				CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataAlgorithm(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST, 0, &data_algo));
+#endif
 		}
 		size_t workspace_size = 0;
 		CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataWorkspaceSize(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, data_algo, &workspace_size));
