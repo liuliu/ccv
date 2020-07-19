@@ -230,7 +230,8 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 	PRINT(CCV_CLI_INFO, "]");
 	if (!CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE) || tensor->info.dim[0] <= 0)
 		return;
-	const int len = ccv_min(tensor->info.dim[0], 3);
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	const int len = ccv_min(tensor->info.dim[nd - 1], 3);
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 	{
 #ifdef HAVE_CUDA
