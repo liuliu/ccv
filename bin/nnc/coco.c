@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <stddef.h>
+#include <3rdparty/sfmt/SFMT.h>
 
 static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
@@ -159,6 +160,7 @@ typedef struct {
 	int batch_count;
 	int select_count;
 	ccv_cnnp_model_t* rpn;
+	sfmt_t sfmt;
 } ccv_nnc_rpn_data_batching_t;
 
 typedef struct {
@@ -282,6 +284,11 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 	}
 	int j, x, y;
 	ccv_nnc_rpn_rect_t* const rects = (ccv_nnc_rpn_rect_t*)ccmalloc(sizeof(ccv_nnc_rpn_rect_t) * max_bbox_size);
+	int* shuffle_idx = (int*)ccmalloc(sizeof(int) * total_proposals * 3);
+	for (i = 0; i < total_proposals * 3; i++)
+		shuffle_idx[i] = i;
+	// Probably good to do this for each image, but do it for a whole batch is not bad as well.
+	sfmt_genrand_shuffle(&rpn_data->sfmt, shuffle_idx, total_proposals * 3, sizeof(int));
 	for (i = 0; i < rpn_data->batch_count; i++)
 	{
 		void* const* const tuple = input_data[i % input_size];
@@ -350,15 +357,16 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		int* const sp = select->data.i32 + i * rpn_data->select_count;
 		// First, select half of the positives.
 		for (j = 0; k < half_select_count && j < total_proposals * 3; j++)
-			if (cp[j * 5] == 1)
-				sp[k++] = j + i * total_proposals * 3;
+			if (cp[shuffle_idx[j] * 5] == 1)
+				sp[k++] = shuffle_idx[j] + i * total_proposals * 3;
 		// Fill the rest with negatives.
 		for (j = 0; k < rpn_data->select_count && j < total_proposals * 3; j++)
-			if (cp[j * 5] == 0)
-				sp[k++] = j + i * total_proposals * 3;
+			if (cp[shuffle_idx[j] * 5] == 0)
+				sp[k++] = shuffle_idx[j] + i * total_proposals * 3;
 		assert(k == rpn_data->select_count);
 	}
 	ccfree(rects);
+	ccfree(shuffle_idx);
 }
 
 static void _rpn_data_deinit(void* const self, void* const context)
@@ -404,6 +412,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.select_count = 256,
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
+	sfmt_init_gen_rand(&rpn_data.sfmt, rpn_data.batch_count);
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
 	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0);
 	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0);
@@ -450,6 +459,14 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_variable_t const anchor_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 4));
 	ccv_nnc_tensor_variable_t const l1_loss = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(anchor_out, anchor_gt), TENSOR_VARIABLE_LIST(l1_loss), 0, 0);
+	ccv_nnc_tensor_t* const select_out_t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rpn_data.select_count, 5), 0);
+	ccv_nnc_tensor_t* const cls_out_t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rpn_data.select_count, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, select_out)), TENSOR_LIST(select_out_t), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, sigmoid)), TENSOR_LIST(cls_out_t), 0);
+	for (i = 0; i < 256; i++)
+		printf("%d %f %f\n", i, cls_out_t->data.f32[i], select_out_t->data.f32[i * 5]);
+	ccv_nnc_tensor_free(cls_out_t);
+	ccv_nnc_tensor_free(select_out_t);
 	ccv_nnc_tensor_variable_free(graph, l1_loss);
 	ccv_nnc_tensor_variable_free(graph, anchor_gt);
 	ccv_nnc_tensor_variable_free(graph, anchor_out);
