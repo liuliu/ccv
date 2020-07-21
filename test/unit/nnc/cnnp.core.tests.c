@@ -615,7 +615,7 @@ TEST_CASE("apply sequential model as forward pass")
 	ccv_cnnp_model_free(final);
 }
 
-TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
+ccv_cnnp_model_t* _math_2_x_1_1_10(const ccv_nnc_tensor_t* const b)
 {
 	ccv_cnnp_model_t* mul = ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
 		MODEL_CMD_EXEC_IO_MAP(
@@ -623,8 +623,6 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 			KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_set_by(CMD_RANDOM_UNIFORM_FORWARD(-1, 1), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, 1))),
 		),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "mul");
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
-	b->data.f32[0] = 1;
 	ccv_cnnp_model_t* add = ccv_cnnp_cmd_exec(CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0,
 		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
 			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_copy(b))),
@@ -644,7 +642,14 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+}
+
+TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
 	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
@@ -730,6 +735,48 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 	ccv_nnc_tensor_free(outgrad0);
 	ccv_nnc_tensor_free(outgrad1);
 	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4 and copy parameter to a new model entirely")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* ingrad = ccv_nnc_tensor_new(0, o, 0);
+	ingrad->data.f32[0] = 1;
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 10;
+	int i;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	const float o_final = o_tensor->data.f32[0];
+	ccv_cnnp_model_t* const final2 = _math_2_x_1_1_10(b);
+	ccv_cnnp_model_compile(final2, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_set_parameters(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], o_final, 1e-5, "should match the previous output");
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(ingrad);
+	ccv_cnnp_model_free(final);
+	ccv_cnnp_model_free(final2);
 }
 
 TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate convergence")
