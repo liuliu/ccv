@@ -2798,6 +2798,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(void);
  * @return A ccv_cnnp_model_io_t that represents the output of the given model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
+enum {
+	/* Select only weights, no bias terms. */
+	CCV_CNNP_PARAMETER_SELECT_WEIGHT = 0,
+	/* Select bias terms, no weights. */
+	CCV_CNNP_PARAMETER_SELECT_BIAS = 1,
+};
 /**
  * This method exposes parameter for a model out as a potential input for another model. Since
  * it is a ccv_cnnp_model_io_t, it can also be used by other methods.
@@ -2805,10 +2811,6 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* cons
  * @param selector The selector for a parameter. ALL_PARAMETERS means all parameters, or you can select CCV_CNNP_PARAMETER_SELECT_WEIGHT or CCV_CNNP_PARAMETER_SELECT_BIAS.
  * @param index The index into a parameter. ALL_PARAMETERS means all parameters.
  */
-enum {
-	CCV_CNNP_PARAMETER_SELECT_WEIGHT = 0,
-	CCV_CNNP_PARAMETER_SELECT_BIAS = 1,
-};
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index);
 /**
  * This method name is deceiving. It return a composed model, not a naked model.
@@ -3025,6 +3027,16 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
  * @param tensor The tensor that receives value.
  */
 void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor);
+/**
+ * Set parameters from another model. This will override whatever values in these parameters. The
+ * given parameters from another model should match the dimension of the parameter. It doesn't matter
+ * whether the given tensor is on CPU or GPU. This method can only set when both models are compiled.
+ * @param model The composed model to be set on parameters.
+ * @param parameters The parameters to be override.
+ * @param from_model The model to copy parameters from.
+ * @param from_parameters The parameters to be copied from.
+ */
+void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
 /**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after

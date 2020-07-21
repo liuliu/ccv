@@ -1802,6 +1802,69 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(tensor), 0);
 }
 
+void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
+{
+	// To models.
+	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
+	const int to_param_sel = parameters->param_sel > 0 ? parameters->param_sel - 1 : parameters->param_sel;
+	assert(parameters->param_sel != 0);
+	assert(to_compiled_data->tensors.parameters);
+	ccv_array_t* const to_parameter_indices = ccv_array_new(sizeof(int), 0, 0);
+	ccv_cnnp_model_add_to_parameter_indices(parameters->model, to_param_sel, to_parameter_indices);
+	const int to_param_ref = parameters->param_ref > 0 ? parameters->param_ref - 1 : parameters->param_ref;
+	// From models.
+	const ccv_cnnp_compiled_data_t* const from_compiled_data = from_model->compiled_data;
+	const int from_param_sel = from_parameters->param_sel > 0 ? from_parameters->param_sel - 1 : from_parameters->param_sel;
+	assert(from_parameters->param_sel != 0);
+	assert(from_compiled_data->tensors.parameters);
+	ccv_array_t* const from_parameter_indices = ccv_array_new(sizeof(int), 0, 0);
+	ccv_cnnp_model_add_to_parameter_indices(from_parameters->model, from_param_sel, from_parameter_indices);
+	const int from_param_ref = from_parameters->param_ref > 0 ? from_parameters->param_ref - 1 : from_parameters->param_ref;
+	if (to_param_ref < 0 && from_param_ref < 0)
+	{
+		// Should be exactly the same tensor.
+		assert(from_parameter_indices->rnum == to_parameter_indices->rnum);
+		const int rnum = from_parameter_indices->rnum;
+		int i;
+		for (i = 0; i < rnum; i++)
+		{
+			const int src_d = *(int*)ccv_array_get(from_parameter_indices, i);
+			assert(src_d >= 0);
+			assert(src_d < from_compiled_data->parameters->rnum);
+			const int dest_d = *(int*)ccv_array_get(to_parameter_indices, i);
+			assert(dest_d >= 0);
+			assert(dest_d < to_compiled_data->parameters->rnum);
+			ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
+			assert(src);
+			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
+			assert(dest);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
+		}
+	} else {
+		if (from_param_ref < 0)
+			{ assert(from_parameter_indices->rnum == 1); }
+		else
+			{ assert(from_param_ref < from_parameter_indices->rnum); }
+		if (to_param_ref < 0)
+			{ assert(to_parameter_indices->rnum == 1); }
+		else
+			{ assert(to_param_ref < to_parameter_indices->rnum); }
+		const int src_d = *(int*)ccv_array_get(from_parameter_indices, from_param_ref >= 0 ? from_param_ref : 0);
+		assert(src_d >= 0);
+		assert(src_d < from_compiled_data->parameters->rnum);
+		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : 0);
+		assert(dest_d >= 0);
+		assert(dest_d < to_compiled_data->parameters->rnum);
+		ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
+		assert(src);
+		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
+		assert(dest);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
+	}
+	ccv_array_free(to_parameter_indices);
+	ccv_array_free(from_parameter_indices);
+}
+
 ccv_nnc_cmd_t ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
