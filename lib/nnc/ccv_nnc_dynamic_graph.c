@@ -640,13 +640,13 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				ccv_array_add_unique_int(bind->sources, graph_exec.d);
 				if (output->alias_index_ref)
 				{
-						const int alias_index = output->alias_index_ref - 1;
-						assert(alias_index >= 0);
-						ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_index);
-						ccv_nnc_tensor_variable_graph_bind_t* const root_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, variable_to->symbol.d);
-						if (!root_bind->sources)
-							root_bind->sources = ccv_array_new(sizeof(int), 1, 0);
-						ccv_array_add_unique_int(root_bind->sources, graph_exec.d);
+					const int alias_index = output->alias_index_ref - 1;
+					assert(alias_index >= 0);
+					ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_index);
+					ccv_nnc_tensor_variable_graph_bind_t* const root_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, variable_to->symbol.d);
+					if (!root_bind->sources)
+						root_bind->sources = ccv_array_new(sizeof(int), 1, 0);
+					ccv_array_add_unique_int(root_bind->sources, graph_exec.d);
 				}
 			}
 		}
@@ -897,6 +897,10 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 			if (root_bind->sources)
 				for (i = 0; i < root_bind->sources->rnum; i++)
 					ccv_array_add_unique_int(ws, *(int*)ccv_array_get(root_bind->sources, i));
+			// If we cannot loop over any exec symbols (this is not in use). It is simple to determine whether we want
+			// to free it or not: if this is an alias and the origin is not freed, we cannot free this symbol.
+			if (ws_init_size == 0)
+				free_symbol = (!bind->alias_ref || root_bind->index < 0);
 			// Go through all the exec symbols use this tensor, to see whether they have inputs that has other sources.
 			for (i = 0; i < ws_init_size; i++)
 			{
