@@ -473,6 +473,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_variable_free(graph, cls_out);
 	ccv_nnc_tensor_variable_free(graph, select_gt);
 	ccv_nnc_tensor_variable_free(graph, select_out);
+	ccv_nnc_tensor_variable_free(graph, gt);
 	ccv_nnc_tensor_variable_free(graph, select);
 	ccv_nnc_tensor_variable_free(graph, remap_out);
 	ccv_nnc_tensor_variable_free(graph, input);
