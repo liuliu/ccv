@@ -104,6 +104,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 				ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
 			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 				cumemcpy(tensor->data.u8, tensor->info.type, workspace, CCV_TENSOR_CPU_MEMORY, data_size);
+			ccfree(workspace);
 		} else {
 			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
 				ccv_half_precision_to_float((uint16_t*)data, tensor->data.f32, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));

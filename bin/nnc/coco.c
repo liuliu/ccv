@@ -72,29 +72,7 @@ static ccv_cnnp_model_t* _resnet_block_layer_new(const int filters, const int ex
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
 
-static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_size, ccv_cnnp_model_io_t* const p)
-{
-	int i;
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-		.hint = HINT((1, 1), (0, 0)),
-	}, 0), MODEL_IO_LIST(c[c_size - 1]));
-	p[c_size - 1] = output;
-	for (i = c_size - 2; i >= 0; i--)
-	{
-		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0), MODEL_IO_LIST(c[i]));
-		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
-		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(lateral, up));
-		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0), MODEL_IO_LIST(sum));
-		p[i] = output;
-	}
-}
-
-ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
+ccv_array_t* _imagenet_resnet50_v1d(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
@@ -120,14 +98,96 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 			.hint = HINT((2, 2), (1, 1)),
 		}, 0)
 	), 0);
+	ccv_array_t* const backbones = ccv_array_new(sizeof(ccv_cnnp_model_t*), 6, 0);
+	ccv_array_push(backbones, &init_conv);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
-	output = ccv_cnnp_model_apply(_resnet_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_1 = _resnet_block_layer_new(64, 4, 1, 3);
+	ccv_array_push(backbones, &conv_1);
+	output = ccv_cnnp_model_apply(conv_1, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_2 = _resnet_block_layer_new(128, 4, 2, 4);
+	ccv_array_push(backbones, &conv_2);
+	output = ccv_cnnp_model_apply(conv_2, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_3 = _resnet_block_layer_new(256, 4, 2, 6);
+	ccv_array_push(backbones, &conv_3);
+	output = ccv_cnnp_model_apply(conv_3, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_4 = _resnet_block_layer_new(512, 4, 2, 3);
+	ccv_array_push(backbones, &conv_4);
+	output = ccv_cnnp_model_apply(conv_4, MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const resnet50_v1d = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
+	ccv_array_push(backbones, &resnet50_v1d);
+	return backbones;
+}
+
+static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_size, ccv_cnnp_model_io_t* const p)
+{
+	int i;
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+		.hint = HINT((1, 1), (0, 0)),
+	}, 0), MODEL_IO_LIST(c[c_size - 1]));
+	p[c_size - 1] = output;
+	for (i = c_size - 2; i >= 0; i--)
+	{
+		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+			.hint = HINT((1, 1), (0, 0)),
+		}, 0), MODEL_IO_LIST(c[i]));
+		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
+		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(lateral, up));
+		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((1, 1), (1, 1)),
+		}, 0), MODEL_IO_LIST(sum));
+		p[i] = output;
+	}
+}
+
+ccv_array_t* _imagenet_resnet50_v1d_fpn(void)
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((2, 2), (1, 1)),
+		}, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_relu(0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((1, 1), (1, 1)),
+		}, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_relu(0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((1, 1), (1, 1)),
+		}, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_relu(0),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.hint = HINT((2, 2), (1, 1)),
+		}, 0)
+	), 0);
+	ccv_array_t* const backbones = ccv_array_new(sizeof(ccv_cnnp_model_t*), 6, 0);
+	ccv_array_push(backbones, &init_conv);
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* const conv_1 = _resnet_block_layer_new(64, 4, 1, 3);
+	ccv_array_push(backbones, &conv_1);
+	output = ccv_cnnp_model_apply(conv_1, MODEL_IO_LIST(output));
 	const ccv_cnnp_model_io_t c2 = output;
-	output = ccv_cnnp_model_apply(_resnet_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_2 = _resnet_block_layer_new(128, 4, 2, 4);
+	ccv_array_push(backbones, &conv_2);
+	output = ccv_cnnp_model_apply(conv_2, MODEL_IO_LIST(output));
 	const ccv_cnnp_model_io_t c3 = output;
-	output = ccv_cnnp_model_apply(_resnet_block_layer_new(256, 4, 2, 6), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_3 = _resnet_block_layer_new(256, 4, 2, 6);
+	ccv_array_push(backbones, &conv_3);
+	output = ccv_cnnp_model_apply(conv_3, MODEL_IO_LIST(output));
 	const ccv_cnnp_model_io_t c4 = output;
-	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv_4 = _resnet_block_layer_new(512, 4, 2, 3);
+	ccv_array_push(backbones, &conv_4);
+	output = ccv_cnnp_model_apply(conv_4, MODEL_IO_LIST(output));
 	const ccv_cnnp_model_io_t c5 = output;
 	const ccv_cnnp_model_io_t c[] = { c2, c3, c4, c5 };
 	ccv_cnnp_model_io_t p[5];
@@ -143,7 +203,9 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 	int i;
 	for (i = 0; i < 5; i++)
 		proposals[i] = ccv_cnnp_model_apply(rpn_proposals, MODEL_IO_LIST(p[i]));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
+	ccv_cnnp_model_t* const resnet50_v1d_fpn = ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
+	ccv_array_push(backbones, &resnet50_v1d_fpn);
+	return backbones;
 }
 
 typedef struct {
@@ -378,9 +440,33 @@ static void _rpn_data_deinit(void* const self, void* const context)
 	ccfree(data);
 }
 
+// We need to use the new API.
+static void _init_backbone_from_imagenet(ccv_array_t* const resnet50_v1d_fpn, const ccv_array_t* const resnet50_v1d)
+{
+	assert(resnet50_v1d_fpn->rnum == resnet50_v1d->rnum);
+	const int bones_rnum = resnet50_v1d->rnum - 1;
+	int i;
+	ccv_cnnp_model_t* const model = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d_fpn, bones_rnum);
+	ccv_cnnp_model_t* const from_model = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d, bones_rnum);
+	for (i = 0; i < bones_rnum; i++)
+	{
+		ccv_cnnp_model_t* const layer = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d_fpn, i);
+		ccv_cnnp_model_t* const from_layer = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d, i);
+		ccv_cnnp_model_set_parameters(
+			model, ccv_cnnp_model_parameters(layer, ALL_PARAMETERS, ALL_PARAMETERS),
+			from_model, ccv_cnnp_model_parameters(from_layer, ALL_PARAMETERS, ALL_PARAMETERS));
+	}
+}
+
+ccv_nnc_cmd_t _resnet_optimizer(const float learn_rate, const int batch_size, const float wd)
+{
+	return CMD_SGD_FORWARD(1, learn_rate, 1. / batch_size, wd, 0.9, 0);
+}
+
 static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const val_data)
 {
-	ccv_cnnp_model_t* rpn = _imagenet_resnet50_v1d_fpn();
+	ccv_array_t* rpn_bones = _imagenet_resnet50_v1d_fpn();
+	ccv_cnnp_model_t* rpn = *(ccv_cnnp_model_t**)ccv_array_get(rpn_bones, rpn_bones->rnum - 1);
 	ccv_cnnp_model_set_workspace_size(rpn, 1llu * 1024 * 1024 * 1024);
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_nnc_annotation_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {
@@ -413,6 +499,20 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
 	sfmt_init_gen_rand(&rpn_data.sfmt, rpn_data.batch_count);
+
+	// Copy parameters from imagenet over.
+	const ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NCHW(000, 32F, rpn_data.batch_count, 3, 800, 800);
+	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_array_t* const resnet50_v1d_bones = _imagenet_resnet50_v1d();
+	ccv_cnnp_model_t* const resnet50_v1d = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d_bones, resnet50_v1d_bones->rnum - 1);
+	const float wd = 0.0001;
+	const ccv_nnc_tensor_param_t imagenet_params = GPU_TENSOR_NCHW(000, 32F, 64, 3, 224, 224);
+	ccv_cnnp_model_compile(resnet50_v1d, TENSOR_PARAM_LIST(imagenet_params), _resnet_optimizer(0.0001, 64, wd), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_checkpoint(resnet50_v1d, "imagenet.checkpoint", 0);
+	_init_backbone_from_imagenet(rpn_bones, resnet50_v1d_bones);
+	ccv_cnnp_model_free(resnet50_v1d);
+	ccv_array_free(resnet50_v1d_bones);
+
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, 4, &rpn_data, 0);
 	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0);
 	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0);
@@ -430,10 +530,10 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	int i;
 	for (i = 0; i < 5; i++)
 		outputs[i] = ccv_nnc_tensor_variable_new(graph);
+	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, TENSOR_VARIABLE_LIST(input), outputs, 5, 0, 0);
 	ccv_nnc_tensor_variable_t remap_out = ccv_nnc_tensor_variable_new(graph, train_gt->info);
 	int off = 0;
-	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	for (i = 0; i < 5; i++)
 	{
 		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_variable(graph, outputs[i]);
@@ -460,9 +560,6 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_variable_t const anchor_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 4));
 	ccv_nnc_tensor_variable_t const l1_loss = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(anchor_out, anchor_gt), TENSOR_VARIABLE_LIST(l1_loss), 0, 0);
-	FILE* w = fopen("coco.dot", "w+");
-	ccv_nnc_dynamic_graph_dot(graph, CCV_NNC_LONG_DOT_GRAPH, w);
-	fclose(w);
 	// ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(cls_loss, l1_loss), 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), 0);
 	ccv_nnc_tensor_variable_free(graph, l1_loss);
 	ccv_nnc_tensor_variable_free(graph, anchor_gt);
@@ -479,6 +576,8 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_variable_free(graph, input);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_data);
+	ccv_cnnp_model_free(rpn);
+	ccv_array_free(rpn_bones);
 }
 
 static ccv_array_t* _array_from_disk_new(const char* const list, const char* const base_dir)

@@ -1823,12 +1823,14 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_t* const from_parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	ccv_cnnp_model_add_to_parameter_indices(from_parameters->model, from_param_sel, from_parameter_indices);
 	const int from_param_ref = from_parameters->param_ref > 0 ? from_parameters->param_ref - 1 : from_parameters->param_ref;
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int to_parameter_size = to_compiled_data->parameters->rnum;
 	if (to_param_ref < 0 && from_param_ref < 0)
 	{
 		// Should be exactly the same tensor.
 		assert(from_parameter_indices->rnum == to_parameter_indices->rnum);
 		const int rnum = from_parameter_indices->rnum;
-		int i;
+		int i, j;
 		for (i = 0; i < rnum; i++)
 		{
 			const int src_d = *(int*)ccv_array_get(from_parameter_indices, i);
@@ -1842,6 +1844,12 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
 			assert(dest);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
+			for (j = 1; j < parallel_count; j++)
+			{
+				ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
+				if (copy_tensor)
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+			}
 			// Mark this symbol as init'ed.
 			const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
 			to_compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
@@ -1866,6 +1874,13 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
 		assert(dest);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
+		int i;
+		for (i = 1; i < parallel_count; i++)
+		{
+			ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + i * to_parameter_size];
+			if (copy_tensor)
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+		}
 		// Mark this symbol as init'ed.
 		const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
 		to_compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
