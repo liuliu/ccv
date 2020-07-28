@@ -530,8 +530,8 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	int i;
 	for (i = 0; i < 5; i++)
 		outputs[i] = ccv_nnc_tensor_variable_new(graph);
-	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, TENSOR_VARIABLE_LIST(input), outputs, 5, 0, 0);
+	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_tensor_variable_t remap_out = ccv_nnc_tensor_variable_new(graph, train_gt->info);
 	int off = 0;
 	for (i = 0; i < 5; i++)

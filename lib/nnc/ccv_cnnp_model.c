@@ -1836,6 +1836,10 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 			const int src_d = *(int*)ccv_array_get(from_parameter_indices, i);
 			assert(src_d >= 0);
 			assert(src_d < from_compiled_data->parameters->rnum);
+			const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(from_compiled_data->parameters, src_d))->d;
+			// If the original is not init'ed. We cannot copy from.
+			if (!(from_compiled_data->tensors_init.v[s >> 5] & (1u << (s & 0x1f))))
+				continue;
 			const int dest_d = *(int*)ccv_array_get(to_parameter_indices, i);
 			assert(dest_d >= 0);
 			assert(dest_d < to_compiled_data->parameters->rnum);
@@ -1851,8 +1855,8 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
 			}
 			// Mark this symbol as init'ed.
-			const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
-			to_compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
+			const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
+			to_compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
 		}
 	} else {
 		if (from_param_ref < 0)
@@ -1866,24 +1870,29 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 		const int src_d = *(int*)ccv_array_get(from_parameter_indices, from_param_ref >= 0 ? from_param_ref : 0);
 		assert(src_d >= 0);
 		assert(src_d < from_compiled_data->parameters->rnum);
-		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : 0);
-		assert(dest_d >= 0);
-		assert(dest_d < to_compiled_data->parameters->rnum);
-		ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
-		assert(src);
-		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
-		assert(dest);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
-		int i;
-		for (i = 1; i < parallel_count; i++)
+		const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(from_compiled_data->parameters, src_d))->d;
+		// If the original is not init'ed. We cannot copy from.
+		if (from_compiled_data->tensors_init.v[s >> 5] & (1u << (s & 0x1f)))
 		{
-			ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + i * to_parameter_size];
-			if (copy_tensor)
-				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+			const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : 0);
+			assert(dest_d >= 0);
+			assert(dest_d < to_compiled_data->parameters->rnum);
+			ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
+			assert(src);
+			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
+			assert(dest);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(src), TENSOR_LIST(dest), 0);
+			int i;
+			for (i = 1; i < parallel_count; i++)
+			{
+				ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + i * to_parameter_size];
+				if (copy_tensor)
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+			}
+			// Mark this symbol as init'ed.
+			const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
+			to_compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
 		}
-		// Mark this symbol as init'ed.
-		const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
-		to_compiled_data->tensors_init.v[s >> 5] |= (1u << (s & 0x1f));
 	}
 	ccv_array_free(to_parameter_indices);
 	ccv_array_free(from_parameter_indices);
