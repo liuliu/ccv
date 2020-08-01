@@ -221,6 +221,7 @@ typedef struct {
 typedef struct {
 	int batch_count;
 	int select_count;
+	int max_window;
 	ccv_cnnp_model_t* rpn;
 	sfmt_t sfmt;
 } ccv_nnc_rpn_data_batching_t;
@@ -319,8 +320,9 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		ccv_array_t* const bboxes = annotation->bboxes;
 		max_bbox_size = ccv_max(max_bbox_size, bboxes->rnum);
 	}
-	printf("%d %d\n", max_rows, max_cols);
 	ccv_nnc_rpn_data_batching_t* const rpn_data = (ccv_nnc_rpn_data_batching_t*)context;
+	max_rows = ccv_min(max_rows, rpn_data->max_window);
+	max_cols = ccv_min(max_cols, rpn_data->max_window);
 	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NCHW(32F, rpn_data->batch_count, 3, max_rows, max_cols);
 	ccv_cnnp_model_compile(rpn_data->rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	static const int fpn_size = 5;
@@ -357,18 +359,24 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		void* const* const tuple = input_data[i % input_size];
 		ccv_dense_matrix_t* const image = tuple[1];
 		ccv_dense_matrix_t* const jitter_image = tuple[2];
-		assert(jitter_image->cols <= max_cols);
-		assert(jitter_image->rows <= max_rows);
-		const int pad_x = (max_cols - jitter_image->cols + 1) / 2;
-		const int pad_y = (max_rows - jitter_image->rows + 1) / 2;
+		const int image_cols = ccv_min(jitter_image->cols, max_cols);
+		const int image_rows = ccv_min(jitter_image->rows, max_rows);
+		const int shift_x = jitter_image->cols > image_cols ? (int)((jitter_image->cols - image_cols) * sfmt_genrand_real1(&rpn_data->sfmt)) : 0;
+		assert(shift_x <= jitter_image->cols - max_cols);
+		const int shift_y = jitter_image->rows > image_rows ? (int)((jitter_image->rows - image_rows) * sfmt_genrand_real1(&rpn_data->sfmt)) : 0;
+		assert(shift_y <= jitter_image->rows - max_rows);
+		const int pad_x = max_cols > jitter_image->cols ? (max_cols - jitter_image->cols + 1) / 2 : 0;
+		assert(pad_x >= 0);
+		const int pad_y = max_rows > jitter_image->rows ? (max_rows - jitter_image->rows + 1) / 2 : 0;
+		assert(pad_y >= 0);
 		const int plane_size = max_cols * max_rows;
 		float* bp = input->data.f32 + i * plane_size * 3;
 		memset(bp, 0, sizeof(float) * plane_size * 3);
 		bp += max_cols * pad_y + pad_x;
-		const float* ap = jitter_image->data.f32;
-		for (y = 0; y < jitter_image->rows; y++)
+		const float* ap = jitter_image->data.f32 + jitter_image->cols * 3 * shift_y + shift_x * 3;
+		for (y = 0; y < image_rows; y++)
 		{
-			for (x = 0; x < jitter_image->cols; x++)
+			for (x = 0; x < image_cols; x++)
 			{
 				bp[x] = ap[x * 3];
 				bp[x + plane_size] = ap[x * 3 + 1];
@@ -387,7 +395,7 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		for (j = 0; j < bboxes->rnum; j++)
 		{
 			const ccv_nnc_bbox_t* const bbox = (ccv_nnc_bbox_t*)ccv_array_get(bboxes, j);
-			rects[j].rect = ccv_decimal_rect(bbox->rect.x * width_scale + pad_x, bbox->rect.y * height_scale + pad_y, bbox->rect.width * width_scale, bbox->rect.height * height_scale);
+			rects[j].rect = ccv_decimal_rect(bbox->rect.x * width_scale + pad_x - shift_x, bbox->rect.y * height_scale + pad_y - shift_y, bbox->rect.width * width_scale, bbox->rect.height * height_scale);
 		}
 		// Input scaled down twice to get to the first layer. Since we always padding beginning
 		// for convolution, we don't need to have extra shift for x-y axis. Simply scale up is
@@ -515,8 +523,9 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
 	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx));
 	ccv_nnc_rpn_data_batching_t rpn_data = {
-		.batch_count = 1,
+		.batch_count = batch_size,
 		.select_count = 256,
+		.max_window = 1280,
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
 	sfmt_init_gen_rand(&rpn_data.sfmt, rpn_data.batch_count);
@@ -548,9 +557,9 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data.select_count, 5), 0);
 	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
+		ccv_cnnp_dataframe_iter_next(iter, (void **)data, 3, 0);
 		const float learn_rate = _resnet_learn_rate(epoch, t, epoch_end);
 		ccv_nnc_cmd_t sgd = _resnet_optimizer(learn_rate, batch_size, wd);
-		ccv_cnnp_dataframe_iter_next(iter, (void **)data, 3, 0);
 		ccv_nnc_tensor_variable_t const input = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_t* const train_image = data[0][0];
 		ccv_nnc_tensor_t* const train_gt = data[1][0];
@@ -604,7 +613,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 				++correct;
 		}
 		double accuracy = (double)correct / rpn_data.select_count;
-		printf("accuracy: %f\n", accuracy);
+		printf("accuracy: %f (%d/%d)\n", accuracy, t, epoch_end);
 		ccv_nnc_tensor_variable_free(graph, l1_loss);
 		ccv_nnc_tensor_variable_free(graph, anchor_gt);
 		ccv_nnc_tensor_variable_free(graph, anchor_out);
@@ -719,7 +728,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const val_set = _array_from_disk_new(val_list, val_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(val_set);
-	train_coco(128, train_data, test_data);
+	train_coco(1, train_data, test_data);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;
