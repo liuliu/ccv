@@ -8,6 +8,13 @@
 #include <stddef.h>
 #include <3rdparty/sfmt/SFMT.h>
 
+static unsigned int get_current_time(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
 static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
@@ -362,9 +369,9 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		const int image_cols = ccv_min(jitter_image->cols, max_cols);
 		const int image_rows = ccv_min(jitter_image->rows, max_rows);
 		const int shift_x = jitter_image->cols > image_cols ? (int)((jitter_image->cols - image_cols) * sfmt_genrand_real1(&rpn_data->sfmt)) : 0;
-		assert(shift_x <= jitter_image->cols - max_cols);
+		assert(shift_x <= jitter_image->cols - image_cols);
 		const int shift_y = jitter_image->rows > image_rows ? (int)((jitter_image->rows - image_rows) * sfmt_genrand_real1(&rpn_data->sfmt)) : 0;
-		assert(shift_y <= jitter_image->rows - max_rows);
+		assert(shift_y <= jitter_image->rows - image_rows);
 		const int pad_x = max_cols > jitter_image->cols ? (max_cols - jitter_image->cols + 1) / 2 : 0;
 		assert(pad_x >= 0);
 		const int pad_y = max_rows > jitter_image->rows ? (max_rows - jitter_image->rows + 1) / 2 : 0;
@@ -469,22 +476,13 @@ static void _init_backbone_from_imagenet(ccv_array_t* const resnet50_v1d_fpn, co
 
 float _resnet_learn_rate(const int epoch, const int t, const int epoch_end)
 {
-	const int warmup_epoch = 5;
 	float learn_rate = 0.0001;
-	if (epoch < warmup_epoch)
-	{
-		learn_rate = ccv_max(0.0001, (float)t / (epoch_end * warmup_epoch));
-	} else if (epoch < 40) {
-		learn_rate = 1 - (1 - 0.5) * (epoch - 5) / 35;
-	} else if (epoch < 60) {
-		learn_rate = 0.5 - (0.5 - 0.25) * (epoch - 40) / 20;
-	} else if (epoch < 100) {
-		learn_rate = 0.25 - (0.25 - 0.025) * (epoch - 60) / 40;
-	} else {
-		learn_rate = 0.025 - (0.025 - 0.00025) * (epoch - 100) / 20;
-	}
+	if (epoch < 5)
+		learn_rate = 0.001;
+	else
+		learn_rate = 0.0001;
 	learn_rate = ccv_max(learn_rate, 0.00004);
-	return 0.4 * learn_rate;
+	return learn_rate;
 }
 
 ccv_nnc_cmd_t _resnet_optimizer(const float learn_rate, const int batch_size, const float wd)
@@ -535,7 +533,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_array_t* const resnet50_v1d_bones = _imagenet_resnet50_v1d();
 	ccv_cnnp_model_t* const resnet50_v1d = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d_bones, resnet50_v1d_bones->rnum - 1);
-	const float wd = 0.0001;
+	const float wd = 0.0005;
 	const ccv_nnc_tensor_param_t imagenet_params = GPU_TENSOR_NCHW(000, 32F, 64, 3, 224, 224);
 	ccv_cnnp_model_compile(resnet50_v1d, TENSOR_PARAM_LIST(imagenet_params), _resnet_optimizer(0.0001, 64, wd), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_cnnp_model_checkpoint(resnet50_v1d, "imagenet.checkpoint", 0);
@@ -553,8 +551,10 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size - 1) / batch_size;
 	int t;
 	int epoch = 0;
-	ccv_nnc_tensor_t* const gt_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data.select_count, 5), 0);
-	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data.select_count, 5), 0);
+	double overall_accuracy = 0;
+	unsigned int batch_start_time = get_current_time();
+	ccv_nnc_tensor_t* const gt_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data.batch_count * rpn_data.select_count, 5), 0);
+	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rpn_data.batch_count * rpn_data.select_count, 5), 0);
 	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
 		ccv_cnnp_dataframe_iter_next(iter, (void **)data, 3, 0);
@@ -575,7 +575,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		for (i = 0; i < 5; i++)
 		{
 			ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_variable(graph, outputs[i]);
-			ccv_nnc_tensor_variable_t remap_alias = ccv_nnc_tensor_variable_alias_new(graph, remap_out, DIM_ALLOC(0, 0, off, 0), DIM_ALLOC(1, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]), GPU_TENSOR_NHWC(000, 32F, 1, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]));
+			ccv_nnc_tensor_variable_t remap_alias = ccv_nnc_tensor_variable_alias_new(graph, remap_out, DIM_ALLOC(0, 0, off, 0), DIM_ALLOC(rpn_data.batch_count, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count, tensor->info.dim[2], tensor->info.dim[3], tensor->info.dim[1]));
 			off += tensor->info.dim[2] * tensor->info.dim[3];
 			ccv_nnc_dynamic_graph_exec(graph, CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(outputs[i]), TENSOR_VARIABLE_LIST(remap_alias), 0, 0);
 			ccv_nnc_tensor_variable_free(graph, remap_alias);
@@ -589,31 +589,38 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		ccv_nnc_tensor_variable_set(graph, gt, train_gt);
 		ccv_nnc_tensor_variable_t const select_gt = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(gt,  select), TENSOR_VARIABLE_LIST(select_gt), 0, 0);
-		ccv_nnc_tensor_variable_t const cls_out = ccv_nnc_tensor_variable_alias_new(graph, select_out, DIM_ALLOC(), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 1));
-		ccv_nnc_tensor_variable_t const cls_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 1));
+		ccv_nnc_tensor_variable_t const cls_out = ccv_nnc_tensor_variable_alias_new(graph, select_out, DIM_ALLOC(), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 1));
+		ccv_nnc_tensor_variable_t const cls_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 1));
 		ccv_nnc_tensor_variable_t const cls_loss = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_tensor_variable_t const sigmoid = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(cls_out, cls_gt), TENSOR_VARIABLE_LIST(cls_loss, sigmoid), 0, 0);
-		ccv_nnc_tensor_variable_t const anchor_out = ccv_nnc_tensor_variable_alias_new(graph, select_out, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 4));
-		ccv_nnc_tensor_variable_t const anchor_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.select_count, 4));
+		ccv_nnc_tensor_variable_t const anchor_out = ccv_nnc_tensor_variable_alias_new(graph, select_out, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 4));
+		ccv_nnc_tensor_variable_t const anchor_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 4));
 		ccv_nnc_tensor_variable_t const l1_loss = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(anchor_out, anchor_gt), TENSOR_VARIABLE_LIST(l1_loss), 0, 0);
 		ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(cls_loss, l1_loss), 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), 0);
 		ccv_nnc_dynamic_graph_apply_gradients(graph, sgd, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
-			TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, select_out), ccv_nnc_tensor_from_variable(graph, select_gt)),
-			TENSOR_LIST(out_cpu, gt_cpu),
-			0);
-		int correct = 0;
-		for (i = 0; i < rpn_data.select_count; i++)
+		if (t % 50 == 49)
 		{
-			const int truth = (gt_cpu->data.f32[i * 5] > 0.5);
-			const int out = (out_cpu->data.f32[i * 5] > 0);
-			if (truth == out)
-				++correct;
+			// Only sample the accuracy. Although truth to be told, this doesn't impact performance because moving small amount of data on / off GPU is relatively easy.
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+				TENSOR_LIST(ccv_nnc_tensor_from_variable(graph, select_out), ccv_nnc_tensor_from_variable(graph, select_gt)),
+				TENSOR_LIST(out_cpu, gt_cpu),
+				0);
+			int correct = 0;
+			for (i = 0; i < rpn_data.batch_count * rpn_data.select_count; i++)
+			{
+				const int truth = (gt_cpu->data.f32[i * 5] > 0.5);
+				const int out = (out_cpu->data.f32[i * 5] > 0);
+				if (truth == out)
+					++correct;
+			}
+			double accuracy = (double)correct / rpn_data.select_count;
+			overall_accuracy = overall_accuracy * 0.5 + accuracy * 0.5;
+			unsigned int elapsed_time = get_current_time() - batch_start_time;
+			printf("Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(rpn) / 1024 / 1024.0 / 1024, 50 * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
+			batch_start_time = get_current_time();
 		}
-		double accuracy = (double)correct / rpn_data.select_count;
-		printf("accuracy: %f (%d/%d)\n", accuracy, t, epoch_end);
 		ccv_nnc_tensor_variable_free(graph, l1_loss);
 		ccv_nnc_tensor_variable_free(graph, anchor_gt);
 		ccv_nnc_tensor_variable_free(graph, anchor_out);
