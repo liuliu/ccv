@@ -37,7 +37,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	float* ap = a->data.f32;
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
 	const float* const bp = b->data.f32;
-	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, and 0.5 is the center of a pixel.
+	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
 	const float roi_y = bp[1] * h;
 	const float roi_w = bp[2] * w;
 	const float roi_h = bp[3] * h;
@@ -61,7 +61,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		int count = 0;
 		for (y = 0; y < bin_h; y++)
 		{
-			const float ay = roi_y + ((y + pi + 0.5) * scale_y - 0.5) - 0.5; // Since from the beginning, we assumed the coordinate center is 0.5 (per pixel), - 0.5 would tell us which pixel to bind.
+			const float ay = roi_y + (y + pi + 0.5) * scale_y - 0.5;
 			const int iy = (int)ay;
 			const float ry = ay - iy;
 			const int iy0 = ccv_clamp(iy, 0, h - 1);
@@ -90,7 +90,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		int count = 0;
 		for (x = 0; x < bin_w; x++)
 		{
-			const float ax = roi_x + ((x + pj + 0.5) * scale_x - 0.5) - 0.5;
+			const float ax = roi_x + (x + pj + 0.5) * scale_x - 0.5;
 			const int ix = (int)ax;
 			const float rx = ax - ix;
 			const int ix0 = ccv_clamp(ix, 0, w - 1);
@@ -181,7 +181,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int* oinc = CCV_IS_TENSOR_VIEW(o) ? ((o_nd == CCV_NNC_MAX_DIM + 1) ? o->inc : o->inc + 1) : odim;
 	const ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[2];
 	const float* const bp = b->data.f32;
-	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, and 0.5 is the center of a pixel.
+	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
 	const float roi_y = bp[1] * h;
 	const float roi_w = bp[2] * w;
 	const float roi_h = bp[3] * h;
@@ -203,7 +203,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		int count = 0;
 		for (y = 0; y < bin_h; y++)
 		{
-			const float ay = roi_y + ((y + pi + 0.5) * scale_y - 0.5) - 0.5; // Since from the beginning, we assumed the coordinate center is 0.5 (per pixel), - 0.5 would tell us which pixel to bind.
+			const float ay = roi_y + (y + pi + 0.5) * scale_y - 0.5;
 			const int iy = (int)ay;
 			const float ry = ay - iy;
 			const int iy0 = ccv_clamp(iy, 0, h - 1);
@@ -232,7 +232,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		int count = 0;
 		for (x = 0; x < bin_w; x++)
 		{
-			const float ax = roi_x + ((x + pj + 0.5) * scale_x - 0.5) - 0.5;
+			const float ax = roi_x + (x + pj + 0.5) * scale_x - 0.5;
 			const int ix = (int)ax;
 			const float rx = ax - ix;
 			const int ix0 = ccv_clamp(ix, 0, w - 1);

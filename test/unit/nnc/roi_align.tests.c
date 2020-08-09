@@ -19,8 +19,8 @@ TEST_CASE("compare ROI align forward")
 	for (i = 0; i < 12 * 24; i++)
 		for (j = 0; j < 3; j++)
 			a->data.f32[i * 3 + j] = i;
-	b->data.f32[0] = 0.5 / 24; // x
-	b->data.f32[1] = 0.5 / 12; // y
+	b->data.f32[0] = 0 / 24; // x
+	b->data.f32[1] = 0 / 12; // y
 	b->data.f32[2] = 1; // w
 	b->data.f32[3] = 1; // h
 	// This should be look like no bi-linear filtering at all.
@@ -56,8 +56,8 @@ TEST_CASE("compare ROI align forward with average pool")
 	for (i = 0; i < 12 * 24; i++)
 		for (j = 0; j < 3; j++)
 			a->data.f32[i * 3 + j] = i;
-	b->data.f32[0] = 0.5 / 24; // x
-	b->data.f32[1] = 0.5 / 12; // y
+	b->data.f32[0] = 0 / 24; // x
+	b->data.f32[1] = 0 / 12; // y
 	b->data.f32[2] = 1; // w
 	b->data.f32[3] = 1; // h
 	// This should be look like no bi-linear filtering at all.
@@ -80,8 +80,8 @@ TEST_CASE("compare ROI align backward with average pool")
 	for (i = 0; i < 4 * 4; i++)
 		for (j = 0; j < 3; j++)
 			c->data.f32[i * 3 + j] = i;
-	b->data.f32[0] = 0.5 / 24; // x
-	b->data.f32[1] = 0.5 / 12; // y
+	b->data.f32[0] = 0 / 24; // x
+	b->data.f32[1] = 0 / 12; // y
 	b->data.f32[2] = 1; // w
 	b->data.f32[3] = 1; // h
 	// This should be look like no bi-linear filtering at all.
