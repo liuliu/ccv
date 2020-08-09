@@ -68,7 +68,7 @@ __global__ void _ccv_nnc_roi_align_forw_nchw(const int chw, const int w, const i
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_roi_align_forw_nhwc(const int hw, const int w, const int h, const int ch, const int adim1, const int adim2, const NUM* const ap, const NUM* const bp, const int pool_w, const int pool_h, const int cdim1, const int cdim2, NUM* const cp)
+__global__ void _ccv_nnc_roi_align_forw_nhwc(const int chw, const int w, const int h, const int adim1, const int adim2, const NUM* const ap, const NUM* const bp, const int pool_w, const int pool_h, const int cdim1, const int cdim2, NUM* const cp)
 {
 	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
 	const float roi_y = bp[1] * h;
@@ -81,15 +81,16 @@ __global__ void _ccv_nnc_roi_align_forw_nhwc(const int hw, const int w, const in
 	const float scale_y = roi_h / bin_pool_h; // The scale to multiply back to get original coordinate.
 	const float scale_x = roi_w / bin_pool_w;
 	const int pool_hw = pool_h * pool_w;
-	CUDA_1D_KERNEL_LOOP(i, hw) {
-		const int y = i / pool_w;
-		const int x = i % pool_w;
+	CUDA_1D_KERNEL_LOOP(i, chw) {
+		const int k = i / pool_hw;
+		const int xy = i % pool_hw;
+		const int y = xy / pool_w;
+		const int x = xy % pool_w;
 		const int py = y * bin_h;
 		const int px = x * bin_w;
+		float v = 0;
 		int count = 0;
-		float* const cpz = cp + y * cdim1 + x * cdim2;
-		for (int k = 0; k < ch; k++)
-			cpz[k] = 0;
+		const float* const apz = ap + k;
 		for (int by = 0; by < bin_h; by++)
 		{
 			const float ay = roi_y + (by + py + 0.5) * scale_y - 0.5;
@@ -112,18 +113,15 @@ __global__ void _ccv_nnc_roi_align_forw_nhwc(const int hw, const int w, const in
 				const float c01 = (1 - ry) * rx;
 				const float c10 = ry * (1 - rx);
 				const float c11 = ry * rx;
-				const float* const ap00 = ap + iy0 * adim1 + ix0 * adim2;
-				const float* const ap01 = ap + iy0 * adim1 + ix1 * adim2;
-				const float* const ap10 = ap + iy1 * adim1 + ix0 * adim2;
-				const float* const ap11 = ap + iy1 * adim1 + ix1 * adim2;
-				for (int k = 0; k < ch; k++)
-					cpz[k] += ap00[k] * c00 + ap01[k] * c01 + ap10[k] * c10 + ap11[k] * c11;
+				const float ap00 = apz[iy0 * adim1 + ix0 * adim2];
+				const float ap01 = apz[iy0 * adim1 + ix1 * adim2];
+				const float ap10 = apz[iy1 * adim1 + ix0 * adim2];
+				const float ap11 = apz[iy1 * adim1 + ix1 * adim2];
+				v += ap00 * c00 + ap01 * c01 + ap10 * c10 + ap11 * c11;
 				++count;
 			}
 		}
-		if (count > 0)
-			for (int k = 0; k < ch; k++)
-				cpz[k] = cpz[k] / count;
+		cp[y * cdim1 + x * cdim2 + k] = count > 0 ? v / count : 0;
 	}
 }
 
@@ -164,8 +162,8 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		const int pool_w = cdim[1];
 		assert(cdim[2] == adim[2]);
 		const int ch = cdim[2];
-		const int hw = pool_h * pool_w;
-		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, w, h, ch, ainc[1] * ainc[2], ainc[2], a->data.f32, b->data.f32, pool_w, pool_h, cinc[1] * cinc[2], cinc[2], c->data.f32);
+		const int chw = pool_h * pool_w * ch;
+		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(chw), CUDA_NUM_THREADS, 0, stream>>>(chw, w, h, ainc[1] * ainc[2], ainc[2], a->data.f32, b->data.f32, pool_w, pool_h, cinc[1] * cinc[2], cinc[2], c->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
