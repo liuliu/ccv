@@ -158,6 +158,10 @@
 #define CMD_DATATYPE_CONVERSION_FORWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_DATATYPE_CONVERSION_BACKWARD
 #define CMD_DATATYPE_CONVERSION_BACKWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_ROI_ALIGN_FORWARD
+#define CMD_ROI_ALIGN_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_ROI_ALIGN_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
+// CCV_NNC_ROI_ALIGN_BACKWARD
+#define CMD_ROI_ALIGN_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_ROI_ALIGN_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_SIGMOID_FORWARD
 #define CMD_SIGMOID_FORWARD() ccv_nnc_cmd(CCV_NNC_SIGMOID_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SIGMOID_BACKWARD
