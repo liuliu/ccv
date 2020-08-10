@@ -10,29 +10,32 @@ extern "C" {
 #ifdef HAVE_CUDA
 
 template<typename NUM>
-__global__ void _ccv_nnc_roi_align_forw_nchw(const int chw, const int w, const int h, const int adim1, const int adim2, const NUM* const ap, const NUM* const bp, const int pool_w, const int pool_h, const int cdim1, const int cdim2, NUM* const cp)
+__global__ void _ccv_nnc_roi_align_forw_nchw(const int nchw, const int ch, const int w, const int h, const int a_n, const int adim0, const int adim1, const int adim2, const NUM* const ap, const int b_n, const int bdim0, const NUM* const bp, const int pool_w, const int pool_h, const int cdim0, const int cdim1, const int cdim2, NUM* const cp)
 {
-	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
-	const float roi_y = bp[1] * h;
-	const float roi_w = bp[2] * w;
-	const float roi_h = bp[3] * h;
-	const int bin_h = (int)ceilf(roi_h / pool_h); // How many bins in each point of the pool. We slightly sampling at higher resolution (due to ceiling) with bilinear interpolation.
-	const int bin_w = (int)ceilf(roi_w / pool_w);
-	const int bin_pool_h = bin_h * pool_h; // Before averaging, what's the size of the region in integral term.
-	const int bin_pool_w = bin_w * pool_w;
-	const float scale_y = roi_h / bin_pool_h; // The scale to multiply back to get original coordinate.
-	const float scale_x = roi_w / bin_pool_w;
+	const int pool_chw = ch * pool_h * pool_w;
 	const int pool_hw = pool_h * pool_w;
-	CUDA_1D_KERNEL_LOOP(i, chw) {
-		const int k = i / pool_hw;
-		const int xy = i % pool_hw;
+	CUDA_1D_KERNEL_LOOP(i, nchw) {
+		const int n = i / pool_chw;
+		const int cxy = i % pool_chw;
+		const int k = cxy / pool_hw;
+		const int xy = cxy % pool_hw;
 		const int y = xy / pool_w;
 		const int x = xy % pool_w;
+		const float roi_x = bp[(n % b_n) * bdim0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
+		const float roi_y = bp[(n % b_n) * bdim0 + 1] * h;
+		const float roi_w = bp[(n % b_n) * bdim0 + 2] * w;
+		const float roi_h = bp[(n % b_n) * bdim0 + 3] * h;
+		const int bin_h = (int)ceilf(roi_h / pool_h); // How many bins in each point of the pool. We slightly sampling at higher resolution (due to ceiling) with bilinear interpolation.
+		const int bin_w = (int)ceilf(roi_w / pool_w);
+		const int bin_pool_h = bin_h * pool_h; // Before averaging, what's the size of the region in integral term.
+		const int bin_pool_w = bin_w * pool_w;
+		const float scale_y = roi_h / bin_pool_h; // The scale to multiply back to get original coordinate.
+		const float scale_x = roi_w / bin_pool_w;
 		const int py = y * bin_h;
 		const int px = x * bin_w;
 		float v = 0;
 		int count = 0;
-		const float* const apz = ap + k * adim1;
+		const float* const apz = ap + (n % a_n) * adim0 + k * adim1;
 		for (int by = 0; by < bin_h; by++)
 		{
 			const float ay = roi_y + (by + py + 0.5) * scale_y - 0.5;
@@ -63,34 +66,37 @@ __global__ void _ccv_nnc_roi_align_forw_nchw(const int chw, const int w, const i
 				++count;
 			}
 		}
-		cp[k * cdim1 + y * cdim2 + x] = count > 0 ? v / count : 0;
+		cp[n * cdim0 + k * cdim1 + y * cdim2 + x] = count > 0 ? v / count : 0;
 	}
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_roi_align_forw_nhwc(const int chw, const int w, const int h, const int adim1, const int adim2, const NUM* const ap, const NUM* const bp, const int pool_w, const int pool_h, const int cdim1, const int cdim2, NUM* const cp)
+__global__ void _ccv_nnc_roi_align_forw_nhwc(const int nchw, const int ch, const int w, const int h, const int a_n, const int adim0, const int adim1, const int adim2, const NUM* const ap, const int b_n, const int bdim0, const NUM* const bp, const int pool_w, const int pool_h, const int cdim0, const int cdim1, const int cdim2, NUM* const cp)
 {
-	const float roi_x = bp[0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
-	const float roi_y = bp[1] * h;
-	const float roi_w = bp[2] * w;
-	const float roi_h = bp[3] * h;
-	const int bin_h = (int)ceilf(roi_h / pool_h); // How many bins in each point of the pool. We slightly sampling at higher resolution (due to ceiling) with bilinear interpolation.
-	const int bin_w = (int)ceilf(roi_w / pool_w);
-	const int bin_pool_h = bin_h * pool_h; // Before averaging, what's the size of the region in integral term.
-	const int bin_pool_w = bin_w * pool_w;
-	const float scale_y = roi_h / bin_pool_h; // The scale to multiply back to get original coordinate.
-	const float scale_x = roi_w / bin_pool_w;
+	const int pool_chw = ch * pool_h * pool_w;
 	const int pool_hw = pool_h * pool_w;
-	CUDA_1D_KERNEL_LOOP(i, chw) {
-		const int k = i / pool_hw;
-		const int xy = i % pool_hw;
+	CUDA_1D_KERNEL_LOOP(i, nchw) {
+		const int n = i / pool_chw;
+		const int cxy = i % pool_chw;
+		const int k = cxy / pool_hw;
+		const int xy = cxy % pool_hw;
 		const int y = xy / pool_w;
 		const int x = xy % pool_w;
+		const float roi_x = bp[(n % b_n) * bdim0] * w; // These assumed it is real-coordinate, with range between 0 to w - 1.
+		const float roi_y = bp[(n % b_n) * bdim0 + 1] * h;
+		const float roi_w = bp[(n % b_n) * bdim0 + 2] * w;
+		const float roi_h = bp[(n % b_n) * bdim0 + 3] * h;
+		const int bin_h = (int)ceilf(roi_h / pool_h); // How many bins in each point of the pool. We slightly sampling at higher resolution (due to ceiling) with bilinear interpolation.
+		const int bin_w = (int)ceilf(roi_w / pool_w);
+		const int bin_pool_h = bin_h * pool_h; // Before averaging, what's the size of the region in integral term.
+		const int bin_pool_w = bin_w * pool_w;
+		const float scale_y = roi_h / bin_pool_h; // The scale to multiply back to get original coordinate.
+		const float scale_x = roi_w / bin_pool_w;
 		const int py = y * bin_h;
 		const int px = x * bin_w;
 		float v = 0;
 		int count = 0;
-		const float* const apz = ap + k;
+		const float* const apz = ap + (n % a_n) * adim0 + k;
 		for (int by = 0; by < bin_h; by++)
 		{
 			const float ay = roi_y + (by + py + 0.5) * scale_y - 0.5;
@@ -121,7 +127,7 @@ __global__ void _ccv_nnc_roi_align_forw_nhwc(const int chw, const int w, const i
 				++count;
 			}
 		}
-		cp[y * cdim1 + x * cdim2 + k] = count > 0 ? v / count : 0;
+		cp[n * cdim0 + y * cdim1 + x * cdim2 + k] = count > 0 ? v / count : 0;
 	}
 }
 
@@ -142,8 +148,16 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int* cinc = CCV_IS_TENSOR_VIEW(c) ? ((c_nd == CCV_NNC_MAX_DIM + 1) ?  c->inc : c->inc + 1) : cdim;
 	assert(a->info.format == c->info.format);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	const int n = ccv_nnc_tensor_get_n(a->info);
-	assert(n == 1);
+	const int a_n = ccv_nnc_tensor_get_n(a->info);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	assert(b_nd == 1 || b_nd == 2);
+	const int b_n = b_nd == 1 ? 1 : b->info.dim[0];
+	const int c_n = ccv_nnc_tensor_get_n(c->info);
+	assert(c_n == ccv_max(a_n, b_n));
+	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ainc[0] * ainc[1] * ainc[2];
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	const int bninc = b_nd == 1 ? 0 : binc[1];
+	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cinc[0] * cinc[1] * cinc[2];
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		const int h = adim[1];
@@ -152,8 +166,8 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		const int pool_w = cdim[2];
 		assert(cdim[0] == adim[0]);
 		const int ch = cdim[0];
-		const int chw = pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_forw_nchw<<<CUDA_GET_BLOCKS(chw), CUDA_NUM_THREADS, 0, stream>>>(chw, w, h, ainc[1] * ainc[2], ainc[2], a->data.f32, b->data.f32, pool_w, pool_h, cinc[1] * cinc[2], cinc[2], c->data.f32);
+		const int nchw = c_n * pool_h * pool_w * ch;
+		_ccv_nnc_roi_align_forw_nchw<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, ainc[1] * ainc[2], ainc[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cinc[1] * cinc[2], cinc[2], c->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
 		const int h = adim[0];
@@ -162,8 +176,8 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		const int pool_w = cdim[1];
 		assert(cdim[2] == adim[2]);
 		const int ch = cdim[2];
-		const int chw = pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(chw), CUDA_NUM_THREADS, 0, stream>>>(chw, w, h, ainc[1] * ainc[2], ainc[2], a->data.f32, b->data.f32, pool_w, pool_h, cinc[1] * cinc[2], cinc[2], c->data.f32);
+		const int nchw = c_n * pool_h * pool_w * ch;
+		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, ainc[1] * ainc[2], ainc[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cinc[1] * cinc[2], cinc[2], c->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

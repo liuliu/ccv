@@ -95,4 +95,70 @@ TEST_CASE("compare ROI align backward with average pool")
 	ccv_nnc_tensor_free(at);
 }
 
+TEST_CASE("compare ROI align forward with average pool, batch of 2")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 12, 24, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 4, 3), 0);
+	int i, j, k;
+	for (k = 0; k < 2; k++)
+		for (i = 0; i < 12 * 24; i++)
+			for (j = 0; j < 3; j++)
+				a->data.f32[k * 12 * 24 * 3 + i * 3 + j] = i;
+	b->data.f32[0] = 0 / 24; // x
+	b->data.f32[1] = 0 / 12; // y
+	b->data.f32[2] = 1; // w
+	b->data.f32[3] = 1; // h
+	// This should be look like no bi-linear filtering at all.
+	ccv_nnc_cmd_exec(CMD_ROI_ALIGN_FORWARD(4, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
+	ccv_nnc_tensor_t* const at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 12, 24, 3), 0);
+	ccv_nnc_tensor_t* const ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 4, 3), 0);
+	for (i = 0; i < 12 * 24; i++)
+		for (j = 0; j < 3; j++)
+			at->data.f32[i * 3 + j] = i;
+	ccv_nnc_cmd_exec(CMD_AVERAGE_POOL_FORWARD(3, 6), HINT((3, 6)), 0, TENSOR_LIST(a), TENSOR_LIST(ct), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ct->data.f32, c->data.f32, 4 * 4 * 3, 1e-5, "should be equal");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ct->data.f32, c->data.f32 + 4 * 4 * 3, 4 * 4 * 3, 1e-5, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ct);
+}
+
+TEST_CASE("compare ROI align backward with average pool, batch of 2")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 12, 24, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 4, 3), 0);
+	int i, j, k;
+	for (k = 0; k < 2; k++)
+		for (i = 0; i < 4 * 4; i++)
+			for (j = 0; j < 3; j++)
+				c->data.f32[k * 4 * 4 * 3 + i * 3 + j] = i;
+	b->data.f32[0] = 0 / 24; // x
+	b->data.f32[1] = 0 / 12; // y
+	b->data.f32[2] = 1; // w
+	b->data.f32[3] = 1; // h
+	b->data.f32[4] = 0 / 24; // x
+	b->data.f32[5] = 0 / 12; // y
+	b->data.f32[6] = 1; // w
+	b->data.f32[7] = 1; // h
+	// This should be look like no bi-linear filtering at all.
+	ccv_nnc_cmd_exec(CMD_ROI_ALIGN_BACKWARD(4, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(c, 0, b), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_t* const at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 12, 24, 3), 0);
+	ccv_nnc_tensor_t* const ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 4, 3), 0);
+	for (i = 0; i < 4 * 4; i++)
+		for (j = 0; j < 3; j++)
+			ct->data.f32[i * 3 + j] = i;
+	ccv_nnc_cmd_exec(CMD_AVERAGE_POOL_BACKWARD(3, 6), HINT((3, 6)), 0, TENSOR_LIST(ct), TENSOR_LIST(at), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, at->data.f32, a->data.f32, 12 * 24 * 3, 1e-5, "should be equal");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, at->data.f32, a->data.f32 + 12 * 24 * 3, 12 * 24 * 3, 1e-5, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ct);
+	ccv_nnc_tensor_free(at);
+}
+
 #include "case_main.h"
