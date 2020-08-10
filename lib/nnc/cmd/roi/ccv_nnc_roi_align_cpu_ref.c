@@ -35,7 +35,7 @@ static void _ccv_nnc_bilinear_coeffs(ccv_nnc_stream_context_t* const stream_cont
 		for (y = 0; y < bin_h; y++)
 		{
 			const float ay = roi_y + (y + pi + 0.5) * scale_y - 0.5;
-			const int iy = (int)ay;
+			const int iy = (int)floorf(ay);
 			const float ry = ay - iy;
 			const int iy0 = ccv_clamp(iy, 0, h - 1);
 			const int iy1 = ccv_clamp(iy + 1, 0, h - 1);
@@ -64,7 +64,7 @@ static void _ccv_nnc_bilinear_coeffs(ccv_nnc_stream_context_t* const stream_cont
 		for (x = 0; x < bin_w; x++)
 		{
 			const float ax = roi_x + (x + pj + 0.5) * scale_x - 0.5;
-			const int ix = (int)ax;
+			const int ix = (int)floorf(ax);
 			const float rx = ax - ix;
 			const int ix0 = ccv_clamp(ix, 0, w - 1);
 			const int ix1 = ccv_clamp(ix + 1, 0, w - 1);

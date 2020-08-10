@@ -72,7 +72,6 @@ __global__ void _ccv_nnc_zero_back(const size_t tensor_count, NUM* const a)
 	}
 }
 
-
 template<typename NUM>
 __global__ void _ccv_nnc_upsample_bilinear_back_nchw(const size_t tensor_count, const float rwidth, const float rheight, const int adim2, const int ainc2, const int adim3, const int ainc3, NUM* const a, const int bdim2, const int binc2, const int bdim3, const int binc3, const NUM* const b)
 {
