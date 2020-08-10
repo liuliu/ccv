@@ -3334,42 +3334,6 @@ else
   :
 fi
 
- 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking ucontext.h presence" >&5
-$as_echo_n "checking ucontext.h presence... " >&6; }
-if ${ax_cv_check_cflags_ucontext_h+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-
-		ax_check_save_flags=$CFLAGS
-		CFLAGS="$CFLAGS ucontext.h"
-		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <ucontext.h>
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_cpp "$LINENO"; then :
-  ax_cv_check_cflags_ucontext_h=yes
-else
-  ax_cv_check_cflags_ucontext_h=no
-fi
-rm -f conftest.err conftest.i conftest.$ac_ext
-		CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_ucontext_h" >&5
-$as_echo "$ax_cv_check_cflags_ucontext_h" >&6; }
-	if test "x$ax_cv_check_cflags_ucontext_h" = xyes; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_UCONTEXT "
-
-else
-  :
-fi
-
  		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking linear.h presence" >&5
 $as_echo_n "checking linear.h presence... " >&6; }
 if ${ax_cv_check_cflags_linear_h+:} false; then :
