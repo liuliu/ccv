@@ -202,17 +202,26 @@ ccv_array_t* _imagenet_resnet50_v1d_fpn(void)
 	p[4] = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(2, 2), (ccv_cnnp_param_t){
 		.hint = HINT((2, 2), (0, 0)),
 	}, 0), MODEL_IO_LIST(p[3]));
+	ccv_cnnp_model_t* const resnet50_v1d_fpn = ccv_cnnp_model_new(MODEL_IO_LIST(input), p, 5, 0);
+	ccv_array_push(backbones, &resnet50_v1d_fpn);
+	return backbones;
+}
+
+ccv_cnnp_model_t* _coco_resnet50_v1d_rpn(void)
+{
+	ccv_cnnp_model_io_t p[5];
+	ccv_cnnp_model_io_t proposals[5];
+	int i;
 	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 1 (x, y, w, h, objectness), total 15.
 	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 15, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 		.hint = HINT((1, 1), (0, 0)),
 	}, "rpn");
-	ccv_cnnp_model_io_t proposals[5];
-	int i;
 	for (i = 0; i < 5; i++)
+	{
+		p[i] = ccv_cnnp_input();
 		proposals[i] = ccv_cnnp_model_apply(rpn_proposals, MODEL_IO_LIST(p[i]));
-	ccv_cnnp_model_t* const resnet50_v1d_fpn = ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
-	ccv_array_push(backbones, &resnet50_v1d_fpn);
-	return backbones;
+	}
+	return ccv_cnnp_model_new(p, 5, proposals, 5, 0);
 }
 
 typedef struct {
@@ -229,6 +238,7 @@ typedef struct {
 	int batch_count;
 	int select_count;
 	int max_window;
+	ccv_cnnp_model_t* fpn;
 	ccv_cnnp_model_t* rpn;
 	sfmt_t sfmt;
 } ccv_nnc_rpn_data_batching_t;
@@ -331,8 +341,11 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 	max_rows = ccv_min(max_rows, rpn_data->max_window);
 	max_cols = ccv_min(max_cols, rpn_data->max_window);
 	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NCHW(32F, rpn_data->batch_count, 3, max_rows, max_cols);
-	ccv_cnnp_model_compile(rpn_data->rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_compile(rpn_data->fpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	static const int fpn_size = 5;
+	ccv_nnc_tensor_param_t fpn_params[fpn_size];
+	ccv_cnnp_model_tensor_auto(rpn_data->fpn, fpn_params, fpn_size);
+	ccv_cnnp_model_compile(rpn_data->rpn, fpn_params, fpn_size, CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_param_t gt_params[fpn_size];
 	ccv_cnnp_model_tensor_auto(rpn_data->rpn, gt_params, fpn_size);
 	int total_proposals = 0;
@@ -493,7 +506,9 @@ ccv_nnc_cmd_t _resnet_optimizer(const float learn_rate, const int batch_size, co
 static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const val_data)
 {
 	ccv_array_t* rpn_bones = _imagenet_resnet50_v1d_fpn();
-	ccv_cnnp_model_t* rpn = *(ccv_cnnp_model_t**)ccv_array_get(rpn_bones, rpn_bones->rnum - 1);
+	ccv_cnnp_model_t* fpn = *(ccv_cnnp_model_t**)ccv_array_get(rpn_bones, rpn_bones->rnum - 1);
+	ccv_cnnp_model_set_workspace_size(fpn, 1llu * 1024 * 1024 * 1024);
+	ccv_cnnp_model_t* rpn = _coco_resnet50_v1d_rpn();
 	ccv_cnnp_model_set_workspace_size(rpn, 1llu * 1024 * 1024 * 1024);
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_nnc_annotation_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {
@@ -524,13 +539,14 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.batch_count = batch_size,
 		.select_count = 256,
 		.max_window = 1280,
+		.fpn = ccv_cnnp_model_copy(fpn),
 		.rpn = ccv_cnnp_model_copy(rpn)
 	};
 	sfmt_init_gen_rand(&rpn_data.sfmt, rpn_data.batch_count);
 
 	// Copy parameters from imagenet over.
 	const ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NCHW(000, 32F, rpn_data.batch_count, 3, 800, 800);
-	ccv_cnnp_model_compile(rpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_compile(fpn, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_array_t* const resnet50_v1d_bones = _imagenet_resnet50_v1d();
 	ccv_cnnp_model_t* const resnet50_v1d = *(ccv_cnnp_model_t**)ccv_array_get(resnet50_v1d_bones, resnet50_v1d_bones->rnum - 1);
 	const float wd = 0.0005;
@@ -565,11 +581,15 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		ccv_nnc_tensor_t* const train_gt = data[1][0];
 		ccv_nnc_tensor_t* const train_select = data[2][0];
 		ccv_nnc_tensor_variable_set(graph, input, train_image);
-		ccv_nnc_tensor_variable_t outputs[5];
+		ccv_nnc_tensor_variable_t fpn_out[5];
 		int i;
 		for (i = 0; i < 5; i++)
+			fpn_out[i] = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_evaluate(graph, fpn, 0, TENSOR_VARIABLE_LIST(input), fpn_out, 5, 0, 0);
+		ccv_nnc_tensor_variable_t outputs[5];
+		for (i = 0; i < 5; i++)
 			outputs[i] = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, TENSOR_VARIABLE_LIST(input), outputs, 5, 0, 0);
+		ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, fpn_out, 5, outputs, 5, 0, 0);
 		ccv_nnc_tensor_variable_t remap_out = ccv_nnc_tensor_variable_new(graph, train_gt->info);
 		int off = 0;
 		for (i = 0; i < 5; i++)
@@ -618,7 +638,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 			double accuracy = (double)correct / rpn_data.select_count;
 			overall_accuracy = overall_accuracy * 0.5 + accuracy * 0.5;
 			unsigned int elapsed_time = get_current_time() - batch_start_time;
-			printf("Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(rpn) / 1024 / 1024.0 / 1024, 50 * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
+			printf("Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(fpn) / 1024 / 1024.0 / 1024, 50 * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
 			batch_start_time = get_current_time();
 		}
 		ccv_nnc_tensor_variable_free(graph, l1_loss);
@@ -645,7 +665,10 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_nnc_tensor_free(gt_cpu);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_data);
+	ccv_cnnp_model_free(fpn);
 	ccv_cnnp_model_free(rpn);
+	ccv_cnnp_model_free(rpn_data.fpn);
+	ccv_cnnp_model_free(rpn_data.rpn);
 	ccv_array_free(rpn_bones);
 }
 

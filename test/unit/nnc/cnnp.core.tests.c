@@ -1073,6 +1073,37 @@ TEST_CASE("use linear model's parameter as the input for more computation")
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("model can have multiple outputs and some of them can be used in the computation")
+{
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, (ccv_cnnp_param_t){
+		.no_bias = 1
+	}, 0);
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, (ccv_cnnp_param_t){
+		.no_bias = 1
+	}, 0);
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 0);
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	t->data.f32[0] = 2.4;
+	ccv_cnnp_model_set_parameter(multi_layer, ccv_cnnp_model_parameters(linear1, ALL_PARAMETERS, 0), t);
+	t->data.f32[0] = -1.5;
+	ccv_cnnp_model_set_parameter(multi_layer, ccv_cnnp_model_parameters(linear2, ALL_PARAMETERS, 0), t);
+	x->data.f32[0] = 10;
+	ccv_cnnp_model_evaluate(multi_layer, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(t, y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(t->data.f32[0], 10 * 2.4, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[0], -10 * 2.4 * 1.5, 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(t);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(multi_layer);
+}
+
 TEST_CASE("index select can generate vector embedding")
 {
 	ccv_cnnp_model_t* const index_select = ccv_cnnp_index_select(CCV_32F, 10, 8, 0);

@@ -204,9 +204,10 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 						const ccv_nnc_tensor_symbol_t parameter = ccv_cnnp_parameter_from_indice(super, *(int*)ccv_array_get(parameter_indices, k));
 						ccv_array_push(input_symbols, &parameter);
 					}
-			} else
+			} else {
 				for (k = 0; k < input->model->output_size; k++)
 					ccv_array_push(input_symbols, &input->outputs[k]);
+			}
 		}
 		// Go through each sub model to build the graph.
 		sub_model->data = self->super.data;
@@ -387,10 +388,50 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	assert(output_size > 0);
 	// Do topological sort.
 	ccv_array_t* const reverse_top = ccv_array_new(sizeof(ccv_cnnp_model_io_t), output_size, 0);
-	ccv_array_resize(reverse_top, output_size);
 	int i, j, k;
+	// Go through output one by one, reverse traversal them, to detect potential overlap (overlap means, for example,
+	// outputs[1] is an incoming node for outputs[0]. Thus, if we reverse them, we may have outputs[0] build before outputs[1],
+	// hence, having issues.
+	for (i = 0; i < output_size; i++)
+		outputs[i]->visit = 2;
+	for (i = output_size - 1; i >= 0; i--)
+	{
+		ccv_array_clear(reverse_top);
+		ccv_array_push(reverse_top, &outputs[i]);
+		for (j = 0; j < reverse_top->rnum; j++)
+		{
+			const ccv_cnnp_model_io_t output = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, j);
+			assert(!CCV_CNNP_IS_MODEL_INPUT(output->model));
+			// If it is input, push it here.
+			if (output->incomings && !CCV_CNNP_IS_MODEL_PARAMETER(output))
+				for (k = 0; k < output->incomings->rnum; k++)
+				{
+					const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(output->incomings, k);
+					// If it is an input or parameter, skip.
+					if (CCV_CNNP_IS_MODEL_INPUT(input->model) || CCV_CNNP_IS_MODEL_PARAMETER(input))
+						continue;
+					if (input->visit == 1) // Visited, skip.
+						continue;
+					// If this is an output, we need to remove it from the output array. Otherwise mark it as visited.
+					input->visit = input->visit >= 2 ? 3 : 1;
+					ccv_array_push(reverse_top, &input);
+				}
+		}
+		for (j = 1; j < reverse_top->rnum; j++)
+		{
+			const ccv_cnnp_model_io_t output = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, j);
+			if (output->visit == 1) // Clean the visit back.
+				output->visit = 0;
+		}
+	}
+	ccv_array_clear(reverse_top);
 	for (i = 0; i < output_size; i++) // We will assign sequence in reverse order, thus, reverse the reverse top when copying the outputs.
-		*(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, i) = outputs[output_size - 1 - i];
+	{
+		if (outputs[output_size - 1 - i]->visit == 2)
+			ccv_array_push(reverse_top, &outputs[output_size - 1 - i]);
+		assert(outputs[output_size - 1 - i]->visit == 2 || outputs[output_size - 1 - i]->visit == 3);
+		outputs[output_size - 1 - i]->visit = 0; // Clean up all visits.
+	}
 	// Go from the output, until we meet inputs.
 	uint64_t input_bitmask[((input_size - 1) >> 6) + 1];
 	memset(input_bitmask, 0, sizeof(uint64_t) * (((input_size - 1) >> 6) + 1));
