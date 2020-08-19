@@ -396,6 +396,9 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 		outputs[i]->visit = 2;
 	for (i = output_size - 1; i >= 0; i--)
 	{
+		if (outputs[i]->visit == 3) // If we need to remove it, no need to visit.
+			continue;
+		assert(outputs[i]->visit == 2);
 		ccv_array_clear(reverse_top);
 		ccv_array_push(reverse_top, &outputs[i]);
 		for (j = 0; j < reverse_top->rnum; j++)
@@ -410,10 +413,10 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 					// If it is an input or parameter, skip.
 					if (CCV_CNNP_IS_MODEL_INPUT(input->model) || CCV_CNNP_IS_MODEL_PARAMETER(input))
 						continue;
-					if (input->visit == 1) // Visited, skip.
+					if (input->visit == 1 || input->visit == 3) // Visited, skip.
 						continue;
 					// If this is an output, we need to remove it from the output array. Otherwise mark it as visited.
-					input->visit = input->visit >= 2 ? 3 : 1;
+					input->visit = input->visit == 2 ? 3 : 1;
 					ccv_array_push(reverse_top, &input);
 				}
 		}
