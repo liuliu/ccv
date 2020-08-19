@@ -600,6 +600,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 			ccv_nnc_dynamic_graph_exec(graph, CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(outputs[i]), TENSOR_VARIABLE_LIST(remap_alias), 0, 0);
 			ccv_nnc_tensor_variable_free(graph, remap_alias);
 			ccv_nnc_tensor_variable_free(graph, outputs[i]);
+			ccv_nnc_tensor_variable_free(graph, fpn_out[i]);
 		}
 		ccv_nnc_tensor_variable_t const select = ccv_nnc_tensor_constant_new(graph);
 		ccv_nnc_tensor_variable_set(graph, select, train_select);
@@ -638,7 +639,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 			double accuracy = (double)correct / rpn_data.select_count;
 			overall_accuracy = overall_accuracy * 0.5 + accuracy * 0.5;
 			unsigned int elapsed_time = get_current_time() - batch_start_time;
-			printf("Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(fpn) / 1024 / 1024.0 / 1024, 50 * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
+			printf("Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)(ccv_cnnp_model_memory_size(fpn) + ccv_cnnp_model_memory_size(rpn)) / 1024 / 1024.0 / 1024, 50 * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
 			batch_start_time = get_current_time();
 		}
 		ccv_nnc_tensor_variable_free(graph, l1_loss);
