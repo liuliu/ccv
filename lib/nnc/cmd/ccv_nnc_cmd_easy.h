@@ -102,6 +102,10 @@
 #define CMD_RELU_BACKWARD() ccv_nnc_cmd(CCV_NNC_RELU_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_ADAM_FORWARD
 #define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+// CCV_NNC_NMS_FORWARD
+#define CMD_NMS_FORWARD(_iou_threshold) ccv_nnc_cmd(CCV_NNC_NMS_FORWARD, 0, ((ccv_nnc_cmd_param_t){.nms={.iou_threshold=_iou_threshold}}), 0)
+// CCV_NNC_NMS_BACKWARD
+#define CMD_NMS_BACKWARD(_iou_threshold) ccv_nnc_cmd(CCV_NNC_NMS_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.nms={.iou_threshold=_iou_threshold}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD

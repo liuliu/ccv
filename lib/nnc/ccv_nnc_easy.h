@@ -202,7 +202,7 @@ static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* cons
 		dim[x] = tv->info.dim[x - offset];
 }
 
-static inline CCV_WARN_UNUSED(int) ccv_nnc_tensor_view_check_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+static inline CCV_WARN_UNUSED(int) ccv_nnc_tensor_view_check_dim(const ccv_nnc_tensor_view_t* const tv, const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int x;
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);

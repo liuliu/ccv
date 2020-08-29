@@ -14,7 +14,7 @@ static int _ccv_nnc_roi_align_back_bitmask(const int input_size, const int outpu
 {
 	// We don't need the original input since roi align does averaging.
 	// We do, however, need the coordinate.
-	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (0u << 1) | (1u << 2)) && output_bitmasks[0] == 1u)
+	if ((input_bitmasks[0] & 5u) == ((1u << 0) | (0u << 1) | (1u << 2)) && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }

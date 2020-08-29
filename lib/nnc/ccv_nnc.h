@@ -140,6 +140,9 @@ typedef struct {
 			float width_scale; /**< [upsample.width_scale] scale for width parameter. It is between 1 and 2 at the moment. */
 			float height_scale; /**< [upsample.height_scale] scale for height parameter. It is between 1 and 2 at the moment. */
 		} upsample;
+		struct {
+			float iou_threshold; /**< [nms.iou_threshold] Threshold between 0 to 1 for IoU threshold. */
+		} nms;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
