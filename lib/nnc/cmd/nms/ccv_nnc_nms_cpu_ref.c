@@ -61,9 +61,9 @@ static int _ccv_nnc_nms_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		parallel_for(i, n)
 		{
 			int x, y;
-			const float* const ap = a->data.f32 + n * aninc;
-			float* const bp = b->data.f32 + n * bninc;
-			int* const cp = c->data.i32 + n * cninc;
+			const float* const ap = a->data.f32 + i * aninc;
+			float* const bp = b->data.f32 + i * bninc;
+			int* const cp = c->data.i32 + i * cninc;
 			for (x = 0; x < m; x++)
 				cp[x] = x;
 			for (x = 0; x < m * d; x++)
@@ -110,9 +110,9 @@ static int _ccv_nnc_nms_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		parallel_for(i, n)
 		{
 			int x, y;
-			const float* const ap = a->data.f32 + n * aninc;
-			float* const bp = b->data.f32 + n * bninc;
-			int* const cp = c->data.i32 + n * cninc;
+			const float* const ap = a->data.f32 + i * aninc;
+			float* const bp = b->data.f32 + i * bninc;
+			int* const cp = c->data.i32 + i * cninc;
 			for (x = 0; x < m; x++)
 				cp[x] = x;
 			for (x = 0; x < m; x++)
@@ -209,9 +209,9 @@ static int _ccv_nnc_nms_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	parallel_for(i, n)
 	{
 		int x, y;
-		const float* const ap = a->data.f32 + n * aninc;
-		const int* const cp = c->data.i32 + n * cninc;
-		float* const bp = b->data.f32 + n * bninc;
+		const float* const ap = a->data.f32 + i * aninc;
+		const int* const cp = c->data.i32 + i * cninc;
+		float* const bp = b->data.f32 + i * bninc;
 		for (x = 0; x < m; x++)
 			for (y = 0; y < d; y++)
 				bp[x * bminc + y] = 0;
