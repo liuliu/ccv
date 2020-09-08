@@ -115,6 +115,7 @@ __global__ void _ccv_nnc_iou_postproc_kernel(const int gm, const int m, const ui
 	bc[threadIdx.x] = row_idx < m ? c[row_idx] : 0;
 	// Now, go over it internally.
 	const uint64_t ious = row_idx < m ? iou_mask[row_idx * gm + blockIdx.x] : 0;
+	#pragma unroll threadsPerBlock
 	for (i = 0; i < threadsPerBlock; i++)
 	{
 		__syncthreads(); // Need to sync on every round.
