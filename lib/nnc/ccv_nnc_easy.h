@@ -10,9 +10,9 @@
 #ifndef GUARD_ccv_nnc_easy_h
 #define GUARD_ccv_nnc_easy_h
 
-#include <ccv.h>
-#include <ccv_internal.h>
-#include <nnc/ccv_nnc.h>
+#include "ccv.h"
+#include "ccv_internal.h"
+#include "nnc/ccv_nnc.h"
 
 /**
  * Convenience API

@@ -11,7 +11,7 @@
 #define GUARD_ccv_cnnp_model_internal_h
 
 #include "ccv_nnc.h"
-#include <3rdparty/khash/khash.h>
+#include "3rdparty/khash/khash.h"
 
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
 typedef void(*ccv_cnnp_add_to_array_f)(void* const context, const ccv_nnc_tensor_symbol_t symbol);

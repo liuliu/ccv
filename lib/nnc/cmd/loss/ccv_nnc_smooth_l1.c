@@ -1,7 +1,7 @@
-#include <ccv.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_easy.h>
-#include <nnc/ccv_nnc_internal.h>
+#include "ccv.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_easy.h"
+#include "nnc/ccv_nnc_internal.h"
 
 static int _ccv_nnc_smooth_l1_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {

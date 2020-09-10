@@ -1,3 +1,14 @@
+2020-09-10
+----------
+I mostly developed ccv / nnc as a monorepo. Since I started to use nnc for other projects as the backbone, it becomes obvious now that the monorepo development works fine for smaller demos such as object detection, natural language processing, for small / medium project, I don't want to clone ccv and start development there. I've gained some experiences using Bazel with Dflat project, therefore, it seems natural to have ccv / nnc to support Bazel.
+
+There could be some circular dependencies down the road, since the longer-term plan is to have ccv uses nnc for many applications (object / keypoint detection, SLAM etc.), but for now, there shouldn't be any.
+
+Another issue is the configuration. Core ccv / nnc can be compiled without any dependencies, but to function with GPU, or multi-threading, we depend on some other libraries. The feature detection need to generate proper .bazelrc file and use `config_setting` throughout. There could be some problems with CUDA / nvcc as well.
+
+Once the Bazel support is done, I can start to do the most exciting project for a while - Swift interop.
+
+
 2020-01-12
 ----------
 Memory reclamation is not as simple as what PyTorch made it out to be. The simple scheme PyTorch uses is to allocate memory gradually, and only do a pause / collect (because you have to synchronize with all devices) when run out of the memory. It is only useful if "all" your memory allocation go through the same path, or you won't have multi-processes.

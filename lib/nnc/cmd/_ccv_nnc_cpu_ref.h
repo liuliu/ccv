@@ -1,9 +1,9 @@
 #ifndef GUARD_ccv_nnc_cpu_ref_h
 #define GUARD_ccv_nnc_cpu_ref_h
 
-#include <ccv.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_internal.h>
+#include "ccv.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_internal.h"
 
 void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b);
 void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b);

@@ -1,8 +1,8 @@
-#include <ccv.h>
-#include <ccv_internal.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_easy.h>
-#include <nnc/ccv_nnc_internal.h>
+#include "ccv.h"
+#include "ccv_internal.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_easy.h"
+#include "nnc/ccv_nnc_internal.h"
 
 #include "_ccv_nnc_conv_cpu_opt.h"
 

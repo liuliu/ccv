@@ -1,0 +1,205 @@
+cc_library(
+	name = "sqlite3",
+	srcs = [
+		"3rdparty/sqlite3/sqlite3.c"
+	],
+	hdrs = [
+		"3rdparty/sqlite3/sqlite3.h"
+	]
+)
+
+cc_library(
+	name = "dSFMT",
+	srcs = [
+		"3rdparty/dsfmt/dSFMT.c"
+	],
+	hdrs = [
+		"3rdparty/dsfmt/dSFMT-common.h",
+		"3rdparty/dsfmt/dSFMT.h",
+		"3rdparty/dsfmt/dSFMT-params.h",
+		"3rdparty/dsfmt/dSFMT-params19937.h"
+	]
+)
+
+cc_library(
+	name = "kissfft",
+	srcs = glob(["3rdparty/kissfft/*.c"]),
+	hdrs = glob(["3rdparty/kissfft/*.h"])
+)
+
+cc_library(
+	name = "siphash",
+	srcs = [
+		"3rdparty/siphash/siphash24.c"
+	],
+	hdrs = [
+		"3rdparty/siphash/siphash24.h"
+	]
+)
+
+cc_library(
+	name = "SFMT",
+	srcs = [
+		"3rdparty/sfmt/SFMT.c"
+	],
+	hdrs = [
+		"3rdparty/sfmt/SFMT.h",
+		"3rdparty/sfmt/SFMT-alti.h",
+		"3rdparty/sfmt/SFMT-sse2.h",
+		"3rdparty/sfmt/SFMT-common.h",
+		"3rdparty/sfmt/SFMT-params.h",
+		"3rdparty/sfmt/SFMT-params19937.h"
+	]
+)
+
+cc_library(
+	name = "khash",
+	srcs = [],
+	hdrs = [
+		"3rdparty/khash/khash.h",
+	]
+)
+
+cc_library(
+	name = "jemalloc",
+	srcs = [],
+	hdrs = [
+		"3rdparty/jemalloc/rb.h",
+	]
+)
+
+cc_library(
+	name = "ccv",
+	srcs = [
+		"ccv_algebra.c",
+		"ccv_basic.c",
+		"ccv_bbf.c",
+		"ccv_cache.c",
+		"ccv_classic.c",
+		"ccv_convnet.c",
+		"ccv_daisy.c",
+		"ccv_dpm.c",
+		"ccv_ferns.c",
+		"ccv_icf.c",
+		"ccv_image_processing.c",
+		"ccv_io.c",
+		"ccv_memory.c",
+		"ccv_mser.c",
+		"ccv_numeric.c",
+		"ccv_output.c",
+		"ccv_resample.c",
+		"ccv_scd.c",
+		"ccv_sift.c",
+		"ccv_sparse_coding.c",
+		"ccv_swt.c",
+		"ccv_tld.c",
+		"ccv_transform.c",
+		"ccv_util.c",
+		"io/_ccv_io_binary.inc",
+		"io/_ccv_io_bmp.inc",
+		"io/_ccv_io_libjpeg.inc",
+		"io/_ccv_io_libpng.inc",
+		"io/_ccv_io_raw.inc",
+		"cuda/cwc_convnet_ext.c"
+	],
+	hdrs = [
+		"ccv.h",
+		"ccv_internal.h",
+		"nnc/ccv_nnc_tfb.h",
+		"inc/ccv_convnet_internal.h",
+		"cuda/cwc.h",
+		"cuda/cwc_ext.h",
+		"cuda/cwc_internal.h"
+	],
+	deps = [
+		":sqlite3",
+		":dSFMT",
+		":kissfft",
+		":siphash",
+		":SFMT"
+	]
+)
+
+cc_library(
+	name = "cmd",
+	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.c"]),
+	hdrs = [
+		"ccv.h",
+		"ccv_internal.h",
+		"nnc/ccv_nnc.h",
+		"nnc/ccv_nnc_internal.h",
+		"nnc/ccv_nnc_easy.h",
+		"nnc/ccv_nnc_tfb.h",
+		"nnc/cmd/ccv_nnc_cmd.h",
+		"nnc/cmd/ccv_nnc_cmd_easy.h",
+		"nnc/cmd/ccv_nnc_backend.h",
+		"nnc/cmd/ccv_nnc_cmd.inc"
+	],
+	includes = [
+		"."
+	],
+	deps = [
+		":dSFMT"
+	]
+)
+
+cc_library(
+	name = "nnc",
+	srcs = [
+		"nnc/_ccv_nnc_tensor_tape.h",
+		"nnc/_ccv_nnc_stream.h",
+		"nnc/_ccv_nnc_graph.h",
+		"nnc/_ccv_nnc_symbolic_graph.h",
+		"nnc/_ccv_nnc_dynamic_graph.h",
+		"nnc/_ccv_cnnp_dataframe.h",
+		"nnc/_ccv_cnnp_model.h",
+		"nnc/ccv_nnc_tensor.c",
+		"nnc/ccv_nnc_tensor_io.c",
+		"nnc/ccv_nnc_tensor_tape.c",
+		"nnc/ccv_nnc_cmd.c",
+		"nnc/ccv_nnc_stream.c",
+		"nnc/ccv_nnc_graph.c",
+		"nnc/ccv_nnc_graph_run.c",
+		"nnc/ccv_nnc_graph_while.c",
+		"nnc/ccv_nnc_graph_case_of.c",
+		"nnc/ccv_nnc_symbolic_graph.c",
+		"nnc/ccv_nnc_symbolic_graph_compile.c",
+		"nnc/ccv_nnc_symbolic_graph_io.c",
+		"nnc/ccv_nnc_symbolic_graph_while.c",
+		"nnc/ccv_nnc_symbolic_graph_case_of.c",
+		"nnc/ccv_nnc_symbolic_graph_backward.c",
+		"nnc/ccv_nnc_symbolic_graph_minimize.c",
+		"nnc/ccv_nnc_symbolic_graph_simplify.c",
+		"nnc/ccv_nnc_symbolic_graph_parallel.c",
+		"nnc/ccv_nnc_symbolic_graph_memory_compression.c",
+		"nnc/ccv_nnc_dynamic_graph.c",
+		"nnc/ccv_nnc_dynamic_graph_alloc.c",
+		"nnc/ccv_nnc_dynamic_graph_evaluate.c",
+		"nnc/ccv_nnc_dynamic_graph_backward.c",
+		"nnc/ccv_nnc_dynamic_graph_minimize.c",
+		"nnc/ccv_nnc_dynamic_graph_apply_gradients.c",
+		"nnc/ccv_cnnp_dataframe.c",
+		"nnc/ccv_cnnp_dataframe_core.c",
+		"nnc/ccv_cnnp_dataframe_addons.c",
+		"nnc/ccv_cnnp_model.c",
+		"nnc/ccv_cnnp_model_io.c",
+		"nnc/ccv_cnnp_model_core.c",
+		"nnc/ccv_cnnp_model_addons.c",
+		"nnc/co.h",
+		"nnc/co.c"
+	],
+	hdrs = [
+		"nnc/ccv_nnc.h",
+		"nnc/ccv_nnc_internal.h",
+		"nnc/ccv_nnc_easy.h",
+		"nnc/ccv_nnc_tfb.h"
+	],
+	deps = [
+		":cmd",
+		":sqlite3",
+		":khash",
+		":jemalloc",
+		":SFMT",
+		":siphash"
+	]
+)

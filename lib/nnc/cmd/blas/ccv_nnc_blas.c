@@ -1,8 +1,8 @@
-#include <ccv.h>
-#include <ccv_internal.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_internal.h>
-#include <nnc/ccv_nnc_easy.h>
+#include "ccv.h"
+#include "ccv_internal.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_internal.h"
+#include "nnc/ccv_nnc_easy.h"
 
 static int _ccv_nnc_arbitary_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {

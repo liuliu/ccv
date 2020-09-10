@@ -1,6 +1,6 @@
-#include <ccv.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_internal.h>
+#include "ccv.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_internal.h"
 
 static int _ccv_nnc_relu_allow_first_replace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {

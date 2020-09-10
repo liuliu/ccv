@@ -1,6 +1,6 @@
-#include <ccv.h>
-#include <nnc/ccv_nnc.h>
-#include <nnc/ccv_nnc_internal.h>
+#include "ccv.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_internal.h"
 
 static void _ccv_nnc_reduce_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {

@@ -3,8 +3,7 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
 #include "_ccv_cnnp_dataframe.h"
-
-#include <3rdparty/sfmt/SFMT.h>
+#include "3rdparty/sfmt/SFMT.h"
 
 #pragma mark - Create Dataframe from Array
 
