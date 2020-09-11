@@ -71,6 +71,16 @@ cc_library(
 )
 
 cc_library(
+	name = "ccv_headers",
+	srcs = [],
+	hdrs = [
+		"ccv.h",
+		"ccv_internal.h",
+		"nnc/ccv_nnc_tfb.h",
+	]
+)
+
+cc_library(
 	name = "ccv",
 	srcs = [
 		"ccv_algebra.c",
@@ -102,40 +112,49 @@ cc_library(
 		"io/_ccv_io_libjpeg.inc",
 		"io/_ccv_io_libpng.inc",
 		"io/_ccv_io_raw.inc",
-		"cuda/cwc_convnet_ext.c"
-	],
-	hdrs = [
-		"ccv.h",
-		"ccv_internal.h",
-		"nnc/ccv_nnc_tfb.h",
+		"cuda/cwc_convnet_ext.c",
 		"inc/ccv_convnet_internal.h",
 		"cuda/cwc.h",
 		"cuda/cwc_ext.h",
 		"cuda/cwc_internal.h"
 	],
+	hdrs = [],
 	deps = [
 		":sqlite3",
 		":dSFMT",
 		":kissfft",
 		":siphash",
-		":SFMT"
-	],
-	defines = [
+		":SFMT",
+		":ccv_headers"
 	]
 )
 
-cuda_library(
-	name = "cmd_cuda",
-	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.cu"]) + [
-		"ccv.h",
-		"ccv_internal.h",
+cc_library(
+	name = "nnc_headers",
+	hdrs = [
 		"nnc/_ccv_nnc_stream.h",
 		"nnc/ccv_nnc.h",
 		"nnc/ccv_nnc_internal.h",
 		"nnc/ccv_nnc_easy.h",
 		"nnc/ccv_nnc_tfb.h",
-		"nnc/co.h",
-		"nnc/gpu/ccv_nnc_compat.h"
+		"nnc/cmd/ccv_nnc_backend.h",
+		"nnc/cmd/ccv_nnc_cmd.h",
+		"nnc/cmd/ccv_nnc_cmd_easy.h",
+		"nnc/co.h"
+	],
+	deps = [
+		":khash", # Have reference in _ccv_nnc_stream.h
+		":ccv_headers"
+	]
+)
+
+cuda_library(
+	name = "nnc_cuda_compat",
+	srcs = [
+		"nnc/gpu/ccv_nnc_compat.cu",
+	],
+	hdrs = [
+		"nnc/gpu/ccv_nnc_compat.h",
 	],
 	includes = [
 		"."
@@ -144,54 +163,38 @@ cuda_library(
 		"HAVE_CUDA"
 	],
 	deps = [
-		":khash",
+		":nnc_headers",
+		"@local_config_cuda//cuda:cuda"
+	]
+)
+
+cuda_library(
+	name = "cmd_cuda",
+	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.cu"]),
+	includes = [
+		"."
+	],
+	defines = [
+		"HAVE_CUDA"
+	],
+	deps = [
+		":nnc_headers",
+		":nnc_cuda_compat",
 		"@local_config_cuda//cuda:cuda"
 	]
 )
 
 cc_library(
 	name = "cmd",
-	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.c"]),
-	hdrs = [
-		"ccv.h",
-		"ccv_internal.h",
-		"nnc/ccv_nnc.h",
-		"nnc/ccv_nnc_internal.h",
-		"nnc/ccv_nnc_easy.h",
-		"nnc/ccv_nnc_tfb.h",
+	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.c"]) + [
 		"nnc/cmd/ccv_nnc_cmd.inc"
 	],
 	includes = [
 		"."
 	],
 	deps = [
-		":dSFMT",
-		":cmd_cuda"
-	]
-)
-
-cuda_library(
-	name = "nnc_cuda",
-	srcs = [
-		"nnc/gpu/ccv_nnc_compat.cu",
-		"nnc/_ccv_nnc_stream.h",
-		"nnc/ccv_nnc.h",
-		"nnc/ccv_nnc_internal.h",
-		"nnc/ccv_nnc_easy.h",
-		"nnc/ccv_nnc_tfb.h",
-		"nnc/co.h",
-		"nnc/gpu/ccv_nnc_compat.h"
-	],
-	includes = [
-		"."
-	],
-	defines = [
-		"HAVE_CUDA"
-	],
-	deps = [
-		":khash",
-		":cmd",
-		"@local_config_cuda//cuda:cuda"
+		":nnc_headers",
+		":dSFMT"
 	]
 )
 
@@ -199,7 +202,6 @@ cc_library(
 	name = "nnc",
 	srcs = [
 		"nnc/_ccv_nnc_tensor_tape.h",
-		"nnc/_ccv_nnc_stream.h",
 		"nnc/_ccv_nnc_graph.h",
 		"nnc/_ccv_nnc_symbolic_graph.h",
 		"nnc/_ccv_nnc_dynamic_graph.h",
@@ -237,22 +239,18 @@ cc_library(
 		"nnc/ccv_cnnp_model_io.c",
 		"nnc/ccv_cnnp_model_core.c",
 		"nnc/ccv_cnnp_model_addons.c",
-		"nnc/co.h",
 		"nnc/co.c"
 	],
-	hdrs = [
-		"nnc/ccv_nnc.h",
-		"nnc/ccv_nnc_internal.h",
-		"nnc/ccv_nnc_easy.h",
-		"nnc/ccv_nnc_tfb.h"
-	],
+	hdrs = [],
 	deps = [
+		":nnc_headers",
+		":nnc_cuda_compat",
+		":cmd_cuda",
 		":cmd",
 		":sqlite3",
 		":khash",
 		":jemalloc",
 		":SFMT",
-		":siphash",
-		":nnc_cuda"
+		":siphash"
 	]
 )

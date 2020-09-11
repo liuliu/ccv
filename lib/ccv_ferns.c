@@ -21,7 +21,7 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 	for (i = 0; i < structs * posteriors * 2; i++)
 		ferns->posterior[i] = log5; // initialize to 0.5
 	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, (uint32_t)ferns);
+	dsfmt_init_gen_rand(&dsfmt, (uint32_t)(uintptr_t)ferns);
 	for (i = 0; i < structs; i++)
 	{
 		for (k = 0; k < features; k++)

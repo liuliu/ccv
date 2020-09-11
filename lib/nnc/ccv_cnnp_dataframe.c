@@ -62,9 +62,9 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 		assert(!dataframe->rng);
 		gsl_rng_env_setup();
 		dataframe->rng = gsl_rng_alloc(gsl_rng_default);
-		gsl_rng_set(dataframe->rng, (unsigned long int)dataframe);
+		gsl_rng_set(dataframe->rng, (unsigned long int)(uintptr_t)dataframe);
 #else
-		sfmt_init_gen_rand(&dataframe->sfmt, (uint32_t)dataframe);
+		sfmt_init_gen_rand(&dataframe->sfmt, (uint32_t)(uintptr_t)dataframe);
 #endif
 	}
 #ifdef HAVE_GSL

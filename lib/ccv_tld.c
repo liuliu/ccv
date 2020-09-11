@@ -626,7 +626,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	tld->sv[0] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
 	tld->sv[1] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
 	sfmt_t* sfmt = (sfmt_t*)tld->sfmt;
-	sfmt_init_gen_rand(sfmt, (uint32_t)a);
+	sfmt_init_gen_rand(sfmt, (uint32_t)(uintptr_t)a);
 	sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 	int badex = (bad->rnum + 1) / 2;
 	int i, j, k = good->rnum;
@@ -658,7 +658,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_sat(sq, &sqsat, 0, CCV_NO_PADDING);
 	ccv_matrix_free(sq);
 	dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
-	dsfmt_init_gen_rand(dsfmt, (uint32_t)tld);
+	dsfmt_init_gen_rand(dsfmt, (uint32_t)(uintptr_t)tld);
 	{ // save stack fr alloca
 	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
 	for (i = 0; i < 2; i++) // run twice to take into account when warm up, we missed a few examples

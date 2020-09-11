@@ -16,7 +16,7 @@ static int _ccv_nnc_swish_forw_bitmask(const int input_size, const int output_si
 
 static int _ccv_nnc_swish_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	if ((input_bitmasks[0] & 5u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
+	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
