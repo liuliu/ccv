@@ -17,8 +17,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "../ccv_nnc.h"
-#include "../_ccv_nnc_stream.h"
+#include "nnc/ccv_nnc.h"
+#include "nnc/_ccv_nnc_stream.h"
 
 // Simple counterparts of ccmalloc / ccfree.
 void* cumalloc(int device, size_t size);

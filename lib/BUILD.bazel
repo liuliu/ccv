@@ -1,3 +1,5 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+
 cc_library(
 	name = "sqlite3",
 	srcs = [
@@ -117,6 +119,33 @@ cc_library(
 		":kissfft",
 		":siphash",
 		":SFMT"
+	],
+	defines = [
+	]
+)
+
+cuda_library(
+	name = "cmd_cuda",
+	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.cu"]) + [
+		"ccv.h",
+		"ccv_internal.h",
+		"nnc/_ccv_nnc_stream.h",
+		"nnc/ccv_nnc.h",
+		"nnc/ccv_nnc_internal.h",
+		"nnc/ccv_nnc_easy.h",
+		"nnc/ccv_nnc_tfb.h",
+		"nnc/co.h",
+		"nnc/gpu/ccv_nnc_compat.h"
+	],
+	includes = [
+		"."
+	],
+	defines = [
+		"HAVE_CUDA"
+	],
+	deps = [
+		":khash",
+		"@local_config_cuda//cuda:cuda"
 	]
 )
 
@@ -130,16 +159,39 @@ cc_library(
 		"nnc/ccv_nnc_internal.h",
 		"nnc/ccv_nnc_easy.h",
 		"nnc/ccv_nnc_tfb.h",
-		"nnc/cmd/ccv_nnc_cmd.h",
-		"nnc/cmd/ccv_nnc_cmd_easy.h",
-		"nnc/cmd/ccv_nnc_backend.h",
 		"nnc/cmd/ccv_nnc_cmd.inc"
 	],
 	includes = [
 		"."
 	],
 	deps = [
-		":dSFMT"
+		":dSFMT",
+		":cmd_cuda"
+	]
+)
+
+cuda_library(
+	name = "nnc_cuda",
+	srcs = [
+		"nnc/gpu/ccv_nnc_compat.cu",
+		"nnc/_ccv_nnc_stream.h",
+		"nnc/ccv_nnc.h",
+		"nnc/ccv_nnc_internal.h",
+		"nnc/ccv_nnc_easy.h",
+		"nnc/ccv_nnc_tfb.h",
+		"nnc/co.h",
+		"nnc/gpu/ccv_nnc_compat.h"
+	],
+	includes = [
+		"."
+	],
+	defines = [
+		"HAVE_CUDA"
+	],
+	deps = [
+		":khash",
+		":cmd",
+		"@local_config_cuda//cuda:cuda"
 	]
 )
 
@@ -200,6 +252,7 @@ cc_library(
 		":khash",
 		":jemalloc",
 		":SFMT",
-		":siphash"
+		":siphash",
+		":nnc_cuda"
 	]
 )

@@ -50,7 +50,7 @@ KHASH_MAP_INIT_INT64(signal_container, ccv_nnc_signal_container_t*)
 // Return the scheduler from a stream (if not created, create one).
 CCV_WARN_UNUSED(co_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context);
 
-#define co_stream_await(_stream) if (!_co_stream_await(_self_, _stream)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__:
+#define co_stream_await(_stream) do { if (!_co_stream_await(_self_, _stream)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__: ; } while (0)
 int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream);
 
 khash_t(signal_container)* ccv_nnc_signal_container_new(void);

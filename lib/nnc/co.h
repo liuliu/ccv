@@ -126,7 +126,7 @@ struct co_routine_s {
 
 #define co_self() (_self_)
 
-#define co_yield(_val) ((struct _private_s*)(_privates_))->_co_params._co_ret = _val; return (co_state_t){ __LINE__, 0 }; case __LINE__:
+#define co_yield(_val) do { ((struct _private_s*)(_privates_))->_co_params._co_ret = _val; return (co_state_t){ __LINE__, 0 }; case __LINE__: ; } while (0)
 
 #define co_return_1(_val) do { ((struct _private_s*)(_privates_))->_co_params._co_ret = _val; return (co_state_t){ __LINE__, 1 }; } while (0)
 
@@ -169,7 +169,7 @@ struct co_routine_s {
 
 #define co_retval(...) co_retval_sel(_0, ## __VA_ARGS__, co_retval_2, co_retval_1, co_retval_0)(__VA_ARGS__)
 
-#define co_await_any(_tasks, _task_size) if (!_co_await_any(_self_, _tasks, _task_size)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__:
+#define co_await_any(_tasks, _task_size) do { if (!_co_await_any(_self_, _tasks, _task_size)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__: ; } while (0)
 
 #define co_await_1(_task, _val) do { \
 	co_await_any(&(_task), 1); \

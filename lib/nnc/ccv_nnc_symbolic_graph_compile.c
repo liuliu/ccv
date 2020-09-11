@@ -48,7 +48,7 @@ enum {
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 #define TENSOR_READ_WRITE(t) (t.flags & 0xc)
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
-#define TENSOR_SET_ANONYMOUS(t) (t.flags = (t.flags & ~0x10 | ANONYMOUS))
+#define TENSOR_SET_ANONYMOUS(t) (t.flags = ((t.flags & ~0x10) | ANONYMOUS))
 #define TENSOR_IS_ANONYMOUS(t) (t.flags & ANONYMOUS)
 #define TENSOR_SET_UNFOLDABLE_AS_INPUT(t) (t.flags = (t.flags | UNFOLDABLE_AS_INPUT))
 #define TENSOR_IS_UNFOLDABLE_AS_INPUT(t) (t.flags & UNFOLDABLE_AS_INPUT)
