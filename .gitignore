@@ -39,3 +39,6 @@ lib/config.mk
 build
 site/_site
 site/_doxygen
+clang.bazelrc
+.bazelrc
+bazel-*

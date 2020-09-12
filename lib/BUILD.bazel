@@ -1,4 +1,5 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
 
 cc_library(
 	name = "sqlite3",
@@ -7,6 +8,10 @@ cc_library(
 	],
 	hdrs = [
 		"3rdparty/sqlite3/sqlite3.h"
+	],
+	local_defines = [
+		"SQLITE_THREADSAFE=0",
+		"SQLITE_OMIT_LOAD_EXTENSION"
 	]
 )
 
@@ -20,13 +25,15 @@ cc_library(
 		"3rdparty/dsfmt/dSFMT.h",
 		"3rdparty/dsfmt/dSFMT-params.h",
 		"3rdparty/dsfmt/dSFMT-params19937.h"
-	]
+	],
+	copts = ccv_default_copts()
 )
 
 cc_library(
 	name = "kissfft",
 	srcs = glob(["3rdparty/kissfft/*.c"]),
-	hdrs = glob(["3rdparty/kissfft/*.h"])
+	hdrs = glob(["3rdparty/kissfft/*.h"]),
+	copts = ccv_default_copts()
 )
 
 cc_library(
@@ -36,7 +43,8 @@ cc_library(
 	],
 	hdrs = [
 		"3rdparty/siphash/siphash24.h"
-	]
+	],
+	copts = ccv_default_copts()
 )
 
 cc_library(
@@ -51,7 +59,8 @@ cc_library(
 		"3rdparty/sfmt/SFMT-common.h",
 		"3rdparty/sfmt/SFMT-params.h",
 		"3rdparty/sfmt/SFMT-params19937.h"
-	]
+	],
+	copts = ccv_default_copts()
 )
 
 cc_library(
@@ -119,13 +128,15 @@ cc_library(
 		"cuda/cwc_internal.h"
 	],
 	hdrs = [],
+	copts = ccv_default_copts(),
 	deps = [
 		":sqlite3",
 		":dSFMT",
 		":kissfft",
 		":siphash",
 		":SFMT",
-		":ccv_headers"
+		":ccv_headers",
+		"@local_config_ccv//config:config"
 	]
 )
 
@@ -164,7 +175,8 @@ cuda_library(
 	],
 	deps = [
 		":nnc_headers",
-		"@local_config_cuda//cuda:cuda"
+		"@local_config_cuda//cuda:cuda",
+		"@local_config_ccv//config:config"
 	]
 )
 
@@ -180,7 +192,8 @@ cuda_library(
 	deps = [
 		":nnc_headers",
 		":nnc_cuda_compat",
-		"@local_config_cuda//cuda:cuda"
+		"@local_config_cuda//cuda:cuda",
+		"@local_config_ccv//config:config"
 	]
 )
 
@@ -194,7 +207,8 @@ cc_library(
 	],
 	deps = [
 		":nnc_headers",
-		":dSFMT"
+		":dSFMT",
+		"@local_config_ccv//config:config"
 	]
 )
 
@@ -244,13 +258,18 @@ cc_library(
 	hdrs = [],
 	deps = [
 		":nnc_headers",
-		":nnc_cuda_compat",
-		":cmd_cuda",
 		":cmd",
 		":sqlite3",
 		":khash",
 		":jemalloc",
 		":SFMT",
-		":siphash"
-	]
+		":siphash",
+		"@local_config_ccv//config:config"
+	] + select({
+		"//config:have_cuda": [
+			":nnc_cuda_compat",
+			":cmd_cuda"
+		],
+		"//conditions:default": []
+	})
 )

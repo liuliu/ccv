@@ -10,10 +10,28 @@ git_repository(
 git_repository(
 	name = "build_bazel_rules_cuda",
 	remote = "https://github.com/liuliu/rules_cuda.git",
-	commit = "6698cfba363fb69e5a5c07cc7db1c363f9171478",
-	shallow_since = "1599857489 -0400"
+	commit = "816152686a5f9f7f806832c10945b51b4607de29",
+	shallow_since = "1599949159 -0400"
 )
 
 load("@build_bazel_rules_cuda//gpus:cuda_configure.bzl", "cuda_configure")
 
 cuda_configure(name = "local_config_cuda")
+
+load("//config:ccv.bzl", "ccv_setting")
+
+ccv_setting(
+	name = "local_config_ccv",
+	have_cblas = True,
+	have_libpng = True,
+	have_libjpeg = True,
+	have_fftw3 = True,
+	have_pthread = True,
+	have_liblinear = True,
+	have_tesseract = True,
+	have_gsl = True,
+	have_cudnn = True,
+	have_nccl = True,
+	use_openmp = True,
+	use_dispatch = True
+)
