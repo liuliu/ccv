@@ -272,6 +272,7 @@ cc_library(
 	hdrs = [],
 	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
+	tags = ["swift_module=C_ccv"],
 	deps = [
 		":sqlite3",
 		":dSFMT",
@@ -411,6 +412,7 @@ cc_library(
 	hdrs = [],
 	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
+	tags = ["swift_module=C_nnc"],
 	deps = [
 		":nnc_headers",
 		":ccv_util",
