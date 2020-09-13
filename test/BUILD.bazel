@@ -1,0 +1,14 @@
+cc_library(
+	name = "case",
+	srcs = [],
+	visibility = ["//visibility:public"],
+	includes = [
+		"."
+	],
+	hdrs = [
+		"case.h",
+		"case_main.h",
+		"ccv_case.h",
+		"ccv_nnc_case.h"
+	]
+)

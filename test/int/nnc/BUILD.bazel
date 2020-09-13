@@ -1,0 +1,131 @@
+load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
+
+cc_binary(
+	name = "cudnn.tests",
+	srcs = ["cudnn.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "cublas.tests",
+	srcs = ["cublas.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "parallel.tests",
+	srcs = ["parallel.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "nccl.tests",
+	srcs = ["nccl.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "schedule.tests",
+	srcs = ["schedule.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "symbolic.graph.vgg.d.tests",
+	srcs = ["symbolic.graph.vgg.d.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "graph.vgg.d.tests",
+	srcs = ["graph.vgg.d.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "index.tests",
+	srcs = ["index.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "dynamic.graph.tests",
+	srcs = ["dynamic.graph.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "dense.net.tests",
+	srcs = ["dense.net.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "compression.tests",
+	srcs = ["compression.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "imdb.tests",
+	srcs = ["imdb.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "cifar.tests",
+	srcs = ["cifar.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)

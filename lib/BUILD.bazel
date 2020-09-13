@@ -86,6 +86,9 @@ cc_library(
 		"ccv.h",
 		"ccv_internal.h",
 		"nnc/ccv_nnc_tfb.h",
+	],
+	includes = [
+		"."
 	]
 )
 
@@ -128,6 +131,7 @@ cc_library(
 		"cuda/cwc_internal.h"
 	],
 	hdrs = [],
+	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
 	deps = [
 		":sqlite3",
@@ -153,6 +157,9 @@ cc_library(
 		"nnc/cmd/ccv_nnc_cmd_easy.h",
 		"nnc/co.h"
 	],
+	includes = [
+		"."
+	],
 	deps = [
 		":khash", # Have reference in _ccv_nnc_stream.h
 		":ccv_headers"
@@ -167,12 +174,7 @@ cuda_library(
 	hdrs = [
 		"nnc/gpu/ccv_nnc_compat.h",
 	],
-	includes = [
-		"."
-	],
-	defines = [
-		"HAVE_CUDA"
-	],
+	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
 		"@local_config_cuda//cuda:cuda",
@@ -189,6 +191,7 @@ cuda_library(
 	defines = [
 		"HAVE_CUDA"
 	],
+	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
 		":nnc_cuda_compat",
@@ -205,9 +208,11 @@ cc_library(
 	includes = [
 		"."
 	],
+	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
 		":dSFMT",
+		":ccv",
 		"@local_config_ccv//config:config"
 	]
 )
@@ -256,8 +261,11 @@ cc_library(
 		"nnc/co.c"
 	],
 	hdrs = [],
+	visibility = ["//visibility:public"],
+	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
+		":ccv",
 		":cmd",
 		":sqlite3",
 		":khash",
