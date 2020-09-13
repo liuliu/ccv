@@ -247,7 +247,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":ccv_cwc",
-		"@local_config_cuda//cuda:cuda"
+		"@local_config_ccv//config:cuda_deps"
 	]
 )
 
@@ -329,8 +329,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		"@local_config_cuda//cuda:cuda",
-		"@local_config_nccl//:nccl"
+		"@local_config_ccv//config:cuda_deps"
 	]
 )
 

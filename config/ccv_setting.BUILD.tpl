@@ -20,6 +20,14 @@ config_setting(
 )
 
 cc_library(
+    name = "cuda_deps",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda"
+    ] + %{ccv_setting_cuda_deps},
+)
+
+cc_library(
     name = "config",
     visibility = ["//visibility:public"],
     defines = select({

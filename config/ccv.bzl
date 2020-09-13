@@ -4,6 +4,7 @@ def _ccv_setting_impl(repository_ctx):
     defines = []
     copts = []
     linkopts = []
+    cuda_deps = []
     if repository_ctx.attr.have_cblas:
         defines.append("HAVE_CBLAS")
         linkopts += ["-lcblas", "-latlas"]
@@ -37,6 +38,7 @@ def _ccv_setting_impl(repository_ctx):
     if repository_ctx.attr.have_nccl:
         defines.append("HAVE_NCCL")
         linkopts.append("-lnccl")
+        cuda_deps.append("@local_config_nccl//:nccl")
     if repository_ctx.attr.have_cub:
         defines.append("HAVE_CUB")
     if repository_ctx.attr.use_openmp:
@@ -50,7 +52,8 @@ def _ccv_setting_impl(repository_ctx):
     config = {
         "%{ccv_setting_defines}": str(defines),
         "%{ccv_setting_copts}": str(copts),
-        "%{ccv_setting_linkopts}": str(linkopts)
+        "%{ccv_setting_linkopts}": str(linkopts),
+        "%{ccv_setting_cuda_deps}": str(cuda_deps)
     }
     repository_ctx.template("config/BUILD", Label("//config:ccv_setting.BUILD.tpl"), config)
     repository_ctx.template("config/build_defs.bzl", Label("//config:build_defs.bzl.tpl"), config)
