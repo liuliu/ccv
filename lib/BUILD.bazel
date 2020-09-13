@@ -269,7 +269,10 @@ cc_library(
 		"ccv_tld.c",
 		"ccv_transform.c",
 	],
-	hdrs = [],
+	hdrs = [
+		"ccv.h",
+		"ccv_internal.h"
+	],
 	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
 	tags = ["swift_module=C_ccv"],
@@ -409,7 +412,11 @@ cc_library(
 		"nnc/ccv_cnnp_model_addons.c",
 		"nnc/co.c"
 	],
-	hdrs = [],
+	hdrs = [
+		"nnc/ccv_nnc.h",
+		"nnc/ccv_nnc_internal.h",
+		"nnc/ccv_nnc_easy.h"
+	],
 	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
 	tags = ["swift_module=C_nnc"],
