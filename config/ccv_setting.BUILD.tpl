@@ -21,8 +21,6 @@ config_setting(
 
 cc_library(
     name = "config",
-    srcs = [],
-    hdrs = [],
     visibility = ["//visibility:public"],
     defines = select({
         ":arm_build": ["HAVE_NEON"],

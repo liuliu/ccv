@@ -89,46 +89,185 @@ cc_library(
 	],
 	includes = [
 		"."
+	],
+	deps = [
+		"@local_config_ccv//config:config"
+	]
+)
+
+cc_library(
+	name = "ccv_cache",
+	srcs = [
+		"ccv_cache.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":siphash",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_memory",
+	srcs = [
+		"ccv_memory.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_cache",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_algebra",
+	srcs = [
+		"ccv_algebra.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_util",
+	srcs = [
+		"ccv_util.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_output",
+	srcs = [
+		"ccv_output.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_io",
+	srcs = [
+		"ccv_io.c",
+		"io/_ccv_io_binary.inc",
+		"io/_ccv_io_bmp.inc",
+		"io/_ccv_io_libjpeg.inc",
+		"io/_ccv_io_libpng.inc",
+		"io/_ccv_io_raw.inc"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_image_processing",
+	srcs = [
+		"ccv_image_processing.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_basic",
+	srcs = [
+		"ccv_basic.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_resample",
+	srcs = [
+		"ccv_resample.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_numeric",
+	srcs = [
+		"ccv_numeric.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	]
+)
+
+cc_library(
+	name = "ccv_cwc",
+	srcs = [
+		"cuda/cwc_convnet_ext.c"
+	],
+	hdrs = [
+		"inc/ccv_convnet_internal.h",
+		"cuda/cwc.h",
+		"cuda/cwc_ext.h",
+		"cuda/cwc_internal.h"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_headers",
+		":sqlite3",
+		":ccv_numeric"
+	]
+)
+
+cuda_library(
+	name = "ccv_cwc_cuda",
+	srcs = glob(["cuda/**/*.cu"]),
+	defines = [
+		"HAVE_CUDA"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_cwc",
+		"@local_config_cuda//cuda:cuda"
 	]
 )
 
 cc_library(
 	name = "ccv",
 	srcs = [
-		"ccv_algebra.c",
-		"ccv_basic.c",
 		"ccv_bbf.c",
-		"ccv_cache.c",
 		"ccv_classic.c",
 		"ccv_convnet.c",
 		"ccv_daisy.c",
 		"ccv_dpm.c",
 		"ccv_ferns.c",
 		"ccv_icf.c",
-		"ccv_image_processing.c",
-		"ccv_io.c",
-		"ccv_memory.c",
 		"ccv_mser.c",
-		"ccv_numeric.c",
-		"ccv_output.c",
-		"ccv_resample.c",
 		"ccv_scd.c",
 		"ccv_sift.c",
 		"ccv_sparse_coding.c",
 		"ccv_swt.c",
 		"ccv_tld.c",
 		"ccv_transform.c",
-		"ccv_util.c",
-		"io/_ccv_io_binary.inc",
-		"io/_ccv_io_bmp.inc",
-		"io/_ccv_io_libjpeg.inc",
-		"io/_ccv_io_libpng.inc",
-		"io/_ccv_io_raw.inc",
-		"cuda/cwc_convnet_ext.c",
-		"inc/ccv_convnet_internal.h",
-		"cuda/cwc.h",
-		"cuda/cwc_ext.h",
-		"cuda/cwc_internal.h"
 	],
 	hdrs = [],
 	visibility = ["//visibility:public"],
@@ -137,11 +276,24 @@ cc_library(
 		":sqlite3",
 		":dSFMT",
 		":kissfft",
-		":siphash",
 		":SFMT",
 		":ccv_headers",
-		"@local_config_ccv//config:config"
-	]
+		":ccv_algebra",
+		":ccv_util",
+		":ccv_output",
+		":ccv_image_processing",
+		":ccv_io",
+		":ccv_basic",
+		":ccv_resample",
+		":ccv_numeric",
+	] + select({
+		"//config:have_cuda": [
+			":ccv_cwc_cuda"
+		],
+		"//conditions:default": [
+			":ccv_cwc"
+		]
+	})
 )
 
 cc_library(
@@ -178,7 +330,7 @@ cuda_library(
 	deps = [
 		":nnc_headers",
 		"@local_config_cuda//cuda:cuda",
-		"@local_config_ccv//config:config"
+		"@local_config_nccl//:nccl"
 	]
 )
 
@@ -194,9 +346,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		":nnc_cuda_compat",
-		"@local_config_cuda//cuda:cuda",
-		"@local_config_ccv//config:config"
+		":nnc_cuda_compat"
 	]
 )
 
@@ -212,8 +362,7 @@ cc_library(
 	deps = [
 		":nnc_headers",
 		":dSFMT",
-		":ccv",
-		"@local_config_ccv//config:config"
+		":ccv_algebra"
 	]
 )
 
@@ -265,14 +414,17 @@ cc_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		":ccv",
+		":ccv_util",
+		":ccv_output",
+		":ccv_image_processing",
+		":ccv_basic",
+		":ccv_resample",
+		":ccv_io",
 		":cmd",
 		":sqlite3",
 		":khash",
 		":jemalloc",
-		":SFMT",
-		":siphash",
-		"@local_config_ccv//config:config"
+		":SFMT"
 	] + select({
 		"//config:have_cuda": [
 			":nnc_cuda_compat",

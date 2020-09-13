@@ -1,0 +1,101 @@
+load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
+
+cc_binary(
+	name = "3rdparty.tests",
+	srcs = ["3rdparty.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "algebra.tests",
+	srcs = ["algebra.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "basic.tests",
+	srcs = ["basic.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "image_processing.tests",
+	srcs = ["image_processing.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "io.tests",
+	srcs = ["io.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "memory.tests",
+	srcs = ["memory.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "numeric.tests",
+	srcs = ["numeric.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "output.tests",
+	srcs = ["output.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "transform.tests",
+	srcs = ["transform.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
+
+cc_binary(
+	name = "util.tests",
+	srcs = ["util.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:ccv"
+	]
+)
