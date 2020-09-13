@@ -1,0 +1,20 @@
+config_setting(
+	name = "have_cuda",
+	values = {
+		"define": "using_cuda=true"
+	}
+)
+
+config_setting(
+	name = "arm_build",
+	values = {
+		"cpu": "arm"
+	}
+)
+
+config_setting(
+	name = "x86_build",
+	values = {
+		"cpu": "x86"
+	}
+)
