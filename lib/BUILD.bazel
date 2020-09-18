@@ -302,6 +302,9 @@ cc_library(
 
 cc_library(
 	name = "nnc_headers",
+	srcs = [
+		"nnc/co.c"
+	],
 	hdrs = [
 		"nnc/_ccv_nnc_stream.h",
 		"nnc/ccv_nnc.h",
@@ -410,7 +413,6 @@ cc_library(
 		"nnc/ccv_cnnp_model_io.c",
 		"nnc/ccv_cnnp_model_core.c",
 		"nnc/ccv_cnnp_model_addons.c",
-		"nnc/co.c"
 	],
 	hdrs = [
 		"nnc/ccv_nnc.h",
