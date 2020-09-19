@@ -2450,6 +2450,9 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_col
  * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#ifdef CCV_BLOCK_SUPPORT
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_d data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#endif
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
@@ -2473,6 +2476,9 @@ typedef void (^ccv_cnnp_column_data_map_d)(void* const* const* const column_data
  * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#ifdef CCV_BLOCK_SUPPORT
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_d map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#endif
 /**
  * Shuffle an existing dataframe.
  * @param dataframe The dataframe that is about to be shuffled.
@@ -2508,6 +2514,9 @@ typedef void (^ccv_cnnp_column_data_reduce_d)(void* const* const input_data, con
  * @return The reduced dataframe.
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#ifdef CCV_BLOCK_SUPPORT
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_d reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+#endif
 /**
  * Extract a value out of a struct. Assuming the data points to a struct. This method extract
  * n-offset value of that struct. For example, if you have struct { ccv_nnc_tensor_t* a; ccv_nnc_tensor_t* b; } S;
