@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 
-#pragma mark - Core Layers
+// MARK - Core Layers
 
 static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
@@ -165,7 +165,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_flatten_copy(const ccv_cnnp_model_t* const se
 	return ccv_cnnp_flatten(self->name);
 }
 
-#pragma mark - Batch Norm Layer
+// MARK - Batch Norm Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -312,7 +312,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_batch_norm_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_batch_norm(self->params.bnorm.momentum, self->params.bnorm.epsilon, self->super.name);
 }
 
-#pragma mark - Convolution Layer
+// MARK - Convolution Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -429,7 +429,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->params, self->super.name);
 }
 
-#pragma mark - Dense Layer
+// MARK - Dense Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -531,7 +531,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const supe
 	return ccv_cnnp_dense(self->count, self->params, self->super.name);
 }
 
-#pragma mark - Pool Layers
+// MARK - Pool Layers
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -632,7 +632,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_average_pool_copy(const ccv_cnnp_model_t* con
 	return ccv_cnnp_average_pool(self->kdim, self->params, self->super.name);
 }
 
-#pragma mark - RELU Layer
+// MARK - RELU Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -677,7 +677,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_relu_copy(const ccv_cnnp_model_t* const self,
 	return ccv_cnnp_relu(self->name);
 }
 
-#pragma mark - Sigmoid Layer
+// MARK - Sigmoid Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -722,7 +722,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const se
 	return ccv_cnnp_sigmoid(self->name);
 }
 
-#pragma mark - Swish Layer
+// MARK - Swish Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -767,7 +767,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_swish_copy(const ccv_cnnp_model_t* const self
 	return ccv_cnnp_swish(self->name);
 }
 
-#pragma mark - Softmax Layer
+// MARK - Softmax Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -812,7 +812,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const se
 	return ccv_cnnp_softmax(self->name);
 }
 
-#pragma mark - Mul Layer
+// MARK - Mul Layer
 
 static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
@@ -857,7 +857,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_mul_copy(const ccv_cnnp_model_t* const self, 
 	return ccv_cnnp_mul(self->name);
 }
 
-#pragma mark - Scalar Mul Layer
+// MARK - Scalar Mul Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -906,7 +906,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_scalar_mul_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_scalar_mul(self->a, self->super.name);
 }
 
-#pragma mark - Transpose Layer
+// MARK - Transpose Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -961,7 +961,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_transpose_copy(const ccv_cnnp_model_t* const 
 	return ccv_cnnp_transpose(self->transpose[0], self->transpose[1], self->super.name);
 }
 
-#pragma mark - Layer Norm Layer
+// MARK - Layer Norm Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -1057,7 +1057,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.name);
 }
 
-#pragma mark - Batched Matrix Mul Layer
+// MARK - Batched Matrix Mul Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -1112,7 +1112,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_matmul_copy(const ccv_cnnp_model_t* const sup
 	return ccv_cnnp_matmul(self->transpose_a, self->transpose_b, self->super.name);
 }
 
-#pragma mark - Dropout Layer
+// MARK - Dropout Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -1179,7 +1179,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const su
 	return ccv_cnnp_dropout(self->p, self->entirety, self->super.name);
 }
 
-#pragma mark - Masked Fill Layer
+// MARK - Masked Fill Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -1225,7 +1225,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_masked_fill_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_masked_fill(self->eq, self->fill, self->super.name);
 }
 
-#pragma mark - Index Select Layer
+// MARK - Index Select Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -1309,7 +1309,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* con
 	return ccv_cnnp_index_select(self->datatype, self->vocab_size, self->embed_size, self->super.name);
 }
 
-#pragma mark - Pool Layers
+// MARK - Pool Layers
 
 typedef struct {
 	ccv_cnnp_model_t super;

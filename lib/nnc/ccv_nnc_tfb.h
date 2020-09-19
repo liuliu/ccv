@@ -165,4 +165,15 @@ typedef struct {
 } ccv_dense_matrix_t;
 #endif
 
+#if defined(USE_DISPATCH) && defined(__has_extension)
+#if __has_extension(blocks)
+#define CCV_BLOCK_SUPPORT
+#endif
+#endif
+
+enum {
+	CCV_FUNCTION_POINTER = 0,
+	CCV_FUNCTION_BLOCK = 1
+};
+
 #endif

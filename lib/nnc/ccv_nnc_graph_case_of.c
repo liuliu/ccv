@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
-#pragma mark - Level-3.5 API
+// MARK - Level-3.5 API
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {

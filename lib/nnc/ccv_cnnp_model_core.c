@@ -5,7 +5,7 @@
 #include "_ccv_cnnp_model.h"
 #include "3rdparty/khash/khash.h"
 
-#pragma mark - Baisc Layers
+// MARK - Baisc Layers
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa;
 
@@ -520,7 +520,7 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	return input_io;
 }
 
-#pragma mark - Dynamic Layer
+// MARK - Dynamic Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -620,7 +620,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_dynamic_model_copy(const ccv_cnnp_model_t* co
 	return ccv_cnnp_dynamic_new(self->func, self->context, self->super.name);
 }
 
-#pragma mark - Command Layer
+// MARK - Command Layer
 
 typedef struct {
 	ccv_cnnp_model_t super;

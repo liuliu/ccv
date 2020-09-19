@@ -29,12 +29,24 @@ struct ccv_cnnp_dataframe_s {
 typedef struct {
 	int stream_type;
 	int column_idx_size;
+	int enum_block_type;
+	int map_block_type;
 	int* column_idxs;
-	ccv_cnnp_column_data_enum_f data_enum;
+	union {
+		ccv_cnnp_column_data_enum_f data_enum;
+#ifdef CCV_BLOCK_SUPPORT
+		ccv_cnnp_column_data_enum_d data_enum_d;
+#endif
+	};
 	ccv_cnnp_column_data_deinit_f data_deinit;
 	void* context;
 	ccv_cnnp_column_data_context_deinit_f context_deinit;
-	ccv_cnnp_column_data_map_f map;
+	union {
+		ccv_cnnp_column_data_map_f map;
+#ifdef CCV_BLOCK_SUPPORT
+		ccv_cnnp_column_data_map_d map_d;
+#endif
+	};
 } ccv_cnnp_derived_column_data_t;
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_count)

@@ -4,13 +4,19 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_dataframe.h"
 
-#pragma mark - Reducer
+// MARK - Reducer
 
 typedef struct {
 	int column_idx;
 	int batch_size;
 	int iter_idx;
-	ccv_cnnp_column_data_reduce_f reduce;
+	int block_type;
+	union {
+		ccv_cnnp_column_data_reduce_f reduce;
+#ifdef CCV_BLOCK_SUPPORT
+		ccv_cnnp_column_data_reduce_d reduce_d;
+#endif
+	};
 	ccv_cnnp_dataframe_t* dataframe;
 	ccv_cnnp_dataframe_iter_t* iter;
 	ccv_cnnp_column_data_deinit_f data_deinit;
@@ -80,7 +86,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
 }
 
-#pragma mark - Extract
+// MARK - Extract
 
 static void _ccv_cnnp_extract_value(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -98,7 +104,7 @@ int ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* const dataframe, cons
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_extract_value, 0, 0, &column_idx, 1, (void*)(uintptr_t)offset, 0);
 }
 
-#pragma mark - Make Tuple
+// MARK - Make Tuple
 
 static void _ccv_cnnp_tuple_deinit(void* const data, void* const context)
 {

@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-#pragma mark - Level-3.5 API
+// MARK - Level-3.5 API
 
 static void _ccv_nnc_remove_unused_from_marked(const uint32_t* const tensor_used, const int size, uint32_t* const tensor_marked)
 {

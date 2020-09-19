@@ -8,7 +8,7 @@
 #endif
 #include "_ccv_nnc_dynamic_graph.h"
 
-#pragma mark - Level-4.5 API
+// MARK - Level-4.5 API
 
 static void* _ccv_nnc_dynamic_compile_alloc(const int type, const int pinned_mem, const size_t size, void* const arg)
 {

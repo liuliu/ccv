@@ -8,7 +8,7 @@
 #include "gpu/ccv_nnc_compat.h"
 #endif
 
-#pragma mark - Level-2 API
+// MARK - Level-2 API
 
 static void _ccv_nnc_unwrap_tensor_wrap(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, ccv_nnc_graph_tensor_wrap_t* const tensor_wrap)
 {

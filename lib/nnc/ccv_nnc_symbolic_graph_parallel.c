@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-#pragma mark - Level-3.5 API
+// MARK - Level-3.5 API
 
 enum {
 	CCV_NNC_PARALLEL_BROADCAST = 0x1,

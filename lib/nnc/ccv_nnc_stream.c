@@ -226,7 +226,7 @@ int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const s
 	return 1;
 }
 
-#pragma mark - Signal Container
+// MARK - Signal Container
 
 khash_t(signal_container)* ccv_nnc_signal_container_new(void)
 {

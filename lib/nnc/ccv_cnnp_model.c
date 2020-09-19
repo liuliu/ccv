@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 
-#pragma mark - Level-5 API
+// MARK - Level-5 API
 
 ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size)
 {
@@ -30,6 +30,11 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 		ccv_array_push(inputs[i]->outgoings, &model_io);
 	}
 	return model_io;
+}
+
+int ccv_cnnp_model_output_size(const ccv_cnnp_model_t* const model)
+{
+	return model->output_size;
 }
 
 ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index)

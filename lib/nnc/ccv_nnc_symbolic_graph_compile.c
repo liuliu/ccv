@@ -8,7 +8,7 @@
 #include "_ccv_nnc_graph.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-#pragma mark - Level-3 API
+// MARK - Level-3 API
 
 typedef struct {
 	int flags;

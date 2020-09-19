@@ -2399,6 +2399,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynam
  */
 typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * A data enumeration block to supply data for given row indexes.
+ */
+#ifdef CCV_BLOCK_SUPPORT
+typedef void (^ccv_cnnp_column_data_enum_d)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+#endif
+/**
  * A destructor for data.
  */
 typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data, void* const context);
@@ -2411,7 +2417,13 @@ typedef void (*ccv_cnnp_column_data_context_deinit_f)(void* const context);
  */
 typedef struct {
 	int stream_type; /**< The type of stream context for this column. Each column only compatible with one stream type. */
-	ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
+	int block_type; /**< The type of the supplied data_enum block. */
+	union {
+		ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
+#ifdef CCV_BLOCK_SUPPORT
+		ccv_cnnp_column_data_enum_d data_enum_d; /**< The data enumeration block for this column. */
+#endif
+	};
 	ccv_cnnp_column_data_deinit_f data_deinit; /**< The deinit function that will be used to destroy the data. */
 	void* context; /**< The context go along with this column. */
 	ccv_cnnp_column_data_context_deinit_f context_deinit; /**< The deinit function that will be used to destroy the context. */
@@ -2443,6 +2455,12 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const datafram
  */
 typedef void (*ccv_cnnp_column_data_map_f)(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * A map block that takes the data from multiple columns and derive new data out of it.
+ */
+#ifdef CCV_BLOCK_SUPPORT
+typedef void (^ccv_cnnp_column_data_map_d)(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+#endif
+/**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
  * @param map The map function used to derive new column from existing columns.
@@ -2470,6 +2488,12 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const da
  * A reduce function that takes multiple rows of one column, and reduce to one row.
  */
 typedef void (*ccv_cnnp_column_data_reduce_f)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * A reduce block that takes multiple rows of one column, and reduce to one row.
+ */
+#ifdef CCV_BLOCK_SUPPORT
+typedef void (^ccv_cnnp_column_data_reduce_d)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+#endif
 /**
  * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
  * one specific column. This will also reduce the multi-column dataframe down to 1 column
@@ -2879,6 +2903,12 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
  * @return The new model that is exactly the same copy of the old one.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model);
+/**
+ * Get the output size of the model.
+ * @param model The existing model.
+ * @return The output size of the model.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_model_output_size(const ccv_cnnp_model_t* const model);
 /**
  * Compute the shape of the output tensor after the model applied to the input.
  * This can only be called after the model is compiled with proper input parameters.

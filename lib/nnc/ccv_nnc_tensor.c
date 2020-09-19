@@ -5,7 +5,7 @@
 #include "gpu/ccv_nnc_compat.h"
 #endif
 
-#pragma mark - Level-1 API
+// MARK - Level-1 API
 
 const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
 

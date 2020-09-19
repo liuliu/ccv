@@ -14,7 +14,7 @@
 #define SQLITE_ENFORCE assert
 #endif
 
-#pragma mark - Level-1 API
+// MARK - Level-1 API
 
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name)
 {

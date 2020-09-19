@@ -5,7 +5,7 @@
 #include "_ccv_cnnp_dataframe.h"
 #include "3rdparty/sfmt/SFMT.h"
 
-#pragma mark - Create Dataframe from Array
+// MARK - Create Dataframe from Array
 
 static void _ccv_cnnp_array_enum(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -30,7 +30,7 @@ typedef struct {
 	int device_id;
 } ccv_cnnp_copy_to_gpu_context_t;
 
-#pragma mark - Copy Tensors from CPU to GPU
+// MARK - Copy Tensors from CPU to GPU
 
 static void _ccv_cnnp_tensor_list_deinit(void* const data, void* const context)
 {
@@ -78,7 +78,7 @@ int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_to_gpu, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), copy_to_gpu_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-#pragma mark - Use Command to Generate Output Tuple
+// MARK - Use Command to Generate Output Tuple
 
 typedef struct {
 	ccv_cnnp_dataframe_tuple_t tuple;
@@ -124,7 +124,7 @@ int ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int
 	return 0;
 }
 
-#pragma mark - Make Auxiliary Tensor as a new Column
+// MARK - Make Auxiliary Tensor as a new Column
 
 static void _ccv_cnnp_tensor_deinit(void* const data, void* const context)
 {
@@ -150,7 +150,7 @@ int ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_
 	return ccv_cnnp_dataframe_add(dataframe, _ccv_cnnp_tensor_new, stream_type, _ccv_cnnp_tensor_deinit, context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-#pragma mark - Load Tensor from File Path
+// MARK - Load Tensor from File Path
 
 static void _ccv_cnnp_image_deinit(void* const data, void* const context)
 {
@@ -174,7 +174,7 @@ int ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const i
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_read_image, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), (void*)(uintptr_t)structof, 0);
 }
 
-#pragma mark - Apply Random Jitter to Image
+// MARK - Apply Random Jitter to Image
 
 typedef struct {
 	sfmt_t sfmt;
@@ -496,7 +496,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_scalar, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), copy_scalar, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-#pragma mark - Matrix of Ones
+// MARK - Matrix of Ones
 
 typedef struct {
 	ccv_cnnp_dataframe_tuple_t tuple;
@@ -611,7 +611,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_squared, 0, _ccv_cnnp_tensor_list_deinit, column_idxs, column_idx_size, ones, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-#pragma mark - Truncate Matrix
+// MARK - Truncate Matrix
 
 static void _ccv_cnnp_truncate(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -688,7 +688,7 @@ int ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_truncate, 0, _ccv_cnnp_tensor_list_deinit, total_idxs, total_idx_size, tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-#pragma mark - Batching
+// MARK - Batching
 
 typedef struct {
 	ccv_cnnp_dataframe_tuple_t tuple;

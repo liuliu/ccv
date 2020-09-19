@@ -8,7 +8,7 @@
 #include "gpu/ccv_nnc_compat.h"
 #endif
 
-#pragma mark - Level-3 API
+// MARK - Level-3 API
 
 #ifdef NDEBUG
 #define SQLITE_ENFORCE(stmt) (void)(stmt)
