@@ -60,7 +60,15 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const
 	dataframe->column_size = column_size;
 	dataframe->data_ctx = kh_init(ctx);
 	if (column_size > 0)
+	{
 		memcpy(dataframe->column_data, column_data, sizeof(ccv_cnnp_column_data_t) * column_size);
+#ifdef CCV_BLOCK_SUPPORT
+		int i;
+		for (i = 0; i < column_size; i++)
+			if (dataframe->column_data[i].block_type == CCV_FUNCTION_BLOCK)
+				dataframe->column_data[i].data_enum_d = Block_copy(dataframe->column_data[i].data_enum_d);
+#endif
+	}
 	return dataframe;
 }
 

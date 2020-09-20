@@ -10,8 +10,8 @@ git_repository(
 git_repository(
 	name = "build_bazel_rules_cuda",
 	remote = "https://github.com/liuliu/rules_cuda.git",
-	commit = "816152686a5f9f7f806832c10945b51b4607de29",
-	shallow_since = "1599949159 -0400"
+	commit = "30a3c2f46168278803899487d7de200b714f5879",
+	shallow_since = "1600578176 -0400"
 )
 
 load("@build_bazel_rules_cuda//gpus:cuda_configure.bzl", "cuda_configure")
