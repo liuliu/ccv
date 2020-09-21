@@ -23,19 +23,20 @@ int ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer)
 
 void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const gradients, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols)
 {
-	assert(parameter_size > 0);
+	assert(parameter_size >= 0);
 	assert(loss_size > 0);
 	assert((inputs && input_size > 0) || (inputs == 0 && input_size <= 0));
 	// First, compute gradient.
 	if (inputs)
 	{
 		ccv_nnc_tensor_symbol_t* const ingrads = gradients ? gradients : ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * (parameter_size + input_size));
-		memcpy(ingrads, parameters, sizeof(ccv_nnc_tensor_symbol_t) * parameter_size);
+		if (parameter_size > 0)
+			memcpy(ingrads, parameters, sizeof(ccv_nnc_tensor_symbol_t) * parameter_size);
 		memcpy(ingrads + parameter_size, inputs, sizeof(ccv_nnc_tensor_symbol_t) * input_size);
 		ccv_nnc_symbolic_graph_backward(graph, losses, loss_size, ingrads, parameter_size + input_size, sources, source_size, destinations, destination_size);
 		if (ingrads != gradients)
 			ccfree(ingrads);
-	} else
+	} else if (parameter_size > 0)
 		ccv_nnc_symbolic_graph_backward(graph, losses, loss_size, parameters, parameter_size, sources, source_size, destinations, destination_size);
 	int i, j;
 	// At most the minimizer accepts 62 additional parameters.

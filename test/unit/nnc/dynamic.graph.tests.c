@@ -364,6 +364,21 @@ TEST_CASE("dynamic graph to evaluate cnnp model")
 	ccv_cnnp_model_free(linear);
 }
 
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 1.23;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, b)->data.f32[0] = 2;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const mul = ccv_cnnp_mul("mul");
+	ccv_nnc_dynamic_graph_evaluate(graph, mul, 1, TENSOR_VARIABLE_LIST(a, b), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_cnnp_model_free(mul);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 2.46, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("dynamic graph to evaluate cnnp model and simply accumulate gradients")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
