@@ -53,6 +53,12 @@ ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, con
 	return model_io;
 }
 
+void ccv_cnnp_model_owner_hook(ccv_cnnp_model_t* const model, ccv_cnnp_model_owner_f func, void* const context)
+{
+	model->owner_hook.func = func;
+	model->owner_hook.context = context;
+}
+
 static int _ccv_nnc_array_dedup_graph_exec_symbols(ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols, int graph_exec_symbol_size)
 {
 	int i, j;

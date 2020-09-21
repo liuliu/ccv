@@ -30,15 +30,20 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int zeroing)
 {
 	const int index = tensor_variable->index;
-	if (tensor_variable->tensor_view && !CCV_NNC_IS_EXTERN_TENSOR_VIEW(tensor_variable->tensor_view))
+	if (tensor_variable->tensor_view)
 	{
-		if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
-			ccv_nnc_tensor_view_free(tensor_variable->tensor_view);
-		else {
-			if (!tensor_variable->alias_index_ref && // Return this memory to the graph.
-				CCV_TENSOR_GET_MEMORY(tensor_variable->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
-				ccv_nnc_dynamic_graph_xpu_free(graph, tensor_variable->tensor_view->data.ptr);
-			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
+		if (tensor_variable->owner_hook.func)
+			tensor_variable->owner_hook.func(graph, (ccv_nnc_tensor_t*)tensor_variable->tensor_view, 0, tensor_variable->owner_hook.context);
+		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tensor_variable->tensor_view))
+		{
+			if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
+				ccv_nnc_tensor_view_free(tensor_variable->tensor_view);
+			else {
+				if (!tensor_variable->alias_index_ref && // Return this memory to the graph.
+					CCV_TENSOR_GET_MEMORY(tensor_variable->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
+					ccv_nnc_dynamic_graph_xpu_free(graph, tensor_variable->tensor_view->data.ptr);
+				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
+			}
 		}
 	}
 	ccfree(tensor_variable);
@@ -65,15 +70,20 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 		ccv_array_free(bind->sources);
 	if (bind->destinations)
 		ccv_array_free(bind->destinations);
-	if (bind->tensor_view && !CCV_NNC_IS_EXTERN_TENSOR_VIEW(bind->tensor_view))
+	if (bind->tensor_view)
 	{
-		if (CCV_IS_TENSOR_VIEW(bind->tensor_view))
-			ccv_nnc_tensor_view_free(bind->tensor_view);
-		else {
-			if (!bind->alias_ref && // Return this memory to the graph.
-				CCV_TENSOR_GET_MEMORY(bind->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
-				ccv_nnc_dynamic_graph_xpu_free(graph, bind->tensor_view->data.ptr);
-			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)bind->tensor_view);
+		if (bind->owner_hook.func)
+			bind->owner_hook.func(graph, (ccv_nnc_tensor_t*)bind->tensor_view, 0, bind->owner_hook.context);
+		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(bind->tensor_view))
+		{
+			if (CCV_IS_TENSOR_VIEW(bind->tensor_view))
+				ccv_nnc_tensor_view_free(bind->tensor_view);
+			else {
+				if (!bind->alias_ref && // Return this memory to the graph.
+					CCV_TENSOR_GET_MEMORY(bind->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
+					ccv_nnc_dynamic_graph_xpu_free(graph, bind->tensor_view->data.ptr);
+				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)bind->tensor_view);
+			}
 		}
 	}
 	if (zeroing)
@@ -81,6 +91,8 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 		bind->sources = 0;
 		bind->destinations = 0;
 		bind->tensor_view = 0;
+		bind->owner_hook.func = 0;
+		bind->owner_hook.context = 0;
 	}
 }
 
@@ -141,9 +153,17 @@ void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv
 	tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)((uintptr_t)tensor | 1);
 }
 
+void ccv_nnc_tensor_variable_owner_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_owner_f func, void* const context)
+{
+	tensor_variable->owner_hook.func = func;
+	tensor_variable->owner_hook.context = context;
+}
+
 inline static void _ccv_nnc_tensor_variable_init(ccv_nnc_dynamic_graph_t* const graph, ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_param_t info)
 {
 	tensor_variable->alias_index_ref = 0;
+	tensor_variable->owner_hook.func = 0;
+	tensor_variable->owner_hook.context = 0;
 	tensor_variable->info = info;
 	tensor_variable->symbol = NO_TENSOR_SYMBOL;
 	tensor_variable->tensor_view = 0;
@@ -188,6 +208,8 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	variable_alias->alias_index_ref = tensor_variable->index + 1;
 	variable_alias->info = info;
 	variable_alias->symbol = NO_TENSOR_SYMBOL;
+	variable_alias->owner_hook.func = 0;
+	variable_alias->owner_hook.context = 0;
 	variable_alias->tensor_view = 0;
 	memcpy(variable_alias->ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(variable_alias->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
@@ -303,6 +325,8 @@ static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const grap
 	if (bind->destinations)
 		ccv_array_free(bind->destinations);
 	bind->destinations = 0;
+	bind->owner_hook.func = 0;
+	bind->owner_hook.context = 0;
 	bind->tensor_view = 0;
 }
 
@@ -1032,6 +1056,8 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 				ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
 			} else {
 				bind->index = CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED; // This tensor variable will be freed, but this symbol extra will continue exists.
+				bind->owner_hook.func = tensor_variable->owner_hook.func; // Transfer the ownership callback.
+				bind->owner_hook.context = tensor_variable->owner_hook.context; // Transfer the ownership callback context.
 				bind->tensor_view = tensor_variable->tensor_view; // Transfer the ownership to the bind.
 				tensor_variable->tensor_view = 0;
 			}

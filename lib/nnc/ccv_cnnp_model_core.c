@@ -131,6 +131,13 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 	ccv_cnnp_model_copy_name(&sequential_model->super, name);
 	sequential_model->sequence_size = model_size;
 	memcpy(sequential_model->sequence, models, sizeof(ccv_cnnp_model_t*) * model_size);
+	int i;
+	for (i = 0; i < model_size; i++)
+	{
+		const ccv_cnnp_model_t* const model = sequential_model->sequence[i];
+		if (model->owner_hook.func)
+			model->owner_hook.func(model, (ccv_cnnp_model_t*)sequential_model, model->owner_hook.context);
+	}
 	return (ccv_cnnp_model_t*)sequential_model;
 }
 
@@ -485,6 +492,12 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	for (i = 0; i < reverse_top->rnum; i++)
 		functional_model->sequence[input_size + i] = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
 	ccv_array_free(reverse_top);
+	for (i = 0; i < sequence_size; i++)
+	{
+		const ccv_cnnp_model_t* const model = functional_model->sequence[i]->model;
+		if (model->owner_hook.func)
+			model->owner_hook.func(model, (ccv_cnnp_model_t*)functional_model, model->owner_hook.context);
+	}
 	return (ccv_cnnp_model_t*)functional_model;
 }
 

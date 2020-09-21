@@ -144,6 +144,10 @@ struct ccv_cnnp_model_s {
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;
 	char* name;
+	struct {
+		ccv_cnnp_model_owner_f func;
+		void* context;
+	} owner_hook;
 	ccv_cnnp_compiled_data_t* compiled_data;
 	int parallel_count; // How many parallel devices.
 	int memory_compression; // Whether to enable memory compression for training phase.

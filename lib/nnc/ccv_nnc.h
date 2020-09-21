@@ -2221,6 +2221,21 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable_impl(ccv_nnc_dyn
  */
 void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor);
 /**
+ * A ownership update function to be called when a tensor variable transferred ownership (at the moment, that
+ * means a tensor variable will be freed in the sense that no backward computation need it no more).
+ * Thus, we pass in tensor rather than tensor variable for the ownership change.
+ */
+typedef void (*ccv_nnc_tensor_variable_owner_f)(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_t* const tensor, const ccv_nnc_dynamic_graph_t* const owner, void* const context);
+/**
+ * Hook into a tensor variable such that when it is switched to a new owner, the callback will receive
+ * the update.
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable to observe ownership change.
+ * @param func The callback function.
+ * @param context The context to be passed along to the callback function.
+ **/
+void ccv_nnc_tensor_variable_owner_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_owner_f func, void* const context);
+/**
  * Execute a command with given tensor variables, the output is in the output tensor variables.
  * @param graph The dynamic graph.
  * @param cmd The wrapped command.
@@ -2848,6 +2863,18 @@ enum {
  * @param index The index into a parameter. ALL_PARAMETERS means all parameters.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index);
+/**
+ * A ownership update function to be called when a model transferred ownership to someone else.
+ */
+typedef void (*ccv_cnnp_model_owner_f)(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_t* const owner, void* const context);
+/**
+ * Hook into a model such that when it is switched to a new owner, the callback will receive
+ * the update.
+ * @param model A model that can be owned by others, initially, a model is owned by no one.
+ * @param func The callback function.
+ * @param context The context to be passed along to the callback function.
+ **/
+void ccv_cnnp_model_owner_hook(ccv_cnnp_model_t* const model, ccv_cnnp_model_owner_f func, void* const context);
 /**
  * This method name is deceiving. It return a composed model, not a naked model.
  * This composed model takes set of inputs, and run through various other models to arrive at

@@ -28,6 +28,10 @@ struct ccv_nnc_tensor_variable_s {
 	int type;
 	int index;
 	int alias_index_ref; // The index back into the original tensor variable. 0 means no alias.
+	struct {
+		ccv_nnc_tensor_variable_owner_f func;
+		void* context;
+	} owner_hook;
 	ccv_nnc_tensor_param_t info;
 	ccv_nnc_tensor_symbol_t symbol;
 	ccv_nnc_tensor_view_t* tensor_view;
@@ -49,6 +53,10 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 	int type;
 	int index; // The index back into the tensor variable. -1 meant no associated tensor vairable.
 	int alias_ref; // If this is an alias tensor view to a tensor. 0 means no alias, otherwise the index + 1 of the original symbol on the tape.
+	struct {
+		ccv_nnc_tensor_variable_owner_f func;
+		void* context;
+	} owner_hook;
 	ccv_array_t* sources; // array of graph_exec_symbol, use this tensor symbol as output.
 	ccv_array_t* destinations; // array of graph_exec_symbol, use this tensor symbol as input.
 	ccv_nnc_tensor_view_t* tensor_view; // Transfer ownership of the tensor view to here.
