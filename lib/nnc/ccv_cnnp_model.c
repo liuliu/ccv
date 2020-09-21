@@ -1731,6 +1731,12 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 	// Skip if there is no backward pass.
 	if (compiled_data->backward.count <= 0)
 		return;
+	// Skip if there is no parameters.
+	if (compiled_data->parameters->rnum == 0)
+	{
+		compiled_data->backward.count = 0;
+		return;
+	}
 	if (!compiled_data->apply_gradients.graph)
 		_ccv_cnnp_model_multistage_jit_2(model);
 	else {
@@ -1914,6 +1920,9 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
+	const int parameter_size = compiled_data->parameters->rnum;
+	if (parameter_size == 0)
+		return;
 	const int old_max_saved_aux_size = compiled_data->minimize.max_saved_aux_size;
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	if (saved_aux_size > compiled_data->minimize.max_saved_aux_size)
@@ -1938,7 +1947,6 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		}
 		return;
 	}
-	const int parameter_size = compiled_data->parameters->rnum;
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
 	assert(symbolic_graph);
 	if (saved_aux_size > old_max_saved_aux_size)
