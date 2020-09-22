@@ -426,6 +426,8 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss)
 {
 	assert(input_size == model->input_size || model->input_size == 0);
+	if (model->input_size == 0)
+		model->input_size = input_size;
 	if (!model->graph) // The graph is not compiled yet.
 	{
 		model->graph = ccv_nnc_symbolic_graph_new();
