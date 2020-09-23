@@ -2197,6 +2197,14 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_
  * @return New tensor variable that is an alias.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
+/**
+ * Get the parameters for a tensor variable.
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable reference.
+ * @return The tensor parameters.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+
 /** @cond ALL */
 /**
  * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this
