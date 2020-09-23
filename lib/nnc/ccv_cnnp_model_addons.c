@@ -838,23 +838,28 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_add_isa = {
 
 typedef struct {
 	ccv_cnnp_model_t super;
+	float p;
+	float q;
 	ccv_nnc_tensor_symbol_t output;
 } ccv_cnnp_model_add_t;
 
-ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_add(const float p, const float q, const char* const name)
 {
 	ccv_cnnp_model_add_t* const model_add = (ccv_cnnp_model_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_add_t));
 	model_add->super.isa = &ccv_cnnp_add_isa;
 	model_add->super.input_size = 2;
 	model_add->super.outputs = &model_add->output;
 	model_add->super.output_size = 1;
+	model_add->p = p;
+	model_add->q = q;
 	ccv_cnnp_model_copy_name(&model_add->super, name);
 	return (ccv_cnnp_model_t*)model_add;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_add(self->name);
+	const ccv_cnnp_model_add_t* const self = (const ccv_cnnp_model_add_t*)super;
+	return ccv_cnnp_add(self->p, self->q, self->super.name);
 }
 
 // MARK - Mul Layer
@@ -884,22 +889,25 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_mul_isa = {
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	float p;
 } ccv_cnnp_model_mul_t;
 
-ccv_cnnp_model_t* ccv_cnnp_mul(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_mul(const float p, const char* const name)
 {
 	ccv_cnnp_model_mul_t* const model_mul = (ccv_cnnp_model_mul_t*)cccalloc(1, sizeof(ccv_cnnp_model_mul_t));
 	model_mul->super.isa = &ccv_cnnp_mul_isa;
 	model_mul->super.input_size = 2;
 	model_mul->super.outputs = &model_mul->output;
 	model_mul->super.output_size = 1;
+	model_mul->p = p;
 	ccv_cnnp_model_copy_name(&model_mul->super, name);
 	return (ccv_cnnp_model_t*)model_mul;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_mul_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_mul_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_mul(self->name);
+	const ccv_cnnp_model_mul_t* const self = (const ccv_cnnp_model_mul_t*)super;
+	return ccv_cnnp_mul(self->p, self->super.name);
 }
 
 // MARK - Scalar Mul Layer

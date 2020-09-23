@@ -391,7 +391,7 @@ TEST_CASE("dynamic graph to evaluate cnnp model without any parameters")
 	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b)->data.f32[0] = 2;
 	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
-	ccv_cnnp_model_t* const mul = ccv_cnnp_mul("mul");
+	ccv_cnnp_model_t* const mul = ccv_cnnp_mul(1, "mul");
 	ccv_nnc_dynamic_graph_evaluate(graph, mul, 1, TENSOR_VARIABLE_LIST(a, b), TENSOR_VARIABLE_LIST(c), 0, 0);
 	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);

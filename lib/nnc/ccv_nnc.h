@@ -3336,16 +3336,19 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
 /**
  * Add two input tensors together. Different from sum because this support broadcasting.
+ * @param p The weight for the first input.
+ * @param q The weight for the second input.
  * @param name The unique name of the model.
  * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const float p, const float q, const char* const name);
 /**
  * Multiple two input tensors together.
+ * @param p The weight for the output.
  * @param name The unique name of the model.
  * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_mul(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_mul(const float p, const char* const name);
 /**
  * A scalar multiplication model. Y = aX where a is a scalar.
  * @param a The scalar parameter.

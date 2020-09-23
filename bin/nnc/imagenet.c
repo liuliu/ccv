@@ -258,7 +258,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 		ccv_cnnp_sigmoid(0)
 	), 0);
 	const ccv_cnnp_model_io_t se = ccv_cnnp_model_apply(se_conv, MODEL_IO_LIST(x));
-	x = ccv_cnnp_model_apply(ccv_cnnp_mul(0), MODEL_IO_LIST(x, se));
+	x = ccv_cnnp_model_apply(ccv_cnnp_mul(1, 0), MODEL_IO_LIST(x, se));
 	ccv_cnnp_model_t* const proj_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, output_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.no_bias = 1,
