@@ -150,7 +150,7 @@ TEST_CASE("inception layer for model")
 		.hint = HINT((1, 1), (0, 0)),
 	}, 0), MODEL_IO_LIST(tower_3));
 	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_3));
-	ccv_cnnp_model_t* const add_1 = ccv_cnnp_add(0);
+	ccv_cnnp_model_t* const add_1 = ccv_cnnp_sum(0);
 	ccv_cnnp_model_owner_hook(add_1, _ccv_cnnp_model_hook, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(add_1, MODEL_IO_LIST(tower_1, tower_2, tower_3));
 	REQUIRE_EQ(0, _ccv_cnnp_model_owner_hooked, "haven't changed owner");
@@ -190,7 +190,7 @@ static ccv_cnnp_model_t* _ccv_multiple_outputs_functional_model(const ccv_nnc_te
 	input1 = ccv_cnnp_input();
 	input2 = ccv_cnnp_input();
 	output0 = ccv_cnnp_model_apply(interim, MODEL_IO_LIST(input0, input1, input2));
-	output0 = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(output0));
+	output0 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0), 0);
 }
 
@@ -212,7 +212,7 @@ TEST_CASE("make sure reuse model enables share weights")
 	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, (ccv_cnnp_param_t){}, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
-	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(output0, output1));
+	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0, output1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(final_output), 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
@@ -251,7 +251,7 @@ TEST_CASE("train model with share weights and L2 loss")
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
-	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(sqr0, sqr1));
+	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(sqr0, sqr1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
@@ -480,7 +480,7 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
-	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(sqr0, sqr1));
+	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(sqr0, sqr1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
@@ -1181,7 +1181,7 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
 	), 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	ccv_cnnp_model_t* const relu = ccv_cnnp_relu(0);
 	output = ccv_cnnp_model_apply(relu, MODEL_IO_LIST(output));
@@ -1215,7 +1215,7 @@ static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_si
 			.hint = HINT((1, 1), (0, 0)),
 		}, 0), MODEL_IO_LIST(c[i]));
 		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
-		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(lateral, up));
+		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(lateral, up));
 		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.no_bias = 1,
 			.hint = HINT((1, 1), (1, 1)),

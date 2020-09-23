@@ -58,7 +58,7 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
 	), 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	ccv_cnnp_model_t* const relu = ccv_cnnp_relu(0);
 	output = ccv_cnnp_model_apply(relu, MODEL_IO_LIST(output));
@@ -142,7 +142,7 @@ static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_si
 			.hint = HINT((1, 1), (0, 0)),
 		}, 0), MODEL_IO_LIST(c[i]));
 		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
-		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(lateral, up));
+		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(lateral, up));
 		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.no_bias = 1,
 			.hint = HINT((1, 1), (1, 1)),

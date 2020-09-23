@@ -43,7 +43,7 @@ static ccv_cnnp_model_t* _building_block_new(const int filters, const int stride
 		.hint = HINT((1, 1), (1, 1)),
 	}, 0);
 	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
@@ -119,7 +119,7 @@ static ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, c
 			ccv_cnnp_relu(0)
 		), 0);
 		output = ccv_cnnp_model_apply(res2, MODEL_IO_LIST(output));
-		ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
+		ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 		output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	}
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);

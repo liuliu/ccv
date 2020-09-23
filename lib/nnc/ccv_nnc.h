@@ -3237,11 +3237,11 @@ typedef struct {
 	ccv_nnc_hint_t hint; /**< The hint for a particular operation */
 } ccv_cnnp_param_t;
 /**
- * Add multiple input tensors together.
+ * Sum multiple input tensors together.
  * @param name The unique name of the model.
  * @return A model that can be applied with multiple inputs, and generate output that is a sum of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sum(const char* const name);
 /**
  * Concatenate input tensors together.
  * @param name The unique name of the model.
@@ -3334,6 +3334,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
  * @return A layer norm model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
+/**
+ * Add two input tensors together. Different from sum because this support broadcasting.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const char* const name);
 /**
  * Multiple two input tensors together.
  * @param name The unique name of the model.

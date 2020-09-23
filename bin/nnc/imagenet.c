@@ -57,7 +57,7 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
 	), 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	ccv_cnnp_model_t* const relu = ccv_cnnp_relu(0);
 	output = ccv_cnnp_model_apply(relu, MODEL_IO_LIST(output));
@@ -271,7 +271,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 	{
 		if (dropout > 0)
 			x = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 1, 0), MODEL_IO_LIST(x));
-		x = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, input));
+		x = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(x, input));
 	}
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(x), 0);
 }

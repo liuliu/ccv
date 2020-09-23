@@ -6,39 +6,39 @@
 
 // MARK - Core Layers
 
-static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+static void _ccv_cnnp_sum_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	assert(output_size == 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, inputs[0]), 0);
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_EWSUM_FORWARD(), inputs, input_size, outputs, output_size, 0);
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self, void* const context);
+static ccv_cnnp_model_t* _ccv_cnnp_sum_copy(const ccv_cnnp_model_t* const self, void* const context);
 
-static const ccv_cnnp_model_vtab_t ccv_cnnp_add_isa = {
-	.build = _ccv_cnnp_add_build,
-	.copy = _ccv_cnnp_add_copy,
+static const ccv_cnnp_model_vtab_t ccv_cnnp_sum_isa = {
+	.build = _ccv_cnnp_sum_build,
+	.copy = _ccv_cnnp_sum_copy,
 };
 
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
-} ccv_cnnp_model_add_t;
+} ccv_cnnp_model_sum_t;
 
-ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_sum(const char* const name)
 {
-	ccv_cnnp_model_add_t* const model_add = (ccv_cnnp_model_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_add_t));
-	model_add->super.isa = &ccv_cnnp_add_isa;
-	model_add->super.input_size = 0;
-	model_add->super.outputs = &model_add->output;
-	model_add->super.output_size = 1;
-	ccv_cnnp_model_copy_name(&model_add->super, name);
-	return (ccv_cnnp_model_t*)model_add;
+	ccv_cnnp_model_sum_t* const model_sum = (ccv_cnnp_model_sum_t*)cccalloc(1, sizeof(ccv_cnnp_model_sum_t));
+	model_sum->super.isa = &ccv_cnnp_sum_isa;
+	model_sum->super.input_size = 0;
+	model_sum->super.outputs = &model_sum->output;
+	model_sum->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_sum->super, name);
+	return (ccv_cnnp_model_t*)model_sum;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_sum_copy(const ccv_cnnp_model_t* const self, void* const context)
 {
-	return ccv_cnnp_add(self->name);
+	return ccv_cnnp_sum(self->name);
 }
 
 static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -810,6 +810,51 @@ ccv_cnnp_model_t* ccv_cnnp_softmax(const char* const name)
 static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const self, void* const context)
 {
 	return ccv_cnnp_softmax(self->name);
+}
+
+// MARK - Add Layer
+
+static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t add = CMD_ADD_FORWARD(1, 1);
+	ccv_nnc_hint_tensor_auto(add, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, add, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_add_isa = {
+	.build = _ccv_cnnp_add_build,
+	.copy = _ccv_cnnp_add_copy,
+};
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_add_t;
+
+ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
+{
+	ccv_cnnp_model_add_t* const model_add = (ccv_cnnp_model_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_add_t));
+	model_add->super.isa = &ccv_cnnp_add_isa;
+	model_add->super.input_size = 2;
+	model_add->super.outputs = &model_add->output;
+	model_add->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_add->super, name);
+	return (ccv_cnnp_model_t*)model_add;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_add(self->name);
 }
 
 // MARK - Mul Layer

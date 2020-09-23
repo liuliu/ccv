@@ -144,7 +144,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	ccv_cnnp_model_io_t const mask = ccv_cnnp_input();
 	ccv_cnnp_model_t* const self_attention = _self_attention_new(k, h, b, t, dropout);
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(self_attention, MODEL_IO_LIST(x, mask));
-	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(x, out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(x, out));
 	ccv_cnnp_model_io_t first = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	if (dropout)
 		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(first));
@@ -155,7 +155,7 @@ static ccv_cnnp_model_t* _transformer_block_new(const int k, const int h, const 
 	out = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(first, out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(first, out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 0), MODEL_IO_LIST(out));
 	if (dropout > 0)
 		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(out));
