@@ -814,8 +814,16 @@ static ccv_cnnp_model_t* _ccv_cnnp_softmax_copy(const ccv_cnnp_model_t* const se
 
 // MARK - Add Layer
 
-static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+typedef struct {
+	ccv_cnnp_model_t super;
+	float p;
+	float q;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_add_t;
+
+static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	const ccv_cnnp_model_add_t* const self = (const ccv_cnnp_model_add_t*)super;
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
@@ -823,7 +831,7 @@ static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_g
 	for (i = 0; i < 2; i++)
 		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t add = CMD_ADD_FORWARD(1, 1);
+	const ccv_nnc_cmd_t add = CMD_ADD_FORWARD(self->p, self->q);
 	ccv_nnc_hint_tensor_auto(add, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	ccv_nnc_graph_exec_symbol_new(graph, add, inputs, input_size, outputs, output_size, 0);
@@ -835,13 +843,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_add_isa = {
 	.build = _ccv_cnnp_add_build,
 	.copy = _ccv_cnnp_add_copy,
 };
-
-typedef struct {
-	ccv_cnnp_model_t super;
-	float p;
-	float q;
-	ccv_nnc_tensor_symbol_t output;
-} ccv_cnnp_model_add_t;
 
 ccv_cnnp_model_t* ccv_cnnp_add(const float p, const float q, const char* const name)
 {
@@ -864,8 +865,15 @@ static ccv_cnnp_model_t* _ccv_cnnp_add_copy(const ccv_cnnp_model_t* const super,
 
 // MARK - Mul Layer
 
-static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float p;
+} ccv_cnnp_model_mul_t;
+
+static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	const ccv_cnnp_model_mul_t* const self = (const ccv_cnnp_model_mul_t*)super;
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
@@ -873,7 +881,7 @@ static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_g
 	for (i = 0; i < 2; i++)
 		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t mul = CMD_MUL_FORWARD(1);
+	const ccv_nnc_cmd_t mul = CMD_MUL_FORWARD(self->p);
 	ccv_nnc_hint_tensor_auto(mul, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	ccv_nnc_graph_exec_symbol_new(graph, mul, inputs, input_size, outputs, output_size, 0);
@@ -885,12 +893,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_mul_isa = {
 	.build = _ccv_cnnp_mul_build,
 	.copy = _ccv_cnnp_mul_copy,
 };
-
-typedef struct {
-	ccv_cnnp_model_t super;
-	ccv_nnc_tensor_symbol_t output;
-	float p;
-} ccv_cnnp_model_mul_t;
 
 ccv_cnnp_model_t* ccv_cnnp_mul(const float p, const char* const name)
 {
