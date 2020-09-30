@@ -2422,12 +2422,6 @@ CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynam
  */
 typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
- * A data enumeration block to supply data for given row indexes.
- */
-#ifdef CCV_BLOCK_SUPPORT
-typedef void (^ccv_cnnp_column_data_enum_d)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
-#endif
-/**
  * A destructor for data.
  */
 typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data, void* const context);
@@ -2440,13 +2434,7 @@ typedef void (*ccv_cnnp_column_data_context_deinit_f)(void* const context);
  */
 typedef struct {
 	int stream_type; /**< The type of stream context for this column. Each column only compatible with one stream type. */
-	int block_type; /**< The type of the supplied data_enum block. */
-	union {
-		ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
-#ifdef CCV_BLOCK_SUPPORT
-		ccv_cnnp_column_data_enum_d data_enum_d; /**< The data enumeration block for this column. */
-#endif
-	};
+	ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
 	ccv_cnnp_column_data_deinit_f data_deinit; /**< The deinit function that will be used to destroy the data. */
 	void* context; /**< The context go along with this column. */
 	ccv_cnnp_column_data_context_deinit_f context_deinit; /**< The deinit function that will be used to destroy the context. */
@@ -2473,19 +2461,10 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_col
  * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#ifdef CCV_BLOCK_SUPPORT
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_d data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#endif
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
 typedef void (*ccv_cnnp_column_data_map_f)(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
-/**
- * A map block that takes the data from multiple columns and derive new data out of it.
- */
-#ifdef CCV_BLOCK_SUPPORT
-typedef void (^ccv_cnnp_column_data_map_d)(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
-#endif
 /**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
@@ -2499,9 +2478,6 @@ typedef void (^ccv_cnnp_column_data_map_d)(void* const* const* const column_data
  * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#ifdef CCV_BLOCK_SUPPORT
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_d map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#endif
 /**
  * Shuffle an existing dataframe.
  * @param dataframe The dataframe that is about to be shuffled.
@@ -2518,12 +2494,6 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const da
  */
 typedef void (*ccv_cnnp_column_data_reduce_f)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
- * A reduce block that takes multiple rows of one column, and reduce to one row.
- */
-#ifdef CCV_BLOCK_SUPPORT
-typedef void (^ccv_cnnp_column_data_reduce_d)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
-#endif
-/**
  * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
  * one specific column. This will also reduce the multi-column dataframe down to 1 column
  * by selecting the one column to reduce.
@@ -2537,9 +2507,6 @@ typedef void (^ccv_cnnp_column_data_reduce_d)(void* const* const input_data, con
  * @return The reduced dataframe.
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#ifdef CCV_BLOCK_SUPPORT
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_d reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
-#endif
 /**
  * Extract a value out of a struct. Assuming the data points to a struct. This method extract
  * n-offset value of that struct. For example, if you have struct { ccv_nnc_tensor_t* a; ccv_nnc_tensor_t* b; } S;

@@ -13,13 +13,7 @@ typedef struct {
 	int column_idx;
 	int batch_size;
 	int iter_idx;
-	int block_type;
-	union {
-		ccv_cnnp_column_data_reduce_f reduce;
-#ifdef CCV_BLOCK_SUPPORT
-		ccv_cnnp_column_data_reduce_d reduce_d;
-#endif
-	};
+	ccv_cnnp_column_data_reduce_f reduce;
 	ccv_cnnp_dataframe_t* dataframe;
 	ccv_cnnp_dataframe_iter_t* iter;
 	ccv_cnnp_column_data_deinit_f data_deinit;
@@ -47,12 +41,7 @@ static void _ccv_cnnp_reducer_enum(const int column_idx, const int* const row_id
 		for (j = 0; j < reducer->batch_size; j++)
 			if (0 != ccv_cnnp_dataframe_iter_next(iter, reducer->batch_data + j, 1, stream_context))
 				break;
-		if (reducer->block_type == CCV_FUNCTION_POINTER)
-			reducer->reduce(reducer->batch_data, j, data + i, reducer->context, stream_context);
-#ifdef CCV_BLOCK_SUPPORT
-		else if (reducer->block_type == CCV_FUNCTION_BLOCK)
-			reducer->reduce_d(reducer->batch_data, j, data + i, reducer->context, stream_context);
-#endif
+		reducer->reduce(reducer->batch_data, j, data + i, reducer->context, stream_context);
 	}
 }
 
@@ -70,10 +59,6 @@ static void _ccv_cnnp_reducer_deinit(void* const context)
 		ccv_cnnp_dataframe_iter_free(reducer->iter);
 	if (reducer->context_deinit)
 		reducer->context_deinit(reducer->context);
-#ifdef CCV_BLOCK_SUPPORT
-	if (reducer->block_type == CCV_FUNCTION_BLOCK)
-		Block_release(reducer->reduce_d);
-#endif
 	ccfree(reducer);
 }
 
@@ -83,7 +68,6 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_reducer_t) + sizeof(void*) * (batch_size - 1));
 	reducer->column_idx = column_idx;
 	reducer->batch_size = batch_size;
-	reducer->block_type = CCV_FUNCTION_POINTER;
 	reducer->reduce = reduce;
 	reducer->dataframe = dataframe;
 	reducer->iter = 0;
@@ -98,30 +82,6 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	};
 	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
 }
-
-#ifdef CCV_BLOCK_SUPPORT
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new_d(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_d reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
-{
-	assert(batch_size > 0);
-	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_reducer_t) + sizeof(void*) * (batch_size - 1));
-	reducer->column_idx = column_idx;
-	reducer->batch_size = batch_size;
-	reducer->block_type = CCV_FUNCTION_BLOCK;
-	reducer->reduce_d = Block_copy(reduce);
-	reducer->dataframe = dataframe;
-	reducer->iter = 0;
-	reducer->data_deinit = data_deinit;
-	reducer->context = context;
-	reducer->context_deinit = context_deinit;
-	ccv_cnnp_column_data_t reduce_column = {
-		.data_enum = _ccv_cnnp_reducer_enum,
-		.data_deinit = data_deinit ? _ccv_cnnp_reducer_data_deinit : 0, // Redirect to our data deinit method.
-		.context = reducer,
-		.context_deinit = _ccv_cnnp_reducer_deinit,
-	};
-	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
-}
-#endif
 
 // MARK - Extract
 
