@@ -270,4 +270,15 @@ TEST_CASE("truncate a sequence")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
+TEST_CASE("read a csv file")
+{
+	/*
+	FILE* f = fopen("/home/liu/Data/Raw/DOHUI_NOH_scaled_data.csv", "r");
+	int column_size = 0;
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, ',', '"', 0, &column_size);
+	fclose(f);
+	ccv_cnnp_dataframe_free(dataframe);
+	*/
+}
+
 #include "case_main.h"

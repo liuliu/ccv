@@ -409,6 +409,7 @@ cc_library(
 		"nnc/ccv_cnnp_dataframe.c",
 		"nnc/ccv_cnnp_dataframe_core.c",
 		"nnc/ccv_cnnp_dataframe_addons.c",
+		"nnc/ccv_cnnp_dataframe_csv.c",
 		"nnc/ccv_cnnp_model.c",
 		"nnc/ccv_cnnp_model_io.c",
 		"nnc/ccv_cnnp_model_core.c",

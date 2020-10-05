@@ -2763,6 +2763,55 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_batching_new(ccv_cnnp_
 /** @} */
 
 /**
+ * @page dataframe_csv Why to support comma-separated-values files in dataframe?
+ *
+ * C can be used as a parser. It usually can be fast. But most of them can be buggy and has bugs that can either crash, be
+ * exploited, or simply incorrect. There really isn't much motivation for me to start write a parser, even as simple as
+ * for CSV files.
+ *
+ * However, it does brought to my attention that a full-speed (defined by saturating the PCIx4 for SSD) implementation would
+ * be beneficial. I am also started to use nnc in many places that is handy to load a csv file and generate some tensors out
+ * of it.
+ *
+ * This implementation plan to use a variant of the two-pass approach documented in
+ * https://www.microsoft.com/en-us/research/uploads/prod/2019/04/chunker-sigmod19.pdf while first implemented in
+ * https://github.com/wiseio/paratext. It is differentiated from these two in these particular ways:
+ *
+ * 1. The first pass will not only find the quotes and even / odd CRLF, but also collect statistics on how many lines assuming
+ *    the first CRLF is within quote / outside of the quote;
+ * 2. The second pass will do a copy into a continuous page mirrors the original csv file, but null-terminate each column, and
+ *    assign the start pointer for each.
+ *
+ * The speculative approach while interesting, for many-core system implementation, it can be challenging and the worse-case
+ * scenario is indeed worse.
+ *
+ * The implementation itself follows https://tools.ietf.org/html/rfc4180, with only customization of delimiters (so it can support
+ * table-separated-values) and quotes (so you can choose between " and '). Escaping only supports double-quotes for whatever quote
+ * symbol you elect.
+ */
+
+/**
+ * @defgroup level_5_dataframe_csv Dataframe for Comma-Separated-Values Files
+ * @{
+ */
+
+/**
+ * Create a dataframe object that read a CSV file. This will eagerly load the file into memory, parse each row / column
+ * into null-terminated strings, you can later convert these into numerics if needed. Each column will be a column indexed
+ * from 0 to column_size - 1. If the file encountered a syntax error that will halt the parse, the errcode will be returned
+ * and we will return null for the object. We support both CRLF, LF, and LFCR termination.
+ * @param file The file on disk for the CSV with a FILE handle.
+ * @param delim The delim, it is ',' by default (if you provided '\0')
+ * @param quote The quote for escape strings, it is '"' by default (if you provided '\0')
+ * @param include_header whether to parse the header seperately.
+ * @param column_size The number of columns in the resulted dataframe.
+ * @return A dataframe that can represent the csv file. nullptr if failed.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_csv_new(FILE* const file, const char delim, const char quote, const int include_header, int* const column_size);
+
+/** @} */
+
+/**
  * @page model Models, layers, and Keras
  *
  * With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
