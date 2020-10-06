@@ -272,13 +272,25 @@ TEST_CASE("truncate a sequence")
 
 TEST_CASE("read a csv file")
 {
-	/*
-	FILE* f = fopen("/home/liu/Data/Raw/DOHUI_NOH_scaled_data.csv", "r");
+	FILE* f = fopen("data/quote.csv", "r");
 	int column_size = 0;
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, ',', '"', 0, &column_size);
 	fclose(f);
+	REQUIRE_EQ(column_size, 4, "has 4 columns based on header");
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(1));
+	void* data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	REQUIRE(strcmp(data, "\"header\" 2") == 0, "first line is header");
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	REQUIRE(strcmp(data, "b") == 0, "b");
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	REQUIRE(strcmp(data, "d") == 0, "d");
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	REQUIRE(strcmp(data, "f") == 0, "f");
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	REQUIRE(data == 0, "nullptr");
+	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(dataframe);
-	*/
 }
 
 #include "case_main.h"
