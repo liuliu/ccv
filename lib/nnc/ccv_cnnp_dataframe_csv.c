@@ -59,17 +59,36 @@ void _ccv_cnnp_csv_enum(const int column_idx, const int* const row_idxs, const i
 	}
 }
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const char delim, const char quote, const int include_header, int* const column_size)
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const int type, const size_t len, const char _delim, const char _quote, const int include_header, int* const column_size)
 {
 	assert(column_size);
-	const int fd = fileno(file);
-	fseek(file, 0, SEEK_END);
-	const size_t file_size = ftell(file);
-	fseek(file, 0, SEEK_SET);
-	if (file_size < 2)
-		return 0;
-	// Note that we use p + 2 to check whether there is a quote after \r, hence, map 2 more bytes.
-	char* const data = mmap((caddr_t)0, file_size + 2, PROT_READ, MAP_PRIVATE, fd, 0);
+	size_t file_size;
+	char* data;
+	assert(type == CCV_CNNP_DATAFRAME_CSV_FILE || type == CCV_CNNP_DATAFRAME_CSV_MEMORY);
+	if (type == CCV_CNNP_DATAFRAME_CSV_FILE)
+	{
+		FILE* file = (FILE*)_file;
+		const int fd = fileno(file);
+		if (fd == -1)
+			return 0;
+		fseek(file, 0, SEEK_END);
+		file_size = ftell(file);
+		fseek(file, 0, SEEK_SET);
+		if (file_size < 2)
+			return 0;
+		// Note that we use p + 2 to check whether there is a quote after \r, hence, map 2 more bytes.
+		data = mmap((caddr_t)0, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+		if (!data)
+			return 0;
+	} else {
+		file_size = len;
+		assert(len > 0);
+		if (len < 2)
+			return 0;
+		data = _file;
+	}
+	const char delim = _delim ? _delim : ',';
+	const char quote = _quote ? _quote : '"';
 	const size_t chunk_size = 1024 * 1024;
 	const int aligned_chunks = file_size / chunk_size;
 	const int total_chunks = (file_size + chunk_size - 1) / chunk_size;
@@ -165,7 +184,6 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 			crlf[i].even = crlf[i].odd;
 			crlf[i].even_starter = crlf[i].odd_starter;
 		}
-		assert(crlf[i].even_starter >= 0);
 		crlf[i].odd_starter = row_count + 1;
 		row_count += crlf[i].even;
 		quotes += crlf[i].quotes;
@@ -176,7 +194,13 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 	// Get number of columns.
 	int column_count = 0;
 	const uint64_t* pd = (const uint64_t*)data;
-	const int first_line_len = crlf[0].even_starter;
+	int first_line_len = file_size;
+	for (i = 0; i < total_chunks; i++)
+		if (crlf[i].even_starter >= 0)
+		{
+			first_line_len = i * chunk_size + crlf[i].even_starter;
+			break;
+		}
 	const uint64_t* const pd_end = pd + first_line_len / sizeof(uint64_t);
 #define CSV_QUOTE_BR(cn) \
 	do { \
@@ -212,6 +236,13 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 	}
 #undef CSV_QUOTE_BR
 	++column_count; // column count is 1 more than delimiter.
+	if (row_count == 0) // This is possible because you have an open quote, and then \n is inside the open quote, which won't be recognized.
+	{
+		ccfree(crlf);
+		if (type == CCV_CNNP_DATAFRAME_CSV_FILE)
+			munmap(data, file_size);
+		return 0;
+	}
 	// Allocating memory that holds both start pointers to the string, and the actual string. Also responsible to copy over the string.
 	// Note that we did file_size + 3 in case we don't have \n at the end of the file to host the null-terminator. Also, we may assign
 	// q + (n + 3) as the end, hence, 3 more null bytes at the end.
@@ -245,13 +276,16 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 			{ \
 				if (c##n == delim) \
 				{ \
-					if (chunk_column_count < column_count && double_quote) \
-						fix_quote[fix_quote_count++] = csp[chunk_column_count]; \
-					++chunk_column_count; \
+					if (chunk_row_count < row_count) \
+					{ \
+						if (double_quote && chunk_column_count < column_count) \
+							fix_quote[fix_quote_count++] = csp[chunk_column_count]; \
+						++chunk_column_count; \
+						if (chunk_column_count < column_count) \
+							/* Skip quote if presented. */ \
+							csp[chunk_column_count] = p + (n + 1) < p_end && p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
+					} \
 					double_quote = 0; \
-					if (chunk_column_count < column_count) \
-						/* Skip quote if presented. */ \
-						csp[chunk_column_count] = p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
 				} else if (c##n == '\n') { \
 					++chunk_row_count; \
 					csp += column_count; \
@@ -260,10 +294,10 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 					{ \
 						if (double_quote) \
 							fix_quote[fix_quote_count++] = csp[-1]; \
-						if (p[n + 1] == '\r') \
-							csp[0] = p[n + 2] == quote ? q + (n + 3) : q + (n + 2); \
+						if (p + (n + 1) < p_end && p[n + 1] == '\r') \
+							csp[0] =p + (n + 2) < p_end && p[n + 2] == quote ? q + (n + 3) : q + (n + 2); \
 						else \
-							csp[0] = p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
+							csp[0] =p + (n + 1) < p_end && p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
 					} \
 					double_quote = 0; \
 				} \
@@ -275,7 +309,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 	} while (0)
 	parallel_for(i, total_chunks) {
 		// Skip if existing one don't have a line starter.
-		if (crlf[i].even_starter < 0)
+		if (i > 0 && crlf[i].even_starter < 0)
 			continue;
 		const char* p = (i == 0) ? data : data + i * chunk_size + crlf[i].even_starter + 1;
 		const char* p_end = data + file_size;
@@ -286,7 +320,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 				p_end = data + j * chunk_size + crlf[j].even_starter;
 				break;
 			}
-		if (p_end == p)
+		if (p_end <= p)
 			continue;
 		char* q = (i == 0) ? dd : dd + i * chunk_size + crlf[i].even_starter + 1;
 		int chunk_row_count = crlf[i].odd_starter;
@@ -338,10 +372,10 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 			CSV_QUOTE_BR(c, 1, c0);
 			CSV_QUOTE_BR(c, 2, c1);
 			CSV_QUOTE_BR(c, 3, c2);
-			CSV_QUOTE_BR(c, 4, c4);
-			CSV_QUOTE_BR(c, 5, c5);
-			CSV_QUOTE_BR(c, 6, c6);
-			CSV_QUOTE_BR(c, 7, c7);
+			CSV_QUOTE_BR(c, 4, c3);
+			CSV_QUOTE_BR(c, 5, c4);
+			CSV_QUOTE_BR(c, 6, c5);
+			CSV_QUOTE_BR(c, 7, c6);
 			q[0] = c0, q[1] = c1, q[2] = c2, q[3] = c3, q[4] = c4, q[5] = c5, q[6] = c6, q[7] = c7;
 			for (--fix_quote_count; fix_quote_count >= 0; --fix_quote_count)
 				_fix_double_quote(fix_quote[fix_quote_count]);
@@ -360,7 +394,8 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(FILE* const file, const ch
 	} parallel_endfor
 #undef CSV_QUOTE_BR
 	ccfree(crlf);
-	munmap(data, file_size + 2);
+	if (type == CCV_CNNP_DATAFRAME_CSV_FILE)
+		munmap(data, file_size);
 	*column_size = column_count;
 	assert(column_count > 0);
 	ccv_cnnp_column_data_t* const column_data = (ccv_cnnp_column_data_t*)cccalloc(column_count, sizeof(ccv_cnnp_column_data_t));

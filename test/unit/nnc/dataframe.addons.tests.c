@@ -274,7 +274,7 @@ TEST_CASE("read a csv file")
 {
 	FILE* f = fopen("data/quote.csv", "r");
 	int column_size = 0;
-	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, ',', '"', 0, &column_size);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, CCV_CNNP_DATAFRAME_CSV_FILE, 0, ',', '"', 0, &column_size);
 	fclose(f);
 	REQUIRE_EQ(column_size, 4, "has 4 columns based on header");
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(1));
@@ -297,7 +297,7 @@ TEST_CASE("read a larger csv file")
 {
 	FILE* f = fopen("data/scaled_data.csv", "r");
 	int column_size = 0;
-	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, ',', '"', 0, &column_size);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, CCV_CNNP_DATAFRAME_CSV_FILE, 0, ',', '"', 0, &column_size);
 	fclose(f);
 	REQUIRE_EQ(column_size, 3213, "has 3213 columns based on header");
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(1));

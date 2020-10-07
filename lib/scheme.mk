@@ -1,4 +1,4 @@
-.PHONY: debug undef asan cover
+.PHONY: debug undef asan cover fuzz
 
 # Debug Scheme
 
@@ -52,3 +52,16 @@ cover: CFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcover
 cover: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcoverage-mapping
 cover: export COVER = 1
 cover: all
+
+# Fuzzer Scheme
+
+FUZZ ?= 0
+ifeq ($(FUZZ), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=fuzzer,address
+	LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=fuzzer,address
+endif
+
+fuzz: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=fuzzer,address
+fuzz: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=fuzzer,address
+fuzz: export FUZZ = 1
+# fuzz: all Doesn't call all targets, fuzz requires a different target.

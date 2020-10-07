@@ -2779,6 +2779,7 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_batching_new(ccv_cnnp_
  *
  * 1. The first pass will not only find the quotes and even / odd CRLF, but also collect statistics on how many lines assuming
  *    the first CRLF is within quote / outside of the quote;
+ *
  * 2. The second pass will do a copy into a continuous page mirrors the original csv file, but null-terminate each column, and
  *    assign the start pointer for each.
  *
@@ -2794,20 +2795,28 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_batching_new(ccv_cnnp_
  * @defgroup level_5_dataframe_csv Dataframe for Comma-Separated-Values Files
  * @{
  */
+enum {
+	/* It is a file pointer. */
+	CCV_CNNP_DATAFRAME_CSV_FILE = 0,
+	/* It is a pointer to a memory. */
+	CCV_CNNP_DATAFRAME_CSV_MEMORY = 1,
+};
 
 /**
  * Create a dataframe object that read a CSV file. This will eagerly load the file into memory, parse each row / column
  * into null-terminated strings, you can later convert these into numerics if needed. Each column will be a column indexed
- * from 0 to column_size - 1. If the file encountered a syntax error that will halt the parse, the errcode will be returned
- * and we will return null for the object. We support both CRLF, LF, and LFCR termination.
- * @param file The file on disk for the CSV with a FILE handle.
+ * from 0 to column_size - 1. If there are syntax errors, the parser will make guesses and continue to parse to its best knowledge.
+ * If it cannot, we will return null for the object. We support both CRLF, LF, and LFCR termination.
+ * @param input The FILE handle for on-disk file, or the pointer to the region of the memory we are going to use.
+ * @param type The type of either `CCV_CNNP_DATAFRAME_CSV_FILE` or `CCV_CNNP_DATAFRAME_CSV_MEMORY`
+ * @param len The length of the memory region, if it is `CCV_CNNP_DATAFRAME_CSV_MEMORY`.
  * @param delim The delim, it is ',' by default (if you provided '\0')
  * @param quote The quote for escape strings, it is '"' by default (if you provided '\0')
  * @param include_header whether to parse the header seperately.
  * @param column_size The number of columns in the resulted dataframe.
  * @return A dataframe that can represent the csv file. nullptr if failed.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_csv_new(FILE* const file, const char delim, const char quote, const int include_header, int* const column_size);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_csv_new(void* const file, const int type, const size_t len, const char delim, const char quote, const int include_header, int* const column_size);
 
 /** @} */
 

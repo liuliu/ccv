@@ -1,7 +1,6 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
-#include <inc/ccv_convnet_internal.h>
 #include <sys/time.h>
 #include <ctype.h>
 
@@ -18,9 +17,14 @@ int main(int argc, char** argv)
 	FILE* f = fopen(argv[1], "r");
 	int column_size = 0;
 	unsigned int elapsed_time = get_current_time();
-	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, ',', '"', 0, &column_size);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_csv_new(f, CCV_CNNP_DATAFRAME_CSV_FILE, 0, ',', '"', 0, &column_size);
 	fclose(f);
 	printf("ccv_cnnp_dataframe_from_csv_new %u ms\n", get_current_time() - elapsed_time);
+	if (!dataframe)
+	{
+		printf("invalid csv file\n");
+		return 0;
+	}
 	ccv_cnnp_dataframe_iter_t* iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(0));
 	int i;
 	for (i = 0; i < 100; i++)
