@@ -23,7 +23,7 @@ all: $(TARGETS)
 fuzz: $(FUZZ_TARGETS)
 
 clean:
-	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
+	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS) $(FUZZ_TARGETS)
 
 $(TARGETS): %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)

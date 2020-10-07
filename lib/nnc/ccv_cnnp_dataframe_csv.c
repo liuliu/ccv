@@ -76,7 +76,6 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const i
 		fseek(file, 0, SEEK_SET);
 		if (file_size < 2)
 			return 0;
-		// Note that we use p + 2 to check whether there is a quote after \r, hence, map 2 more bytes.
 		data = mmap((caddr_t)0, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
 		if (!data)
 			return 0;
@@ -315,7 +314,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const i
 		const char* p_end = data + file_size;
 		int j;
 		for (j = i + 1; j < total_chunks; j++)
-			if (crlf[i].even_starter >= 0)
+			if (crlf[j].even_starter >= 0)
 			{
 				p_end = data + j * chunk_size + crlf[j].even_starter;
 				break;
@@ -326,7 +325,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const i
 		int chunk_row_count = crlf[i].odd_starter;
 		char** csp = sp + (uintptr_t)column_count * chunk_row_count;
 		if (p[0] == '\r')
-			csp[0] = p[1] == quote ? q + 2 : q + 1;
+			csp[0] = p + 1 < p_end && p[1] == quote ? q + 2 : q + 1;
 		else
 			csp[0] = p[0] == quote ? q + 1 : q;
 		int chunk_column_count = 0;
