@@ -59,7 +59,7 @@ void _ccv_cnnp_csv_enum(const int column_idx, const int* const row_idxs, const i
 	}
 }
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const int type, const size_t len, const char _delim, const char _quote, const int include_header, int* const column_size)
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const int type, const size_t len, const char _delim, const char _quote, const int include_header, int* const column_size)
 {
 	assert(column_size);
 	size_t file_size;
@@ -67,7 +67,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const i
 	assert(type == CCV_CNNP_DATAFRAME_CSV_FILE || type == CCV_CNNP_DATAFRAME_CSV_MEMORY);
 	if (type == CCV_CNNP_DATAFRAME_CSV_FILE)
 	{
-		FILE* file = (FILE*)_file;
+		FILE* file = (FILE*)input;
 		const int fd = fileno(file);
 		if (fd == -1)
 			return 0;
@@ -84,7 +84,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const _file, const i
 		assert(len > 0);
 		if (len < 2)
 			return 0;
-		data = _file;
+		data = input;
 	}
 	const char delim = _delim ? _delim : ',';
 	const char quote = _quote ? _quote : '"';

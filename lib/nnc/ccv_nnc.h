@@ -2816,7 +2816,7 @@ enum {
  * @param column_size The number of columns in the resulted dataframe.
  * @return A dataframe that can represent the csv file. nullptr if failed.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_csv_new(void* const file, const int type, const size_t len, const char delim, const char quote, const int include_header, int* const column_size);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_csv_new(void* const input, const int type, const size_t len, const char delim, const char quote, const int include_header, int* const column_size);
 
 /** @} */
 
