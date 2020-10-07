@@ -43,14 +43,15 @@ static inline void _fix_double_quote(char* src)
 
 typedef struct {
 	int column_size;
-	int reserved;
+	int include_header;
 } ccv_cnnp_csv_t;
 
 void _ccv_cnnp_csv_enum(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)context;
 	const int column_size = csv->column_size;
-	const char** const sp = (const char**)(csv + 1) + column_idx;
+	const int include_header = csv->include_header;
+	const char** const sp = (const char**)(csv + 1) + column_idx + include_header * column_size;
 	int i;
 	for (i = 0; i < row_size; i++)
 	{
@@ -248,6 +249,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 	// q + (n + 3) as the end, hence, 3 more null bytes at the end.
 	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)ccmalloc(sizeof(ccv_cnnp_csv_t) + sizeof(char*) * row_count * column_count + file_size + 3);
 	csv->column_size = column_count;
+	csv->include_header = !!include_header;
 	char** const sp = (char**)(csv + 1); 
 	memset(sp, 0, sizeof(char*) * row_count * column_count);
 	char* const dd = (char*)(sp + (uintptr_t)row_count * column_count);
@@ -404,8 +406,11 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 		column_data[i].data_enum = _ccv_cnnp_csv_enum;
 		column_data[i].context = csv;
 	}
+	if (include_header)
+		for (i = 0; i < column_count; i++)
+			column_data[i].name = sp[i];
 	column_data[0].context_deinit = (ccv_cnnp_column_data_context_deinit_f)ccfree;
-	ccv_cnnp_dataframe_t* dataframe = ccv_cnnp_dataframe_new(column_data, column_count, row_count);
+	ccv_cnnp_dataframe_t* dataframe = ccv_cnnp_dataframe_new(column_data, column_count, row_count - !!include_header);
 	ccfree(column_data);
 	return dataframe;
 }

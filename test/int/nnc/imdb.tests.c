@@ -261,28 +261,28 @@ static void _vocab_destroy(khash_t(vocab_map)* const vocab)
 
 static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
-	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
+	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor), 0);
+	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW, 0);
+	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask), 0);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx, mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
-	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
+	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor), 0);
+	const int test_one_hot_idx = ccv_cnnp_dataframe_one_hot(test_data, 0, offsetof(ccv_nnc_text_t, c), 2, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW, 0);
+	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask), 0);
 	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_one_hot_idx, test_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int gpu_batched[device_count * 2];
 	int test_gpu_batched[device_count * 2];
 	int i, j;
 	for (i = 0; i < device_count; i++)
 	{
-		const int seq_len_batched = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2);
-		const int tupled_mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, COLUMN_ID_LIST(seq_len_batched), 0, max_length);
-		gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 2, i);
-		gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, tupled_mask_batched, 0, 1, i);
-		const int test_seq_len_batched = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2);
-		const int test_tupled_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, COLUMN_ID_LIST(test_seq_len_batched), 0, max_length);
-		test_gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 2, i);
-		test_gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_tupled_mask_batched, 0, 1, i);
+		const int seq_len_batched = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2, 0);
+		const int tupled_mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, COLUMN_ID_LIST(seq_len_batched), 0, max_length, 0);
+		gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3, 2, i, 0);
+		gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, tupled_mask_batched, 0, 1, i, 0);
+		const int test_seq_len_batched = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2, 0);
+		const int test_tupled_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, COLUMN_ID_LIST(test_seq_len_batched), 0, max_length, 0);
+		test_gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3, 2, i, 0);
+		test_gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_tupled_mask_batched, 0, 1, i, 0);
 	}
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, device_count * 2);
 	ccv_nnc_dynamic_graph_t* const dynamic_graph = ccv_nnc_dynamic_graph_new();
@@ -598,14 +598,14 @@ TEST_CASE("train a categorical transformer classifier on imdb reviews to 80% wit
 
 static int train_imdb_flex(const int epoch_limit, const int vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
-	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int one_hot_idx = ccv_cnnp_dataframe_copy_scalar(train_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask));
+	const int tensor_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, tensor), 0);
+	const int one_hot_idx = ccv_cnnp_dataframe_copy_scalar(train_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW, 0);
+	const int mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_text_t, mask), 0);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(tensor_idx, one_hot_idx, mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
-	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor));
-	const int test_one_hot_idx = ccv_cnnp_dataframe_copy_scalar(test_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask));
+	const int test_tensor_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, tensor), 0);
+	const int test_one_hot_idx = ccv_cnnp_dataframe_copy_scalar(test_data, 0, offsetof(ccv_nnc_text_t, c), CCV_32S, CCV_32F, CCV_TENSOR_FORMAT_NCHW, 0);
+	const int test_mask_idx = ccv_cnnp_dataframe_extract_value(test_data, 0, offsetof(ccv_nnc_text_t, mask), 0);
 	ccv_cnnp_dataframe_t* const test_batched_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_tensor_idx, test_one_hot_idx, test_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int gpu_batched[device_count * 3];
 	int seq_len_batched[device_count];
@@ -616,23 +616,23 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 	int i, j;
 	for (i = 0; i < device_count; i++)
 	{
-		seq_len_batched[i] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2);
-		data_batched[i] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3);
-		test_seq_len_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2);
-		test_data_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3);
+		seq_len_batched[i] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2, 0);
+		data_batched[i] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3, 0);
+		test_seq_len_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2, 0);
+		test_data_batched[i] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3, 0);
 	}
-	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 1, max_length);
-	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count, seq_len_batched, device_count);
-	const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, device_count, 1, max_length);
-	const int test_trunc_data_batched = ccv_cnnp_dataframe_truncate(test_batched_data, test_data_batched, device_count, test_seq_len_batched, device_count);
+	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, seq_len_batched, device_count, 1, max_length, 0);
+	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count, seq_len_batched, device_count, 0);
+	const int test_mask_batched = ccv_cnnp_dataframe_one_squared(test_batched_data, test_seq_len_batched, device_count, 1, max_length, 0);
+	const int test_trunc_data_batched = ccv_cnnp_dataframe_truncate(test_batched_data, test_data_batched, device_count, test_seq_len_batched, device_count, 0);
 	for (i = 0; i < device_count; i++)
 	{
-		gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i, 1, i);
-		gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i, 1, i);
-		gpu_batched[i + device_count * 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3 + 1, 1, i);
-		test_gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_trunc_data_batched, i, 1, i);
-		test_gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_mask_batched, i, 1, i);
-		test_gpu_batched[i + device_count * 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 1, 1, i);
+		gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i, 1, i, 0);
+		gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i, 1, i, 0);
+		gpu_batched[i + device_count * 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3 + 1, 1, i, 0);
+		test_gpu_batched[i] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_trunc_data_batched, i, 1, i, 0);
+		test_gpu_batched[i + device_count] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_mask_batched, i, 1, i, 0);
+		test_gpu_batched[i + device_count * 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 1, 1, i, 0);
 	}
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, device_count * 3);
 	ccv_nnc_dynamic_graph_t* const dynamic_graph = ccv_nnc_dynamic_graph_new();

@@ -454,11 +454,11 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 
 static void train_wmt(const int epoch_limit, const int src_vocab_size, const int tgt_vocab_size, const int batch_size, const int max_length, const int embedding_size, ccv_cnnp_dataframe_t* const train_data)
 {
-	const int src_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, src));
-	const int tgt_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, tgt));
-	const int out_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, out));
-	const int src_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, src_mask));
-	const int tgt_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, tgt_mask));
+	const int src_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, src), 0);
+	const int tgt_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, tgt), 0);
+	const int out_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, out), 0);
+	const int src_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, src_mask), 0);
+	const int tgt_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, tgt_mask), 0);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(src_idx, tgt_idx, out_idx, src_mask_idx, tgt_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int mask_seq_len_batched[device_count * 2];
@@ -467,23 +467,23 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		data_batched[i * 3] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5);
-		data_batched[i * 3 + 1] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 1);
-		data_batched[i * 3 + 2] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 2);
-		mask_seq_len_batched[i * 2] = seq_len_batched[i * 3] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 3);
-		mask_seq_len_batched[i * 2 + 1] = seq_len_batched[i * 3 + 1] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 4);
+		data_batched[i * 3] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5, 0);
+		data_batched[i * 3 + 1] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 1, 0);
+		data_batched[i * 3 + 2] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 2, 0);
+		mask_seq_len_batched[i * 2] = seq_len_batched[i * 3] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 3, 0);
+		mask_seq_len_batched[i * 2 + 1] = seq_len_batched[i * 3 + 1] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 5 + 4, 0);
 		seq_len_batched[i * 3 + 2] = seq_len_batched[i * 3 + 1];
 	}
-	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, mask_seq_len_batched, device_count * 2, 1, max_length);
-	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count * 3, seq_len_batched, device_count * 3);
+	const int mask_batched = ccv_cnnp_dataframe_one_squared(batched_data, mask_seq_len_batched, device_count * 2, 1, max_length, 0);
+	const int trunc_data_batched = ccv_cnnp_dataframe_truncate(batched_data, data_batched, device_count * 3, seq_len_batched, device_count * 3, 0);
 	int gpu_batched[device_count * 5];
 	for (i = 0; i < device_count; i++)
 	{
-		gpu_batched[i * 5] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3, 1, i);
-		gpu_batched[i * 5 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3 + 1, 1, i);
-		gpu_batched[i * 5 + 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3 + 2, 1, i);
-		gpu_batched[i * 5 + 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i * 2, 1, i);
-		gpu_batched[i * 5 + 4] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i * 2 + 1, 1, i);
+		gpu_batched[i * 5] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3, 1, i, 0);
+		gpu_batched[i * 5 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3 + 1, 1, i, 0);
+		gpu_batched[i * 5 + 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i * 3 + 2, 1, i, 0);
+		gpu_batched[i * 5 + 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i * 2, 1, i, 0);
+		gpu_batched[i * 5 + 4] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, mask_batched, i * 2 + 1, 1, i, 0);
 	}
 	encoder_decoder_params_t encoder_decoder_params = {
 		.tgt_vocab_size = tgt_vocab_size,

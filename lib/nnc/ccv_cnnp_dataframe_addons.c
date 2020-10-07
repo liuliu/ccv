@@ -66,7 +66,7 @@ static void _ccv_cnnp_copy_to_gpu(void* const* const* const column_data, const i
 	}
 }
 
-int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id)
+int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id, const char* name)
 {
 	assert(tensor_size > 0);
 	int stream_type = CCV_STREAM_CONTEXT_GPU;
@@ -75,7 +75,7 @@ int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const 
 	copy_to_gpu_context->tuple.size = tensor_size;
 	copy_to_gpu_context->tensor_offset = tensor_offset;
 	copy_to_gpu_context->device_id = device_id;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_to_gpu, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), copy_to_gpu_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_to_gpu, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), copy_to_gpu_context, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 // MARK - Use Command to Generate Output Tuple
@@ -108,7 +108,7 @@ static void _ccv_cnnp_dataframe_cmd_exec(void* const* const* const column_data, 
 	}
 }
 
-int ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type)
+int ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type, const char* name)
 {
 	assert(input_size > 0);
 	assert(output_size > 0);
@@ -120,7 +120,7 @@ int ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int
 	cmd_exec_context->hint = hint;
 	cmd_exec_context->flags = flags;
 	memcpy(cmd_exec_context->output_params, output_params, sizeof(ccv_nnc_tensor_param_t) * output_size);
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_dataframe_cmd_exec, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), cmd_exec_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_dataframe_cmd_exec, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), cmd_exec_context, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 	return 0;
 }
 
@@ -140,14 +140,14 @@ static void _ccv_cnnp_tensor_new(const int column_idx, const int* const row_idxs
 			data[i] = ccv_nnc_tensor_new(0, params, 0);
 }
 
-int ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params)
+int ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params, const char* name)
 {
 	int stream_type = CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY ? 0 : CCV_STREAM_CONTEXT_GPU;
 	if (stream_type == CCV_STREAM_CONTEXT_GPU)
 		CCV_STREAM_SET_DEVICE_ID(stream_type, CCV_TENSOR_GET_DEVICE_ID(params.type));
 	ccv_nnc_tensor_param_t* const context = (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t));
 	context[0] = params;
-	return ccv_cnnp_dataframe_add(dataframe, _ccv_cnnp_tensor_new, stream_type, _ccv_cnnp_tensor_deinit, context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_add(dataframe, _ccv_cnnp_tensor_new, stream_type, _ccv_cnnp_tensor_deinit, context, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 // MARK - Load Tensor from File Path
@@ -169,9 +169,9 @@ static void _ccv_cnnp_read_image(void* const* const* const column_data, const in
 	} parallel_endfor
 }
 
-int ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof)
+int ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const char* name)
 {
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_read_image, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), (void*)(uintptr_t)structof, 0);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_read_image, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), (void*)(uintptr_t)structof, 0, name);
 }
 
 // MARK - Apply Random Jitter to Image
@@ -371,7 +371,7 @@ static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const
 	ccfree(sfmt);
 }
 
-int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter)
+int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter, const char* name)
 {
 	assert(datatype == CCV_32F);
 	ccv_cnnp_random_jitter_context_t* const random_jitter_context = (ccv_cnnp_random_jitter_context_t*)ccmalloc(sizeof(ccv_cnnp_random_jitter_context_t));
@@ -385,7 +385,7 @@ int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe
 	// The std in the random jitter should be inv_std.
 	for (i = 0; i < 3; i++)
 		random_jitter_context->random_jitter.normalize.std[i] = random_jitter_context->random_jitter.normalize.std[i] ? 1. / random_jitter_context->random_jitter.normalize.std[i] : 1;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 typedef struct {
@@ -426,7 +426,7 @@ static void _ccv_cnnp_one_hot(void* const* const* const column_data, const int c
 	} parallel_endfor
 }
 
-int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format)
+int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format, const char* name)
 {
 	assert(datatype == CCV_32F || datatype == CCV_16F);
 	ccv_cnnp_one_hot_context_t* const one_hot = (ccv_cnnp_one_hot_context_t*)ccmalloc(sizeof(ccv_cnnp_one_hot_context_t));
@@ -436,7 +436,7 @@ int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int 
 	one_hot->onval = onval;
 	one_hot->offval = offval;
 	one_hot->structof = structof;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 typedef struct {
@@ -484,7 +484,7 @@ static void _ccv_cnnp_copy_scalar(void* const* const* const column_data, const i
 	} parallel_endfor
 }
 
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format)
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format, const char* name)
 {
 	assert(from_dt == CCV_32S || from_dt == CCV_32F || from_dt == CCV_16F);
 	assert(to_dt == CCV_32F || to_dt == CCV_16F);
@@ -493,7 +493,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const 
 	copy_scalar->to_dt = to_dt;
 	copy_scalar->format = format;
 	copy_scalar->structof = structof;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_scalar, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), copy_scalar, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_scalar, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), copy_scalar, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 // MARK - Matrix of Ones
@@ -600,7 +600,7 @@ static void _ccv_cnnp_one_squared(void* const* const* const column_data, const i
 	}
 }
 
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int* const column_idxs, const int column_idx_size, const int variable_size, const int max_length)
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int* const column_idxs, const int column_idx_size, const int variable_size, const int max_length, const char* name)
 {
 	assert(max_length > 0);
 	assert(variable_size == 0 || variable_size == 1);
@@ -608,7 +608,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const 
 	ones->tuple.size = column_idx_size;
 	ones->variable_size = variable_size;
 	ones->max_length = max_length;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_squared, 0, _ccv_cnnp_tensor_list_deinit, column_idxs, column_idx_size, ones, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_squared, 0, _ccv_cnnp_tensor_list_deinit, column_idxs, column_idx_size, ones, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 // MARK - Truncate Matrix
@@ -675,7 +675,7 @@ static void _ccv_cnnp_truncate(void* const* const* const column_data, const int 
 	} parallel_endfor
 }
 
-int ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* const len_idxs, const int len_idx_size)
+int ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* const len_idxs, const int len_idx_size, const char* name)
 {
 	const int total_idx_size = vec_idx_size + len_idx_size;
 	assert(total_idx_size > 0);
@@ -685,7 +685,7 @@ int ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int
 	memcpy(total_idxs + vec_idx_size, len_idxs, sizeof(int) * len_idx_size);
 	ccv_cnnp_dataframe_tuple_t* const tuple =  (ccv_cnnp_dataframe_tuple_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_tuple_t));
 	tuple->size = vec_idx_size;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_truncate, 0, _ccv_cnnp_tensor_list_deinit, total_idxs, total_idx_size, tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_truncate, 0, _ccv_cnnp_tensor_list_deinit, total_idxs, total_idx_size, tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree, name);
 }
 
 // MARK - Batching
@@ -843,7 +843,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_batching_new(ccv_cnnp_dataframe_t* cons
 	assert(column_idx_size >= 1);
 	assert(batch_count > 0);
 	assert(group_count > 0);
-	const int derived = ccv_cnnp_dataframe_make_tuple(dataframe, column_idxs, column_idx_size);
+	const int derived = ccv_cnnp_dataframe_make_tuple(dataframe, column_idxs, column_idx_size, 0);
 	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)ccmalloc(sizeof(ccv_cnnp_batch_context_t));
 	batch->tuple.size = column_idx_size * group_count;
 	batch->format = format;

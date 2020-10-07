@@ -2,15 +2,13 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
+#include "_ccv_cnnp_dataframe.h"
 #include "3rdparty/khash/khash.h"
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #else
 #include "3rdparty/sfmt/SFMT.h"
-#endif
-#ifdef CCV_BLOCK_SUPPORT
-#include <Block.h>
 #endif
 
 KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
@@ -33,6 +31,7 @@ typedef struct {
 	int stream_type;
 	int column_idx_size;
 	int* column_idxs;
+	char* name;
 	ccv_cnnp_column_data_enum_f data_enum;
 	ccv_cnnp_column_data_deinit_f data_deinit;
 	void* context;
@@ -48,7 +47,12 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const
 	dataframe->column_size = column_size;
 	dataframe->data_ctx = kh_init(ctx);
 	if (column_size > 0)
+	{
 		memcpy(dataframe->column_data, column_data, sizeof(ccv_cnnp_column_data_t) * column_size);
+		int i;
+		for (i = 0; i < column_size; i++)
+			dataframe->column_data[i].name = ccv_cnnp_column_copy_name(column_data[i].name);
+	}
 	return dataframe;
 }
 
@@ -82,12 +86,13 @@ int ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const dataframe)
 	return dataframe->row_count;
 }
 
-int ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
+int ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit, const char* name)
 {
 	if (!dataframe->derived_column_data)
 		dataframe->derived_column_data = ccv_array_new(sizeof(ccv_cnnp_derived_column_data_t), 1, 0);
 	ccv_cnnp_derived_column_data_t column_data = {
 		.stream_type = stream_type,
+		.name = ccv_cnnp_column_copy_name(name),
 		.data_enum = data_enum,
 		.data_deinit = data_deinit,
 		.context = context,
@@ -97,7 +102,7 @@ int ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 	return dataframe->column_size + dataframe->derived_column_data->rnum - 1;
 }
 
-int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
+int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit, const char* name)
 {
 	assert(column_idx_size > 0);
 	if (!dataframe->derived_column_data)
@@ -108,6 +113,7 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 		{ assert(column_idxs[i] < column_size); }
 	ccv_cnnp_derived_column_data_t column_data = {
 		.stream_type = stream_type,
+		.name = ccv_cnnp_column_copy_name(name),
 		.column_idx_size = column_idx_size,
 		.column_idxs = (int*)ccmalloc(sizeof(int) * column_idx_size),
 		.map = map,
@@ -130,6 +136,17 @@ void* ccv_cnnp_dataframe_column_context(const ccv_cnnp_dataframe_t* const datafr
 	assert(dataframe->derived_column_data);
 	ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, column_idx - dataframe->column_size);
 	return derived_column_data->context;
+}
+
+const char* ccv_cnnp_dataframe_column_name(ccv_cnnp_dataframe_t* const dataframe, const int column_idx)
+{
+	assert(column_idx >= 0);
+	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+	assert(column_idx < column_size);
+	if (column_idx < dataframe->column_size)
+		return dataframe->column_data[column_idx].name;
+	ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, column_idx - dataframe->column_size);
+	return derived_column_data->name;
 }
 
 typedef struct {
@@ -648,12 +665,18 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 			if (derived_column_data->context_deinit)
 				derived_column_data->context_deinit(derived_column_data->context);
 			ccfree(derived_column_data->column_idxs);
+			if (derived_column_data->name)
+				ccfree(derived_column_data->name);
 		}
 		ccv_array_free(dataframe->derived_column_data);
 	}
 	for (i = 0; i < dataframe->column_size; i++)
+	{
 		if (dataframe->column_data[i].context_deinit)
 			dataframe->column_data[i].context_deinit(dataframe->column_data[i].context);
+		if (dataframe->column_data[i].name)
+			ccfree(dataframe->column_data[i].name);
+	}
 	if (dataframe->shuffled_idx)
 		ccfree(dataframe->shuffled_idx);
 #ifdef HAVE_GSL

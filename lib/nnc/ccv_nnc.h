@@ -2434,6 +2434,7 @@ typedef void (*ccv_cnnp_column_data_context_deinit_f)(void* const context);
  */
 typedef struct {
 	int stream_type; /**< The type of stream context for this column. Each column only compatible with one stream type. */
+	char* name; /**< The name of the column. */
 	ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
 	ccv_cnnp_column_data_deinit_f data_deinit; /**< The deinit function that will be used to destroy the data. */
 	void* context; /**< The context go along with this column. */
@@ -2458,9 +2459,10 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_col
  * @param data_deinit The deinit function will be used to destroy the derived data.
  * @param context The context that can be used to generate new column.
  * @param context_deinit The deinit function will be used to destroy the context.
+ * @param name The name of the newly added column.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit, const char* name);
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
@@ -2475,9 +2477,10 @@ typedef void (*ccv_cnnp_column_data_map_f)(void* const* const* const column_data
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
  * @param context_deinit The deinit function will be used to destroy the context.
+ * @param name The name of the new column.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit, const char* name);
 /**
  * Shuffle an existing dataframe.
  * @param dataframe The dataframe that is about to be shuffled.
@@ -2489,6 +2492,13 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe);
  * @return The row count of the dataframe.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const dataframe);
+/**
+ * Query the column name of a given column on the dataframe.
+ * @param dataframe The dataframe we want to query the column name.
+ * @param column_idx The index of a column.
+ * @return The name of the column.
+ */
+CCV_WARN_UNUSED(const char*) ccv_cnnp_dataframe_column_name(ccv_cnnp_dataframe_t* const dataframe, const int column_idx);
 /**
  * A reduce function that takes multiple rows of one column, and reduce to one row.
  */
@@ -2515,9 +2525,10 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_da
  * @param dataframe The dataframe object to be extracted.
  * @param column_idx The column that we want to extract value of.
  * @param offset The offset. For example, offsetof(S, b).
+ * @param name The name of the new column.
  * @return The new column that contains the extracted value.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t offset);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t offset, const char* name);
 /**
  * Make a tuple out of columns specified. Thus, the new derived column will contains a tuple
  * with data from all the columns specified here. Tuple here represented as void* tuple[], an
@@ -2525,9 +2536,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* cons
  * @param dataframe The dataframe that will contain the new column.
  * @param column_idxs The columns to be tupled.
  * @param column_idx_size The number of columns.
+ * @param name The name of the new column.
  * @return The derived column with the tuple.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_make_tuple(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_make_tuple(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const char* name);
 /**
  * The size of the tuple. It is equal to the number of columns we specified. The behavior of
  * calling this method on a column that is not a tuple is undefined.
@@ -2541,9 +2553,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_tuple_size(const ccv_cnnp_dataframe_t* c
  * @param dataframe The dataframe that will contain the new column.
  * @param column_idx The column that is a tuple.
  * @param index The index into the tuple.
+ * @param name The name of the new column.
  * @return The derived column with the extracted value.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_tuple(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int index);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_tuple(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int index, const char* name);
 /**
  * The opaque pointer to the iterator.
  */
@@ -2621,9 +2634,10 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_array_new(ccv_arr
  * @param tensor_offset Only copy as outputs[i] = inputs[i + tensor_offset].
  * @param tensor_size How many tensors in the tensor array.
  * @param device_id The device we want to copy the tensors to.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id, const char* name);
 /**
  * Derive a new column by executing a generic command.
  * @param dataframe The dataframe object that get the derived column.
@@ -2636,16 +2650,19 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const 
  * @param output_params The parameters for the outputs.
  * @param output_size How many tensors in the output array.
  * @param stream_type The type of stream context we are going to use.
+ * @param name The name of the new column.
+ * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type, const char* name);
 /**
  * Add a new column contains some tensors. This will add a new column that each row is the tensor specified
  * as the parameters. It comes handy when you want to have some auxiliary tensors along with each row.
  * @param dataframe The dataframe object that get the new column.
  * @param params The parameters for the tensors.
+ * @param name The name of the new column.
  * @return The index of the newly added column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params, const char* name);
 /**
  * Read image off a said column. That column should contain the filename (as char array). The new column
  * will contain the ccv_dense_matrix_t / ccv_nnc_tensor_t (both are toll-free bridging) of the image.
@@ -2653,9 +2670,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const data
  * @param column_idx The column which contains the filename.
  * @param structof The offset to the filename (as char array) from that column. For example, the column
  *        could be a struct and filename could be one of the field. In that case, you can pass offsetof(S, filename)
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const char* name);
 /**
  * The structure to describe how to apply random jitter to the image.
  */
@@ -2692,9 +2710,10 @@ typedef struct {
  * @param column_idx The column which contains the original image.
  * @param datatype The final datatype of the image. We only support CCV_32F right now.
  * @param random_jitter The random jitter parameters to be applied to.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter, const char* name);
 /**
  * Generate a one-hot tensor off the label from a struct.
  * @param dataframe The dataframe object that contains the label.
@@ -2706,9 +2725,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t
  * @param offval The value for the others.
  * @param datatype The datatype of the tensor.
  * @param format The format of the tensor.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format, const char* name);
 /**
  * Generate a scalar tensor (a tensor with one value) off a value from a struct.
  * @param dataframe The dataframe object that contains the value.
@@ -2718,9 +2738,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const data
  * @param from_dt The datatype of the value.
  * @param to_dt The datatype of the tensor.
  * @param format The format of the tensor.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int from_dt, const int to_dt, const int format, const char* name);
 /**
  * Generate vector with ones up to a given length, the rest will be zeros. When applied to batched lengths
  * array, this will generate a matrix of these vectors, squared. The derived column will be a tuple of vectors
@@ -2730,9 +2751,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_scalar(ccv_cnnp_dataframe_t* const 
  * @param column_idx_size The number of columns. The derived column will be a tuple of vectors.
  * @param variable_size The size of the final vector can vary, depending on the max length of current batch.
  * @param max_length The absolute max length for inputs.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int* const column_idxs, const int column_idx_size, const int variable_size, const int max_length);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const dataframe,  const int* const column_idxs, const int column_idx_size, const int variable_size, const int max_length, const char* name);
 /**
  * Truncate a given matrix (as a list of vector) to the given size provided by another vector. The truncated
  * column will be a tuple of vectors for the given columns.
@@ -2741,9 +2763,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const 
  * @param vec_idx_size The number of columns for vec_idxs.
  * @param len_idxs The columns of the given sizes as a vector.
  * @param len_idx_size The number of columns for len_idxs.
+ * @param name The name of the new column.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* len_idxs, const int len_idx_size);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* len_idxs, const int len_idx_size, const char* name);
 /**
  * Batch multiple tensors in a column into one tensor. This method can take multiple columns, which
  * will result a tuple of tensors. Each tensor in the tuple is a batched one from a given column.
@@ -2812,7 +2835,7 @@ enum {
  * @param len The length of the memory region, if it is `CCV_CNNP_DATAFRAME_CSV_MEMORY`.
  * @param delim The delim, it is ',' by default (if you provided '\0')
  * @param quote The quote for escape strings, it is '"' by default (if you provided '\0')
- * @param include_header whether to parse the header seperately.
+ * @param include_header whether to parse the header seperately. 1 means we treat the first line as header.
  * @param column_size The number of columns in the resulted dataframe.
  * @return A dataframe that can represent the csv file. nullptr if failed.
  */

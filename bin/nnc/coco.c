@@ -510,7 +510,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_cnnp_model_set_workspace_size(fpn, 1llu * 1024 * 1024 * 1024);
 	ccv_cnnp_model_t* rpn = _coco_resnet50_v1d_rpn();
 	ccv_cnnp_model_set_workspace_size(rpn, 1llu * 1024 * 1024 * 1024);
-	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_nnc_annotation_t, filename));
+	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_nnc_annotation_t, filename), 0);
 	ccv_cnnp_random_jitter_t random_jitter = {
 		.brightness = 0.4,
 		.contrast = 0.4,
@@ -533,8 +533,8 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		.aspect_ratio = 0.5,
 		.size = {}, // 0 means no cropping at this point.
 	};
-	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
-	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx));
+	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter, 0);
+	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx), 0);
 	ccv_nnc_rpn_data_batching_t rpn_data = {
 		.batch_count = batch_size,
 		.select_count = 256,
@@ -558,9 +558,9 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_array_free(resnet50_v1d_bones);
 
 	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, rpn_data.batch_count, &rpn_data, 0);
-	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0);
-	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0);
-	const int train_select_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 2, 1, 0);
+	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0, 0);
+	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0, 0);
+	const int train_select_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 2, 1, 0, 0);
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_data, COLUMN_ID_LIST(train_image_column, train_gt_column, train_select_column));
 	ccv_nnc_tensor_t** data[3] = {};
