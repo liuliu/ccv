@@ -61,6 +61,7 @@ void _ccv_cnnp_csv_enum(const int column_idx, const int* const row_idxs, const i
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const int type, const size_t len, const char _delim, const char _quote, const int include_header, int* const column_size)
 {
+	assert(input);
 	assert(column_size);
 	size_t file_size;
 	char* data;
