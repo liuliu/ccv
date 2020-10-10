@@ -78,7 +78,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 		fseek(file, 0, SEEK_SET);
 		if (file_size < 2)
 			return 0;
-		data = mmap((caddr_t)0, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+		data = mmap((caddr_t)0, file_size, PROT_READ, MAP_SHARED, fd, 0);
 		if (!data)
 			return 0;
 	} else {
