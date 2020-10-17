@@ -25,14 +25,20 @@ int main(int argc, char** argv)
 		printf("invalid csv file\n");
 		return 0;
 	}
-	ccv_cnnp_dataframe_iter_t* iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(0));
+	int* columns = (int*)ccmalloc(sizeof(int) * column_size);
 	int i;
-	for (i = 0; i < 100; i++)
+	for (i = 0; i < column_size; i++)
+		columns[i] = i;
+	ccv_cnnp_dataframe_iter_t* iter = ccv_cnnp_dataframe_iter_new(dataframe, columns, column_size);
+	void** data = (void**)cccalloc(column_size, sizeof(void*));
+	elapsed_time = get_current_time();
+	while (0 == ccv_cnnp_dataframe_iter_next(iter, data, column_size, 0))
 	{
-		void* data = 0;
-		ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
-		printf("%s\n", data);
+		// Do nothing.
 	}
+	printf("ccv_cnnp_dataframe_iter_next %u ms\n", get_current_time() - elapsed_time);
+	ccfree(data);
+	ccfree(columns);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(dataframe);
 	return 0;
