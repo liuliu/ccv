@@ -19,45 +19,136 @@ typedef struct {
 
 #define ANY_ZEROS(v) ((v - (uint64_t)0x0101010101010101) & ((~v) & (uint64_t)0x8080808080808080))
 
-static inline void _fix_double_quote(char* src)
+static inline void _fix_double_quote(const char* src, int count, char* dest)
 {
-	if (!src)
-		return;
-	if (src[0] == '\0')
+	if (!src || count <= 0)
 		return;
 	char prev_char = src[0];
-	char* dest = src + 1;
-	++src;
-	while (src[0] != '\0')
+	dest[0] = src[0];
+	++dest;
+	int pos = 1;
+	while (pos < count)
 	{
 		// double-quote, skip.
-		if (prev_char == '"' && src[0] == '"')
-			++src;
-		dest[0] = src[0];
-		prev_char = src[0];
+		if (prev_char == '"' && src[pos] == '"')
+			++pos;
+		dest[0] = src[pos];
+		prev_char = src[pos];
 		++dest;
-		++src;
+		++pos;
 	}
 	dest[0] = '\0';
 }
 
 typedef struct {
+	const char* data;
+	void* mmap;
+	size_t file_size;
 	int column_size;
 	int include_header;
+	char delim;
+	char quote;
 } ccv_cnnp_csv_t;
+
+typedef struct {
+	// This need to be compressed to 64-bit. If we expand this to 128-bit. It will double the memory-bandwidth, and
+	// slows the whole process down.
+	uint64_t str:48;
+	uint16_t count:15;
+	uint8_t no_double_quote:1;
+} ccv_cnnp_csv_str_view_t;
 
 void _ccv_cnnp_csv_enum(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)context;
 	const int column_size = csv->column_size;
 	const int include_header = csv->include_header;
-	const char** const sp = (const char**)(csv + 1) + column_idx + include_header * column_size;
+	const char quote = csv->quote;
+	const char delim = csv->delim;
+	const ccv_cnnp_csv_str_view_t* const sp = (const ccv_cnnp_csv_str_view_t*)(csv + 1) + column_idx + include_header * column_size;
 	int i;
 	for (i = 0; i < row_size; i++)
 	{
 		const int row_idx = row_idxs[i];
-		data[i] = (void*)sp[row_idx * column_size];
+		const ccv_cnnp_csv_str_view_t* const csp = sp + row_idx * column_size;
+		// This is the same as (csp->str == 0 && csp->no_double_quote = 0 && csp->count == 0)
+		// If a string has 0 length, it cannot contain double quote, therefore, this condition
+		// implies the pointer is null.
+		if (((uint64_t*)csp)[0] == 0)
+		{
+			if (data[i])
+			{
+				int* hdr = (int*)data[i] - 1;
+				ccfree(hdr);
+			}
+			data[i] = 0;
+			continue;
+		}
+		const char* str = csv->data + csp->str;
+		int count = 0;
+		if (csp->count == 0x7fff) // We don't know the count yet. In this case, go over to find it.
+		{
+			const char* const p_end = csv->data + csv->file_size;
+			int quotes = (str > csv->data && str[-1] == quote) ? 1 : 0;
+			const char* p = str;
+			const char* quote_end = 0;
+			for (; p < p_end; p++)
+			{
+				if (p[0] == quote)
+				{
+					++quotes;
+					quote_end = p;
+				} else if (!(quotes & 1)) {
+					if (p[0] == delim || p[0] == '\r' || p[0] == '\n')
+					{
+						if (quote_end >= str)
+							count = quote_end - str;
+						else
+							count = p - str;
+						break;
+					}
+				}
+			}
+		} else
+			count = csp->count;
+		if (!data[i])
+		{
+			int* const hdr = (int*)ccmalloc(sizeof(int) + count + 1);
+			hdr[0] = count + 1;
+			data[i] = (char*)(hdr + 1);
+		} else {
+			int* hdr = (int*)data[i] - 1;
+			if (hdr[0] < count + 1)
+			{
+				hdr = (int*)ccrealloc(hdr, sizeof(int) + count + 1);
+				hdr[0] = count + 1;
+				data[i] = (char*)(hdr + 1);
+			}
+		}
+		if (csp->no_double_quote)
+		{
+			memcpy(data[i], str, count);
+			((char*)data[i])[count] = '\0';
+		} else
+			_fix_double_quote(str, count, (char*)data[i]);
 	}
+}
+
+void _ccv_cnnp_csv_data_deinit(void* const data, void* const context)
+{
+	if (data)
+	{
+		int* hdr = (int*)data - 1;
+		ccfree(hdr);
+	}
+}
+
+void _ccv_cnnp_csv_deinit(void* const context)
+{
+	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)context;
+	if (csv->mmap)
+		munmap(csv->mmap, csv->file_size);
+	ccfree(csv);
 }
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const int type, const size_t len, const char _delim, const char _quote, const int include_header, int* const column_size)
@@ -88,6 +179,8 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 			return 0;
 		data = input;
 	}
+	// We cannot handle file size larger than 2^48, which is around 281TB.
+	assert(file_size <= 0xffffffffffffllu);
 	const char delim = _delim ? _delim : ',';
 	const char quote = _quote ? _quote : '"';
 	const size_t chunk_size = 1024 * 1024;
@@ -244,34 +337,27 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 			munmap(data, file_size);
 		return 0;
 	}
-	// Allocating memory that holds both start pointers to the string, and the actual string. Also responsible to copy over the string.
-	// Note that we did file_size + 3 in case we don't have \n at the end of the file to host the null-terminator. Also, we may assign
-	// q + (n + 3) as the end, hence, 3 more null bytes at the end.
-	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)ccmalloc(sizeof(ccv_cnnp_csv_t) + sizeof(char*) * row_count * column_count + file_size + 3);
+	// We only mark the beginning and the end of a cell. Removing double-quote etc will be left when iterating.
+	ccv_cnnp_csv_t* const csv = (ccv_cnnp_csv_t*)ccmalloc(sizeof(ccv_cnnp_csv_t) + sizeof(ccv_cnnp_csv_str_view_t) * row_count * column_count);
 	csv->column_size = column_count;
 	csv->include_header = !!include_header;
-	char** const sp = (char**)(csv + 1); 
-	memset(sp, 0, sizeof(char*) * row_count * column_count);
-	char* const dd = (char*)(sp + (uintptr_t)row_count * column_count);
-	dd[file_size] = dd[file_size + 1] = dd[file_size + 2] = '\0';
+	ccv_cnnp_csv_str_view_t* const sp = (ccv_cnnp_csv_str_view_t*)(csv + 1);
+	memset(sp, 0, sizeof(ccv_cnnp_csv_str_view_t) * row_count * column_count);
 	const uint64_t delim_mask = (uint64_t)0x0101010101010101 * (uint64_t)delim;
 	const uint64_t quote_mask = (uint64_t)0x0101010101010101 * (uint64_t)quote;
 	const uint64_t lf_mask = (uint64_t)0x0101010101010101 * (uint64_t)'\n';
 	const uint64_t cr_mask = (uint64_t)0x0101010101010101 * (uint64_t)'\r';
-#define CSV_QUOTE_BR(c, n, preceding_c) \
+#define CSV_QUOTE_BR(c, n) \
 	do { \
 		if (c##n == quote) \
 		{ \
 			/* If the preceding one is not a quote. Set it to be null-terminator temporarily. */ \
 			++quotes; \
+			quote_end = p + n; \
 			if (!preceding_quote) \
-			{ \
-				c##n = 0; \
 				preceding_quote = 1; \
-			} else { /* This is double quote, mark it as a normal quote. */ \
+			else \
 				double_quote = 1; \
-				preceding_c = quote; \
-			} \
 		} else { \
 			preceding_quote = 0; \
 			if (!(quotes & 1)) \
@@ -280,32 +366,47 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 				{ \
 					if (chunk_row_count < row_count) \
 					{ \
-						if (double_quote && chunk_column_count < column_count) \
-							fix_quote[fix_quote_count++] = csp[chunk_column_count]; \
+						if (chunk_column_count < column_count) \
+						{ \
+							int count; \
+							if (quote_end > 0 && quote_end - data >= csp[chunk_column_count].str) \
+								count = (int)((quote_end - data) - csp[chunk_column_count].str); \
+							else \
+								count = (int)((p + n - data) - csp[chunk_column_count].str); \
+							csp[chunk_column_count].count = ccv_min(count, 0x7fff); \
+							csp[chunk_column_count].no_double_quote = !double_quote; \
+						} \
 						++chunk_column_count; \
 						if (chunk_column_count < column_count) \
 							/* Skip quote if presented. */ \
-							csp[chunk_column_count] = p + (n + 1) < p_end && p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
+							csp[chunk_column_count].str = (p + (n + 1) < p_end && p[n + 1] == quote ? p + (n + 2) : p + (n + 1)) - data; \
 					} \
 					double_quote = 0; \
 				} else if (c##n == '\n') { \
+					if (chunk_row_count < row_count && chunk_column_count < column_count) \
+					{ \
+						int count; \
+						if (quote_end > 0 && quote_end - data >= csp[chunk_column_count].str) \
+							count = (int)((quote_end - data) - csp[chunk_column_count].str); \
+						else if (p + n > data && p[n - 1] == '\r') \
+							count = (int)((p + n - 1 - data) - csp[chunk_column_count].str); \
+						else \
+							count = (int)((p + n - data) - csp[chunk_column_count].str); \
+						csp[chunk_column_count].count = ccv_min(count, 0x7fff); \
+						csp[chunk_column_count].no_double_quote = !double_quote; \
+					} \
 					++chunk_row_count; \
 					csp += column_count; \
 					chunk_column_count = 0; \
 					if (chunk_row_count < row_count) \
 					{ \
-						if (double_quote) \
-							fix_quote[fix_quote_count++] = csp[-1]; \
 						if (p + (n + 1) < p_end && p[n + 1] == '\r') \
-							csp[0] =p + (n + 2) < p_end && p[n + 2] == quote ? q + (n + 3) : q + (n + 2); \
+							csp[0].str = (p + (n + 2) < p_end && p[n + 2] == quote ? p + (n + 3) : p + (n + 2)) - data; \
 						else \
-							csp[0] =p + (n + 1) < p_end && p[n + 1] == quote ? q + (n + 2) : q + (n + 1); \
+							csp[0].str = (p + (n + 1) < p_end && p[n + 1] == quote ? p + (n + 2) : p + (n + 1)) - data; \
 					} \
 					double_quote = 0; \
 				} \
-				/* If c0 is delim out of quote, we set it to be null-terminator. */ \
-				if (c##n == delim || c##n == '\r' || c##n == '\n') \
-					c##n = 0; \
 			} \
 		} \
 	} while (0)
@@ -324,35 +425,31 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 			}
 		if (p_end <= p)
 			continue;
-		char* q = (i == 0) ? dd : dd + i * chunk_size + crlf[i].even_starter + 1;
 		int chunk_row_count = crlf[i].odd_starter;
-		char** csp = sp + (uintptr_t)column_count * chunk_row_count;
-		if (p[0] == '\r')
-			csp[0] = p + 1 < p_end && p[1] == quote ? q + 2 : q + 1;
-		else
-			csp[0] = p[0] == quote ? q + 1 : q;
+		ccv_cnnp_csv_str_view_t* csp = sp + (uintptr_t)column_count * chunk_row_count;
+		if (chunk_row_count < row_count)
+		{
+			if (p[0] == '\r')
+				csp[0].str = (p + 1 < p_end && p[1] == quote ? p + 2 : p + 1) - data;
+			else
+				csp[0].str = (p[0] == quote ? p + 1 : p) - data;
+		}
 		int chunk_column_count = 0;
 		int quotes = 0;
-		int double_quote = 0;
 		int preceding_quote = 0;
-		char* fix_quote[8];
+		int double_quote = 0;
+		const char* quote_end = 0;
 		const int padding = ccv_min(0x7 - (((uintptr_t)p - 1) & 0x7), (int)(p_end - p));
-		for (j = 0; j < padding; j++, q++, p++)
+		for (j = 0; j < padding; j++, p++)
 		{
-			int fix_quote_count = 0;
 			char c0 = p[0];
-			CSV_QUOTE_BR(c, 0, q[-1]);
-			q[0] = c0;
-			if (fix_quote_count)
-				_fix_double_quote(fix_quote[0]);
+			CSV_QUOTE_BR(c, 0);
 		}
 		const size_t cur_chunk_size = (size_t)(p_end - p);
 		const uint64_t* pd = (const uint64_t*)p;
 		const uint64_t* pd_end = pd + cur_chunk_size / sizeof(uint64_t);
-		uint64_t* qd = (uint64_t*)q;
-		for (; pd < pd_end; pd++, qd++)
+		for (; pd < pd_end; pd++)
 		{
-			int fix_quote_count = 0;
 			const uint64_t v = *pd;
 			const uint64_t delim_v = v ^ delim_mask;
 			const uint64_t quote_v = v ^ quote_mask;
@@ -360,44 +457,47 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 			const uint64_t cr_v = v ^ cr_mask;
 			// If it doesn't contain any zeros, skip the logic.
 			if (!ANY_ZEROS(delim_v) && !ANY_ZEROS(quote_v) && !ANY_ZEROS(lf_v) && !ANY_ZEROS(cr_v))
-			{
-				*qd = *pd;
 				continue;
-			}
-			// Need to check and clean up.
+			// Need to check and assign the length and starting point.
 			p = (const char*)pd;
-			q = (char*)qd;
 			// Load 8-bytes at batch.
 			char c0, c1, c2, c3, c4, c5, c6, c7;
 			c0 = p[0], c1 = p[1], c2 = p[2], c3 = p[3], c4 = p[4], c5 = p[5], c6 = p[6], c7 = p[7];
-			CSV_QUOTE_BR(c, 0, q[-1]);
-			CSV_QUOTE_BR(c, 1, c0);
-			CSV_QUOTE_BR(c, 2, c1);
-			CSV_QUOTE_BR(c, 3, c2);
-			CSV_QUOTE_BR(c, 4, c3);
-			CSV_QUOTE_BR(c, 5, c4);
-			CSV_QUOTE_BR(c, 6, c5);
-			CSV_QUOTE_BR(c, 7, c6);
-			q[0] = c0, q[1] = c1, q[2] = c2, q[3] = c3, q[4] = c4, q[5] = c5, q[6] = c6, q[7] = c7;
-			for (--fix_quote_count; fix_quote_count >= 0; --fix_quote_count)
-				_fix_double_quote(fix_quote[fix_quote_count]);
+			CSV_QUOTE_BR(c, 0);
+			CSV_QUOTE_BR(c, 1);
+			CSV_QUOTE_BR(c, 2);
+			CSV_QUOTE_BR(c, 3);
+			CSV_QUOTE_BR(c, 4);
+			CSV_QUOTE_BR(c, 5);
+			CSV_QUOTE_BR(c, 6);
+			CSV_QUOTE_BR(c, 7);
 		}
 		p = (const char*)pd;
-		q = (char*)qd;
-		for (; p < p_end; p++, q++)
+		for (; p < p_end; p++)
 		{
-			int fix_quote_count = 0;
 			char c0 = p[0];
-			CSV_QUOTE_BR(c, 0, q[-1]);
-			q[0] = c0;
-			if (fix_quote_count)
-				_fix_double_quote(fix_quote[0]);
+			CSV_QUOTE_BR(c, 0);
+		}
+		if (chunk_row_count < row_count && chunk_column_count < column_count)
+		{
+			int count;
+			if (quote_end > 0 && quote_end - data >= csp[chunk_column_count].str)
+				count = (int)(quote_end - data - csp[chunk_column_count].str);
+			else
+				count = (int)(p - data - csp[chunk_column_count].str);
+			csp[chunk_column_count].count = ccv_min(count, 0x7fff);
+			csp[chunk_column_count].no_double_quote = !double_quote;
 		}
 	} parallel_endfor
 #undef CSV_QUOTE_BR
 	ccfree(crlf);
+	csv->data = data;
+	assert(file_size > 0);
+	csv->file_size = file_size;
+	csv->delim = delim;
+	csv->quote = quote;
 	if (type == CCV_CNNP_DATAFRAME_CSV_FILE)
-		munmap(data, file_size);
+		csv->mmap = data;
 	*column_size = column_count;
 	assert(column_count > 0);
 	ccv_cnnp_column_data_t* const column_data = (ccv_cnnp_column_data_t*)cccalloc(column_count, sizeof(ccv_cnnp_column_data_t));
@@ -405,12 +505,26 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 	{
 		column_data[i].data_enum = _ccv_cnnp_csv_enum;
 		column_data[i].context = csv;
+		column_data[i].data_deinit = _ccv_cnnp_csv_data_deinit;
 	}
 	if (include_header)
 		for (i = 0; i < column_count; i++)
-			column_data[i].name = sp[i];
-	column_data[0].context_deinit = (ccv_cnnp_column_data_context_deinit_f)ccfree;
+			if (((uint64_t*)sp)[i] != 0)
+			{
+				column_data[i].name = (char*)ccmalloc(sp[i].count + 1);
+				const char* str = data + sp[i].str;
+				if (sp[i].no_double_quote)
+				{
+					memcpy(column_data[i].name, str, sp[i].count);
+					column_data[i].name[sp[i].count] = '\0';
+				} else
+					_fix_double_quote(str, sp[i].count, column_data[i].name);
+			}
+	column_data[0].context_deinit = _ccv_cnnp_csv_deinit;
 	ccv_cnnp_dataframe_t* dataframe = ccv_cnnp_dataframe_new(column_data, column_count, row_count - !!include_header);
+	if (include_header)
+		for (i = 0; i < column_count; i++)
+			ccfree(column_data[i].name);
 	ccfree(column_data);
 	return dataframe;
 }
