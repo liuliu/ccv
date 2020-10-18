@@ -3,7 +3,6 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
 #include "_ccv_cnnp_dataframe.h"
-#include "3rdparty/sfmt/SFMT.h"
 
 #include <sys/mman.h>
 
@@ -180,7 +179,9 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_csv_new(void* const input, const i
 		data = input;
 	}
 	// We cannot handle file size larger than 2^48, which is around 281TB.
+#if defined(__LP64__) || defined(_WIN64)
 	assert(file_size <= 0xffffffffffffllu);
+#endif
 	const char delim = _delim ? _delim : ',';
 	const char quote = _quote ? _quote : '"';
 	const size_t chunk_size = 1024 * 1024;
