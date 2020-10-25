@@ -23,37 +23,26 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 		shortcut = input;
 		if (strides > 1)
 		{
-			ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
-				.hint = HINT((strides, strides), (0, 0))
-			}, 0);
+			ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), HINT((strides, strides), (0, 0)), 0);
 			shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
 		}
-		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0);
+		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0);
 		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(shortcut));
 	}
 	ccv_cnnp_model_t* const conv1 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0)
 	), 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const conv2 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((strides, strides), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), 0, HINT((strides, strides), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0)
 	), 0);
 	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const conv3 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
 	), 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
@@ -82,36 +71,25 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0)
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0)
 	), 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(256, 4, 2, 6), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
@@ -120,36 +98,25 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0)
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0)
 	), 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(256, 4, 2, 23), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
@@ -157,61 +124,33 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 ccv_cnnp_model_t* _imagenet_vgg13(void)
 {
 	ccv_cnnp_model_t* vgg13 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
-		ccv_cnnp_convolution(1, 128, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0),
+		ccv_cnnp_convolution(1, 128, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 128, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 128, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
-		ccv_cnnp_convolution(1, 256, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0),
+		ccv_cnnp_convolution(1, 256, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 256, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 256, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
-		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0),
+		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
-		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0),
+		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 512, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_dense(1000, 0, 0),
 		ccv_cnnp_softmax(0)
 	), 0);
 	return vgg13;
@@ -226,10 +165,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 	{
 		expand_filters = input_filters * expand_ratio;
 		ccv_cnnp_model_t* const expand_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-			ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-				.no_bias = 1,
-				.hint = HINT((1, 1), (0, 0)),
-			}, 0),
+			ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0),
 			ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 			ccv_cnnp_swish(0)
 		), 0);
@@ -237,33 +173,23 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 	}
 	const int paddings = (kernel_size - 1) / 2;
 	ccv_cnnp_model_t* const depthwise_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(expand_filters, expand_filters, DIM_ALLOC(kernel_size, kernel_size), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((strides, strides), (paddings, paddings)),
-		}, 0),
+		ccv_cnnp_convolution(expand_filters, expand_filters, DIM_ALLOC(kernel_size, kernel_size), 1, HINT((strides, strides), (paddings, paddings)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_swish(0)
 	), 0);
 	x = ccv_cnnp_model_apply(depthwise_conv, MODEL_IO_LIST(x));
 	const int se_filters = ccv_max(1, (int)(input_filters * se_ratio + 0.5));
 	ccv_cnnp_model_t* const se_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0),
-		ccv_cnnp_convolution(1, se_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
+		ccv_cnnp_convolution(1, se_filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_swish(0),
-		ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_sigmoid(0)
 	), 0);
 	const ccv_cnnp_model_io_t se = ccv_cnnp_model_apply(se_conv, MODEL_IO_LIST(x));
 	x = ccv_cnnp_model_apply(ccv_cnnp_mul(1, 0), MODEL_IO_LIST(x, se));
 	ccv_cnnp_model_t* const proj_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, output_filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_convolution(1, output_filters, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
 	), 0);
 	x = ccv_cnnp_model_apply(proj_conv, MODEL_IO_LIST(x));
@@ -295,10 +221,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	const float dropout = 0.1;
 	ccv_cnnp_model_t* const init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((2, 2), (1, 1)),
-		}, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_swish(0)
 	), 0);
@@ -311,19 +234,16 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 	output = ccv_cnnp_model_apply(_mconv_block_layer_new(4, 5, 2, 6, 112, 192, 0.25, dropout), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_mconv_block_layer_new(1, 3, 1, 6, 192, 320, 0.25, dropout), MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const head_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 1280, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((1, 1), (0, 0)),
-		}, 0),
+		ccv_cnnp_convolution(1, 1280, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
 		ccv_cnnp_swish(0)
 	), 0);
 	output = ccv_cnnp_model_apply(head_conv, MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
 	if (dropout > 0)
 		output = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){}, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }

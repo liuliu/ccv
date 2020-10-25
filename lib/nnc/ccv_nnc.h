@@ -3287,11 +3287,6 @@ typedef struct {
  * @return A model based on the given symbolic graph.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
-
-typedef struct {
-	int no_bias; /**< No bias term. */
-	ccv_nnc_hint_t hint; /**< The hint for a particular operation */
-} ccv_cnnp_param_t;
 /**
  * Sum multiple input tensors together.
  * @param name The unique name of the model.
@@ -3309,19 +3304,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const char* const name);
  * @param groups The number of kernel groups in the model.
  * @param filters The total number of filters in the model (filters = groups * per group filters).
  * @param kdim The dimensions of the kernel.
- * @param params Other parameters (such as hint and contains bias or not).
+ * @param no_bias Whether has bias term or not.
+ * @param hint The hint for alignment.
  * @param name The unique name of the model.
  * @return A convolution model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const char* const name);
 /**
  * A dense layer model.
  * @param count The output dimension.
- * @param params Other parameters (such as hint and contains bias or not).
+ * @param no_bias Whether has a bias term or not.
  * @param name The unique name of the model.
  * @return A dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_bias, const char* const name);
 /**
  * A batch norm layer model.
  * @param momentum The momentum in batch norm parameter.
@@ -3357,7 +3353,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softmax(const char* const name);
  * @param name The unique name of the model.
  * @return A max pool model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name);
 /**
  * An average pool model.
  * @param kdim The pooling window dimension.
@@ -3365,7 +3361,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
  * @param name The unique name of the model.
  * @return An average pool model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name);
 /**
  * Reshape an input into a different dimension.
  * @param dim The new dimension for the input.

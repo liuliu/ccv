@@ -323,7 +323,8 @@ typedef struct {
 	int groups;
 	int filters;
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_cnnp_param_t params;
+	int no_bias;
+	ccv_nnc_hint_t hint;
 } ccv_cnnp_model_convolution_t;
 
 static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -356,17 +357,17 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 			params,
 			weights_params,
 			bias_params,
-		}, 3, self->params.hint, &output_params, 1);
+		}, 3, self->hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	ccv_nnc_graph_exec_symbol_t convolution;
-	if (self->params.no_bias)
+	if (self->no_bias)
 		convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(output), 0);
 	else {
 		if (!self->bias.graph)
 			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), 0);
 	}
-	ccv_nnc_graph_exec_symbol_set_hint(graph, convolution, self->params.hint);
+	ccv_nnc_graph_exec_symbol_set_hint(graph, convolution, self->hint);
 	outputs[0] = output;
 }
 
@@ -404,7 +405,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.copy = _ccv_cnnp_convolution_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const char* const name)
 {
 	ccv_cnnp_model_convolution_t* const model_convolution = (ccv_cnnp_model_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_convolution_t));
 	model_convolution->super.isa = &ccv_cnnp_convolution_isa;
@@ -419,14 +420,15 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 	model_convolution->groups = groups;
 	model_convolution->filters = filters;
 	memcpy(model_convolution->kdim, kdim, sizeof(model_convolution->kdim));
-	model_convolution->params = params;
+	model_convolution->no_bias = no_bias;
+	model_convolution->hint = hint;
 	return (ccv_cnnp_model_t*)model_convolution;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->params, self->super.name);
+	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->no_bias, self->hint, self->super.name);
 }
 
 // MARK - Dense Layer
@@ -438,7 +440,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t bias;
 	ccv_nnc_tensor_symbol_t scale;
 	int count;
-	ccv_cnnp_param_t params;
+	int no_bias;
 } ccv_cnnp_model_dense_t;
 
 static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -463,9 +465,9 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 			params,
 			weights_params,
 			bias_params,
-		}, 3, self->params.hint, &output_params, 1);
+		}, 3, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	if (self->params.no_bias)
+	if (self->no_bias)
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(output), 0);
 	else {
 		if (!self->bias.graph)
@@ -508,7 +510,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.copy = _ccv_cnnp_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const char* const name)
 {
 	ccv_cnnp_model_dense_t* const model_dense = (ccv_cnnp_model_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_dense_t));
 	model_dense->super.isa = &ccv_cnnp_dense_isa;
@@ -521,14 +523,14 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params,
 	model_dense->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_dense->bias.graph = 0;
 	model_dense->count = count;
-	model_dense->params = params;
+	model_dense->no_bias = no_bias;
 	return (ccv_cnnp_model_t*)model_dense;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_dense_t* const self = (const ccv_cnnp_model_dense_t*)super;
-	return ccv_cnnp_dense(self->count, self->params, self->super.name);
+	return ccv_cnnp_dense(self->count, self->no_bias, self->super.name);
 }
 
 // MARK - Pool Layers
@@ -537,7 +539,7 @@ typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_cnnp_param_t params;
+	ccv_nnc_hint_t hint;
 } ccv_cnnp_model_pool_t;
 
 static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -553,10 +555,10 @@ static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	else
 		cmd = CMD_MAX_POOL_FORWARD(self->kdim[0], self->kdim[1]);
 	ccv_nnc_tensor_param_t output_params;
-	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
+	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	const ccv_nnc_graph_exec_symbol_t exec = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
-	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->params.hint);
+	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->hint);
 	outputs[0] = pool_output;
 }
 
@@ -567,7 +569,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_max_pool_isa = {
 	.copy = _ccv_cnnp_max_pool_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name)
 {
 	ccv_cnnp_model_pool_t* const model_pool = (ccv_cnnp_model_pool_t*)cccalloc(1, sizeof(ccv_cnnp_model_pool_t));
 	model_pool->super.isa = &ccv_cnnp_max_pool_isa;
@@ -576,14 +578,14 @@ ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const
 	model_pool->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_pool->super, name);
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
-	model_pool->params = params;
+	model_pool->hint = hint;
 	return (ccv_cnnp_model_t*)model_pool;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_max_pool_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_pool_t* const self = (const ccv_cnnp_model_pool_t*)super;
-	return ccv_cnnp_max_pool(self->kdim, self->params, self->super.name);
+	return ccv_cnnp_max_pool(self->kdim, self->hint, self->super.name);
 }
 
 static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -599,10 +601,10 @@ static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_
 	else
 		cmd = CMD_AVERAGE_POOL_FORWARD(self->kdim[0], self->kdim[1]);
 	ccv_nnc_tensor_param_t output_params;
-	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
+	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	const ccv_nnc_graph_exec_symbol_t exec = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
-	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->params.hint);
+	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->hint);
 	outputs[0] = pool_output;
 }
 
@@ -613,7 +615,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_average_pool_isa = {
 	.copy = _ccv_cnnp_average_pool_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name)
 {
 	ccv_cnnp_model_pool_t* const model_pool = (ccv_cnnp_model_pool_t*)cccalloc(1, sizeof(ccv_cnnp_model_pool_t));
 	model_pool->super.isa = &ccv_cnnp_average_pool_isa;
@@ -622,14 +624,14 @@ ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], c
 	model_pool->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_pool->super, name);
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
-	model_pool->params = params;
+	model_pool->hint = hint;
 	return (ccv_cnnp_model_t*)model_pool;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_average_pool_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_pool_t* const self = (const ccv_cnnp_model_pool_t*)super;
-	return ccv_cnnp_average_pool(self->kdim, self->params, self->super.name);
+	return ccv_cnnp_average_pool(self->kdim, self->hint, self->super.name);
 }
 
 // MARK - RELU Layer
