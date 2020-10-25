@@ -3349,7 +3349,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softmax(const char* const name);
 /**
  * A max pool model.
  * @param kdim The pooling window dimension.
- * @param params Other parameters (such as hint).
+ * @param hint The hint for alignment.
  * @param name The unique name of the model.
  * @return A max pool model.
  */
@@ -3357,7 +3357,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
 /**
  * An average pool model.
  * @param kdim The pooling window dimension.
- * @param params Other parameters (such as hint).
+ * @param hint The hint for alignment.
  * @param name The unique name of the model.
  * @return An average pool model.
  */
