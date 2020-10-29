@@ -1196,7 +1196,7 @@ static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	outputs[0] = dropout_output;
 }
 
-static void _ccv_cnnp_dropout_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
+static void _ccv_cnnp_dropout_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
 {
 	ccv_cnnp_model_dropout_t* const self = (ccv_cnnp_model_dropout_t*)super;
 	if (self->dropout.graph)
@@ -1213,7 +1213,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_dropout_copy(const ccv_cnnp_model_t* const su
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dropout_isa = {
 	.build = _ccv_cnnp_dropout_build,
-	.set_is_test = _ccv_cnnp_dropout_is_test,
+	.set_is_test = _ccv_cnnp_dropout_set_is_test,
 	.copy = _ccv_cnnp_dropout_copy,
 };
 

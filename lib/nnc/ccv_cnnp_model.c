@@ -286,6 +286,33 @@ static int _ccv_nnc_tensor_symbol_check_dim(const ccv_nnc_symbolic_graph_t* cons
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, const uint64_t disable_outgrad, ccv_nnc_tensor_t* const* const fits, const int fit_size);
 static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const compiled_data);
 
+typedef struct {
+	int parallel_count;
+	ccv_nnc_symbolic_graph_t* graph;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
+} ccv_nnc_graph_exec_update_t;
+
+static void _ccv_cnnp_cmd_update_for_execs(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint)
+{
+	ccv_nnc_graph_exec_update_t* const graph_exec_update = (ccv_nnc_graph_exec_update_t*)context;
+	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = graph_exec_update->graph_exec_arena;
+	ccv_nnc_graph_exec_t graph_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, symbol);
+	ccv_nnc_graph_exec_set(graph_exec.graph, graph_exec, cmd);
+	ccv_nnc_graph_exec_set_hint(graph_exec.graph, graph_exec, hint);
+	const ccv_nnc_symbolic_graph_t* const graph = graph_exec_update->graph;
+	const int parallel_count = graph_exec_update->parallel_count;
+	int i;
+	for (i = 1; i < parallel_count; i++)
+	{
+		const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, ccv_nnc_graph_exec_symbol_copy(graph, symbol, i));
+		if (!CCV_NO_GRAPH_EXEC(copy))
+		{
+			ccv_nnc_graph_exec_set(copy.graph, copy, cmd);
+			ccv_nnc_graph_exec_set_hint(copy.graph, copy, hint);
+		}
+	}
+}
+
 void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* const init, const ccv_nnc_tensor_param_t* const inputs, const int input_size)
 {
 	assert(model->graph);
@@ -408,8 +435,20 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	{
 		const int flag = ccv_nnc_tensor_arena_reinit(compiled_data->tensor_arena, model->graph);
 		if (flag == 0 && compiled_data->graph_exec_arena)
+		{
 			ccv_nnc_graph_exec_reinit(compiled_data->graph_exec_arena, compiled_data->graph, model->graph);
-		else
+			// Since we will reinit, if we previously set is_test, we need to set it again.
+			if (compiled_data->is_test)
+			{
+				const int parallel_count = ccv_max(model->parallel_count, 1);
+				ccv_nnc_graph_exec_update_t update = {
+					.parallel_count = parallel_count,
+					.graph = model->graph,
+					.graph_exec_arena = compiled_data->graph_exec_arena,
+				};
+				ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
+			}
+		} else
 			// Free-up tensor arena & graph exec arena.
 			_ccv_cnnp_compiled_data_graph_free(compiled_data);
 	}
@@ -543,33 +582,6 @@ static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc
 		ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(graph, output_symbol, i));
 		if (copy)
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &output_tensor, 1, &copy, 1, 0);
-	}
-}
-
-typedef struct {
-	int parallel_count;
-	ccv_nnc_symbolic_graph_t* graph;
-	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-} ccv_nnc_graph_exec_update_t;
-
-static void _ccv_cnnp_cmd_update_for_execs(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint)
-{
-	ccv_nnc_graph_exec_update_t* const graph_exec_update = (ccv_nnc_graph_exec_update_t*)context;
-	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = graph_exec_update->graph_exec_arena;
-	ccv_nnc_graph_exec_t graph_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, symbol);
-	ccv_nnc_graph_exec_set(graph_exec.graph, graph_exec, cmd);
-	ccv_nnc_graph_exec_set_hint(graph_exec.graph, graph_exec, hint);
-	const ccv_nnc_symbolic_graph_t* const graph = graph_exec_update->graph;
-	const int parallel_count = graph_exec_update->parallel_count;
-	int i;
-	for (i = 1; i < parallel_count; i++)
-	{
-		const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, ccv_nnc_graph_exec_symbol_copy(graph, symbol, i));
-		if (!CCV_NO_GRAPH_EXEC(copy))
-		{
-			ccv_nnc_graph_exec_set(copy.graph, copy, cmd);
-			ccv_nnc_graph_exec_set_hint(copy.graph, copy, hint);
-		}
 	}
 }
 
@@ -1071,6 +1083,7 @@ static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const c
 	if (compiled_data->graph)
 		ccv_nnc_graph_free(compiled_data->graph);
 	compiled_data->graph = 0;
+	compiled_data->is_test = 0;
 	if (compiled_data->tensor_arena)
 		ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
 	compiled_data->tensor_arena = 0;
