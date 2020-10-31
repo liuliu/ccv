@@ -4,9 +4,10 @@
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/ccv_nnc_easy.h"
 
-static int _ccv_nnc_arbitary_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_same_pos_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
-	return 1;
+	// For cudnnOpTensor: "If the input tensor B is the same tensor as the destination tensor C, then the input tensor A also must be the same tensor as the destination tensor C."
+	return input_idx == output_idx;
 }
 
 static int _ccv_nnc_gemm_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
@@ -121,7 +122,7 @@ REGISTER_COMMAND(CCV_NNC_ADD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 {
 	registry->bitmask = _ccv_nnc_add_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
-	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+	registry->allow_inplace = _ccv_nnc_same_pos_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -163,7 +164,7 @@ REGISTER_COMMAND(CCV_NNC_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 {
 	registry->bitmask = _ccv_nnc_mul_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
-	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+	registry->allow_inplace = _ccv_nnc_same_pos_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -199,7 +200,7 @@ REGISTER_COMMAND(CCV_NNC_SCALAR_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const regis
 {
 	registry->bitmask = _ccv_nnc_scalar_mul_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
-	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+	registry->allow_inplace = _ccv_nnc_same_pos_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_SCALAR_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
