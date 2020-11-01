@@ -100,7 +100,11 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 					update_inputs[2 + k] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 				for (k = 0; k < aux_size; k++)
 					if (!ccv_nnc_tensor_variable_contains_value(saved_aux[idx * aux_size + k])) // Need to 0 init the saved aux in this case.
+					{
+						if (ccv_nnc_is_tensor_auto(saved_aux[idx * aux_size + k]->info))
+							saved_aux[idx * aux_size + k]->info = info;
 						set_zeros[set_zero_size++] = update_inputs[2 + k];
+					}
 				for (k = 0; k < aux_size; k++)
 				{
 					bind.symbol = update_inputs[2 + k];
@@ -147,7 +151,11 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 				update_inputs[2 + j] = ccv_nnc_tensor_symbol_new(dynamic_graph->tape, info, 0);
 			for (j = 0; j < aux_size; j++)
 				if (!ccv_nnc_tensor_variable_contains_value(saved_aux[i * aux_size + j])) // Need to 0 init the saved aux in this case.
+				{
+					if (ccv_nnc_is_tensor_auto(saved_aux[i * aux_size + j]->info))
+						saved_aux[i * aux_size + j]->info = info;
 					set_zeros[set_zero_size++] = update_inputs[2 + j];
+				}
 			for (j = 0; j < aux_size; j++)
 			{
 				bind.symbol = update_inputs[2 + j];

@@ -331,13 +331,13 @@ static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int
 		{
 			ccv_nnc_tensor_param_t saved_aux_params = GPU_TENSOR_NCHW(000, 32F, vocab_size, embedding_size);
 			CCV_TENSOR_SET_DEVICE_ID(saved_aux_params.type, i);
-			saved_auxs[i * aux_size * 2 + j] = ccv_nnc_tensor_variable_new(dynamic_graph, saved_aux_params);
+			saved_auxs[i * aux_size * 2 + j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 		}
 		for (j = 0; j < aux_size; j++)
 		{
 			ccv_nnc_tensor_param_t saved_aux_params = GPU_TENSOR_NCHW(000, 32F, max_length, embedding_size);
 			CCV_TENSOR_SET_DEVICE_ID(saved_aux_params.type, i);
-			saved_auxs[i* aux_size * 2 + aux_size + j] = ccv_nnc_tensor_variable_new(dynamic_graph, saved_aux_params);
+			saved_auxs[i* aux_size * 2 + aux_size + j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 		}
 	}
 	ccv_nnc_tensor_t* const out_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 2), 0);
