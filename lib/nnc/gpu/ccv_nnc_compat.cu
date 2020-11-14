@@ -491,6 +491,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 			int i;
 			for (i = 0; i < resource_container_compat->comm_count; i++)
 				NCCL_ENFORCE(ncclCommDestroy(resource_container_compat->comms[i]));
+			ccfree(resource_container_compat->comms);
 		}
 		ccfree(resource_container_compat);
 	}

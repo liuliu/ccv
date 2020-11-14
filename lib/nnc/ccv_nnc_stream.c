@@ -124,10 +124,13 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_context(stream_context);
-#else
+	else {
+#endif
 	ccv_nnc_stream_cpu_t* stream_cpu = (ccv_nnc_stream_cpu_t*)stream_context;
 	if (stream_cpu->workspace)
 		ccfree(stream_cpu->workspace);
+#ifdef HAVE_CUDA
+	}
 #endif
 	if (stream_context->scheduler)
 	{
