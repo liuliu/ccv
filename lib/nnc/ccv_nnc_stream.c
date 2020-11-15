@@ -14,10 +14,17 @@ typedef struct {
 	void* workspace;
 } ccv_nnc_stream_cpu_t;
 
+typedef struct {
+	ccv_nnc_stream_context_destructor_f destructor_hook;
+	void* context;
+} ccv_nnc_stream_destructor_hook_t;
+
 ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 {
 	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)cccalloc(1, sizeof(ccv_nnc_stream_cpu_t));
 	stream_cpu->super.type = type;
+	stream_cpu->super.reuse_destructor_hook = -1;
+	stream_cpu->super.destructor_hooks = 0;
 	stream_cpu->workspace_size = 0;
 	stream_cpu->workspace = 0;
 #ifdef HAVE_CUDA
@@ -119,8 +126,65 @@ void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_co
 #endif
 }
 
+int ccv_nnc_stream_context_add_destructor_hook(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_context_destructor_f destructor, void* const context)
+{
+	ccv_nnc_stream_destructor_hook_t hook = {
+		.destructor_hook = destructor,
+		.context = context
+	};
+	if (stream->reuse_destructor_hook >= 0)
+	{
+		assert(stream->destructor_hooks);
+		const int reuse_destructor_hook = stream->reuse_destructor_hook;
+		assert(reuse_destructor_hook < stream->destructor_hooks->rnum);
+		*(ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream->destructor_hooks, reuse_destructor_hook) = hook;
+		int i;
+		stream->reuse_destructor_hook = -1;
+		for (i = reuse_destructor_hook + 1; i < stream->destructor_hooks->rnum && stream->reuse_destructor_hook < 0; i++)
+			if (!((ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream->destructor_hooks, i))->destructor_hook)
+				stream->reuse_destructor_hook = i;
+		return reuse_destructor_hook;
+	} else {
+		if (!stream->destructor_hooks)
+			stream->destructor_hooks = ccv_array_new(sizeof(ccv_nnc_stream_destructor_hook_t), 1, 0);
+		ccv_array_push(stream->destructor_hooks, &hook);
+		return stream->destructor_hooks->rnum - 1;
+	}
+}
+
+void ccv_nnc_stream_context_remove_destructor_hook(ccv_nnc_stream_context_t* const stream, const int hook_id)
+{
+	assert(hook_id >= 0);
+	assert(hook_id < stream->destructor_hooks->rnum);
+	ccv_nnc_stream_destructor_hook_t* const hook = (ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream->destructor_hooks, hook_id);
+	hook->destructor_hook = 0;
+	hook->context = 0;
+	int i;
+	for (i = stream->destructor_hooks->rnum - 1; i >= 0; i--)
+		if (((ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream->destructor_hooks, i))->destructor_hook)
+		{
+			stream->destructor_hooks->rnum = i + 1;
+			break;
+		}
+	if (hook_id < stream->destructor_hooks->rnum &&
+		(hook_id < stream->reuse_destructor_hook || stream->reuse_destructor_hook < 0))
+		stream->reuse_destructor_hook = hook_id;
+	else if (stream->reuse_destructor_hook >= stream->destructor_hooks->rnum)
+		stream->reuse_destructor_hook = -1;
+}
+
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 {
+	if (stream_context->destructor_hooks)
+	{
+		int i;
+		for (i = 0; i < stream_context->destructor_hooks->rnum; i++)
+		{
+			ccv_nnc_stream_destructor_hook_t* const hook = (ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream_context->destructor_hooks, i);
+			hook->destructor_hook(stream_context, hook->context);
+		}
+		ccv_array_free(stream_context->destructor_hooks);
+	}
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_context(stream_context);

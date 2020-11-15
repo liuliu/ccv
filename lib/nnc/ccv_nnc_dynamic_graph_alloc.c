@@ -25,7 +25,7 @@ static void _ccv_nnc_dynamic_graph_metadata_free(dy_alloc_metadata_t* node, void
 	} while (node);
 }
 
-static void _ccv_nnc_dynamic_graph_xpu_alloc_drain(const int str, khash_t(dy_dev)* const dev)
+static void _ccv_nnc_dynamic_graph_xpu_alloc_drain(khash_t(dy_dev)* const dev)
 {
 	khiter_t k;
 	for (k = kh_begin(dev); k != kh_end(dev); ++k)
@@ -36,6 +36,19 @@ static void _ccv_nnc_dynamic_graph_xpu_alloc_drain(const int str, khash_t(dy_dev
 		dy_alloc_tree_destroy(tree, _ccv_nnc_dynamic_graph_metadata_free, 0);
 		kh_del(dy_dev, dev, k);
 	}
+}
+
+static void _ccv_nnc_dynamic_graph_xpu_stream_destructor_hook(const ccv_nnc_stream_context_t* const stream, void* const context)
+{
+	ccv_nnc_dynamic_graph_t* const graph = (ccv_nnc_dynamic_graph_t*)context;
+	khash_t(dy_str)* const freed = graph->freed;
+	const int64_t str = (int64_t)(intptr_t)stream;
+	khiter_t i = kh_get(dy_str, freed, str);
+	assert(i != kh_end(freed));
+	khash_t(dy_dev)* const dev = kh_val(freed, i).dev;
+	_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
+	kh_destroy(dy_dev, dev);
+	kh_del(dy_str, freed, i);
 }
 
 void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, const int device, ccv_nnc_stream_context_t* const stream, const size_t size)
@@ -74,6 +87,8 @@ void* ccv_nnc_dynamic_graph_xpu_alloc(ccv_nnc_dynamic_graph_t* const graph, cons
 	} else {
 		// Otherwise, create it.
 		kh_val(freed, i).dev = kh_init(dy_dev);
+		kh_val(freed, i).hook_id = stream ? ccv_nnc_stream_context_add_destructor_hook(stream, _ccv_nnc_dynamic_graph_xpu_stream_destructor_hook, graph) : -1;
+
 	}
 	if (!node)
 	{
@@ -112,7 +127,14 @@ void ccv_nnc_dynamic_graph_xpu_free(ccv_nnc_dynamic_graph_t* const graph, void* 
 	assert(node->ptr == ptr);
 	khash_t(dy_str)* const freed = graph->freed;
 	i = kh_get(dy_str, freed, node->str);
-	assert(i != kh_end(freed));
+	// If cannot find associated stream, that means this allocation associated
+	// stream has been freed. I have to do synchronous free of this pointer.
+	if (i == kh_end(freed))
+	{
+		cufree(node->device, node->ptr);
+		ccfree(node);
+		return;
+	}
 	khash_t(dy_dev)* const dev = kh_val(freed, i).dev;
 	int ret;
 	khiter_t j = kh_put(dy_dev, dev, node->device, &ret);
@@ -145,9 +167,12 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 	{
 		if (!kh_exist(freed, k))
 			continue;
-		const int64_t str = kh_key(freed, k);
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
-		_ccv_nnc_dynamic_graph_xpu_alloc_drain(str, dev);
+		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
+		const int hook_id = kh_val(freed, k).hook_id;
+		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
+		if (stream)
+			ccv_nnc_stream_context_remove_destructor_hook(stream, hook_id);
 		kh_destroy(dy_dev, dev);
 	}
 	kh_destroy(dy_str, freed);
@@ -163,9 +188,8 @@ void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const graph)
 	{
 		if (!kh_exist(freed, k))
 			continue;
-		const int64_t str = kh_key(freed, k);
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
-		_ccv_nnc_dynamic_graph_xpu_alloc_drain(str, dev);
+		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
 	}
 }
 #else

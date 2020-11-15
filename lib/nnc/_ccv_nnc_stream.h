@@ -35,6 +35,9 @@ struct ccv_nnc_stream_context_s {
 	// For neighbor discovery
 	ccv_nnc_stream_context_neighbor_discovery_f neighbor_discovery;
 	void* neighbor_discovery_context;
+	// For hooks
+	ccv_array_t* destructor_hooks;
+	int reuse_destructor_hook;
 };
 
 typedef struct {
