@@ -177,7 +177,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	}
 	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
 		.graph = dynamic_graph,
-		.stream = (intptr_t)stream_context
+		.stream = stream_context
 	};
 	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
 		.allocator = {

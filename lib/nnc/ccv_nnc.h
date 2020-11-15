@@ -530,6 +530,29 @@ void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
  */
 int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream);
 /**
+ * The hooks to be called when a stream context is destroyed.
+ * At the moment, the stream context will be destroyed at the time
+ * ccv_nnc_stream_context_free is called, so there is no tricks.
+ * This method is useful because we have some resources associated
+ * with stream pointer, hence, would be good to free these resources
+ * upon free the stream.
+ */
+typedef void (*ccv_nnc_stream_context_destructor_f)(const ccv_nnc_stream_context_t* const stream, void* const context);
+/**
+ * Add a new destructor hook callback when a stream is freed.
+ * @param stream The stream to be observed.
+ * @param destructor The new destructor callback method.
+ * @param context additional context.
+ * @return A integer identifier to help remove the hook.
+ */
+int ccv_nnc_stream_context_add_destructor_hook(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_context_destructor_f destructor, void* const context);
+/**
+ * Remove a destructor hook callback.
+ * @param stream The stream we observe.
+ * @param hook_id The returned integer when calling the add method.
+ */
+void ccv_nnc_stream_context_remove_destructor_hook(ccv_nnc_stream_context_t* const stream, const int hook_id);
+/**
  * Deallocate the stream context.
  * @param stream_context The stream context to be destroyed.
  */
@@ -2229,20 +2252,20 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable_impl(ccv_nnc_dyn
  */
 void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor);
 /**
- * A ownership update function to be called when a tensor variable transferred ownership (at the moment, that
- * means a tensor variable will be freed in the sense that no backward computation need it no more).
- * Thus, we pass in tensor rather than tensor variable for the ownership change.
+ * A destructor function to be called when a tensor variable will be freed in the sense that no
+ * backward computation need it no more.
+ * Thus, we pass in tensor rather than tensor variable for the destructor.
  */
-typedef void (*ccv_nnc_tensor_variable_owner_f)(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_t* const tensor, const ccv_nnc_dynamic_graph_t* const owner, void* const context);
+typedef void (*ccv_nnc_tensor_variable_destructor_f)(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_t* const tensor, void* const context);
 /**
- * Hook into a tensor variable such that when it is switched to a new owner, the callback will receive
+ * Hook into a tensor variable such that when it is actually freed (destroyed), the callback will receive
  * the update.
  * @param graph The dynamic graph.
- * @param tensor_variable The tensor variable to observe ownership change.
+ * @param tensor_variable The tensor variable to observe when it is destroyed.
  * @param func The callback function.
  * @param context The context to be passed along to the callback function.
  **/
-void ccv_nnc_tensor_variable_owner_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_owner_f func, void* const context);
+void ccv_nnc_tensor_variable_destructor_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_destructor_f func, void* const context);
 /**
  * Execute a command with given tensor variables, the output is in the output tensor variables.
  * @param graph The dynamic graph.

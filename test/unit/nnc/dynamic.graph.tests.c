@@ -260,10 +260,9 @@ TEST_CASE("repeat multiple x * y with y as a constant")
 
 static int _ccv_tensor_variable_freed = 0;
 
-static void _ccv_tensor_variable_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_t* const tensor, const ccv_nnc_dynamic_graph_t* const owner, void* const context)
+static void _ccv_tensor_variable_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_t* const tensor, void* const context)
 {
-	if (!owner)
-		++_ccv_tensor_variable_freed;
+	++_ccv_tensor_variable_freed;
 }
 
 TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
@@ -274,14 +273,14 @@ TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
 	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t ox = x;
-	ccv_nnc_tensor_variable_owner_hook(graph, x, _ccv_tensor_variable_hook, 0);
-	ccv_nnc_tensor_variable_owner_hook(graph, y, _ccv_tensor_variable_hook, 0);
+	ccv_nnc_tensor_variable_destructor_hook(graph, x, _ccv_tensor_variable_hook, 0);
+	ccv_nnc_tensor_variable_destructor_hook(graph, y, _ccv_tensor_variable_hook, 0);
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
 	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.9;
 	for (i = 0; i < 4; i++)
 	{
 		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_tensor_variable_owner_hook(graph, z, _ccv_tensor_variable_hook, 0);
+		ccv_nnc_tensor_variable_destructor_hook(graph, z, _ccv_tensor_variable_hook, 0);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z), 0, 0);
 		if (i > 0)
 			ccv_nnc_tensor_variable_free(graph, x);
@@ -289,7 +288,7 @@ TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
 	}
 	REQUIRE_EQ(0, _ccv_tensor_variable_freed, "none of these are freed");
 	ccv_nnc_tensor_variable_t dx = ccv_nnc_tensor_variable_new(graph);
-	ccv_nnc_tensor_variable_owner_hook(graph, dx, _ccv_tensor_variable_hook, 0);
+	ccv_nnc_tensor_variable_destructor_hook(graph, dx, _ccv_tensor_variable_hook, 0);
 	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(x), 0, TENSOR_VARIABLE_LIST(ox), TENSOR_VARIABLE_LIST(dx), 0);
 	ccv_nnc_tensor_variable_free(graph, ox);
 	// We freed all 4 x (ox, when i = 1, 2, 3).

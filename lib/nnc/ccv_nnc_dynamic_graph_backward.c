@@ -252,7 +252,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
 		.graph = dynamic_graph,
-		.stream = (intptr_t)stream_context
+		.stream = stream_context
 	};
 	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
 		.allocator = {

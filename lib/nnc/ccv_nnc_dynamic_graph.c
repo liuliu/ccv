@@ -16,7 +16,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->vars = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
 	graph->tape = ccv_nnc_symbolic_graph_new();
-	graph->freed = kh_init(dy_dev);
+	graph->freed = kh_init(dy_str);
 	graph->allocd = kh_init(dy_alloc);
 	// These may not be used as frequent, init as needed.
 	graph->stateful_execs = 0;
@@ -32,8 +32,8 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 	const int index = tensor_variable->index;
 	if (tensor_variable->tensor_view)
 	{
-		if (tensor_variable->owner_hook.func)
-			tensor_variable->owner_hook.func(graph, (ccv_nnc_tensor_t*)tensor_variable->tensor_view, 0, tensor_variable->owner_hook.context);
+		if (tensor_variable->destructor_hook.func)
+			tensor_variable->destructor_hook.func(graph, (ccv_nnc_tensor_t*)tensor_variable->tensor_view, tensor_variable->destructor_hook.context);
 		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tensor_variable->tensor_view))
 		{
 			if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
@@ -72,8 +72,8 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 		ccv_array_free(bind->destinations);
 	if (bind->tensor_view)
 	{
-		if (bind->owner_hook.func)
-			bind->owner_hook.func(graph, (ccv_nnc_tensor_t*)bind->tensor_view, 0, bind->owner_hook.context);
+		if (bind->destructor_hook.func)
+			bind->destructor_hook.func(graph, (ccv_nnc_tensor_t*)bind->tensor_view, bind->destructor_hook.context);
 		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(bind->tensor_view))
 		{
 			if (CCV_IS_TENSOR_VIEW(bind->tensor_view))
@@ -91,8 +91,8 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 		bind->sources = 0;
 		bind->destinations = 0;
 		bind->tensor_view = 0;
-		bind->owner_hook.func = 0;
-		bind->owner_hook.context = 0;
+		bind->destructor_hook.func = 0;
+		bind->destructor_hook.context = 0;
 	}
 }
 
@@ -153,17 +153,17 @@ void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv
 	tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)((uintptr_t)tensor | 1);
 }
 
-void ccv_nnc_tensor_variable_owner_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_owner_f func, void* const context)
+void ccv_nnc_tensor_variable_destructor_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_destructor_f func, void* const context)
 {
-	tensor_variable->owner_hook.func = func;
-	tensor_variable->owner_hook.context = context;
+	tensor_variable->destructor_hook.func = func;
+	tensor_variable->destructor_hook.context = context;
 }
 
 inline static void _ccv_nnc_tensor_variable_init(ccv_nnc_dynamic_graph_t* const graph, ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_param_t info)
 {
 	tensor_variable->alias_index_ref = 0;
-	tensor_variable->owner_hook.func = 0;
-	tensor_variable->owner_hook.context = 0;
+	tensor_variable->destructor_hook.func = 0;
+	tensor_variable->destructor_hook.context = 0;
 	tensor_variable->info = info;
 	tensor_variable->symbol = NO_TENSOR_SYMBOL;
 	tensor_variable->tensor_view = 0;
@@ -213,8 +213,8 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	variable_alias->alias_index_ref = tensor_variable->index + 1;
 	variable_alias->info = info;
 	variable_alias->symbol = NO_TENSOR_SYMBOL;
-	variable_alias->owner_hook.func = 0;
-	variable_alias->owner_hook.context = 0;
+	variable_alias->destructor_hook.func = 0;
+	variable_alias->destructor_hook.context = 0;
 	variable_alias->tensor_view = 0;
 	memcpy(variable_alias->ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(variable_alias->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
@@ -266,7 +266,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	{
 		void* ptr = 0;
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
-			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
+			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, tensor_variable->info, 0);
 		assert(tensor_variable->tensor_view->data.u8);
 		return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
@@ -280,7 +280,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		void* ptr = 0;
 		assert(variable_to->info.type == tensor_variable->info.type);
 		if (CCV_TENSOR_GET_MEMORY(variable_to->info.type) == CCV_TENSOR_GPU_MEMORY)
-			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(variable_to->info.type), (intptr_t)stream_context, ccv_nnc_tensor_data_size(variable_to->info));
+			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(variable_to->info.type), stream_context, ccv_nnc_tensor_data_size(variable_to->info));
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, variable_to->info, 0);
 		assert(variable_to->tensor_view->data.u8);
 	}
@@ -330,8 +330,8 @@ static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const grap
 	if (bind->destinations)
 		ccv_array_free(bind->destinations);
 	bind->destinations = 0;
-	bind->owner_hook.func = 0;
-	bind->owner_hook.context = 0;
+	bind->destructor_hook.func = 0;
+	bind->destructor_hook.context = 0;
 	bind->tensor_view = 0;
 }
 
@@ -1061,8 +1061,8 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 				ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
 			} else {
 				bind->index = CCV_NNC_TENSOR_NO_VARIABLE_BUT_USED; // This tensor variable will be freed, but this symbol extra will continue exists.
-				bind->owner_hook.func = tensor_variable->owner_hook.func; // Transfer the ownership callback.
-				bind->owner_hook.context = tensor_variable->owner_hook.context; // Transfer the ownership callback context.
+				bind->destructor_hook.func = tensor_variable->destructor_hook.func; // Transfer the destructor callback.
+				bind->destructor_hook.context = tensor_variable->destructor_hook.context; // Transfer the destructor callback context.
 				bind->tensor_view = tensor_variable->tensor_view; // Transfer the ownership to the bind.
 				tensor_variable->tensor_view = 0;
 			}
