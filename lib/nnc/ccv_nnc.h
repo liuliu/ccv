@@ -2244,6 +2244,12 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable_impl(ccv_nnc_dyn
 #define ccv_nnc_tensor_from_variable(graph, tensor_variable, ...) CCV_NNC_TENSOR_FROM_VARIABLE_X_SEL(graph, tensor_variable, ##__VA_ARGS__, ccv_nnc_tensor_from_variable_impl, CCV_NNC_TENSOR_FROM_VARIABLE_X_1)(graph, tensor_variable, ##__VA_ARGS__)
 /** @endcond */
 /**
+ * Query whether a given tensor variable is a constant (no gradient).
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable to query whether it is a constant.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_tensor_variable_is_constant(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+/**
  * Set a tensor on the tensor variable. Tensor variable doesn't take over the life-cycle management of the tensor
  * (in similar way as the tensor binds).
  * @param graph The dynamic graph.

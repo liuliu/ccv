@@ -200,6 +200,11 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_constant_new_impl(ccv_nnc_dynamic_graph
 	return tensor_variable;
 }
 
+int ccv_nnc_tensor_variable_is_constant(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+{
+	return tensor_variable->type == CCV_NNC_TENSOR_CONSTANT;
+}
+
 ccv_nnc_tensor_param_t ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
 {
 	return tensor_variable->info;
