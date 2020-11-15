@@ -11,7 +11,12 @@
 #include "3rdparty/sfmt/SFMT.h"
 #endif
 
-KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
+typedef struct {
+	ccv_array_t* columns;
+	int hook_id;
+} ccv_cnnp_data_ctx_t;
+
+KHASH_MAP_INIT_INT64(ctx, ccv_cnnp_data_ctx_t)
 
 struct ccv_cnnp_dataframe_s {
 	int row_count;
@@ -151,7 +156,7 @@ const char* ccv_cnnp_dataframe_column_name(ccv_cnnp_dataframe_t* const dataframe
 
 typedef struct {
 	int flag; // Mark this as cached or not.
-	uint64_t ctx; // The stream context.
+	int64_t ctx; // The stream context.
 	void* data;
 } ccv_cnnp_dataframe_data_item_t;
 
@@ -200,20 +205,90 @@ ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* con
 	return iter;
 }
 
+static void _ccv_cnnp_dataframe_data_ctx_columns_free(ccv_cnnp_dataframe_t* const dataframe, ccv_array_t* const columns)
+{
+	int i, j;
+	for (i = 0; i < columns->rnum; i++)
+	{
+		ccv_array_t* const column = *(ccv_array_t**)ccv_array_get(columns, i);
+		if (!column)
+			continue;
+		void* context;
+		ccv_cnnp_column_data_deinit_f data_deinit;
+		if (i < dataframe->column_size)
+		{
+			data_deinit = dataframe->column_data[i].data_deinit;
+			context = dataframe->column_data[i].context;
+		} else {
+			assert(dataframe->derived_column_data);
+			ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i - dataframe->column_size);
+			data_deinit = derived_column_data->data_deinit;
+			context = derived_column_data->context;
+		}
+		if (data_deinit)
+			for (j = 0; j < column->rnum; j++)
+				data_deinit(*(void**)ccv_array_get(column, j), context);
+		ccv_array_free(column);
+	}
+	ccv_array_free(columns);
+}
+
+static void _ccv_cnnp_dataframe_stream_destructor_hook(const ccv_nnc_stream_context_t* const stream, void* const context)
+{
+	ccv_cnnp_dataframe_t* const dataframe = (ccv_cnnp_dataframe_t*)context;
+	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
+	int64_t ctx = (int64_t)(intptr_t)stream;
+	khiter_t k = kh_get(ctx, data_ctx, ctx);
+	assert(k != kh_end(data_ctx));
+	ccv_array_t* const columns = kh_val(data_ctx, k).columns;
+	_ccv_cnnp_dataframe_data_ctx_columns_free(dataframe, columns);
+	kh_del(ctx, data_ctx, k);
+}
+
+static void _ccv_cnnp_dataframe_prepare_data_ctx(ccv_cnnp_dataframe_t* const dataframe, ccv_nnc_stream_context_t* const stream_context)
+{
+	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
+	int ret = 0;
+	int64_t ctx = (int64_t)(intptr_t)stream_context;
+	khiter_t k = kh_put(ctx, data_ctx, ctx, &ret);
+	assert(ret >= 0);
+	if (ret != 0)
+	{
+		const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+		kh_val(data_ctx, k).columns = ccv_array_new(sizeof(ccv_array_t*), column_size, 0);
+		kh_val(data_ctx, k).hook_id = stream_context ? ccv_nnc_stream_context_add_destructor_hook(stream_context, _ccv_cnnp_dataframe_stream_destructor_hook, dataframe) : -1;
+	}
+}
+
 static void _ccv_cnnp_dataframe_enqueue_data(ccv_cnnp_dataframe_t* const dataframe, void* const data, const int column_idx, const uint64_t ctx)
 {
 	if (!data)
 		return;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
-	int ret = 0;
-	khiter_t k = kh_put(ctx, data_ctx, ctx, &ret);
-	assert(ret >= 0);
+	khiter_t k = kh_get(ctx, data_ctx, ctx);
+	if (k == kh_end(data_ctx))
+	{
+		// Free the data directly.
+		void* context;
+		ccv_cnnp_column_data_deinit_f data_deinit;
+		if (column_idx < dataframe->column_size)
+		{
+			data_deinit = dataframe->column_data[column_idx].data_deinit;
+			context = dataframe->column_data[column_idx].context;
+		} else {
+			assert(dataframe->derived_column_data);
+			ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, column_idx - dataframe->column_size);
+			data_deinit = derived_column_data->data_deinit;
+			context = derived_column_data->context;
+		}
+		if (data_deinit)
+			data_deinit(data, context);
+		return;
+	}
 	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
 	assert(column_idx < column_size);
 	// If ret == 0, the key already exist, we can get the columns directly, otherwise, create and assign back.
-	ccv_array_t* const columns = (ret == 0) ? kh_val(data_ctx, k) : ccv_array_new(sizeof(ccv_array_t*), column_size, 0);
-	if (ret != 0)
-		kh_val(data_ctx, k) = columns;
+	ccv_array_t* const columns = kh_val(data_ctx, k).columns;
 	if (columns->rnum < column_size)
 		ccv_array_resize(columns, column_size);
 	ccv_array_t* column = *(ccv_array_t**)ccv_array_get(columns, column_idx);
@@ -232,7 +307,7 @@ static void* _ccv_cnnp_dataframe_dequeue_data(ccv_cnnp_dataframe_t* const datafr
 	khiter_t k = kh_get(ctx, data_ctx, ctx);
 	if (k == kh_end(data_ctx))
 		return 0;
-	ccv_array_t* const columns = kh_val(data_ctx, k);
+	ccv_array_t* const columns = kh_val(data_ctx, k).columns;
 	if (column_idx >= columns->rnum)
 		return 0;
 	ccv_array_t* const column = *(ccv_array_t**)ccv_array_get(columns, column_idx);
@@ -378,6 +453,9 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 		if (iter->prefetch_head >= lines)
 			iter->prefetch_head = 0;
 	}
+	// Now we are about to create cached_data (above code only uses cached data).
+	// We are ready to prepare the data_ctx cache.
+	_ccv_cnnp_dataframe_prepare_data_ctx(dataframe, stream_context);
 	for (i = 0; i < column_idx_size; i++)
 	{
 		void* fetched_data[1]; // This guards better than just give away data_ref + i.
@@ -539,6 +617,9 @@ int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, cons
 	}
 	ccv_array_t* const prefetches = iter->prefetches;
 	ccv_cnnp_dataframe_data_item_t* const cached_data = (ccv_cnnp_dataframe_data_item_t*)ccv_array_get(prefetches, iter->prefetch_tail);
+	// Now we are about to create cached_data (above code only uses cached data).
+	// We are ready to prepare the data_ctx cache.
+	_ccv_cnnp_dataframe_prepare_data_ctx(dataframe, stream_context);
 	// If the tail is before the head, we must have enough space for the max_to_prefetch
 	if (iter->prefetch_tail < iter->prefetch_head)
 	{
@@ -622,7 +703,7 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 {
-	int i, j;
+	int i;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
 	khiter_t k;
 	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
@@ -630,31 +711,15 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 	{
 		if (!kh_exist(data_ctx, k))
 			continue;
-		ccv_array_t* const columns = kh_val(data_ctx, k);
-		assert(columns->rnum <= column_size);
-		for (i = 0; i < columns->rnum; i++)
+		ccv_nnc_stream_context_t* const stream_context = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(data_ctx, k);
+		ccv_array_t* const columns = kh_val(data_ctx, k).columns;
+		if (stream_context)
 		{
-			ccv_array_t* const column = *(ccv_array_t**)ccv_array_get(columns, i);
-			if (!column)
-				continue;
-			void* context;
-			ccv_cnnp_column_data_deinit_f data_deinit;
-			if (i < dataframe->column_size)
-			{
-				data_deinit = dataframe->column_data[i].data_deinit;
-				context = dataframe->column_data[i].context;
-			} else {
-				assert(dataframe->derived_column_data);
-				ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i - dataframe->column_size);
-				data_deinit = derived_column_data->data_deinit;
-				context = derived_column_data->context;
-			}
-			if (data_deinit)
-				for (j = 0; j < column->rnum; j++)
-					data_deinit(*(void**)ccv_array_get(column, j), context);
-			ccv_array_free(column);
+			const int hook_id = kh_val(data_ctx, k).hook_id;
+			ccv_nnc_stream_context_remove_destructor_hook(stream_context, hook_id);
 		}
-		ccv_array_free(columns);
+		assert(columns->rnum <= column_size);
+		_ccv_cnnp_dataframe_data_ctx_columns_free(dataframe, columns);
 	}
 	kh_destroy(ctx, data_ctx);
 	if (dataframe->derived_column_data)

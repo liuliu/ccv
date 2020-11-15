@@ -169,10 +169,12 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
 		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
-		const int hook_id = kh_val(freed, k).hook_id;
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
 		if (stream)
+		{
+			const int hook_id = kh_val(freed, k).hook_id;
 			ccv_nnc_stream_context_remove_destructor_hook(stream, hook_id);
+		}
 		kh_destroy(dy_dev, dev);
 	}
 	kh_destroy(dy_str, freed);
