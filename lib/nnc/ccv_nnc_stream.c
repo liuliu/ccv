@@ -181,7 +181,8 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 		for (i = 0; i < stream_context->destructor_hooks->rnum; i++)
 		{
 			ccv_nnc_stream_destructor_hook_t* const hook = (ccv_nnc_stream_destructor_hook_t*)ccv_array_get(stream_context->destructor_hooks, i);
-			hook->destructor_hook(stream_context, hook->context);
+			if (hook->destructor_hook)
+				hook->destructor_hook(stream_context, hook->context);
 		}
 		ccv_array_free(stream_context->destructor_hooks);
 	}
