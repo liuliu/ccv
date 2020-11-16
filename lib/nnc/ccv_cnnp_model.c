@@ -679,7 +679,8 @@ static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const
 	int this_parameter_flag = 0;
 	const ccv_nnc_cmd_t old_minimizer = ccv_nnc_graph_exec_symbol_cmd(graph, update_nodes[parameter_indice]);
 	int j, k;
-	if (old_minimizer.cmd != minimizer.cmd)
+	// For no-op, we can preserve previous saved_aux_size.
+	if (old_minimizer.cmd != minimizer.cmd && minimizer.cmd != CCV_NNC_NOOP)
 	{
 		const int old_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(old_minimizer);
 		if (old_saved_aux_size != saved_aux_size)
