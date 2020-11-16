@@ -97,23 +97,23 @@ TEST_CASE("compile simple cifar-10 model")
 	ccv_nnc_tensor_free(output_tensor);
 }
 
-static int _ccv_cnnp_model_owner_hooked = 0;
+static int _ccv_cnnp_model_notified = 0;
 
-static void _ccv_cnnp_model_hook(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_t* const owner, void* const context)
+static void _ccv_cnnp_model_hook(const ccv_cnnp_model_t* const model, const int tag, void* const payload, void* const context)
 {
-	if (owner)
-		++_ccv_cnnp_model_owner_hooked;
+	if (payload)
+		++_ccv_cnnp_model_notified;
 }
 
 TEST_CASE("inception layer for model")
 {
 	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
-	_ccv_cnnp_model_owner_hooked = 0;
+	_ccv_cnnp_model_notified = 0;
 	ccv_cnnp_model_t* const conv_1 = ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0);
-	ccv_cnnp_model_owner_hook(conv_1, _ccv_cnnp_model_hook, 0);
+	ccv_cnnp_model_notify_hook(conv_1, _ccv_cnnp_model_hook, 0);
 	ccv_cnnp_model_io_t tower_1 = ccv_cnnp_model_apply(conv_1, MODEL_IO_LIST(x));
 	ccv_cnnp_model_t* const relu_1 = ccv_cnnp_relu(0);
-	ccv_cnnp_model_owner_hook(relu_1, _ccv_cnnp_model_hook, 0);
+	ccv_cnnp_model_notify_hook(relu_1, _ccv_cnnp_model_hook, 0);
 	tower_1 = ccv_cnnp_model_apply(relu_1, MODEL_IO_LIST(tower_1));
 	tower_1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0), MODEL_IO_LIST(tower_1));
 	tower_1 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_1));
@@ -127,12 +127,13 @@ TEST_CASE("inception layer for model")
 	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0), MODEL_IO_LIST(tower_3));
 	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_3));
 	ccv_cnnp_model_t* const add_1 = ccv_cnnp_sum(0);
-	ccv_cnnp_model_owner_hook(add_1, _ccv_cnnp_model_hook, 0);
+	ccv_cnnp_model_notify_hook(add_1, _ccv_cnnp_model_hook, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(add_1, MODEL_IO_LIST(tower_1, tower_2, tower_3));
-	REQUIRE_EQ(0, _ccv_cnnp_model_owner_hooked, "haven't changed owner");
+	REQUIRE_EQ(0, _ccv_cnnp_model_notified, "haven't notified");
 	ccv_cnnp_model_t* const inception0 = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output), 0);
+	ccv_cnnp_model_notify(inception0, 0, inception0);
 	ccv_cnnp_model_t* const inception = ccv_cnnp_model_copy(inception0);
-	REQUIRE_EQ(3, _ccv_cnnp_model_owner_hooked, "3 models changed owner");
+	REQUIRE_EQ(3, _ccv_cnnp_model_notified, "3 models changed owner");
 	ccv_cnnp_model_free(inception0);
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	ccv_cnnp_model_compile(inception, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
