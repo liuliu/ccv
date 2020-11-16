@@ -80,6 +80,14 @@ static void _ccv_cnnp_sequential_model_add_to_parameter_indices(ccv_cnnp_model_t
 		ccv_cnnp_model_add_to_parameter_indices(self->sequence[i], index, parameter_indices);
 }
 
+static void _ccv_cnnp_sequential_model_notify(const ccv_cnnp_model_t* const super, const int tag, void* const payload)
+{
+	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
+		ccv_cnnp_model_notify(self->sequence[i], tag, payload);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
 	.build = _ccv_cnnp_sequential_model_build,
@@ -87,6 +95,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.copy = _ccv_cnnp_sequential_model_copy,
 	.set_is_test = _ccv_cnnp_sequential_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_sequential_model_add_to_parameter_indices,
+	.notify = _ccv_cnnp_sequential_model_notify,
 };
 
 KHASH_MAP_INIT_INT64(model, ccv_cnnp_model_t*)
@@ -131,13 +140,6 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 	ccv_cnnp_model_copy_name(&sequential_model->super, name);
 	sequential_model->sequence_size = model_size;
 	memcpy(sequential_model->sequence, models, sizeof(ccv_cnnp_model_t*) * model_size);
-	int i;
-	for (i = 0; i < model_size; i++)
-	{
-		const ccv_cnnp_model_t* const model = sequential_model->sequence[i];
-		if (model->owner_hook.func)
-			model->owner_hook.func(model, (ccv_cnnp_model_t*)sequential_model, model->owner_hook.context);
-	}
 	return (ccv_cnnp_model_t*)sequential_model;
 }
 
@@ -260,6 +262,17 @@ static void _ccv_cnnp_functional_model_add_to_parameter_indices(ccv_cnnp_model_t
 		ccv_cnnp_model_add_to_parameter_indices(self->sequence[i]->model, index, parameter_indices);
 }
 
+static void _ccv_cnnp_functional_model_notify(const ccv_cnnp_model_t* const super, const int tag, void* const payload)
+{
+	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
+	{
+		const ccv_cnnp_model_t* const model = self->sequence[i]->model;
+		ccv_cnnp_model_notify(model, tag, payload);
+	}
+}
+
 static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t* const super, void* const context);
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
@@ -269,6 +282,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.copy = _ccv_cnnp_functional_model_copy,
 	.set_is_test = _ccv_cnnp_functional_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_functional_model_add_to_parameter_indices,
+	.notify = _ccv_cnnp_functional_model_notify,
 };
 
 KHASH_MAP_INIT_INT64(model_io, ccv_cnnp_model_io_t)
@@ -492,12 +506,6 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	for (i = 0; i < reverse_top->rnum; i++)
 		functional_model->sequence[input_size + i] = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
 	ccv_array_free(reverse_top);
-	for (i = 0; i < sequence_size; i++)
-	{
-		const ccv_cnnp_model_t* const model = functional_model->sequence[i]->model;
-		if (model->owner_hook.func)
-			model->owner_hook.func(model, (ccv_cnnp_model_t*)functional_model, model->owner_hook.context);
-	}
 	return (ccv_cnnp_model_t*)functional_model;
 }
 
@@ -606,6 +614,13 @@ static void _ccv_cnnp_dynamic_model_add_to_parameter_indices(ccv_cnnp_model_t* c
 	ccv_cnnp_model_add_to_parameter_indices(self->model, index, parameter_indices);
 }
 
+static void _ccv_cnnp_dynamic_model_notify(const ccv_cnnp_model_t* const super, const int tag, void* const payload)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	if (self->model)
+		ccv_cnnp_model_notify(self->model, tag, payload);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
 	.deinit = _ccv_cnnp_dynamic_model_deinit,
 	.build = _ccv_cnnp_dynamic_model_build,
@@ -615,6 +630,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
 	.copy = _ccv_cnnp_dynamic_model_copy,
 	.set_is_test = _ccv_cnnp_dynamic_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_dynamic_model_add_to_parameter_indices,
+	.notify = _ccv_cnnp_dynamic_model_notify,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f func, void* const context, const char* const name)

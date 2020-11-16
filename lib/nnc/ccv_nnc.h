@@ -2949,17 +2949,25 @@ enum {
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index);
 /**
- * A ownership update function to be called when a model transferred ownership to someone else.
+ * A notification function such that a model can be notified.
+ * This is useful to broadcast a message to all models as sub-model of someone else.
  */
-typedef void (*ccv_cnnp_model_owner_f)(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_t* const owner, void* const context);
+typedef void (*ccv_cnnp_model_notify_f)(const ccv_cnnp_model_t* const model, const int tag, void* const payload, void* const context);
 /**
- * Hook into a model such that when it is switched to a new owner, the callback will receive
- * the update.
- * @param model A model that can be owned by others, initially, a model is owned by no one.
+ * Hook into a model such that when there is a notification, the callback will receive it.
+ * @param model A model that can be notified.
  * @param func The callback function.
  * @param context The context to be passed along to the callback function.
  **/
-void ccv_cnnp_model_owner_hook(ccv_cnnp_model_t* const model, ccv_cnnp_model_owner_f func, void* const context);
+void ccv_cnnp_model_notify_hook(ccv_cnnp_model_t* const model, ccv_cnnp_model_notify_f func, void* const context);
+/**
+ * Notify a model and its sub-models with a tag and a payload. This will be triggered
+ * synchronously.
+ * @param model A model that will be notified.
+ * @param tag An integer to help identify what kind of notification.
+ * @param payload A payload pointer that you can carry arbitrary information.
+ */
+void ccv_cnnp_model_notify(const ccv_cnnp_model_t* const model, const int tag, void* const payload);
 /**
  * This method name is deceiving. It return a composed model, not a naked model.
  * This composed model takes set of inputs, and run through various other models to arrive at
