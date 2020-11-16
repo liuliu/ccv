@@ -484,7 +484,8 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		// And then absorb the "new model" to the old one.
 		ccv_cnnp_model_t* const init = ccv_cnnp_model_copy(model);
 		ccv_cnnp_model_absorb(model, init, inputs, input_size);
-		ccv_cnnp_model_set_minimizer(model, minimizer, 0, 0);
+		// Reset minimizer.
+		ccv_cnnp_model_set_minimizer(model, minimizer, 1, 0, 0);
 	}
 }
 
@@ -775,7 +776,7 @@ typedef struct {
 	ccv_cnnp_model_io_t parameters[1];
 } ccv_cnnp_set_minimizer_for_parameter_t;
 
-static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const model)
+static int _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const model)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -788,7 +789,7 @@ static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const mo
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	ccv_array_t* const parameters = compiled_data->minimize.parameters;
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-	int i, j;
+	int i, j, flag = 0;
 	for (i = 0; i < parameters->rnum; i++)
 	{
 		ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = *(ccv_cnnp_set_minimizer_for_parameter_t**)ccv_array_get(parameters, i);
@@ -813,14 +814,13 @@ static void _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const mo
 		{
 			const int d = *(int*)ccv_array_get(parameter_indices, j);
 			assert(d <= parameter_size);
-			_ccv_cnnp_set_minimizer_for_parameter(symbolic_graph, compiled_data, update_nodes, compiled_data->updated_parameters, compiled_data->saved_aux, parallel_count, set_minimizer_for_parameter->minimizer, saved_aux_size, max_saved_aux_size, d);
+			if (_ccv_cnnp_set_minimizer_for_parameter(symbolic_graph, compiled_data, update_nodes, compiled_data->updated_parameters, compiled_data->saved_aux, parallel_count, set_minimizer_for_parameter->minimizer, saved_aux_size, max_saved_aux_size, d))
+				flag = 1;
 		}
 		ccv_array_clear(parameter_indices);
-		ccfree(set_minimizer_for_parameter);
 	}
 	ccv_array_free(parameter_indices);
-	// After we applied everything, we can clear this array now.
-	ccv_array_clear(parameters);
+	return flag;
 }
 
 static void _ccv_cnnp_scatter_saved_aux(ccv_nnc_tensor_symbol_map_t* const saved_aux, const int parameter_size, const int old_saved_aux_size, const int new_saved_aux_size)
@@ -1937,13 +1937,15 @@ ccv_nnc_cmd_t ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model)
 	return compiled_data->minimize.minimizer;
 }
 
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_io_t* const set_parameters, const int set_parameter_size)
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const int reset, const ccv_cnnp_model_io_t* const set_parameters, const int set_parameter_size)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	const int parameter_size = compiled_data->parameters->rnum;
 	if (parameter_size == 0)
 		return;
+	if (reset)
+		{ assert(set_parameters == 0 && set_parameter_size == 0); }
 	const int old_max_saved_aux_size = compiled_data->minimize.max_saved_aux_size;
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	if (saved_aux_size > compiled_data->minimize.max_saved_aux_size)
@@ -1953,21 +1955,26 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	if (set_parameters == 0 || set_parameter_size == 0)
 		compiled_data->minimize.minimizer = minimizer;
 	int i;
-	if (!compiled_data->update_nodes)
+	if (set_parameters && set_parameter_size)
 	{
-		if (set_parameters && set_parameter_size)
-		{
-			// I need to save what's the minimizer along with this.
-			if (!compiled_data->minimize.parameters)
-				compiled_data->minimize.parameters = ccv_array_new(sizeof(ccv_cnnp_set_minimizer_for_parameter_t*), 1, 0);
-			ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = ccmalloc(sizeof(ccv_cnnp_set_minimizer_for_parameter_t) + (set_parameter_size - 1) * sizeof(ccv_cnnp_model_io_t));
-			set_minimizer_for_parameter->minimizer = minimizer;
-			set_minimizer_for_parameter->parameter_size = set_parameter_size;
-			memcpy(set_minimizer_for_parameter->parameters, set_parameters, sizeof(ccv_cnnp_model_io_t) * set_parameter_size);
-			ccv_array_push(compiled_data->minimize.parameters, &set_minimizer_for_parameter);
-		}
-		return;
+		// I need to save what's the minimizer along with this.
+		if (!compiled_data->minimize.parameters)
+			compiled_data->minimize.parameters = ccv_array_new(sizeof(ccv_cnnp_set_minimizer_for_parameter_t*), 1, 0);
+		ccv_cnnp_set_minimizer_for_parameter_t* const set_minimizer_for_parameter = ccmalloc(sizeof(ccv_cnnp_set_minimizer_for_parameter_t) + (set_parameter_size - 1) * sizeof(ccv_cnnp_model_io_t));
+		set_minimizer_for_parameter->minimizer = minimizer;
+		set_minimizer_for_parameter->parameter_size = set_parameter_size;
+		memcpy(set_minimizer_for_parameter->parameters, set_parameters, sizeof(ccv_cnnp_model_io_t) * set_parameter_size);
+		ccv_array_push(compiled_data->minimize.parameters, &set_minimizer_for_parameter);
 	}
+	// If reset is true, clear the parameters array.
+	if (reset && compiled_data->minimize.parameters)
+	{
+		for (i = 0; i < compiled_data->minimize.parameters->rnum; i++)
+			ccfree(*(ccv_cnnp_set_minimizer_for_parameter_t**)ccv_array_get(compiled_data->minimize.parameters, i));
+		ccv_array_clear(compiled_data->minimize.parameters);
+	}
+	if (!compiled_data->update_nodes)
+		return;
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
 	assert(symbolic_graph);
 	if (saved_aux_size > old_max_saved_aux_size)
@@ -2011,6 +2018,9 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	} else {
 		for (i = 0; i < parameter_size; i++)
 			if (_ccv_cnnp_set_minimizer_for_parameter(symbolic_graph, compiled_data, compiled_data->update_nodes, compiled_data->updated_parameters, compiled_data->saved_aux, parallel_count, minimizer, saved_aux_size, max_saved_aux_size, i))
+				flag = 1;
+		if (compiled_data->minimize.parameters)
+			if (_ccv_cnnp_apply_parameters_with_minimizer(model))
 				flag = 1;
 	}
 	if (flag)

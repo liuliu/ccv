@@ -471,8 +471,8 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
 		const float learn_rate = _net_learn_rate(epoch, t, epoch_end);
-		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, wd), 0, 0);
-		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, 0), MODEL_IO_LIST(ccv_cnnp_model_parameters(imagenet, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
+		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, wd), 1, 0, 0);
+		ccv_cnnp_model_set_minimizer(imagenet, _net_optimizer(learn_rate, batch_size * device_count, 0), 0, MODEL_IO_LIST(ccv_cnnp_model_parameters(imagenet, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		// Re-layout data for model fitting.

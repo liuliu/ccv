@@ -3197,10 +3197,11 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
  * compilation).
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
+ * @param reset Reset all previous states of minimizers. This only makes sense if both parameters and parameter_size is 0.
  * @param parameters The parameters to be applied the minimizer on. 0 meant for all.
  * @param parameter_size The number of parameter spans.
  */
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_io_t* const parameters, const int parameter_size);
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const int reset, const ccv_cnnp_model_io_t* const parameters, const int parameter_size);
 /**
  * Retrieve the default minimizer for the model. This is set either you call model compile or
  * ccv_cnnp_model_set_minimizer with no parameter spans.

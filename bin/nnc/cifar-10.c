@@ -246,9 +246,9 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		learn_rate = (i + 1) < 5 * epoch_end ? 0.4 * (i + 1) / (5 * epoch_end) : 0.4 * (30 * epoch_end - (i + 1)) / ((30 - 5) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.0001);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), 0.001, 0.9, 0);
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, 0);
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 1, 0, 0);
 		sgd.info.sgd.decay = 0;
-		ccv_cnnp_model_set_minimizer(cifar_10, sgd, MODEL_IO_LIST(ccv_cnnp_model_parameters(cifar_10, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, 0, MODEL_IO_LIST(ccv_cnnp_model_parameters(cifar_10, CCV_CNNP_PARAMETER_SELECT_BIAS, ALL_PARAMETERS)));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		// ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
@@ -332,7 +332,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 				}
 			}
 			ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
-			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.3lf GiB, %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size * device_count, (unsigned long)ccv_cnnp_model_memory_size(cifar_10) / 1024 / 1024.0 / 1024, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
+			printf("Epoch %03d (%d), %.3lf GiB, %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size * device_count, (unsigned long)ccv_cnnp_model_memory_size(cifar_10) / 1024 / 1024.0 / 1024, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
 			current_time = get_current_time();
 			// Reshuffle and reset cursor.
 			ccv_cnnp_dataframe_shuffle(raw_train_data);

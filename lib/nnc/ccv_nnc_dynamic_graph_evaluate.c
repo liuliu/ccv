@@ -87,7 +87,7 @@ static void _ccv_cnnp_model_apply_gradients(const ccv_nnc_cmd_t cmd, const ccv_n
 {
 	ccv_nnc_stateful_exec_t* const stateful_exec = (ccv_nnc_stateful_exec_t*)cmd.data;
 	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)stateful_exec->data;
-	ccv_cnnp_model_set_minimizer(model, minimizer, 0, 0);
+	ccv_cnnp_model_set_minimizer(model, minimizer, 0, 0, 0);
 	ccv_cnnp_model_apply_gradients(model, stream_context);
 }
 
