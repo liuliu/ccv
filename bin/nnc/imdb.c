@@ -434,6 +434,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = seq_vec[j], tvout[j * 2] = vocab_vec_grad[j], tvout[j * 2 + 1] = seq_vec_grad[j];
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, sigmoid, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, 0);
+		ccv_cnnp_model_set_minimizer(transformer, adam, 0, 0, 0);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec_grad[j], tvin[j * 2 + 1] = seq_vec_grad[j], tvout[j * 2] = vocab_vec[j], tvout[j * 2 + 1] = seq_vec[j];
 		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, 0);

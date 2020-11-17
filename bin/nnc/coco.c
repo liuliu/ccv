@@ -542,10 +542,12 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		for (i = 0; i < 5; i++)
 			fpn_out[i] = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_evaluate(graph, fpn, 0, TENSOR_VARIABLE_LIST(input), fpn_out, 5, 0, 0);
+		ccv_cnnp_model_set_minimizer(fpn, sgd, 0, 0, 0);
 		ccv_nnc_tensor_variable_t outputs[5];
 		for (i = 0; i < 5; i++)
 			outputs[i] = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_evaluate(graph, rpn, 0, fpn_out, 5, outputs, 5, 0, 0);
+		ccv_cnnp_model_set_minimizer(rpn, sgd, 0, 0, 0);
 		ccv_nnc_tensor_variable_t remap_out = ccv_nnc_tensor_variable_new(graph, train_gt->info);
 		int off = 0;
 		for (i = 0; i < 5; i++)

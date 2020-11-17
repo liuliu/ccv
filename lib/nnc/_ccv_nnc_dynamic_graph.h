@@ -46,7 +46,7 @@ enum {
 
 typedef struct {
 	ccv_nnc_cmd_vtab_t super;
-	void(*apply_gradients)(const ccv_nnc_cmd_t cmd, const ccv_nnc_cmd_t minimizer, ccv_nnc_stream_context_t* const stream_context);
+	void(*apply_gradients)(const ccv_nnc_cmd_t cmd, ccv_nnc_stream_context_t* const stream_context);
 } ccv_nnc_stateful_cmd_vtab_t;
 
 typedef struct { // Extra information kept per tensor symbol along with symbolic graph.

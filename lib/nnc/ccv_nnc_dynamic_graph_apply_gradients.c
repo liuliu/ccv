@@ -23,7 +23,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 			{
 				const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)stateful_exec->cmd.isa;
 				if (isa->apply_gradients)
-					isa->apply_gradients(stateful_exec->cmd, minimizer, stream_context);
+					isa->apply_gradients(stateful_exec->cmd, stream_context);
 				stateful_exec->did_backward_but_not_apply_gradients = 0;
 				if (stateful_exec->should_free)
 				{

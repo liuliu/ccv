@@ -784,6 +784,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		{
 			float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf((i + 1) / big_step), (float)((i + 1) / big_step) / (sqrtf(warmup_steps) * warmup_steps));
 			adam = CMD_ADAM_FORWARD((i + 1) / big_step, learn_rate, 0.9, 0.98, 0, 1e-9);
+			ccv_cnnp_model_set_minimizer(wmt, adam, 0, 0, 0);
 			for (j = 0; j < device_count; j++)
 				tvin[j * 2] = src_vocab_vec_grad[j], tvin[j * 2 + 1] = tgt_vocab_vec_grad[j], tvout[j * 2] = src_vocab_vec[j], tvout[j * 2 + 1] = tgt_vocab_vec[j];
 			ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);

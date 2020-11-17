@@ -414,6 +414,7 @@ static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = seq_vec[j], tvout[j * 2] = vocab_vec_grad[j], tvout[j * 2 + 1] = seq_vec_grad[j];
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
+		ccv_cnnp_model_set_minimizer(transformer, adam, 0, 0, 0);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec_grad[j], tvin[j * 2 + 1] = seq_vec_grad[j], tvout[j * 2] = vocab_vec[j], tvout[j * 2 + 1] = seq_vec[j];
 		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
@@ -773,6 +774,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = seq_vec[j], tvout[j * 2] = vocab_vec_grad[j], tvout[j * 2 + 1] = seq_vec_grad[j];
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, sigmoid, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
+		ccv_cnnp_model_set_minimizer(transformer, adam, 0, 0, 0);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec_grad[j], tvin[j * 2 + 1] = seq_vec_grad[j], tvout[j * 2] = vocab_vec[j], tvout[j * 2 + 1] = seq_vec[j];
 		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, stream);
