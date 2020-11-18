@@ -3952,7 +3952,8 @@ fi
 if [ -d "$cuda_prefix" ]; then
 	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDA "
 
-	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand "
+	# CUB requires stdc++, unfortunately.
+	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand -lstdc++ "
 
 	CPPFLAGS="$CPPFLAGS-I$cuda_prefix/include "
 
@@ -4041,7 +4042,6 @@ else
   :
 fi
 
-	# CUB requires stdc++, unfortunately.
 	as_ac_File=`$as_echo "ac_cv_file_$cuda_prefix/include/cub/cub.cuh" | $as_tr_sh`
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $cuda_prefix/include/cub/cub.cuh" >&5
 $as_echo_n "checking for $cuda_prefix/include/cub/cub.cuh... " >&6; }
@@ -4061,7 +4061,6 @@ eval ac_res=\$$as_ac_File
 $as_echo "$ac_res" >&6; }
 if eval test \"x\$"$as_ac_File"\" = x"yes"; then :
   DEFINE_MACROS="$DEFINE_MACROS-D USE_SYSTEM_CUB "
- MKLDFLAGS="$MKLDFLAGS-lstdc++ "
 
 fi
 

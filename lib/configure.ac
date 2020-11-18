@@ -159,7 +159,8 @@ AC_MSG_CHECKING([cuda])
 AC_ARG_WITH(cuda, [AS_HELP_STRING([--with-cuda], [CUDA installation [ARG=/usr/local/cuda]])], [cuda_prefix=$withval], [cuda_prefix="/usr/local/cuda"])
 if [[ -d "$cuda_prefix" ]]; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA "])
-	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand "])
+	# CUB requires stdc++, unfortunately.
+	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand -lstdc++ "])
 	AC_SUBST(CPPFLAGS, ["$CPPFLAGS-I$cuda_prefix/include "])
 	if [[ -d "$cuda_prefix/lib64" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
@@ -172,9 +173,8 @@ if [[ -d "$cuda_prefix" ]]; then
 		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDNN "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcudnn "])])
 	AX_CHECK_HEADER_PRESENCE([nccl.h],
 		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_NCCL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lnccl "])])
-	# CUB requires stdc++, unfortunately.
 	AC_CHECK_FILE($cuda_prefix/include/cub/cub.cuh,
-		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_SYSTEM_CUB "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lstdc++ "])])
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_SYSTEM_CUB "])])
 else
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])

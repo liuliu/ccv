@@ -8,5 +8,5 @@ DEFINE_MACROS := @DEFINE_MACROS@
 prefix := @prefix@
 exec_prefix := @exec_prefix@
 CFLAGS := @CPPFLAGS@ @MKCFLAGS@ -I@includedir@
-NVFLAGS := --use_fast_math -arch=sm_53 $(DEFINE_MACROS)
+NVFLAGS := --use_fast_math -arch=sm_53 -std=c++14 $(DEFINE_MACROS)
 LDFLAGS := @LDFLAGS@ -L@libdir@ @MKLDFLAGS@
