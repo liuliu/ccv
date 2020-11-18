@@ -174,7 +174,7 @@ if [[ -d "$cuda_prefix" ]]; then
 		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_NCCL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lnccl "])])
 	# CUB requires stdc++, unfortunately.
 	AC_CHECK_FILE($cuda_prefix/include/cub/cub.cuh,
-		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUB "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lstdc++ "])])
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_SYSTEM_CUB "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lstdc++ "])])
 else
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])

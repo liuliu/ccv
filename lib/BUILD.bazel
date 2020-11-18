@@ -337,6 +337,18 @@ cuda_library(
 )
 
 cuda_library(
+	name = "nnc_cuda_3rdparty_headers",
+	hdrs = glob(["nnc/3rdparty/**/*.h", "nnc/3rdparty/**/*.inl"]),
+	includes = [
+		"nnc"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		"@local_config_ccv//config:cuda_deps"
+	]
+)
+
+cuda_library(
 	name = "cmd_cuda",
 	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.cu"]),
 	includes = [
@@ -348,7 +360,8 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		":nnc_cuda_compat"
+		":nnc_cuda_compat",
+		":nnc_cuda_3rdparty_headers",
 	]
 )
 

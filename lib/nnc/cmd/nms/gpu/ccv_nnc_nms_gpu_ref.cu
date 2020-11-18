@@ -7,12 +7,19 @@ extern "C" {
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
 
-#if defined(HAVE_CUDA) && defined(HAVE_CUB)
+#ifdef HAVE_CUDA
 
+#ifdef USE_SYSTEM_CUB
 #include <cub/util_type.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/thread/thread_load.cuh>
 #include <cub/thread/thread_store.cuh>
+#else
+#include "3rdparty/cub/util_type.cuh.h"
+#include "3rdparty/cub/device/device_radix_sort.cuh.h"
+#include "3rdparty/cub/thread/thread_load.cuh.h"
+#include "3rdparty/cub/thread/thread_store.cuh.h"
+#endif
 
 struct float5 {
 	float v[5];
@@ -284,7 +291,7 @@ static int _ccv_nnc_nms_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_NMS_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#if defined(HAVE_CUDA) && defined(HAVE_CUB)
+#ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
@@ -295,7 +302,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_NMS_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_c
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_NMS_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#if defined(HAVE_CUDA) && defined(HAVE_CUB)
+#ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;

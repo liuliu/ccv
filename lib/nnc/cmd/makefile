@@ -4,8 +4,8 @@ include config.mk
 CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CMD_SRCS)))
 CUDA_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_CMD_SRCS)))
 
-CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
-NVFLAGS := -O3 -I"../../" $(NVFLAGS)
+CFLAGS := -O3 -Wall -I"../../" -I".." $(CFLAGS)
+NVFLAGS := -O3 -I"../../" -I".." $(NVFLAGS)
 
 .PHONY: release all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
 

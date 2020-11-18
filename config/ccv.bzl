@@ -40,8 +40,8 @@ def _ccv_setting_impl(repository_ctx):
         defines.append("HAVE_NCCL")
         linkopts.append("-lnccl")
         cuda_deps.append("@local_config_nccl//:nccl")
-    if repository_ctx.attr.have_cub:
-        defines.append("HAVE_CUB")
+    if repository_ctx.attr.use_system_cub:
+        defines.append("USE_SYSTEM_CUB")
     if repository_ctx.attr.use_openmp:
         defines.append("USE_OPENMP")
         copts.append("-fopenmp")
@@ -74,7 +74,7 @@ ccv_setting = repository_rule(
         "have_gsl": attr.bool(),
         "have_cudnn": attr.bool(),
         "have_nccl": attr.bool(),
-        "have_cub": attr.bool(),
+        "use_system_cub": attr.bool(),
         "use_openmp": attr.bool(),
         "use_dispatch": attr.bool()
     }

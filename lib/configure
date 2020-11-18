@@ -4060,7 +4060,7 @@ eval ac_res=\$$as_ac_File
 	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
 $as_echo "$ac_res" >&6; }
 if eval test \"x\$"$as_ac_File"\" = x"yes"; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUB "
+  DEFINE_MACROS="$DEFINE_MACROS-D USE_SYSTEM_CUB "
  MKLDFLAGS="$MKLDFLAGS-lstdc++ "
 
 fi
