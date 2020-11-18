@@ -2,18 +2,12 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
 
 cc_library(
-	name = "sqlite3",
-	srcs = [
-		"3rdparty/sqlite3/sqlite3.c"
-	],
+	name = "sqlite3_hdrs",
 	hdrs = [
 		"3rdparty/sqlite3/sqlite3.h"
 	],
-	local_defines = [
-		"SQLITE_THREADSAFE=0",
-		"SQLITE_OMIT_LOAD_EXTENSION"
-	]
 )
+
 
 cc_library(
 	name = "dSFMT",
@@ -233,7 +227,8 @@ cc_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":ccv_headers",
-		":sqlite3",
+		"@sqlite3//:SQLite3",
+		":sqlite3_hdrs",
 		":ccv_numeric"
 	]
 )
@@ -277,7 +272,8 @@ cc_library(
 	copts = ccv_default_copts(),
 	tags = ["swift_module=C_ccv"],
 	deps = [
-		":sqlite3",
+		"@sqlite3//:SQLite3",
+		":sqlite3_hdrs",
 		":dSFMT",
 		":kissfft",
 		":SFMT",
@@ -432,7 +428,8 @@ cc_library(
 		":ccv_resample",
 		":ccv_io",
 		":cmd",
-		":sqlite3",
+		"@sqlite3//:SQLite3",
+		":sqlite3_hdrs",
 		":khash",
 		":jemalloc",
 		":SFMT"

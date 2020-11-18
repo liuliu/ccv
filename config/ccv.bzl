@@ -1,4 +1,5 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def _ccv_setting_impl(repository_ctx):
     defines = []
@@ -95,8 +96,8 @@ def ccv_deps():
         git_repository,
         name = "bazel_skylib",
         remote = "https://github.com/bazelbuild/bazel-skylib.git",
-        commit = "836f1b2f564e8952a9b1ae72f66fc9fad8c8e6f1",
-        shallow_since = "1599514179 -0600"
+        commit = "528e4241345536c487cca8b11db138104bb3bd68",
+        shallow_since = "1601067301 +0200"
     )
 
     _maybe(
@@ -105,4 +106,11 @@ def ccv_deps():
         remote = "https://github.com/liuliu/rules_cuda.git",
         commit = "30a3c2f46168278803899487d7de200b714f5879",
         shallow_since = "1600578176 -0400"
+    )
+    _maybe(
+        http_archive,
+        name = "sqlite3",
+        sha256 = "b34f4c0c0eefad9a7e515c030c18702e477f4ef7d8ade6142bdab8011b487ac6",
+        urls = ["https://www.sqlite.org/2020/sqlite-amalgamation-3330000.zip"],
+        build_file = "@ccv//:external/sqlite3.BUILD"
     )
