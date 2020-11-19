@@ -3137,12 +3137,33 @@ enum {
 /**
  * This method checkpoint the given model. If the model is initialized, it will persist all parameters
  * to the given file path. If it is not initialized, this method will try to load tensors off the
- * disk.
+ * disk. Under the hood, it calls ccv_cnnp_model_write / ccv_cnnp_model_read when appropriate.
  * @param model The composed model.
  * @param fn The file name.
  * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
  */
 void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
+/**
+ * Write model's tensors to a SQLite database with a given name. Note that we specifically say
+ * "model's tensors" because it doesn't persist the model's structure. Hence, you shouldn't
+ * expect us to take a name to then have a fully functional model restored from there. You still
+ * need to construct the model. This method only write the tensors (weights and other internal ones)
+ * to disk.
+ * @param model The model.
+ * @param handle The SQLite handle.
+ * @param name The name to find the tensors related to the model in the database.
+ * @return CCV_IO_FINAL for success, otherwise error.
+ */
+int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name);
+/**
+ * Read model's tensors from a SQLite database with a given name.
+ * @param handle The SQLite handle.
+ * @param name The name to find the tensors related to the model in the database.
+ * @param model_out The model which you want to restore the tensors. It should have the same
+ *                  structure as the one in write to.
+ * @return CCV_IO_FINAL for success, otherwise error.
+ */
+int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_cnnp_model_t* const model_out);
 /**
  * Apply data parallel to the composed model. This method has to be called before we call either
  * evaluate or fit and after the model is compiled.
