@@ -269,6 +269,9 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	}
 	if (!tensor_variable->alias_index_ref)
 	{
+		// If we haven't allocated tensor_variable, we cannot allocate them now (because no shape specified), return 0.
+		if (ccv_nnc_is_tensor_auto(tensor_variable->info))
+			return 0;
 		void* ptr = 0;
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
 			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
@@ -282,6 +285,9 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	assert(!variable_to->alias_index_ref);
 	if (!variable_to->tensor_view)
 	{
+		// If we haven't allocated variable_to, we cannot allocate them now (because no shape specified), return 0.
+		if (ccv_nnc_is_tensor_auto(variable_to->info))
+			return 0;
 		void* ptr = 0;
 		assert(variable_to->info.type == tensor_variable->info.type);
 		if (CCV_TENSOR_GET_MEMORY(variable_to->info.type) == CCV_TENSOR_GPU_MEMORY)
