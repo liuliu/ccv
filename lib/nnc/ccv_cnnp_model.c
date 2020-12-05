@@ -1649,12 +1649,13 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	{
 		assert(compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS && "shouldn't pass disable_outgrad to ccv_cnnp_model_evaluate before if you plan to compute outgrad");
 		for (i = 0; i < outgrad_size_per_p; i++)
-		{
-			const ccv_nnc_tensor_symbol_t outgrad = compiled_data->outgrads[i];
-			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, outgrad, outgrads[i]);
-			for (j = 1; j < parallel_count; j++)
-				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, outgrad, j), outgrads[i + outgrad_size_per_p * j]);
-		}
+			if (outgrads[i])
+			{
+				const ccv_nnc_tensor_symbol_t outgrad = compiled_data->outgrads[i];
+				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, outgrad, outgrads[i]);
+				for (j = 1; j < parallel_count; j++)
+					ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, outgrad, j), outgrads[i + outgrad_size_per_p * j]);
+			}
 	} else {
 		assert(compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES ||
 			compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS);

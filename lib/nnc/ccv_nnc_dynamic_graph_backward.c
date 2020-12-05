@@ -200,6 +200,31 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	int freeable_size = 0;
 	ccv_nnc_tensor_variable_t freeables[output_size];
 	ccv_array_clear(destinations);
+	int max_input_size = 1;
+	int max_output_size = 1;
+	for (i = 0; i < sources->rnum; i++)
+	{
+		const ccv_nnc_graph_exec_symbol_t source = *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, i);
+		int input_size; int output_size;
+		ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, source, 0, &input_size, 0, &output_size);
+		max_input_size = ccv_max(input_size, max_input_size);
+		max_output_size = ccv_max(output_size, max_output_size);
+	}
+	for (i = 0; i < output_size; i++)
+	{
+		const ccv_nnc_tensor_symbol_t symbol = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, input_symbols[i]);
+		ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->tape, symbol);
+		int input_size; int output_size;
+		ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, destination, 0, &input_size, 0, &output_size);
+		max_input_size = ccv_max(input_size, max_input_size);
+		max_output_size = ccv_max(output_size, max_output_size);
+	}
+	const int max_input_bitmask_size = ((max_input_size + 63) >> 6);
+	const int max_output_bitmask_size =  ((max_output_size + 63) >> 6);
+	ccv_nnc_tensor_symbol_t temp_input_symbols[max_input_size];
+	ccv_nnc_tensor_symbol_t temp_output_symbols[max_output_size];
+	uint64_t temp_input_bitmasks[max_input_bitmask_size];
+	uint64_t temp_output_bitmasks[max_output_bitmask_size];
 	// Bind dt tensor.
 	for (i = 0; i < output_size; i++)
 	{
@@ -242,6 +267,59 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 					.tensor = tensor
 				};
 				ccv_array_push(tensor_binds, &dt_bind);
+			}
+		} else {
+			// Remove this symbol if it is possible, since we don't have any use of it.
+			// This won't cover cases where we need to merge them together (hence, the cmd will be sum), so it is the best guess.
+			const int* inputs; int input_size;
+			const int* outputs; int output_size;
+			ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, destination, &inputs, &input_size, &outputs, &output_size);
+			ccv_nnc_tensor_symbol_t* input_symbols = temp_input_symbols;
+			ccv_nnc_tensor_symbol_t* output_symbols = temp_output_symbols;
+			uint64_t* input_bitmasks = temp_input_bitmasks;
+			uint64_t* output_bitmasks = temp_output_bitmasks;
+			memset(input_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((input_size + 63) >> 6)));
+			memset(output_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((output_size + 63) >> 6)));
+			const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, destination);
+			// Now, check to see if we can remove this symbol from this source.
+			for (k = 0; k < input_size; k++)
+				if (inputs[k] >= 0)
+					input_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
+			int flag = 0;
+			for (k = 0; k < output_size; k++)
+				if (outputs[k] >= 0 && outputs[k] != symbol.d)
+				{
+					output_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
+					flag = 1;
+				}
+			// If we can omit this output (or there is no output at all).
+			if (!flag || ccv_nnc_cmd_bitmask(cmd, input_size, output_size, input_bitmasks, (input_size + 63) >> 6, output_bitmasks, (output_size + 63) >> 6))
+			{
+				// Set the new outputs by omitting the one.
+				for (k = 0; k < input_size; k++)
+					input_symbols[k] = (ccv_nnc_tensor_symbol_t){
+						.d = inputs[k],
+						.graph = inputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
+					};
+				for (k = 0; k < output_size; k++)
+					if (outputs[k] != symbol.d)
+						output_symbols[k] = (ccv_nnc_tensor_symbol_t){
+							.d = outputs[k],
+							.graph = outputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
+						};
+					else
+						output_symbols[k] = (ccv_nnc_tensor_symbol_t){
+							.d = CCV_NNC_NO_TENSOR_SYMBOL,
+							.graph = 0,
+						};
+				ccv_nnc_graph_exec_symbol_set_io(dynamic_graph->tape, destination, input_symbols, input_size, output_symbols, output_size);
+				// If there is no output, and this is not custom (custom may have side effect,
+				// whereas the normal ops are side-effect free), set this symbol to be a noop.
+				// TODO: This could be other cases regarding CCV_NNC_GRAPH_BACKWARD.
+				if (!flag &&
+					cmd.cmd != CCV_NNC_CUSTOM_FORWARD &&
+					cmd.cmd != CCV_NNC_CUSTOM_BACKWARD)
+					ccv_nnc_graph_exec_symbol_set(dynamic_graph->tape, destination, ccv_nnc_cmd(CCV_NNC_NOOP, 0, ccv_nnc_cmd_auto, 0));
 			}
 		}
 		ccv_array_push(destinations, &destination);
@@ -286,22 +364,10 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			&graph, &tensor_arena, &exec_arena);
 		ccv_array_free(sources);
 	} else {
-		int max_input_size = 1;
-		int max_output_size = 1;
-		for (i = 0; i < sources->rnum; i++)
-		{
-			const ccv_nnc_graph_exec_symbol_t source = *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, i);
-			int input_size; int output_size;
-			ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, source, 0, &input_size, 0, &output_size);
-			max_input_size = ccv_max(input_size, max_input_size);
-			max_output_size = ccv_max(output_size, max_output_size);
-		}
-		const int max_input_bitmask_size = ((max_input_size + 63) >> 6);
-		const int max_output_bitmask_size =  ((max_output_size + 63) >> 6);
-		ccv_nnc_tensor_symbol_t input_symbols[max_input_size];
-		ccv_nnc_tensor_symbol_t output_symbols[max_output_size];
-		uint64_t input_bitmasks[max_input_bitmask_size];
-		uint64_t output_bitmasks[max_output_bitmask_size];
+		ccv_nnc_tensor_symbol_t* input_symbols = temp_input_symbols;
+		ccv_nnc_tensor_symbol_t* output_symbols = temp_output_symbols;
+		uint64_t* input_bitmasks = temp_input_bitmasks;
+		uint64_t* output_bitmasks = temp_output_bitmasks;
 		// Remove these if it is not needed by the cmd, for example, if absence assumed to be 1.
 		for (i = 0; i < f_variable_size; i++)
 		{
