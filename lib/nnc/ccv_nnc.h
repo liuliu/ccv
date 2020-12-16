@@ -2529,23 +2529,23 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const da
  */
 CCV_WARN_UNUSED(const char*) ccv_cnnp_dataframe_column_name(ccv_cnnp_dataframe_t* const dataframe, const int column_idx);
 /**
- * A reduce function that takes multiple rows of one column, and reduce to one row.
+ * A sampling function that takes multiple rows of one column, and sample to one row.
  */
-typedef void (*ccv_cnnp_column_data_reduce_f)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+typedef void (*ccv_cnnp_column_data_sample_f)(void* const* const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
- * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
- * one specific column. This will also reduce the multi-column dataframe down to 1 column
- * by selecting the one column to reduce.
- * @param dataframe The dataframe that is about to be reduced.
- * @param reduce The reduce function used to reduce n rows into 1.
+ * Sample a dataframe by batch size. Thus, n rows are sampled to 1 row per sample function on
+ * one specific column. This will also sample the multi-column dataframe down to 1 column
+ * by selecting the one column to sample.
+ * @param dataframe The dataframe that is about to be sampled.
+ * @param sample The sample function used to sample n rows into 1.
  * @param data_deinit The deinit function will be used to destroy the derived data.
- * @param column_idx The column we selected to reduce.
- * @param batch_size How many rows will be reduced to 1 row from the original data.
- * @param context The context that can be used in reduce function.
+ * @param column_idx The column we selected to sample.
+ * @param batch_size How many rows will be sampled to 1 row from the original data.
+ * @param context The context that can be used in sample function.
  * @param context_deinit The deinit function will be used to destroy the context.
- * @return The reduced dataframe.
+ * @return The sampled dataframe.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_sample_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_sample_f sample, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
  * Extract a value out of a struct. Assuming the data points to a struct. This method extract
  * n-offset value of that struct. For example, if you have struct { ccv_nnc_tensor_t* a; ccv_nnc_tensor_t* b; } S;
@@ -2797,7 +2797,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_squared(ccv_cnnp_dataframe_t* const 
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dataframe, const int* const vec_idxs, const int vec_idx_size, const int* len_idxs, const int len_idx_size, const char* name);
 /**
- * Batch multiple tensors in a column into one tensor. This method can take multiple columns, which
+ * Combine multiple tensors in a column into one tensor. This method can take multiple columns, which
  * will result a tuple of tensors. Each tensor in the tuple is a batched one from a given column.
  * @param dataframe The dataframe contains the columns of tensors to be batched.
  * @param column_idxs The columns that contain the tensors.
@@ -2810,7 +2810,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_truncate(ccv_cnnp_dataframe_t* const dat
  * @param format The result format of the tensor. We support simply transformation NCHW <=> NHWC with the source tensor.
  * @return The newly created dataframe with the 0-th column is the tuple of batched tensors.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_batching_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const int batch_count, const int group_count, const int format);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_combine_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const int batch_count, const int group_count, const int format);
 
 /** @} */
 

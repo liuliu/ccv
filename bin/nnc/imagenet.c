@@ -394,7 +394,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	const float eta = 0.1;
 	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1 - eta + eta / 1000, eta / 1000, CCV_TRAIN_DT, CCV_TENSOR_FORMAT_NCHW, 0);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_fp16_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_combine_new(train_data, COLUMN_ID_LIST(image_jitter_fp16_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int t, i, j;
 	int train_device_columns[device_count * 2 + 1];
 	for (i = 0; i < device_count; i++)
@@ -431,7 +431,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	const int test_image_in_idx = ccv_cnnp_dataframe_make_tuple(test_data, COLUMN_ID_LIST(test_image_idx), 0);
 	const int test_image_out_fp16_idx = ccv_cnnp_dataframe_cmd_exec(test_data, test_image_in_idx, CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &fp16_params, 1, 0, 0);
 	const int test_image_fp16_idx = ccv_cnnp_dataframe_extract_tuple(test_data, test_image_out_fp16_idx, 0, 0);
-	ccv_cnnp_dataframe_t* const batch_test_data = ccv_cnnp_dataframe_batching_new(test_data, COLUMN_ID_LIST(test_image_fp16_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_test_data = ccv_cnnp_dataframe_combine_new(test_data, COLUMN_ID_LIST(test_image_fp16_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int test_device_columns[device_count * 2];
 	for (i = 0; i < device_count; i++)
 	{

@@ -199,14 +199,14 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	const int jitter_images_out_16f = ccv_cnnp_dataframe_cmd_exec(raw_train_data, jitter_images_in, CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &images_16f_params, 1, 0, 0);
 	const int jitter_images_16f = ccv_cnnp_dataframe_extract_tuple(raw_train_data, jitter_images_out_16f, 0, 0);
 	const int one_hot = ccv_cnnp_dataframe_one_hot(raw_train_data, 0, offsetof(ccv_categorized_t, c), 10, 1, 0, CCV_16F, CCV_TENSOR_FORMAT_NCHW, 0);
-	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(raw_train_data, COLUMN_ID_LIST(jitter_images_16f, one_hot), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_combine_new(raw_train_data, COLUMN_ID_LIST(jitter_images_16f, one_hot), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	ccv_cnnp_dataframe_shuffle(raw_train_data);
 	ccv_cnnp_dataframe_t* const raw_test_data = ccv_cnnp_dataframe_from_array_new(test_set);
 	const int test_images = ccv_cnnp_dataframe_extract_value(raw_test_data, 0, offsetof(ccv_categorized_t, matrix), 0);
 	const int test_images_in = ccv_cnnp_dataframe_make_tuple(raw_test_data, COLUMN_ID_LIST(test_images), 0);
 	const int test_images_out_16f = ccv_cnnp_dataframe_cmd_exec(raw_test_data, test_images_in, CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &images_16f_params, 1, 0, 0);
 	const int test_images_16f = ccv_cnnp_dataframe_extract_tuple(raw_test_data, test_images_out_16f, 0, 0);
-	ccv_cnnp_dataframe_t* const batch_test_data = ccv_cnnp_dataframe_batching_new(raw_test_data, COLUMN_ID_LIST(test_images_16f), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_test_data = ccv_cnnp_dataframe_combine_new(raw_test_data, COLUMN_ID_LIST(test_images_16f), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int train_device_columns[device_count * 2];
 	int test_device_columns[device_count * 2];
 	for (i = 0; i < device_count; i++)

@@ -452,7 +452,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 	const int src_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, src_mask), 0);
 	const int tgt_mask_idx = ccv_cnnp_dataframe_extract_value(train_data, 0, offsetof(ccv_nnc_seq2seq_t, tgt_mask), 0);
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
-	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(src_idx, tgt_idx, out_idx, src_mask_idx, tgt_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batched_data = ccv_cnnp_dataframe_combine_new(train_data, COLUMN_ID_LIST(src_idx, tgt_idx, out_idx, src_mask_idx, tgt_mask_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int mask_seq_len_batched[device_count * 2];
 	int seq_len_batched[device_count * 3];
 	int data_batched[device_count * 3];

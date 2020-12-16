@@ -197,7 +197,7 @@ typedef struct {
 	ccv_cnnp_model_t* fpn;
 	ccv_cnnp_model_t* rpn;
 	sfmt_t sfmt;
-} ccv_nnc_rpn_data_batching_t;
+} ccv_nnc_rpn_data_combine_t;
 
 typedef struct {
 	struct {
@@ -277,7 +277,7 @@ static void _rpn_rect_missing_gt(ccv_nnc_rpn_rect_t* const rects, const int rect
 }
 
 // Batching to NCHW format.
-static void _rpn_data_batching(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _rpn_data_combine(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	int max_rows = 0;
@@ -293,7 +293,7 @@ static void _rpn_data_batching(void* const* const input_data, const int input_si
 		ccv_array_t* const bboxes = annotation->bboxes;
 		max_bbox_size = ccv_max(max_bbox_size, bboxes->rnum);
 	}
-	ccv_nnc_rpn_data_batching_t* const rpn_data = (ccv_nnc_rpn_data_batching_t*)context;
+	ccv_nnc_rpn_data_combine_t* const rpn_data = (ccv_nnc_rpn_data_combine_t*)context;
 	max_rows = ccv_min(max_rows, rpn_data->max_window);
 	max_cols = ccv_min(max_cols, rpn_data->max_window);
 	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NCHW(32F, rpn_data->batch_count, 3, max_rows, max_cols);
@@ -491,7 +491,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter, 0);
 	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(0, read_image_idx, image_jitter_idx), 0);
-	ccv_nnc_rpn_data_batching_t rpn_data = {
+	ccv_nnc_rpn_data_combine_t rpn_data = {
 		.batch_count = batch_size,
 		.select_count = 256,
 		.max_window = 1280,
@@ -513,7 +513,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	ccv_cnnp_model_free(resnet50_v1d);
 	ccv_array_free(resnet50_v1d_bones);
 
-	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(train_data, _rpn_data_batching, _rpn_data_deinit, tuple_idx, rpn_data.batch_count, &rpn_data, 0);
+	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_sample_new(train_data, _rpn_data_combine, _rpn_data_deinit, tuple_idx, rpn_data.batch_count, &rpn_data, 0);
 	const int train_image_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 0, 1, 0, 0);
 	const int train_gt_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 1, 1, 0, 0);
 	const int train_select_column = ccv_cnnp_dataframe_copy_to_gpu(batch_data, 0, 2, 1, 0, 0);

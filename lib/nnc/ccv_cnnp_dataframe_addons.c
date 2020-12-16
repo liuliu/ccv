@@ -697,7 +697,7 @@ typedef struct {
 	int group_count;
 } ccv_cnnp_batch_context_t;
 
-static void _ccv_cnnp_batching_new(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_combine_new(void* const* const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)context;
 	const int output_tuple_size = batch->tuple.size;
@@ -826,7 +826,7 @@ static void _ccv_cnnp_batching_new(void* const* const input_data, const int inpu
 		}
 }
 
-static void _ccv_cnnp_batching_deinit(void* const self, void* const context)
+static void _ccv_cnnp_combine_deinit(void* const self, void* const context)
 {
 	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)context;
 	ccv_nnc_tensor_t** const tensors = (ccv_nnc_tensor_t**)self;
@@ -837,7 +837,7 @@ static void _ccv_cnnp_batching_deinit(void* const self, void* const context)
 	ccfree(tensors);
 }
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_batching_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const int batch_count, const int group_count, const int format)
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_combine_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const int batch_count, const int group_count, const int format)
 {
 	assert(format == CCV_TENSOR_FORMAT_NCHW || format == CCV_TENSOR_FORMAT_NHWC);
 	assert(column_idx_size >= 1);
@@ -849,5 +849,5 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_batching_new(ccv_cnnp_dataframe_t* cons
 	batch->format = format;
 	batch->batch_count = batch_count;
 	batch->group_count = group_count;
-	return ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_cnnp_batching_new, _ccv_cnnp_batching_deinit, derived, batch_count * group_count, batch, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_sample_new(dataframe, _ccv_cnnp_combine_new, _ccv_cnnp_combine_deinit, derived, batch_count * group_count, batch, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
