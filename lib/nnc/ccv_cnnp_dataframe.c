@@ -172,6 +172,7 @@ struct ccv_cnnp_dataframe_iter_s {
 	int idx;
 	int prefetch_head;
 	int prefetch_tail;
+	int column_size;
 	int column_idx_size;
 	int fetched_size; // The size of fetched data.
 	ccv_cnnp_dataframe_t* dataframe;
@@ -196,6 +197,9 @@ ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* con
 	ccv_cnnp_dataframe_iter_t* const iter = (ccv_cnnp_dataframe_iter_t*)cccalloc(1, sizeof(ccv_cnnp_dataframe_iter_t) + sizeof(ccv_cnnp_dataframe_data_item_t) * column_size + sizeof(void*) * (column_idx_size - 1) + sizeof(int) * column_idx_size);
 	iter->dataframe = dataframe;
 	iter->prefetch_tail = -1;
+	// After created the iterator, we may continue add more derived columns.
+	// Hence, keep the number of existing columns for its cached_data and column_ctx tracking.
+	iter->column_size = column_size;
 	iter->column_idx_size = column_idx_size;
 	iter->column_idxs = (int*)(iter->cached_data + column_size);
 	memcpy(iter->column_idxs, column_idxs, sizeof(int) * column_idx_size);
@@ -331,10 +335,11 @@ static ccv_cnnp_dataframe_column_ctx_t _ccv_cnnp_child_column_ctx_for_stream_typ
 		int ret = 0;
 		khiter_t k = kh_put(iter_ctx, column_ctx, (uint64_t)(uintptr_t)stream_context, &ret);
 		assert(ret >= 0);
-		const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+		const int column_size = iter->column_size;
 		ccv_cnnp_dataframe_column_ctx_t* const ctx = (ret == 0) ? kh_val(column_ctx, k) : cccalloc(column_size, sizeof(ccv_cnnp_dataframe_column_ctx_t));
 		if (ret != 0)
 			kh_val(column_ctx, k) = ctx;
+		assert(column_idx < column_size);
 		if (!ctx[column_idx].stream_context)
 			ctx[column_idx].stream_context = ccv_nnc_stream_context_new(stream_type);
 		if (!ctx[column_idx].signal)
@@ -660,7 +665,7 @@ int ccv_cnnp_dataframe_iter_set_cursor(ccv_cnnp_dataframe_iter_t* const iter, co
 void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 {
 	ccv_cnnp_dataframe_t* const dataframe = iter->dataframe;
-	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+	const int column_size = iter->column_size;
 	int i;
 	// Push existing data back to reusable state (note, these may not be reused immediately because they may be on a different stream context).
 	for (i = 0; i < column_size; i++)
