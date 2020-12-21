@@ -129,4 +129,30 @@ TEST_CASE("set tensor symbol shape after computation specified")
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 }
 
+TEST_CASE("query connectivity from one exec symbol to another")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b");
+	ccv_nnc_graph_exec_symbol_t log1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(a), TENSOR_SYMBOL_LIST(b), "log1");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "c");
+	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "d");
+	ccv_nnc_graph_exec_symbol_t log2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(d), "log2");
+	ccv_nnc_tensor_symbol_t e = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "e");
+	ccv_nnc_graph_exec_symbol_t sum1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a, c), TENSOR_SYMBOL_LIST(e), "sum1");
+	ccv_nnc_tensor_symbol_t f = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "f");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(f), "log3");
+	ccv_nnc_tensor_symbol_t g = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "g");
+	ccv_nnc_graph_exec_symbol_t sum2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(b, f), TENSOR_SYMBOL_LIST(g), "sum2");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	uint64_t bitmask = 1;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum1, log1, log2, log1), GRAPH_EXEC_SYMBOL_LIST(sum2), &bitmask);
+	REQUIRE(bitmask == 14, "log1 and log2 should be sources for sum2, not sum1");
+	bitmask = 0;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum1, log1, log2), GRAPH_EXEC_SYMBOL_LIST(sum1), &bitmask);
+	REQUIRE(bitmask == 1, "log1 and log2 are not sources for sum1");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 #include "case_main.h"

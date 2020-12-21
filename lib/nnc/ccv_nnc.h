@@ -1449,6 +1449,16 @@ void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, c
  */
 CCV_WARN_UNUSED(uint64_t) ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_arena);
 /**
+ * Query whether a set of sources are the ancestors to a set of destination nodes.
+ * @param graph The symbolic graph.
+ * @param sources The exec sources to check whether they can reach some of the destinations.
+ * @param source_size How many sources in the source list.
+ * @param destinations The exec destinations to check whether sources can reach.
+ * @param destination_size How many destinations in the destination list.
+ * @param bitmask Bit return value, each bit represents a source, and 1 meant it can reach some of the destinations.
+ */
+void ccv_nnc_symbolic_graph_sources_to_destinations(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, uint64_t* const bitmask);
+/**
  * Re-init the tensor arena with updated symbolic graph. This won't work if the symbolic graph requires
  * larger tensors than what's available. Use this method properly, you can avoid re-compile a graph
  * just because some tensor shape changed.
@@ -2272,6 +2282,16 @@ typedef void (*ccv_nnc_tensor_variable_destructor_f)(ccv_nnc_dynamic_graph_t* co
  * @param context The context to be passed along to the callback function.
  **/
 void ccv_nnc_tensor_variable_destructor_hook(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_variable_destructor_f func, void* const context);
+/**
+ * Check given tensor variables whether have effects to another set of tensor variables.
+ * @param graph The dynamic graph.
+ * @param source_variables The tensor variables to check whether it has effect to another set of variables.
+ * @param source_variable_size The size of source tensor variables.
+ * @param destination_variables Whether the source variables has effect to this list of variables.
+ * @param destination_variable_size The size of destination tensor variables.
+ * @param bitmask Bit return value, each bit represents a source tensor variable, and 1 meant it can reach some of the destinations.
+ */
+void ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t* const source_variables, const int source_variable_size, const ccv_nnc_tensor_variable_t* const destination_variables, const int destination_variable_size, uint64_t* const bitmask);
 /**
  * Execute a command with given tensor variables, the output is in the output tensor variables.
  * @param graph The dynamic graph.

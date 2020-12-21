@@ -1082,6 +1082,80 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 	_ccv_nnc_tensor_variable_free(graph, tensor_variable, 1);
 }
 
+void ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t* const source_variables, const int source_variable_size, const ccv_nnc_tensor_variable_t* const destination_variables, const int destination_variable_size, uint64_t* const bitmask)
+{
+	int i, j;
+	ccv_array_t* const sources_destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), source_variable_size + destination_variable_size, 0);
+	for (i = 0; i < source_variable_size; i++)
+	{
+		if (source_variables[i]->symbol.d < 0)
+			continue;
+		ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, source_variables[i]->symbol.d);
+		if (bind->destinations && bind->destinations->rnum > 0)
+			for (j = 0; j < bind->destinations->rnum; j++)
+			{
+				// It is ok to have duplicate symbols.
+				const int d = *(int*)ccv_array_get(bind->destinations, j);
+				ccv_nnc_graph_exec_symbol_t symbol = {
+					.d = d,
+					.graph = graph->tape
+				};
+				ccv_array_push(sources_destinations, &symbol);
+			}
+	}
+	const int source_size = sources_destinations->rnum;
+	for (i = 0; i < destination_variable_size; i++)
+	{
+		if (destination_variables[i]->symbol.d < 0)
+			continue;
+		ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, destination_variables[i]->symbol.d);
+		if (bind->sources && bind->sources->rnum > 0)
+			for (j = 0; j < bind->sources->rnum; j++)
+			{
+				// It is ok to have duplicate symbols.
+				const int d = *(int*)ccv_array_get(bind->sources, j);
+				ccv_nnc_graph_exec_symbol_t symbol = {
+					.d = d,
+					.graph = graph->tape
+				};
+				ccv_array_push(sources_destinations, &symbol);
+			}
+	}
+	const int destination_size = sources_destinations->rnum - source_size;
+	if (source_size == 0 || destination_size == 0)
+	{
+		ccv_array_free(sources_destinations);
+		return;
+	}
+	const int bitmask_size = ((source_size + 63) >> 6);
+	assert(bitmask_size < 256);
+	uint64_t exec_bitmask[bitmask_size];
+	ccv_nnc_symbolic_graph_sources_to_destinations(graph->tape, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources_destinations, 0), source_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources_destinations, source_size), destination_size, exec_bitmask);
+	int k = 0;
+	for (i = 0; i < source_variable_size; i++)
+	{
+		if (source_variables[i]->symbol.d < 0)
+		{
+			bitmask[i >> 6] &= ~((uint64_t)1 << (i & 63));
+			continue;
+		}
+		ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, source_variables[i]->symbol.d);
+		int flag = 0;
+		if (bind->destinations && bind->destinations->rnum > 0)
+		{
+			assert(k <= source_size - bind->destinations->rnum);
+			for (j = 0; !flag && j < bind->destinations->rnum; j++)
+				flag = (((uint64_t)1 << ((k + j) & 63)) & exec_bitmask[(k + j) >> 6]);
+			k += bind->destinations->rnum;
+		}
+		if (flag)
+			bitmask[i >> 6] |= ((uint64_t)1 << (i & 63));
+		else
+			bitmask[i >> 6] &= ~((uint64_t)1 << (i & 63));
+	}
+	ccv_array_free(sources_destinations);
+}
+
 int ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph, const int type)
 {
 	return ccv_nnc_symbolic_graph_active_symbol_count(graph->tape, type);

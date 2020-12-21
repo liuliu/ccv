@@ -780,4 +780,35 @@ TEST_CASE("parallel exec with a stream, focus on potential memory issues")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("query whether a tensor variable depends on another")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(b), 0, 0);
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, c)->data.f32[0] = 9;
+	ccv_nnc_tensor_variable_t d = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.4), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(c), TENSOR_VARIABLE_LIST(d), 0, 0);
+	ccv_nnc_tensor_variable_t e = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(d), TENSOR_VARIABLE_LIST(e), 0, 0);
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a, c), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_tensor_variable_t g = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(e, b), TENSOR_VARIABLE_LIST(g), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, f)->data.f32[0], 10 + 9, 1e-5, "should match the result");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, g)->data.f32[0], 10 * 0.5 + 9 * 0.4 * 2, 1e-5, "should match the result");
+	uint64_t bitmask = 1;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(a, b, f), TENSOR_VARIABLE_LIST(g), &bitmask);
+	REQUIRE(bitmask == 3, "a and b should be ancestors to g");
+	bitmask = 8;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(a, e, c, f), TENSOR_VARIABLE_LIST(g), &bitmask);
+	REQUIRE(bitmask == 7, "a, e and c should be ancestors to g");
+	bitmask = 2;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(a, e, c), TENSOR_VARIABLE_LIST(f), &bitmask);
+	REQUIRE(bitmask == 5, "a and c should be ancestors to f");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"

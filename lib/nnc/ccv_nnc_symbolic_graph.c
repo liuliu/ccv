@@ -1952,3 +1952,85 @@ void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, c
 	ccv_nnc_symbolic_graph_symbol_infer(graph, visit, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0, 0, tensor_symbol_info, exec_symbol_info);
 	ccv_nnc_graph_visit_free(visit);
 }
+
+void ccv_nnc_symbolic_graph_sources_to_destinations(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, uint64_t* const bitmask)
+{
+	assert(sources && source_size);
+	assert(destinations && destination_size);
+	int i;
+	for (i = 0; i < source_size; i++)
+	{
+		assert(sources[i].graph == graph);
+		assert(sources[i].d >= 0 && sources[i].d < graph->exec_symbol_info->rnum);
+	}
+	for (i = 0; i < destination_size; i++)
+	{
+		assert(destinations[i].graph == graph);
+		assert(destinations[i].d >= 0 && destinations[i].d < graph->exec_symbol_info->rnum);
+	}
+	ccv_sparse_matrix_t* const exec_dep = ccv_sparse_matrix_new(graph->exec_symbol_info->rnum, graph->exec_symbol_info->rnum, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_array_t* const ws = ccv_array_new(sizeof(int), source_size, 0);
+	for (i = 0; i < source_size; i++)
+		ccv_array_push(ws, &sources[i].d);
+	int* buf = (int*)ccmalloc(sizeof(int) * graph->exec_symbol_info->rnum);
+	int buf_size;
+#define for_block(x, val) \
+	do { \
+		if (((uint8_t*)val)[0] != 0) \
+			buf[buf_size++] = x; \
+	} while (0)
+	const uint8_t one = 1;
+	for (i = 0; i < ws->rnum; i++)
+	{
+		int j;
+		const int d = *(int*)ccv_array_get(ws, i);
+		int flag = 0;
+		for (j = 0; !flag && j < destination_size; j++)
+			flag = (d == destinations[j].d);
+		if (flag)
+			continue;
+		buf_size = 0; /* save all its parent deps to this buffer */
+		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, d);
+		if (vector)
+			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
+		ccv_nnc_graph_exec_symbol_info_t* const info = ccv_array_get(graph->exec_symbol_info, d);
+		if (info->outgoings && info->outgoings->rnum > 0)
+		{
+			ccv_array_t* const outgoings = info->outgoings;
+			for (j = 0; j < outgoings->rnum; j++)
+			{
+				const int outgoing_d = *(int*)ccv_array_get(outgoings, j);
+				int k;
+				int flag = 0;
+				for (k = 0; !flag && k < destination_size; k++)
+					flag = (outgoing_d == destinations[k].d);
+				if (!flag)
+					ccv_array_add_unique_int(ws, outgoing_d);
+				ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, d, &one);
+				for (k = 0; k < buf_size; k++)
+					ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, buf[k], &one);
+			}
+		}
+	}
+	ccfree(buf);
+	ccv_array_free(ws);
+	// Use exec_dep to fill the bitmask
+	for (i = 0; i < source_size; i++)
+	{
+		const int d = sources[i].d;
+		int j;
+		int flag = 0;
+		for (j = 0; !flag && j < destination_size; j++)
+			if (d == destinations[j].d) {
+				flag = 1;
+			} else {
+				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, destinations[j].d, d);
+				flag = (cell.u8 && cell.u8[0] != 0);
+			}
+		if (flag)
+			bitmask[i >> 6] |= ((uint64_t)1 << (i & 63));
+		else
+			bitmask[i >> 6] &= ~((uint64_t)1 << (i & 63));
+	}
+	ccv_matrix_free(exec_dep);
+}
