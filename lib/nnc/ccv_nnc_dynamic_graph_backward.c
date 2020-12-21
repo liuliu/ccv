@@ -345,42 +345,68 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
 	// TODO: Should apply simplification right after the backward pass generated.
-	if (df_optionals)
+	// Remove these if it is not needed by the cmd, for example, if absence assumed to be 1.
+	for (i = 0; i < f_variable_size; i++)
 	{
-		// If provided df variable, no need to set to all ones.
-		for (i = 0; i < f_variable_size; i++)
+		if (df_optionals && df_optionals[i])
 		{
 			const ccv_nnc_tensor_bind_t df_bind = {
 				.symbol = df_symbols[i],
 				.tensor = ccv_nnc_tensor_from_variable(dynamic_graph, df_optionals[i], stream_context)
 			};
 			ccv_array_push(tensor_binds, &df_bind);
+			continue;
 		}
-		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
-			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
-			0, 0,
-			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
-			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
-			&graph, &tensor_arena, &exec_arena);
-		ccv_array_free(sources);
-	} else {
-		ccv_nnc_tensor_symbol_t* input_symbols = temp_input_symbols;
-		ccv_nnc_tensor_symbol_t* output_symbols = temp_output_symbols;
-		uint64_t* input_bitmasks = temp_input_bitmasks;
-		uint64_t* output_bitmasks = temp_output_bitmasks;
-		// Remove these if it is not needed by the cmd, for example, if absence assumed to be 1.
-		for (i = 0; i < f_variable_size; i++)
+		if (!df_symbols[i].graph) // Skip.
+			continue;
+		int no_set = 0; // If we cannot find the df_symbols in all sources, we cannot predict whether it is used or not.
+		for (j = 0; j < sources->rnum; j++)
 		{
-			if (!df_symbols[i].graph) // Skip.
-				continue;
-			int no_set = 0; // If we cannot find the df_symbols in all sources, we cannot predict whether it is used or not.
+			const ccv_nnc_graph_exec_symbol_t source = *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j);
+			const int* inputs; int input_size;
+			const int* outputs; int output_size;
+			ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, source, &inputs, &input_size, &outputs, &output_size);
+			const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, source);
+			int flag = 0;
+			for (k = 0; !flag && k < input_size; k++)
+			{
+				const int alias_ref = inputs[k] >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
+					.d = inputs[k],
+					.graph = dynamic_graph->tape
+				}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
+				flag = (df_symbols[i].d == inputs[k] || df_symbols[i].d == alias_ref);
+			}
+			if (flag)
+			{
+				no_set = 1;
+				// Now, check to see if we can remove this symbol from this source.
+				memset(temp_input_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((input_size + 63) >> 6)));
+				memset(temp_output_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((output_size + 63) >> 6)));
+				for (k = 0; k < input_size; k++)
+					if (inputs[k] >= 0)
+					{
+						const int alias_ref = inputs[k] >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
+							.d = inputs[k],
+							.graph = dynamic_graph->tape
+						}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
+						if (df_symbols[i].d != inputs[k] && df_symbols[i].d != alias_ref)
+							temp_input_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
+					}
+				for (k = 0; k < output_size; k++)
+					if (outputs[k] >= 0)
+						temp_output_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
+				if (!ccv_nnc_cmd_bitmask(cmd, input_size, output_size, temp_input_bitmasks, (input_size + 63) >> 6, temp_output_bitmasks, (output_size + 63) >> 6))
+					no_set = 0;
+			}
+		}
+		if (no_set) // Remove this flag from all sources and continue.
+		{
 			for (j = 0; j < sources->rnum; j++)
 			{
 				const ccv_nnc_graph_exec_symbol_t source = *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j);
 				const int* inputs; int input_size;
 				const int* outputs; int output_size;
 				ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, source, &inputs, &input_size, &outputs, &output_size);
-				const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, source);
 				int flag = 0;
 				for (k = 0; !flag && k < input_size; k++)
 				{
@@ -392,10 +418,6 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 				}
 				if (flag)
 				{
-					no_set = 1;
-					// Now, check to see if we can remove this symbol from this source.
-					memset(input_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((input_size + 63) >> 6)));
-					memset(output_bitmasks, 0, sizeof(uint64_t) * ccv_max(1, ((output_size + 63) >> 6)));
 					for (k = 0; k < input_size; k++)
 						if (inputs[k] >= 0)
 						{
@@ -403,120 +425,83 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 								.d = inputs[k],
 								.graph = dynamic_graph->tape
 							}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
-							if (df_symbols[i].d != inputs[k] && df_symbols[i].d != alias_ref)
-								input_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
+							const int no_symbol = df_symbols[i].d == inputs[k] || df_symbols[i].d == alias_ref;
+							temp_input_symbols[k] = (ccv_nnc_tensor_symbol_t){
+								.d = no_symbol ? CCV_NNC_NO_TENSOR_SYMBOL : inputs[k],
+								.graph = no_symbol ? 0 : dynamic_graph->tape,
+							};
+						} else {
+							temp_input_symbols[k] = (ccv_nnc_tensor_symbol_t){
+								.d = inputs[k],
+								.graph = inputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
+							};
 						}
 					for (k = 0; k < output_size; k++)
-						if (outputs[k] >= 0)
-							output_bitmasks[k >> 6] |= ((uint64_t)1 << (k & 63));
-					if (!ccv_nnc_cmd_bitmask(cmd, input_size, output_size, input_bitmasks, (input_size + 63) >> 6, output_bitmasks, (output_size + 63) >> 6))
-						no_set = 0;
+						temp_output_symbols[k] = (ccv_nnc_tensor_symbol_t){
+							.d = outputs[k],
+							.graph = outputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
+						};
+					ccv_nnc_graph_exec_symbol_set_io(dynamic_graph->tape, source, temp_input_symbols, input_size, temp_output_symbols, output_size);
 				}
 			}
-			if (no_set) // Remove this flag from all sources and continue.
-			{
-				for (j = 0; j < sources->rnum; j++)
-				{
-					const ccv_nnc_graph_exec_symbol_t source = *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j);
-					const int* inputs; int input_size;
-					const int* outputs; int output_size;
-					ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, source, &inputs, &input_size, &outputs, &output_size);
-					int flag = 0;
-					for (k = 0; !flag && k < input_size; k++)
-					{
-						const int alias_ref = inputs[k] >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
-							.d = inputs[k],
-							.graph = dynamic_graph->tape
-						}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
-						flag = (df_symbols[i].d == inputs[k] || df_symbols[i].d == alias_ref);
-					}
-					if (flag)
-					{
-						for (k = 0; k < input_size; k++)
-							if (inputs[k] >= 0)
-							{
-								const int alias_ref = inputs[k] >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
-									.d = inputs[k],
-									.graph = dynamic_graph->tape
-								}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
-								const int no_symbol = df_symbols[i].d == inputs[k] || df_symbols[i].d == alias_ref;
-								input_symbols[k] = (ccv_nnc_tensor_symbol_t){
-									.d = no_symbol ? CCV_NNC_NO_TENSOR_SYMBOL : inputs[k],
-									.graph = no_symbol ? 0 : dynamic_graph->tape,
-								};
-							} else {
-								input_symbols[k] = (ccv_nnc_tensor_symbol_t){
-									.d = inputs[k],
-									.graph = inputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
-								};
-							}
-						for (k = 0; k < output_size; k++)
-							output_symbols[k] = (ccv_nnc_tensor_symbol_t){
-								.d = outputs[k],
-								.graph = outputs[k] != CCV_NNC_NO_TENSOR_SYMBOL ? dynamic_graph->tape : 0,
-							};
-						ccv_nnc_graph_exec_symbol_set_io(dynamic_graph->tape, source, input_symbols, input_size, output_symbols, output_size);
-					}
-				}
-				df_symbols[i].graph = 0;
-			}
+			df_symbols[i].graph = 0;
 		}
-		// Aggregate them into one set command.
-		ccv_nnc_tensor_symbol_t df_symbols_0[f_variable_size];
-		ccv_nnc_graph_exec_symbol_t set_ones[f_variable_size];
-		int set_one_size = 0;
-		for (i = 0; i < f_variable_size;)
-			if (!df_symbols[i].graph) // Skip.
-				++i;
-			else {
-				df_symbols_0[0] = df_symbols[i];
-				k = 1;
-				int idx = f_variable_size;
-				const ccv_nnc_tensor_param_t params_0 = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols_0[0]);
-				for (j = i + 1; j < f_variable_size; j++)
-					if (df_symbols[j].graph)
-					{
-						const ccv_nnc_tensor_param_t params_j = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols[j]);
-						if (params_j.type != params_0.type)
-						{
-							if (idx == f_variable_size)
-								idx = j;
-						} else {
-							df_symbols_0[k++] = df_symbols[j];
-							assert(df_symbols[j].graph == dynamic_graph->tape);
-							df_symbols[j].graph = 0;
-						}
-					}
-				i = idx;
-				set_ones[set_one_size] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(1), 0, 0, df_symbols_0, k, 0);
-				for (j = 0; j < sources->rnum; j++)
-					ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_ones[set_one_size], *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j));
-				++set_one_size;
-			}
-		// Reset it back.
-		for (i = 0; i < f_variable_size; i++)
-			df_symbols[i].graph = dynamic_graph->tape;
-		if (set_one_size > 0)
-		{
-			ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
-				(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
-				0, 0,
-				set_ones, set_one_size,
-				(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
-				&graph, &tensor_arena, &exec_arena);
-		} else {
-			// Otherwise we don't have a single set ones, in this case, we still compile from source.
-			ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
-				(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
-				0, 0,
-				(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
-				(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
-				&graph, &tensor_arena, &exec_arena);
-		}
-		ccv_array_free(sources);
-		for (i = 0; i < set_one_size; i++)
-			ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones[i]);
 	}
+	// Aggregate them into one set command.
+	ccv_nnc_tensor_symbol_t df_symbols_0[f_variable_size];
+	ccv_nnc_graph_exec_symbol_t set_ones[f_variable_size];
+	int set_one_size = 0;
+	for (i = 0; i < f_variable_size;)
+		if (!df_symbols[i].graph) // Skip.
+			++i;
+		else {
+			df_symbols_0[0] = df_symbols[i];
+			k = 1;
+			int idx = f_variable_size;
+			const ccv_nnc_tensor_param_t params_0 = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols_0[0]);
+			for (j = i + 1; j < f_variable_size; j++)
+				if (df_symbols[j].graph)
+				{
+					const ccv_nnc_tensor_param_t params_j = ccv_nnc_tensor_symbol_params(dynamic_graph->tape, df_symbols[j]);
+					if (params_j.type != params_0.type)
+					{
+						if (idx == f_variable_size)
+							idx = j;
+					} else {
+						df_symbols_0[k++] = df_symbols[j];
+						assert(df_symbols[j].graph == dynamic_graph->tape);
+						df_symbols[j].graph = 0;
+					}
+				}
+			i = idx;
+			set_ones[set_one_size] = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(1), 0, 0, df_symbols_0, k, 0);
+			for (j = 0; j < sources->rnum; j++)
+				ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_ones[set_one_size], *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, j));
+			++set_one_size;
+		}
+	// Reset it back.
+	for (i = 0; i < f_variable_size; i++)
+		df_symbols[i].graph = dynamic_graph->tape;
+	if (set_one_size > 0)
+	{
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
+			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
+			0, 0,
+			set_ones, set_one_size,
+			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
+			&graph, &tensor_arena, &exec_arena);
+	} else {
+		// Otherwise we don't have a single set ones, in this case, we still compile from source.
+		ccv_nnc_symbolic_graph_compile(dynamic_graph->tape, compile_params,
+			(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
+			0, 0,
+			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
+			(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
+			&graph, &tensor_arena, &exec_arena);
+	}
+	ccv_array_free(sources);
+	for (i = 0; i < set_one_size; i++)
+		ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones[i]);
 	ccv_array_free(destinations);
 	ccv_array_free(tensor_binds);
 	// Remove newly added symbols to restore the graph.
