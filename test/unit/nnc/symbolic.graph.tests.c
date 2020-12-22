@@ -141,7 +141,7 @@ TEST_CASE("query connectivity from one exec symbol to another")
 	ccv_nnc_tensor_symbol_t e = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "e");
 	ccv_nnc_graph_exec_symbol_t sum1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a, c), TENSOR_SYMBOL_LIST(e), "sum1");
 	ccv_nnc_tensor_symbol_t f = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "f");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(f), "log3");
+	ccv_nnc_graph_exec_symbol_t log3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(f), "log3");
 	ccv_nnc_tensor_symbol_t g = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "g");
 	ccv_nnc_graph_exec_symbol_t sum2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(b, f), TENSOR_SYMBOL_LIST(g), "sum2");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
@@ -152,6 +152,9 @@ TEST_CASE("query connectivity from one exec symbol to another")
 	bitmask = 0;
 	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum1, log1, log2), GRAPH_EXEC_SYMBOL_LIST(sum1), &bitmask);
 	REQUIRE(bitmask == 1, "log1 and log2 are not sources for sum1");
+	bitmask = 0;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(log3, log1, log2), GRAPH_EXEC_SYMBOL_LIST(sum2), &bitmask);
+	REQUIRE(bitmask == 7, "log3, log1 and log2 are not sources for sum2");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 

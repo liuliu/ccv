@@ -2004,8 +2004,9 @@ void ccv_nnc_symbolic_graph_sources_to_destinations(const ccv_nnc_symbolic_graph
 				int flag = 0;
 				for (k = 0; !flag && k < destination_size; k++)
 					flag = (outgoing_d == destinations[k].d);
+				// We cannot avoid the ones that visited, because these may not contain all the deps.
 				if (!flag)
-					ccv_array_add_unique_int(ws, outgoing_d);
+					ccv_array_push(ws, &outgoing_d);
 				ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, d, &one);
 				for (k = 0; k < buf_size; k++)
 					ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, buf[k], &one);
