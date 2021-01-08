@@ -105,11 +105,13 @@ static void _ccv_nnc_sync_dispatch(ccv_nnc_async_callback_t* const async)
 	ccfree(async);
 }
 
+#ifndef USE_DISPATCH
 static void* _ccv_nnc_pthread_dispatch(void* const userdata)
 {
 	_ccv_nnc_sync_dispatch((ccv_nnc_async_callback_t*)userdata);
 	return 0;
 }
+#endif
 
 static void _ccv_nnc_async_dispatch(ccv_nnc_async_callback_t* const async)
 {
