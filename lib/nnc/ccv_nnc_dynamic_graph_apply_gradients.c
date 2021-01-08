@@ -222,20 +222,26 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
 		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 		ccv_nnc_stream_context_wait(stream_context);
-	} else if (parallel_count > 1) { // We need to schedule it, now to figure out what stream type we are at.
-		int flag = 0;
-		for (i = 0; !flag && i < parameter_size; i++)
-			flag = (CCV_TENSOR_GET_MEMORY(parameters[i]->info.type) == CCV_TENSOR_GPU_MEMORY);
-		const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
-		ccv_nnc_graph_set_default_static_schedule(graph, stream_type);
-		ccv_nnc_stream_context_t* const default_stream = ccv_nnc_graph_default_stream(graph);
-		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, default_stream);
-		ccv_nnc_stream_context_wait(default_stream);
-	} else
-		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
-	ccv_nnc_graph_free(graph);
-	ccv_nnc_tensor_arena_free(tensor_arena);
-	ccv_nnc_graph_exec_arena_free(exec_arena);
+		ccv_nnc_graph_free(graph);
+		ccv_nnc_tensor_arena_free(tensor_arena);
+		ccv_nnc_graph_exec_arena_free(exec_arena);
+	} else {
+		if (parallel_count > 1)
+		{ // We need to schedule it, now to figure out what stream type we are at.
+			int flag = 0;
+			for (i = 0; !flag && i < parameter_size; i++)
+				flag = (CCV_TENSOR_GET_MEMORY(parameters[i]->info.type) == CCV_TENSOR_GPU_MEMORY);
+			const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+			ccv_nnc_graph_set_default_static_schedule(graph, stream_type);
+			ccv_nnc_stream_context_t* const default_stream = ccv_nnc_graph_default_stream(graph);
+			ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, default_stream);
+			ccv_nnc_stream_context_wait(default_stream);
+		} else
+			ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+		ccv_nnc_graph_free(graph);
+		ccv_nnc_tensor_arena_free(tensor_arena);
+		ccv_nnc_graph_exec_arena_free(exec_arena);
+	}
 	// Now, able to free some of the reused outputs. This need to be the last step otherwise some of the exec symbols
 	// above may be freed by this operation.
 	for (i = 0; i < freeable_size; i++)

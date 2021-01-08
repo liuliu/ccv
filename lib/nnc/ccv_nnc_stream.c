@@ -96,24 +96,12 @@ void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_
 #endif
 }
 
-int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream_context)
-{
-	if (!stream_context)
-		return 0;
-#ifdef HAVE_CUDA
-	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
-		ccv_nnc_synchronize_stream_context(stream_context);
-#endif
-	co_scheduler_t* const scheduler = stream_context->scheduler;
-	return scheduler ? -1 : 0;
-}
-
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (!stream_context)
 		return;
 	co_scheduler_t* const scheduler = stream_context->scheduler;
-	if (scheduler) // First wait the scheduler to finish.
+	if (scheduler && !co_is_on_scheduler(scheduler)) // First wait the scheduler to finish if I am not currently on that scheduler.
 	{
 		pthread_mutex_lock(&scheduler->mutex);
 		while (scheduler->active)

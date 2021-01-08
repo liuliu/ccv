@@ -523,13 +523,6 @@ void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream,
  */
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
 /**
- * Wait until command tasks submitted and signals on the stream context
- * completed. If graph run haven't done, return -1.
- * @param stream The stream context to wait.
- * @return 0 if there is no graph run to wait, -1 if there is and we skipped.
- */
-int ccv_nnc_stream_context_try_wait(const ccv_nnc_stream_context_t* const stream);
-/**
  * The hooks to be called when a stream context is destroyed.
  * At the moment, the stream context will be destroyed at the time
  * ccv_nnc_stream_context_free is called, so there is no tricks.
@@ -1202,6 +1195,11 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
  * @param tensor_arena The tensor arena object generated through compilation to clear bindings.
  */
 void ccv_nnc_tensor_arena_clear_bindings(ccv_nnc_tensor_arena_t* const tensor_arena);
+/**
+ * Free the data buffer of the tensor arena.
+ * @param tensor_arena The tensor arena object generated through compilation.
+ */
+void ccv_nnc_tensor_arena_buffer_free(ccv_nnc_tensor_arena_t* const tensor_arena);
 /**
  * Free the opaque tensor arena structure.
  * @param tensor_arena The tensor arena object generated through compilation.

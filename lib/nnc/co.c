@@ -121,11 +121,14 @@ int co_is_done(const co_routine_t* const task)
 	return task->done;
 }
 
+static __thread co_scheduler_t* scheduler_per_thread = 0;
+
 // Second will invoke this blocking variant to schedule task on a newly created thread.
 static void* _co_main(void* userdata)
 {
 	co_scheduler_t* const scheduler = (co_scheduler_t*)userdata;
 	pthread_mutex_lock(&scheduler->mutex);
+	scheduler_per_thread = scheduler;
 	// By definition, the last task cannot co_free itself. And because this
 	// scheduler is asynchronous, we cannot free it somewhere else. That
 	// left us with the only choice to free the task at the very end when we
@@ -178,6 +181,7 @@ static void* _co_main(void* userdata)
 		}
 		pthread_mutex_lock(&scheduler->mutex);
 	}
+	scheduler_per_thread = 0;
 	return 0;
 }
 
@@ -191,6 +195,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 		return;
 	}
 	scheduler->active = 1;
+	scheduler_per_thread = scheduler;
 	for (;;)
 	{
 		if (scheduler->head == 0 && scheduler->stream_await_count == 0)
@@ -240,6 +245,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 		}
 		pthread_mutex_lock(&scheduler->mutex);
 	}
+	scheduler_per_thread = 0;
 }
 
 void co_schedule(co_scheduler_t* const scheduler, co_routine_t* const task)
@@ -254,6 +260,13 @@ void co_schedule(co_scheduler_t* const scheduler, co_routine_t* const task)
 	pthread_mutex_unlock(&scheduler->mutex);
 	if (activate_scheduler)
 		_co_try(scheduler);
+}
+
+int co_is_on_scheduler(co_scheduler_t* const scheduler)
+{
+	if (scheduler_per_thread == 0)
+		return 0;
+	return scheduler_per_thread == scheduler;
 }
 
 co_scheduler_t* co_scheduler_new(void)

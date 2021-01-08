@@ -25,8 +25,11 @@ static void _ccv_nnc_dynamic_graph_metadata_free(dy_alloc_metadata_t* node, void
 	} while (node);
 }
 
-static void _ccv_nnc_dynamic_graph_xpu_alloc_drain(khash_t(dy_dev)* const dev)
+static void _ccv_nnc_dynamic_graph_xpu_alloc_drain(khash_t(dy_dev)* const dev, const ccv_nnc_stream_context_t* const stream)
 {
+	// Wait until the stream is free, and then do the free.
+	if (stream)
+		ccv_nnc_stream_context_wait(stream);
 	khiter_t k;
 	for (k = kh_begin(dev); k != kh_end(dev); ++k)
 	{
@@ -46,7 +49,7 @@ static void _ccv_nnc_dynamic_graph_xpu_stream_destructor_hook(const ccv_nnc_stre
 	khiter_t i = kh_get(dy_str, freed, str);
 	assert(i != kh_end(freed));
 	khash_t(dy_dev)* const dev = kh_val(freed, i).dev;
-	_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
+	_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev, stream);
 	kh_destroy(dy_dev, dev);
 	kh_del(dy_str, freed, i);
 }
@@ -168,8 +171,8 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 		if (!kh_exist(freed, k))
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
-		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
+		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev, stream);
 		if (stream)
 		{
 			const int hook_id = kh_val(freed, k).hook_id;
@@ -191,7 +194,8 @@ void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const graph)
 		if (!kh_exist(freed, k))
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
-		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev);
+		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
+		_ccv_nnc_dynamic_graph_xpu_alloc_drain(dev, stream);
 	}
 }
 #else

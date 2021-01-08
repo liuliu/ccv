@@ -235,5 +235,6 @@ int co_is_done(const co_routine_t* const task);
 co_scheduler_t* co_scheduler_new(void);
 void co_scheduler_free(co_scheduler_t* const scheduler);
 void co_schedule(co_scheduler_t* const scheduler, co_routine_t* const task);
+int co_is_on_scheduler(co_scheduler_t* const scheduler);
 
 #endif

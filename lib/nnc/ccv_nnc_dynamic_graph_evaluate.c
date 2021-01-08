@@ -21,9 +21,9 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		{
 			ccv_nnc_stream_context_t* const neighbor_context = ccv_nnc_stream_context_find_neighbor(stream_context, i);
 			if (neighbor_context && neighbor_context != stream_context)
-				ccv_nnc_stream_context_try_wait(neighbor_context);
+				ccv_nnc_stream_context_wait(neighbor_context);
 		}
-		ccv_nnc_stream_context_try_wait(stream_context);
+		ccv_nnc_stream_context_wait(stream_context);
 	}
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD)
 	{

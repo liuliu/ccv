@@ -4049,11 +4049,13 @@ void ccv_nnc_graph_exec_reinit(ccv_nnc_graph_exec_arena_t* const graph_exec_aren
 	}
 }
 
-void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
+void ccv_nnc_tensor_arena_buffer_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	int i;
 	for (i = 0; i < tensor_arena->buffer_size; i++)
 	{
+		if (!tensor_arena->buffers[i].ptr)
+			continue;
 		const int buffer_type = tensor_arena->buffers[i].type;;
 		const int memory_type = CCV_TENSOR_GET_MEMORY(buffer_type);
 #ifdef HAVE_CUDA
@@ -4075,7 +4077,13 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 		ccfree(tensor_arena->buffers[i].ptr);
 #endif
+		tensor_arena->buffers[i].ptr = 0;
 	}
+}
+
+void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
+{
+	ccv_nnc_tensor_arena_buffer_free(tensor_arena);
 	_ccv_nnc_tensor_arena_free(tensor_arena);
 }
 
