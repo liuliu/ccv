@@ -5,6 +5,9 @@
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
+#ifdef USE_DISPATCH
+#include <dispatch/dispatch.h>
+#endif
 #include "_ccv_nnc_stream.h"
 
 typedef struct {
@@ -84,16 +87,44 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context
 #endif
 }
 
-void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_context_callback_f callback, void* const callback_context)
+static void _ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_callback_f callback, const ccv_nnc_async_callback_f async_callback, void* const callback_context)
 {
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
-		ccv_nnc_stream_compat_add_callback(stream_context, callback, callback_context);
+		ccv_nnc_stream_compat_add_callback(stream_context, callback, async_callback, callback_context);
 	else
-		callback(stream_context, callback_context);
+		callback(callback_context);
 #else
-	callback(stream_context, callback_context);
+	callback(callback_context);
 #endif
+}
+
+static void _ccv_nnc_sync_dispatch(ccv_nnc_async_callback_t* const async)
+{
+	async->fn(async->callback_context);
+	ccfree(async);
+}
+
+static void* _ccv_nnc_pthread_dispatch(void* const userdata)
+{
+	_ccv_nnc_sync_dispatch((ccv_nnc_async_callback_t*)userdata);
+	return 0;
+}
+
+static void _ccv_nnc_async_dispatch(ccv_nnc_async_callback_t* const async)
+{
+	// This method dispatches to a different thread because the CUDA callback thread cannot operate CUDA objects.
+#ifdef USE_DISPATCH
+	dispatch_async_f(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), async, (dispatch_function_t)_ccv_nnc_sync_dispatch);
+#else
+	pthread_t thread;
+	pthread_create(&thread, 0, _ccv_nnc_pthread_dispatch, async);
+#endif
+}
+
+void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_callback_f callback, void* const callback_context)
+{
+	_ccv_nnc_stream_context_add_callback(stream_context, callback, _ccv_nnc_async_dispatch, callback_context);
 }
 
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
@@ -317,7 +348,7 @@ static ccv_nnc_signal_handler_t* const _ccv_nnc_signal_container_get_handler(kha
 	return handler;
 }
 
-static void _ccv_nnc_dynamic_graph_signal_callback(ccv_nnc_stream_context_t* const stream, void* const callback_context)
+static void _ccv_nnc_dynamic_graph_signal_callback(void* const callback_context)
 {
 	ccv_nnc_signal_handler_t* const handler = (ccv_nnc_signal_handler_t*)callback_context;
 	ccv_nnc_signal_container_t* const container = handler->container;
@@ -330,7 +361,8 @@ ccv_nnc_stream_signal_t* ccv_nnc_emit_signal_from_container(khash_t(signal_conta
 {
 	ccv_nnc_signal_handler_t* const handler = _ccv_nnc_signal_container_get_handler(container, stream);
 	ccv_nnc_stream_context_emit_signal(stream, handler->signal);
-	ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_dynamic_graph_signal_callback, handler);
+	// Because the callback only handles CPU things, we can avoid another async jump because no CUDA related stuff touched.
+	_ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_dynamic_graph_signal_callback, _ccv_nnc_sync_dispatch, handler);
 	return handler->signal;
 }
 

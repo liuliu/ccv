@@ -60,4 +60,11 @@ khash_t(signal_container)* ccv_nnc_signal_container_new(void);
 ccv_nnc_stream_signal_t* ccv_nnc_emit_signal_from_container(khash_t(signal_container)* container, ccv_nnc_stream_context_t* const stream);
 void ccv_nnc_signal_container_free(khash_t(signal_container)* signal_container);
 
+typedef struct {
+	ccv_nnc_callback_f fn;
+	void* callback_context;
+} ccv_nnc_async_callback_t;
+
+typedef void(*ccv_nnc_async_callback_f)(ccv_nnc_async_callback_t* const async);
+
 #endif

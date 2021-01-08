@@ -508,14 +508,14 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream);
 /**
  * The callback prototype on the stream context.
  */
-typedef void(*ccv_nnc_stream_context_callback_f)(ccv_nnc_stream_context_t* const stream, void* const callback_context);
+typedef void(*ccv_nnc_callback_f)(void* const callback_context);
 /**
  * Add a callback function to be called once stream executed to that point.
  * @param stream The stream context to add callback.
  * @param callback The callback function.
  * @param callback_context The context to be called with the callback function.
  */
-void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_context_callback_f callback, void* const callback_context);
+void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_callback_f callback, void* const callback_context);
 /**
  * Wait until all tasks submitted (command, graph run etc.) on the stream context
  * completed.
