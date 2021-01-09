@@ -240,6 +240,20 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 		co_scheduler_t* const scheduler = stream_context->scheduler;
 		co_scheduler_free(scheduler);
 	}
+	if (stream_context->container)
+	{
+		ccv_nnc_signal_container_t* const container = stream_context->container;
+		pthread_mutex_destroy(&container->mutex);
+		int i;
+		for (i = 0; i < container->empty->rnum; i++)
+		{
+			ccv_nnc_signal_handler_t* const handler = *(ccv_nnc_signal_handler_t**)ccv_array_get(container->empty, i);
+			ccv_nnc_stream_signal_free(handler->signal);
+			ccfree(handler);
+		}
+		ccv_array_free(container->empty);
+		ccfree(container);
+	}
 	ccfree(stream_context);
 }
 
@@ -334,24 +348,15 @@ int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const s
 
 // MARK - Signal Container
 
-khash_t(signal_container)* ccv_nnc_signal_container_new(void)
+static ccv_nnc_signal_handler_t* const _ccv_nnc_signal_container_get_handler(ccv_nnc_stream_context_t* const stream)
 {
-	return kh_init(signal_container);
-}
-
-static ccv_nnc_signal_handler_t* const _ccv_nnc_signal_container_get_handler(khash_t(signal_container)* const signal_container, const ccv_nnc_stream_context_t* const stream)
-{
-	int ret = 0;
-	khiter_t k = kh_put(signal_container, signal_container, (int64_t)(intptr_t)stream, &ret);
-	ccv_nnc_signal_container_t* container;
-	if (ret != 0)
+	if (!stream->container)
 	{
-		container = (ccv_nnc_signal_container_t*)ccmalloc(sizeof(ccv_nnc_signal_container_t));
+		ccv_nnc_signal_container_t* const container = stream->container = (ccv_nnc_signal_container_t*)ccmalloc(sizeof(ccv_nnc_signal_container_t));
 		container->empty = ccv_array_new(sizeof(ccv_nnc_signal_handler_t*), 0, 0);
 		pthread_mutex_init(&container->mutex, 0);
-		kh_val(signal_container, k) = container;
-	} else
-		container = kh_val(signal_container, k);
+	}
+	ccv_nnc_signal_container_t* const container = stream->container;
 	ccv_nnc_signal_handler_t* handler;
 	pthread_mutex_lock(&container->mutex);
 	if (container->empty->rnum > 0)
@@ -367,7 +372,7 @@ static ccv_nnc_signal_handler_t* const _ccv_nnc_signal_container_get_handler(kha
 	return handler;
 }
 
-static void _ccv_nnc_dynamic_graph_signal_callback(void* const callback_context)
+static void _ccv_nnc_stream_signal_callback(void* const callback_context)
 {
 	ccv_nnc_signal_handler_t* const handler = (ccv_nnc_signal_handler_t*)callback_context;
 	ccv_nnc_signal_container_t* const container = handler->container;
@@ -376,33 +381,12 @@ static void _ccv_nnc_dynamic_graph_signal_callback(void* const callback_context)
 	pthread_mutex_unlock(&container->mutex);
 }
 
-ccv_nnc_stream_signal_t* ccv_nnc_emit_signal_from_container(khash_t(signal_container)* container, ccv_nnc_stream_context_t* const stream)
+ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_context_t* const stream)
 {
-	ccv_nnc_signal_handler_t* const handler = _ccv_nnc_signal_container_get_handler(container, stream);
+	ccv_nnc_signal_handler_t* const handler = _ccv_nnc_signal_container_get_handler(stream);
 	ccv_nnc_stream_context_emit_signal(stream, handler->signal);
 	// Because the callback only handles CPU things, we can avoid another async jump because no CUDA related stuff touched.
-	_ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_dynamic_graph_signal_callback, _ccv_nnc_sync_dispatch, handler);
+	_ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_stream_signal_callback, _ccv_nnc_sync_dispatch, handler);
 	return handler->signal;
 }
 
-void ccv_nnc_signal_container_free(khash_t(signal_container)* signal_container)
-{
-	khiter_t k;
-	for (k = kh_begin(signal_container); k != kh_end(signal_container); ++k)
-	{
-		if (!kh_exist(signal_container, k))
-			continue;
-		ccv_nnc_signal_container_t* const container = kh_val(signal_container, k);
-		pthread_mutex_destroy(&container->mutex);
-		int i;
-		for (i = 0; i < container->empty->rnum; i++)
-		{
-			ccv_nnc_signal_handler_t* const handler = *(ccv_nnc_signal_handler_t**)ccv_array_get(container->empty, i);
-			ccv_nnc_stream_signal_free(handler->signal);
-			ccfree(handler);
-		}
-		ccv_array_free(container->empty);
-		ccfree(container);
-	}
-	kh_destroy(signal_container, signal_container);
-}

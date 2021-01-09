@@ -1917,7 +1917,5 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	ccv_array_free(graph->exec_info);
 	if (graph->buffer)
 		ccfree(graph->buffer);
-	if (graph->signal_container)
-		ccv_nnc_signal_container_free(graph->signal_container);
 	ccfree(graph);
 }

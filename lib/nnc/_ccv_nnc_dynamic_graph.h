@@ -118,7 +118,6 @@ struct ccv_nnc_dynamic_graph_s {
 	khash_t(dy_alloc)* allocd; // The allocated memory.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
 	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
-	khash_t(signal_container)* signal_container; // Signals for streams.
 	ccv_array_t* ws; // array of integers as workspace
 };
 

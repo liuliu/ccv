@@ -22,7 +22,6 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->stateful_execs = 0;
 	graph->reuse_stateful_exec = -1;
 	graph->synced_streams = 0;
-	graph->signal_container = 0;
 	graph->ws = 0;
 	return graph;
 }
@@ -135,8 +134,6 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		}
 		kh_destroy(synced_stream, graph->synced_streams);
 	}
-	if (graph->signal_container)
-		ccv_nnc_signal_container_free(graph->signal_container);
 	ccv_nnc_dynamic_graph_xpu_alloc_destroy(graph);
 	ccfree(graph);
 }
@@ -518,11 +515,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 		ccv_nnc_stream_context_t* streams[parallel_count];
 		ccv_nnc_stream_signal_t* signal;
 		if (stream_context)
-		{
-			if (!graph->signal_container)
-				graph->signal_container = ccv_nnc_signal_container_new();
-			signal = ccv_nnc_emit_signal_from_container(graph->signal_container, stream_context);
-		}
+			signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
 		for (i = 0; i < parallel_count; i++)
 		{
 			int flag = 0;

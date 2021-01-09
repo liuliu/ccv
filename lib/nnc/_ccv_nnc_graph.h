@@ -145,8 +145,6 @@ struct ccv_nnc_graph_s {
 	// End of while loop handling.
 	// Extra metadata, useful when we don't want extra memory allocation.
 	ccv_array_t* carry_overs; // The array of tensor carry_overs.
-	// For stream signal
-	khash_t(signal_container)* signal_container;
 };
 
 inline static int ccv_array_find_int(ccv_array_t* ints, const int idx)

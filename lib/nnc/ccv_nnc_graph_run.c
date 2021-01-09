@@ -629,9 +629,7 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		if (CO_P(stream_context) != CO_P(graph)->streams[CO_V(stream_0)])
 		{
 			// Make sure when we start work on streams[0], the current stream context is done.
-			if (!CO_P(graph)->signal_container)
-				CO_P(graph)->signal_container = ccv_nnc_signal_container_new();
-			ccv_nnc_stream_signal_t* const signal = ccv_nnc_emit_signal_from_container(CO_P(graph)->signal_container, CO_P(stream_context));
+			ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(CO_P(stream_context));
 			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], signal);
 		}
 	} else {
