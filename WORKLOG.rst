@@ -1,3 +1,26 @@
+2021-01-09
+----------
+Spent some time to see if I can make the dynamic graph async operations work better. Previously, the async operations on the dynamic graph has a few sync points: when finishing backward, when finishing apply gradients, we forced it to wait. The reason is because we cannot free buffers until computations are done.
+
+I did a few commits in the past a few days to fix this issue. There are quite a bit back and forth and there are still issues, will document what I have done, and what works left, and why it is difficult to solve in C.
+
+The async operations in nnc follows largely with CUDA's stream / event concept. A stream is a serial execution engine you can dispatch operations to it, and event is used as synchronization mechanism between different streams. However, you can only wait for an event when it is signaled already on a different stream. Thus, stream 1 has to signal event A first before stream 2 can wait for event A's completion. This means we have to schedule everything upfront.
+
+This messes up if you have control flows, such as while loops and case..of. To make this work in static graph, I devised a coroutine based solution that works fairly well in that context. When you co_stream_await on a CUDA stream, it will only continue the execution when the stream reached that point, and the subsequent tasks only be scheduled after that. In this way, the order of event signaling / waiting is not messed up.
+
+This breaks down when we have dynamic graphs. With a single stream, it sort of still works, when work with care. We just dispatch on the stream as we go, and even for backward and apply gradients, it should work because there is no control structure. That is sort of where I am at right now. If you structure this carefully, it can work with single stream.
+
+The past a few commits made the `ccv_nnc_stream_context_add_callback` work as expected, i.e., a callback will be triggered, safely when an execution point reached, no matter if there are coroutine executions or not. This helps to get deallocating graph / tensor arena correctly for backward / apply gradients method. Thus, help to lift the sync points there.
+
+Then it gets muddy. It works because there is no coroutine hangs, by accident, during dynamic graph execution. If there is, the backward / apply gradients will still execute correctly, because it happens to support coroutines when it runs internal static graph. However, subsequent dynamic graph execution won't, because it naively dispatch to the stream directly, without coroutine waits.
+
+It gets worse. Right now, we haven't lift all sync points. When a model evaluated, we need to wait for its execution stream, and all the neighboring stream to finish, before continue. Why? Because the model evaluation is done inside a custom command, and that custom command won't get the right scheduler to do the right waiting when executing.
+
+If there is any coroutine suspension point, our current schema falls apart. For one, `stateful_exec` won't have valid lifetime. Another, it will be problematic to call `ccv_nnc_cmd_exec` because it doesn't respect coroutine scheduler at the moment as well.
+
+So, the choice is simple. Either I don't support coroutine anywhere in dynamic graph / model, so it schedules everything on the stream, or I have a good coroutine + lifetime management support everywhere so I can infect everything with coroutine. The downside of choice 1, obviously, is the inability to support control structure in model any time soon (run control structure requires coroutine suspension points).
+
+
 2020-09-10
 ----------
 I mostly developed ccv / nnc as a monorepo. Since I started to use nnc for other projects as the backbone, it becomes obvious now that the monorepo development works fine for smaller demos such as object detection, natural language processing, for small / medium project, I don't want to clone ccv and start development there. I've gained some experiences using Bazel with Dflat project, therefore, it seems natural to have ccv / nnc to support Bazel.

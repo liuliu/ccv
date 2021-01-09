@@ -138,7 +138,7 @@ void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_
 		return;
 	}
 	co_scheduler_t* const scheduler = stream_context->scheduler;
-	if (scheduler)
+	if (scheduler && co_scheduler_is_active(scheduler))
 	{
 		co_routine_t* const task = co_new(_ccv_nnc_stream_context_add_callback_async, (stream_context, callback, callback_context));
 		co_schedule(scheduler, task);

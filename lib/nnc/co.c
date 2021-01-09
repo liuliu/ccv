@@ -269,6 +269,14 @@ int co_is_on_scheduler(co_scheduler_t* const scheduler)
 	return scheduler_per_thread == scheduler;
 }
 
+int co_scheduler_is_active(co_scheduler_t* const scheduler)
+{
+	pthread_mutex_lock(&scheduler->mutex);
+	const int active = scheduler->active;
+	pthread_mutex_unlock(&scheduler->mutex);
+	return active;
+}
+
 co_scheduler_t* co_scheduler_new(void)
 {
 	co_scheduler_t* const scheduler = cccalloc(1, sizeof(co_scheduler_t));
