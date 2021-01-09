@@ -19,7 +19,7 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		{
 			ccv_nnc_stateful_exec_t* const stateful_exec = *(ccv_nnc_stateful_exec_t**)ccv_array_get(dynamic_graph->stateful_execs, i);
 			// We only apply gradients when backward round has done.
-			if (stateful_exec->did_backward_but_not_apply_gradients)
+			if (stateful_exec && stateful_exec->did_backward_but_not_apply_gradients)
 			{
 				const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)stateful_exec->cmd.isa;
 				if (isa->apply_gradients)

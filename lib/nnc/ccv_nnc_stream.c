@@ -124,9 +124,26 @@ static void _ccv_nnc_async_dispatch(ccv_nnc_async_callback_t* const async)
 #endif
 }
 
+static co_decl_task(_ccv_nnc_stream_context_add_callback_async, (ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_callback_f callback, void* const callback_context), private())
+{
+	co_stream_await(CO_P(stream_context));
+	_ccv_nnc_stream_context_add_callback(CO_P(stream_context), CO_P(callback), _ccv_nnc_async_dispatch, CO_P(callback_context));
+} co_end()
+
 void ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_callback_f callback, void* const callback_context)
 {
-	_ccv_nnc_stream_context_add_callback(stream_context, callback, _ccv_nnc_async_dispatch, callback_context);
+	if (!stream_context)
+	{
+		callback(callback_context);
+		return;
+	}
+	co_scheduler_t* const scheduler = stream_context->scheduler;
+	if (scheduler)
+	{
+		co_routine_t* const task = co_new(_ccv_nnc_stream_context_add_callback_async, (stream_context, callback, callback_context));
+		co_schedule(scheduler, task);
+	} else
+		_ccv_nnc_stream_context_add_callback(stream_context, callback, _ccv_nnc_async_dispatch, callback_context);
 }
 
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
