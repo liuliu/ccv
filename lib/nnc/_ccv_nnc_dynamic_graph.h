@@ -300,13 +300,4 @@ void ccv_nnc_dynamic_graph_xpu_alloc_destroy(ccv_nnc_dynamic_graph_t* const grap
 
 extern const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa;
 
-typedef struct {
-	ccv_nnc_graph_t* graph;
-	ccv_nnc_tensor_arena_t* tensor_arena;
-	ccv_nnc_graph_exec_arena_t* exec_arena;
-} ccv_nnc_compilation_artifact_t;
-
-ccv_nnc_compilation_artifact_t* ccv_nnc_compilation_artifact_new(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_arena_t* const tensor_arena, ccv_nnc_graph_exec_arena_t* const exec_arena);
-void ccv_nnc_compilation_artifact_free(ccv_nnc_compilation_artifact_t* const artifact);
-
 #endif
