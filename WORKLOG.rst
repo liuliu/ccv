@@ -1,3 +1,16 @@
+2021-01-10
+----------
+Continue yesterday's discussion, I removed the last sync point (inside the `ccv_nnc_dynamic_graph_evaluate.c`). There is a small bug in static_schedule method such that if there are multiple starting points in a graph, we didn't sync all them to the given stream, thus, causing race issues.
+
+The last removal is rather restrictive, it requires the graph for `ccv_cnnp_model_t` has no suspension point. Like we discussed yesterday, that will work today, but won't work once we introduce control structures. Having suspension point will not be a major concern from code structure point of view (at the end of the day, that only requires us to make several existing methods, such as `ccv_cnnp_model_evaluate` has coroutine alternatives.
+
+The major concern comes from memory management. Let's assume the simplest case, where for dynamic graph, there won't be embedded control structure (that would be a bit weird to support static control structure within a dynamic graph directly), but for models, there could be embedded control structures. In that case, you need to make: async counterparts for `ccv_nnc_cmd_exec`, `ccv_cnnp_model_evaluate`, `ccv_cnnp_model_backward`. But that is not over. Because these are async now, `stateful_exec` need to be manipulated before any suspension points to make its lifetime predictable. This is actually not possible if we don't force a sync point after apply gradients. This is because suspension points accumulates, so if we suspend upon `ccv_cnnp_model_backward`, the next `ccv_nnc_dynamic_graph_evaluate` call will be suspended until previous `ccv_cnnp_model_backward` finished. To avoid such accumulated suspension points, we need to either sync, or reference counting the `stateful_exec` object.
+
+It also means we need to reference counting the tensor objects, because we will use tensor objects after suspension points for `ccv_cnnp_model_evaluate` etc, while the dynamic graph won't guarantee the lifetime of these tensor objects (they may be freed). This is never an issue before because previously, our async schedule happens before these tensor objects' lifetime ends. While the async streams still need the memory regions referenced by these tensor objects, they don't need the metadata. These memory regions associated and recycled per stream, hence, no data races.
+
+ * suspension point: I use this word to describe co_await / co_yield and its variants in the code, at which point, the coroutine yields control back to the scheduler for which the scheduler can later resume. Currently, with careful design, there is no suspension point in `ccv_cnnp_model_t` or `ccv_nnc_dynamic_graph_t`, but that can change once we introduced control structures.
+
+
 2021-01-09
 ----------
 Spent some time to see if I can make the dynamic graph async operations work better. Previously, the async operations on the dynamic graph has a few sync points: when finishing backward, when finishing apply gradients, we forced it to wait. The reason is because we cannot free buffers until computations are done.

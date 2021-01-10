@@ -128,6 +128,7 @@ static void* _co_main(void* userdata)
 {
 	co_scheduler_t* const scheduler = (co_scheduler_t*)userdata;
 	pthread_mutex_lock(&scheduler->mutex);
+	co_scheduler_t* previous_scheduler = scheduler_per_thread;
 	scheduler_per_thread = scheduler;
 	// By definition, the last task cannot co_free itself. And because this
 	// scheduler is asynchronous, we cannot free it somewhere else. That
@@ -181,7 +182,7 @@ static void* _co_main(void* userdata)
 		}
 		pthread_mutex_lock(&scheduler->mutex);
 	}
-	scheduler_per_thread = 0;
+	scheduler_per_thread = previous_scheduler;
 	return 0;
 }
 
@@ -195,6 +196,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 		return;
 	}
 	scheduler->active = 1;
+	co_scheduler_t* previous_scheduler = scheduler_per_thread;
 	scheduler_per_thread = scheduler;
 	for (;;)
 	{
@@ -245,7 +247,7 @@ static void _co_try(co_scheduler_t* const scheduler)
 		}
 		pthread_mutex_lock(&scheduler->mutex);
 	}
-	scheduler_per_thread = 0;
+	scheduler_per_thread = previous_scheduler;
 }
 
 void co_schedule(co_scheduler_t* const scheduler, co_routine_t* const task)

@@ -718,12 +718,16 @@ void ccv_nnc_graph_static_schedule_free(ccv_nnc_graph_static_schedule_t* const s
 		if (schd_info[i].waits)
 			ccfree(schd_info[i].waits);
 	}
+	if (schedule->stream_1s)
+		ccfree(schedule->stream_1s);
 	if (schedule->waits)
 		ccfree(schedule->waits);
 	if (schedule->psort)
 		ccfree(schedule->psort);
-	if (schedule->signal_synced)
-		ccv_nnc_stream_signal_free(schedule->signal_synced);
+	if (schedule->begin)
+		ccv_nnc_stream_signal_free(schedule->begin);
+	if (schedule->end)
+		ccv_nnc_stream_signal_free(schedule->end);
 	ccfree(schedule);
 }
 
@@ -978,10 +982,6 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 		if (outgoings[i])
 			ccv_array_free(outgoings[i]);
 	ccfree(outgoings);
-	for (i = 0; i < exec_info_size; i++)
-		if (incomings[i].outgoings)
-			ccv_array_free(incomings[i].outgoings);
-	ccfree(incomings);
 	ccv_matrix_free(exec_dep);
 	ccv_nnc_stream_data_t* const default_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
 	if (device_id >= 0)
@@ -1026,6 +1026,66 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			default_data->device_id = device_id;
 		}
 	}
+	int graph_stream_1_size = 0;
+	for (i = 0; i < source_size; i++)
+	{
+		const int idx = sources[i].d;
+		// If it has incoming nodes, check whether these are on stream 0.
+		if (incomings[idx].outgoings && incomings[idx].outgoings->rnum)
+		{
+			int flag  = 0;
+			const ccv_array_t* const incoming = incomings[idx].outgoings;
+			for (j = 0; !flag && j < incoming->rnum; j++)
+			{
+				const int incoming_idx = *(int*)ccv_array_get(incoming, j);
+				for (k = 0; !flag && k < schd_info[incoming_idx].stream_size; k++)
+					flag = (SCHEDULE_STREAMS(schd_info[incoming_idx])[k] == 0); // If this is the default stream, we already have a good start.
+			}
+			if (flag)
+				continue;
+		}
+		for (j = 0; j < schd_info[idx].stream_size; j++)
+			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this is not the default stream, we need explicit begin signal to start.
+				++graph_stream_1_size;
+	}
+	if (graph_stream_1_size > 0)
+	{
+		schedule->stream_1s = ccmalloc(sizeof(int) * graph_stream_1_size);
+		graph_stream_1_size = 0;
+		for (i = 0; i < source_size; i++)
+		{
+			const int idx = sources[i].d;
+			// If it has incoming nodes, check whether these are on stream 0.
+			if (incomings[idx].outgoings && incomings[idx].outgoings->rnum)
+			{
+				int flag  = 0;
+				const ccv_array_t* const incoming = incomings[idx].outgoings;
+				for (j = 0; !flag && j < incoming->rnum; j++)
+				{
+					const int incoming_idx = *(int*)ccv_array_get(incoming, j);
+					for (k = 0; !flag && k < schd_info[incoming_idx].stream_size; k++)
+						flag = (SCHEDULE_STREAMS(schd_info[incoming_idx])[k] == 0); // If this is the default stream, we already have a good start.
+				}
+				if (flag)
+					continue;
+			}
+			for (j = 0; j < schd_info[idx].stream_size; j++)
+				if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this is not the default stream, we need explicit begin signal to start.
+				{
+					const int stream_idx = SCHEDULE_STREAMS(schd_info[idx])[j];
+					int flag = 0;
+					for (k = 0; !flag && k < graph_stream_1_size; k++)
+						flag = (stream_idx == schedule->stream_1s[k]);
+					if (!flag)
+						schedule->stream_1s[graph_stream_1_size++] = stream_idx;
+				}
+		}
+		schedule->stream_1_size = graph_stream_1_size;
+	}
+	for (i = 0; i < exec_info_size; i++)
+		if (incomings[i].outgoings)
+			ccv_array_free(incomings[i].outgoings);
+	ccfree(incomings);
 	int graph_wait_size = 0;
 	for (i = 0; i < destination_size; i++)
 	{
@@ -1035,23 +1095,25 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 				++graph_wait_size;
 	}
 	if (graph_wait_size > 0)
-		schedule->waits = ccmalloc(sizeof(int) * graph_wait_size);
-	graph_wait_size = 0;
-	for (i = 0; i < destination_size; i++)
 	{
-		const int idx = destinations[i].d;
-		for (j = 0; j < schd_info[idx].stream_size; j++)
-			if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
-			{
-				ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
-				if (SCHEDULE_SIGNALS(schd_info[idx])[j] < 0)
-					SCHEDULE_SIGNALS(schd_info[idx])[j] = signal_size++;
-				else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(schd_info[idx])[j]))
-					continue;
-				schedule->waits[graph_wait_size++] = SCHEDULE_SIGNALS(schd_info[idx])[j];
-			}
+		schedule->waits = ccmalloc(sizeof(int) * graph_wait_size);
+		graph_wait_size = 0;
+		for (i = 0; i < destination_size; i++)
+		{
+			const int idx = destinations[i].d;
+			for (j = 0; j < schd_info[idx].stream_size; j++)
+				if (SCHEDULE_STREAMS(schd_info[idx])[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
+				{
+					ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
+					if (SCHEDULE_SIGNALS(schd_info[idx])[j] < 0)
+						SCHEDULE_SIGNALS(schd_info[idx])[j] = signal_size++;
+					else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(schd_info[idx])[j]))
+						continue;
+					schedule->waits[graph_wait_size++] = SCHEDULE_SIGNALS(schd_info[idx])[j];
+				}
+		}
+		schedule->wait_size = graph_wait_size;
 	}
-	schedule->wait_size = graph_wait_size;
 	for (i = 0; i < stream_data->rnum; i++)
 	{
 		ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
@@ -1169,7 +1231,9 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 	ccv_nnc_graph_visit_free(visit);
 	for (i = 0; i < signal_size; i++)
 		{ assert(graph->signals[i]); }
-	schedule->signal_synced = ccv_nnc_stream_signal_new(default_stream_type);
+	if (schedule->stream_1_size)
+		schedule->begin = ccv_nnc_stream_signal_new(default_stream_type);
+	schedule->end = ccv_nnc_stream_signal_new(default_stream_type);
 	// Do this recursively for its sub graphs.
 	if (graph->sub_graphs)
 		for (i = 0; i < graph->sub_graphs->rnum; i++)

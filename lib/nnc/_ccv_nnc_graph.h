@@ -46,9 +46,12 @@ struct ccv_nnc_graph_static_schedule_s {
 	int psort_size;
 	int wait_size;
 	int stream_0;
+	int stream_1_size;
+	int* stream_1s; // The default stream will begin these signals on start.
 	int* waits; // The default stream will wait on these signals to be done.
 	int* psort; // If the graph is not topsorted, I will re-index it. Only applicable for partial scheduling.
-	ccv_nnc_stream_signal_t* signal_synced; // This signal is created so that outside provided stream can be synced with the default stream.
+	ccv_nnc_stream_signal_t* begin; // This signal is created so that internal stream_1s can sync with stream_0.
+	ccv_nnc_stream_signal_t* end; // This signal is created so that outside provided stream can be synced with the stream_0.
 	ccv_nnc_graph_exec_schedule_t exec_info[1];
 };
 
