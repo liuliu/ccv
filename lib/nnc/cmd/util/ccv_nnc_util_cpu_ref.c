@@ -238,9 +238,9 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	{
 		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
-		assert(a->info.datatype == b->info.datatype);
 		if (a != b) // Only do transfer if these are two different tensors.
 		{
+			assert(a->info.datatype == b->info.datatype);
 			if (a->info.datatype == CCV_16F)
 				_ccv_nnc_tensor_transfer_cpu_ref_f16(a, b);
 			else if (a->info.datatype == CCV_32F || a->info.datatype == CCV_32S)
