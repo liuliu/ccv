@@ -3294,11 +3294,13 @@ enum {
 typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const input, const ccv_nnc_tensor_symbol_t output_symbol);
 typedef void(*ccv_cnnp_cmd_exec_init_state_f)(const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_cnnp_state_initializer_f initializer, void* const initializer_context, void* const context);
 typedef void(*ccv_cnnp_cmd_exec_init_state_deinit_f)(void* const context);
+typedef void*(*ccv_cnnp_cmd_exec_init_state_copy_f)(void* const context);
 
 typedef struct {
 	ccv_nnc_tensor_param_t info; /**< The tensor parameter for this one. */
 	void* context; /**< The context for which we initialize tensor. */
 	ccv_cnnp_cmd_exec_init_state_f init; /**< The function to init state for a tensor. */
+	ccv_cnnp_cmd_exec_init_state_copy_f copy; /**< The function to make a copy of the context. */
 	ccv_cnnp_cmd_exec_init_state_deinit_f deinit; /**< The function to release the context. */
 } ccv_cnnp_cmd_exec_io_init_state_t;
 

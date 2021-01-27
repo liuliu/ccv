@@ -1846,8 +1846,26 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
 
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
 {
+	// If the model is not compiled yet. Compile them now.
+	if (!model->graph)
+	{
+		model->graph = ccv_nnc_symbolic_graph_new();
+		assert(from_model->compiled_data);
+		const int input_size = from_model->input_size;
+		ccv_nnc_tensor_param_t input_params[input_size];
+		int i;
+		for (i = 0; i < input_size; i++)
+			input_params[i] = ccv_nnc_tensor_symbol_params(from_model->graph, from_model->inputs[i]);
+		_ccv_cnnp_model_compile(model, input_params, input_size, from_model->compiled_data->loss);
+		model->parallel_count = from_model->parallel_count;
+		model->memory_compression = from_model->memory_compression;
+		model->compiled_data->stream_type = from_model->compiled_data->stream_type;
+		model->compiled_data->minimize.minimizer = from_model->compiled_data->minimize.minimizer;
+		model->compiled_data->minimize.max_saved_aux_size = from_model->compiled_data->minimize.max_saved_aux_size;
+	}
 	// To models.
 	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
+	assert(to_compiled_data);
 	const int to_param_sel = parameters->param_sel > 0 ? parameters->param_sel - 1 : parameters->param_sel;
 	assert(parameters->param_sel != 0);
 	const int to_tensors_init = !!to_compiled_data->tensors_init.v;

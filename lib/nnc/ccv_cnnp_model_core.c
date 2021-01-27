@@ -758,7 +758,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_cmd_exec_isa = {
 	.copy = _ccv_cnnp_cmd_exec_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name)
+static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, int copy_io, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name)
 {
 	assert(input_size >= 0);
 	assert(output_size > 0);
@@ -793,7 +793,13 @@ ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	model_cmd_exec->output_symbols = model_cmd_exec->input_symbols + input_size;
 	model_cmd_exec->inputs = (ccv_cnnp_cmd_exec_io_t*)(model_cmd_exec->output_symbols + output_size);
 	if (input_size > 0)
+	{
 		memcpy(model_cmd_exec->inputs, inputs, sizeof(ccv_cnnp_cmd_exec_io_t) * input_size);
+		if (copy_io)
+			for (i = 0; i < input_size; i++)
+				if (inputs[i].type != CCV_CNNP_IO && inputs[i].init_state.copy)
+					model_cmd_exec->inputs[i].init_state.context = inputs[i].init_state.copy(inputs[i].init_state.context);
+	}
 	model_cmd_exec->output_size = output_size;
 	model_cmd_exec->outputs = (int*)(model_cmd_exec->inputs + input_size);
 	if (output_size > 0)
@@ -801,10 +807,15 @@ ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	return (ccv_cnnp_model_t*)model_cmd_exec;
 }
 
+ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name)
+{
+	return _ccv_cnnp_cmd_exec(cmd, 0, hint, flags, inputs, input_size, outputs, output_size, name);
+}
+
 static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_cmd_exec_t* const self = (const ccv_cnnp_model_cmd_exec_t*)super;
-	return ccv_cnnp_cmd_exec(self->cmd, self->hint, self->flags, self->inputs, self->input_size, self->outputs, self->output_size, self->super.name);
+	return _ccv_cnnp_cmd_exec(self->cmd, 1, self->hint, self->flags, self->inputs, self->input_size, self->outputs, self->output_size, self->super.name);
 }
 
 static void _ccv_cnnp_cmd_exec_io_copy(const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_cnnp_state_initializer_f initializer, void* const initializer_context, void* const context)
@@ -833,6 +844,13 @@ static void _ccv_cnnp_cmd_exec_io_set_by(const ccv_nnc_tensor_symbol_t tensor_sy
 	initializer(initializer_context, set_by->cmd, set_by->hint, set_by->flags, 0, tensor_symbol);
 }
 
+static void* _ccv_cnnp_cmd_exec_io_set_by_copy(void* const context)
+{
+	ccv_cnnp_cmd_exec_io_set_by_t* const set_by = (ccv_cnnp_cmd_exec_io_set_by_t*)ccmalloc(sizeof(ccv_cnnp_cmd_exec_io_set_by_t));
+	memcpy(set_by, context, sizeof(ccv_cnnp_cmd_exec_io_set_by_t));
+	return set_by;
+}
+
 ccv_cnnp_cmd_exec_io_init_state_t ccv_cnnp_cmd_exec_io_set_by(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_param_t params)
 {
 	ccv_cnnp_cmd_exec_io_set_by_t* const set_by = (ccv_cnnp_cmd_exec_io_set_by_t*)ccmalloc(sizeof(ccv_cnnp_cmd_exec_io_set_by_t));
@@ -843,6 +861,7 @@ ccv_cnnp_cmd_exec_io_init_state_t ccv_cnnp_cmd_exec_io_set_by(const ccv_nnc_cmd_
 		.info = params,
 		.context = set_by,
 		.init = _ccv_cnnp_cmd_exec_io_set_by,
+		.copy = _ccv_cnnp_cmd_exec_io_set_by_copy,
 		.deinit = ccfree,
 	};
 }
