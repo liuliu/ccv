@@ -5,7 +5,7 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_internal.h"
 
-void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b);
+void _ccv_nnc_tensor_transfer_cpu_ref_f32(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b);
 void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b);
 void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size);
 void _ccv_nnc_ewprod_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size);

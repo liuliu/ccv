@@ -21,7 +21,7 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 		assert(q == 0);
 		if (p == 1)
 		{
-			_ccv_nnc_tensor_transfer_cpu_ref(a, c);
+			_ccv_nnc_tensor_transfer_cpu_ref_f32(a, c);
 			return;
 		} else if (p == 0) {
 			ccv_nnc_tensor_zero(c);
@@ -104,10 +104,10 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 		}, 2, &c, 1);
 		return;
 	} else if (p == 1 && q == 0 && a_check_dim) {
-		_ccv_nnc_tensor_transfer_cpu_ref(a, c);
+		_ccv_nnc_tensor_transfer_cpu_ref_f32(a, c);
 		return;
 	} else if (p == 0 && q == 1 && b_check_dim) {
-		_ccv_nnc_tensor_transfer_cpu_ref(b, c);
+		_ccv_nnc_tensor_transfer_cpu_ref_f32(b, c);
 		return;
 	} else if (p == 0 && q == 0) {
 		ccv_nnc_tensor_zero(c);

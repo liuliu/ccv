@@ -872,6 +872,10 @@ ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, in
 void ccv_float_to_half_precision(float* f, uint16_t* h, size_t len);
 void ccv_half_precision_to_float(uint16_t* h, float* f, size_t len);
 
+// 64-bit float to 16-bit float
+void ccv_double_to_half_precision(double* f, uint16_t* h, size_t len);
+void ccv_half_precision_to_double(uint16_t* h, double* f, size_t len);
+
 /* basic data structures ccv_util.c */
 
 typedef struct {

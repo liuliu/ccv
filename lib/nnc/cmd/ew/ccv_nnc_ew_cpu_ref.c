@@ -16,7 +16,7 @@ void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, con
 {
 	if (input_size == 1 && output_size == 1)
 	{
-		_ccv_nnc_tensor_transfer_cpu_ref(inputs[0], outputs[0]);
+		_ccv_nnc_tensor_transfer_cpu_ref_f32(inputs[0], outputs[0]);
 		return;
 	}
 	// Assuming this is float 32.
@@ -128,7 +128,7 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		// Copy over the gradient (If they are not pointing to the same tensor already).
 		for (i = 0; i < output_size; i++)
 			if (outputs[i] && inputs[0]->data.f32 != outputs[i]->data.f32)
-				_ccv_nnc_tensor_transfer_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[i]);
+				_ccv_nnc_tensor_transfer_cpu_ref_f32((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[i]);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -137,7 +137,7 @@ void _ccv_nnc_ewprod_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, co
 {
 	if (input_size == 1 && output_size == 1)
 	{
-		_ccv_nnc_tensor_transfer_cpu_ref(inputs[0], outputs[0]);
+		_ccv_nnc_tensor_transfer_cpu_ref_f32(inputs[0], outputs[0]);
 		return;
 	}
 	// Assuming this is float 32.
@@ -942,7 +942,7 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	// D[Exp[x], x] = Exp[x]
 	if (inputs[0] == 0)
-		_ccv_nnc_tensor_transfer_cpu_ref((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+		_ccv_nnc_tensor_transfer_cpu_ref_f32((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
 	else
 		_ccv_nnc_ewprod_forw_cpu_ref((ccv_nnc_tensor_view_t*[]){
 			(ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2]

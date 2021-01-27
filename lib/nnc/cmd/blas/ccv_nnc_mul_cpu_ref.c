@@ -19,7 +19,7 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 	{
 		if (p == 1)
 		{
-			_ccv_nnc_tensor_transfer_cpu_ref(a, c);
+			_ccv_nnc_tensor_transfer_cpu_ref_f32(a, c);
 			return;
 		} else if (p == 0) {
 			ccv_nnc_tensor_zero(c);

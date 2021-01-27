@@ -61,7 +61,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 REGISTER_COMMAND_BACKEND(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY | CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_data_transfer;
@@ -70,7 +70,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF)
 REGISTER_COMMAND_BACKEND(CCV_NNC_DATA_TRANSFER_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY | CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_data_transfer;
@@ -112,6 +112,28 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, b->data.f32);
+		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_32F) {
+			assert(!CCV_IS_TENSOR_VIEW(a));
+			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, b->data.f32);
+		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_64F) {
+			assert(!CCV_IS_TENSOR_VIEW(a));
+			assert(!CCV_IS_TENSOR_VIEW(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f32, b->data.f64);
+		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_16F) {
+			assert(!CCV_IS_TENSOR_VIEW(a));
+			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, (__half*)b->data.f16);
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_64F) {
+			assert(!CCV_IS_TENSOR_VIEW(a));
+			assert(!CCV_IS_TENSOR_VIEW(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, b->data.f64);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -120,7 +142,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_datatype_conversion;
@@ -129,7 +151,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GP
 REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_datatype_conversion;
