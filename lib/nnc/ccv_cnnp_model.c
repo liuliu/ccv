@@ -1512,11 +1512,8 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	if (!compiled_data->graph || mode_mismatch)
 	{
 		_ccv_cnnp_compiled_data_graph_free(compiled_data);
-		if (mode_mismatch) // If mode mismatch, we need to redo the backward and apply gradient as well.
-		{
+		if (mode_mismatch) // If mode mismatch, we need to redo the backward as well (no need to redo apply_gradients, it doesn't require target_gradient_mode or disable_outgrad.
 			_ccv_cnnp_compiled_data_backward_free(compiled_data);
-			_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
-		}
 		if (params.requires_grad)
 			_ccv_cnnp_model_multistage_jit_0(model, params.disable_outgrad, params.is_test, inputs, input_size, outputs, output_size);
 		else
