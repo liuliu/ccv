@@ -126,6 +126,9 @@ typedef struct {
 			float pos_weight; /**< [binary_crossentropy.pos_weight] The pos_weight on the loss: -(pos_weight * y * log(x) + (1 - y) * log(1 - x)) */
 		} binary_crossentropy;
 		struct {
+			float beta; /**< [smooth_l1.beta] The beta on the smooth L1 loss (or Huber loss) */
+		} smooth_l1;
+		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;

@@ -3618,8 +3618,8 @@ TEST_CASE("smooth l1 loss forward")
 	for (i = 0; i < 1000; i++)
 		hb->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(a, b), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
 	ccv_nnc_tensor_t* tc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c), TENSOR_LIST(tc), 0);
 	REQUIRE_TENSOR_EQ(tc, hc, "GPU computed output should be the same as CPU computed ones");
@@ -3656,10 +3656,10 @@ TEST_CASE("smooth l1 loss backward")
 	for (i = 0; i < 10; i++)
 		hg->data.f32[i] = 1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb, hg), TENSOR_LIST(a, b, g), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha, hb, hc), TENSOR_LIST(hd), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b, c), TENSOR_LIST(d), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha, hb, hc), TENSOR_LIST(hd), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b, c), TENSOR_LIST(d), 0);
 	ccv_nnc_tensor_t* td = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(d), TENSOR_LIST(td), 0);
 	REQUIRE_TENSOR_EQ(td, hd, "GPU computed output should be the same as CPU computed ones");
@@ -3696,10 +3696,10 @@ TEST_CASE("smooth l1 loss backward no input gradient")
 	for (i = 0; i < 1000; i++)
 		hb->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(a, b), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ha, hb, hc), TENSOR_LIST(hd), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
-	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b, c), TENSOR_LIST(d), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(0, ha, hb, hc), TENSOR_LIST(hd), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(CMD_SMOOTH_L1_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b, c), TENSOR_LIST(d), 0);
 	ccv_nnc_tensor_t* td = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(d), TENSOR_LIST(td), 0);
 	REQUIRE_TENSOR_EQ(td, hd, "GPU computed output should be the same as CPU computed ones");

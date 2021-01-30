@@ -576,7 +576,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 		ccv_nnc_tensor_variable_t const anchor_out = ccv_nnc_tensor_variable_alias_new(graph, select_out, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 4));
 		ccv_nnc_tensor_variable_t const anchor_gt = ccv_nnc_tensor_variable_alias_new(graph, select_gt, DIM_ALLOC(0, 1), DIM_ALLOC(rpn_data.batch_count * rpn_data.select_count, 5), GPU_TENSOR_NHWC(000, 32F, rpn_data.batch_count * rpn_data.select_count, 4));
 		ccv_nnc_tensor_variable_t const l1_loss = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_SMOOTH_L1_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(anchor_out, anchor_gt), TENSOR_VARIABLE_LIST(l1_loss), 0, 0);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_SMOOTH_L1_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(anchor_out, anchor_gt), TENSOR_VARIABLE_LIST(l1_loss), 0, 0);
 		ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(cls_loss, l1_loss), 0, TENSOR_VARIABLE_LIST(input), TENSOR_VARIABLE_LIST(0), 0);
 		ccv_nnc_dynamic_graph_apply_gradients(graph, sgd, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
 		if (t % 50 == 49)

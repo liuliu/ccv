@@ -59,6 +59,6 @@ REGISTER_COMMAND(CCV_NNC_SMOOTH_L1_BACKWARD)(ccv_nnc_cmd_registry_t* const regis
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SMOOTH_L1_FORWARD)
-#define CMD_SMOOTH_L1_FORWARD() ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_SMOOTH_L1_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SMOOTH_L1_BACKWARD)
-#define CMD_SMOOTH_L1_BACKWARD() ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_SMOOTH_L1_BACKWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)

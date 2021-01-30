@@ -34,6 +34,9 @@ static int _ccv_nnc_smooth_l1_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
 	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
 	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
+	const float beta = cmd.info.smooth_l1.beta;
+	const float beta_inv_2 = 0.5 / beta;
+	const float beta_2 = 0.5 * beta;
 	parallel_for(i, batch_size) {
 		int j;
 		const float* const ap = a->data.f32 + i * astep;
@@ -41,14 +44,14 @@ static int _ccv_nnc_smooth_l1_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		float cp = 0;
 		for (j = 0; j < count; j++)
 			cp += fabs(bp[j] - ap[j]);
-		if (cp < 1)
+		if (cp < beta)
 		{
 			cp = 0;
 			for (j = 0; j < count; j++)
 				cp += (bp[j] - ap[j]) * (bp[j] - ap[j]);
-			cp *= 0.5;
+			cp *= beta_inv_2;
 		} else
-			cp -= 0.5;
+			cp -= beta_2;
 		c->data.f32[i * cstep] = cp;
 	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;
@@ -84,6 +87,8 @@ static int _ccv_nnc_smooth_l1_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
 	const int hstep = hinc[CCV_NNC_MAX_DIM + 1];
 	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
+	const float beta = cmd.info.smooth_l1.beta;
+	const float beta_2 = 0.5 * beta;
 	if (g)
 	{
 		int ginc[CCV_NNC_MAX_DIM_ALLOC];
@@ -97,12 +102,12 @@ static int _ccv_nnc_smooth_l1_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			const float* const ap = a->data.f32 + i * astep;
 			const float* const bp = b->data.f32 + i * bstep;
 			float* const hp = h->data.f32 + i * hstep;
-			if (cp < 0.5)
+			if (cp < beta_2)
 				for (j = 0; j < count; j++)
-					hp[j] = gp * (ap[j] - bp[j]);
+					hp[j] = beta * gp * (ap[j] - bp[j]);
 			else
 				for (j = 0; j < count; j++)
-					hp[j] = ((ap[j] - bp[j]) > 0 ? 0.5 : -0.5) * gp;
+					hp[j] = ((ap[j] - bp[j]) > 0 ? beta_2 : -beta_2) * gp;
 		} parallel_endfor
 	} else {
 		parallel_for(i, batch_size) {
@@ -111,12 +116,12 @@ static int _ccv_nnc_smooth_l1_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			const float* const ap = a->data.f32 + i * astep;
 			const float* const bp = b->data.f32 + i * bstep;
 			float* const hp = h->data.f32 + i * hstep;
-			if (cp < 0.5)
+			if (cp < beta_2)
 				for (j = 0; j < count; j++)
-					hp[j] = ap[j] - bp[j];
+					hp[j] = beta * (ap[j] - bp[j]);
 			else
 				for (j = 0; j < count; j++)
-					hp[j] = (ap[j] - bp[j]) > 0 ? 0.5 : -0.5;
+					hp[j] = (ap[j] - bp[j]) > 0 ? beta_2 : -beta_2;
 		} parallel_endfor
 	}
 	return CCV_NNC_EXEC_SUCCESS;
