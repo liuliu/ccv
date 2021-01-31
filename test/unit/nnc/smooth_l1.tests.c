@@ -17,7 +17,7 @@ TEST_CASE("compare smooth L1")
 	const ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(32F, 2, 3), "a");
 	const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(32F, 2, 3), "label");
 	const ccv_nnc_tensor_symbol_t loss0 = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "loss0");
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SMOOTH_L1_FORWARD(), TENSOR_SYMBOL_LIST(a, label), TENSOR_SYMBOL_LIST(loss0), "smooth l1");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SMOOTH_L1_FORWARD(1), TENSOR_SYMBOL_LIST(a, label), TENSOR_SYMBOL_LIST(loss0), "smooth l1");
 	ccv_nnc_graph_exec_symbol_autogen(graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(loss0), TENSOR_SYMBOL_LIST(a), SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph));
 	const ccv_nnc_tensor_symbol_t dloss0 = ccv_nnc_tensor_symbol_for_backward(graph, loss0);
