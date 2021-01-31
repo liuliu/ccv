@@ -50,9 +50,9 @@ TEST_CASE("compare smooth L1")
 	ccv_nnc_graph_run(run_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const da0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, da0);
 	ccv_nnc_tensor_t* const da1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
-	da1_tensor->data.f32[0] = -0.5;
-	da1_tensor->data.f32[1] = 0.5;
-	da1_tensor->data.f32[2] = -0.5;
+	da1_tensor->data.f32[0] = -1;
+	da1_tensor->data.f32[1] = 1;
+	da1_tensor->data.f32[2] = -1;
 	da1_tensor->data.f32[3] = -0.5;
 	da1_tensor->data.f32[4] = 0.4;
 	da1_tensor->data.f32[5] = 0;
