@@ -452,7 +452,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_graph_exec_symbol_t set_ones[f_variable_size];
 	int set_one_size = 0;
 	for (i = 0; i < f_variable_size;)
-		if (!df_symbols[i].graph) // Skip.
+		if ((df_optionals && df_optionals[i]) || !df_symbols[i].graph) // Skip.
 			++i;
 		else {
 			df_symbols_0[0] = df_symbols[i];
