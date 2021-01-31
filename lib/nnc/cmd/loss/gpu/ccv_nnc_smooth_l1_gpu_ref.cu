@@ -75,6 +75,7 @@ template<typename NUM1, typename NUM2>
 __global__ void _ccv_nnc_smooth_l1_back_kernel(const int batch_size, const int count, const NUM2* const g, const int gstep, const NUM2* const a, const int astep, const NUM1* const b, const int bstep, const NUM2* const c, const int cstep, NUM2* const h, const int hstep, const float beta)
 {
 	const float beta_2 = 0.5 * beta;
+	const float inv_beta = 1.0 / beta;
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const NUM2* const ap = a + i * astep;
 		const NUM1* const bp = b + i * bstep;
@@ -82,7 +83,7 @@ __global__ void _ccv_nnc_smooth_l1_back_kernel(const int batch_size, const int c
 		const float cp = (float)c[i * cstep];
 		if (cp < beta_2)
 		{
-			const float gp = beta * (float)g[i * gstep];
+			const float gp = inv_beta * (float)g[i * gstep];
 			for (int j = 0; j < count; j++)
 			{
 				const float av = ap[j];
@@ -95,7 +96,7 @@ __global__ void _ccv_nnc_smooth_l1_back_kernel(const int batch_size, const int c
 			{
 				const float av = ap[j];
 				const float bv = bp[j];
-				hp[j] = (NUM2)(((av - bv) > 0 ? beta_2 : -beta_2) * gp);
+				hp[j] = (NUM2)(((av - bv) > 0 ? 1 : -1) * gp);
 			}
 		}
 	}
@@ -105,6 +106,7 @@ template<typename NUM1, typename NUM2>
 __global__ void _ccv_nnc_smooth_l1_back_kernel(const int batch_size, const int count, const NUM2* const a, const int astep, const NUM1* const b, const int bstep, const NUM2* const c, const int cstep, NUM2* const h, const int hstep, const float beta)
 {
 	const float beta_2 = 0.5 * beta;
+	const float inv_beta = 1.0 / beta;
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const NUM2* const ap = a + i * astep;
 		const NUM1* const bp = b + i * bstep;
@@ -115,14 +117,14 @@ __global__ void _ccv_nnc_smooth_l1_back_kernel(const int batch_size, const int c
 			{
 				const float av = ap[j];
 				const float bv = bp[j];
-				hp[j] = (NUM2)(beta * (av - bv));
+				hp[j] = (NUM2)(inv_beta * (av - bv));
 			}
 		else
 			for (int j = 0; j < count; j++)
 			{
 				const float av = ap[j];
 				const float bv = bp[j];
-				hp[j] = (NUM2)((av - bv) > 0 ? beta_2 : -beta_2);
+				hp[j] = (NUM2)((av - bv) > 0 ? 1 : -1);
 			}
 	}
 }
