@@ -319,7 +319,6 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_tensor_symbol_t weights;
 	ccv_nnc_tensor_symbol_t bias;
-	ccv_nnc_tensor_symbol_t scale;
 	int groups;
 	int filters;
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -382,8 +381,6 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
-	if (self->scale.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
 static void _ccv_cnnp_convolution_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
@@ -392,8 +389,6 @@ static void _ccv_cnnp_convolution_add_to_parameter(ccv_cnnp_model_t* const super
 	add_to_array(parameters, self->weights);
 	if (self->bias.graph)
 		add_to_array(parameters, self->bias);
-	if (self->scale.graph)
-		add_to_array(parameters, self->scale);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -438,7 +433,6 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_tensor_symbol_t weights;
 	ccv_nnc_tensor_symbol_t bias;
-	ccv_nnc_tensor_symbol_t scale;
 	int count;
 	int no_bias;
 } ccv_cnnp_model_dense_t;
@@ -487,8 +481,6 @@ static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_s
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
-	if (self->scale.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
 static void _ccv_cnnp_dense_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
@@ -497,8 +489,6 @@ static void _ccv_cnnp_dense_add_to_parameter(ccv_cnnp_model_t* const super, cons
 	add_to_array(parameters, self->weights);
 	if (self->bias.graph)
 		add_to_array(parameters, self->bias);
-	if (self->scale.graph)
-		add_to_array(parameters, self->scale);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super, void* const context);
