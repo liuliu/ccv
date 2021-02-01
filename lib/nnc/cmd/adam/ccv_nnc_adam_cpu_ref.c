@@ -80,8 +80,7 @@ static int _ccv_nnc_adam_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					grad += decay * ap[x];
 					const float mom = np[x] = beta1 * mp[x] + (1 - beta1) * grad;
 					const float vel = up[x] = beta2 * vp[x] + (1 - beta2) * grad * grad;
-					const float inv_std = rate_inv_bias_correction1 / (sqrtf(vel * inv_bias_correction2) + epsilon);
-					bp[x] = ap[x] - mom * inv_std;
+					bp[x] = ap[x] - (mom * rate_inv_bias_correction1) / (sqrtf(vel * inv_bias_correction2) + epsilon);
 				}
 				gp += ginc[3];
 				ap += ainc[3];

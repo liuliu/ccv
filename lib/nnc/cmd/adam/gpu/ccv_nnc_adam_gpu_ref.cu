@@ -17,8 +17,7 @@ __global__ void _ccv_nnc_adam_kernel(const size_t tensor_count, const float beta
 		grad += decay * (float)a[i];
 		const float m = beta1 * (float)mom[i] + (1 - beta1) * grad;
 		const float v = beta2 * (float)vel[i] + (1 - beta2) * grad * grad;
-		const float inv_std = rate_inv_bias_correction1 / (sqrtf(v * inv_bias_correction2) + epsilon);
-		b[i] = (NUM2)((float)a[i] - m * inv_std);
+		b[i] = (NUM2)((float)a[i] - (m * rate_inv_bias_correction1) / (sqrtf(v * inv_bias_correction2) + epsilon));
 		new_mom[i] = (NUM2)m;
 		new_vel[i] = (NUM2)v;
 	}
