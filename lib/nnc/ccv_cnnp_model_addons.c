@@ -1404,3 +1404,113 @@ static ccv_cnnp_model_t* _ccv_cnnp_upsample_copy(const ccv_cnnp_model_t* const s
 	const ccv_cnnp_model_upsample_t* const self = (const ccv_cnnp_model_upsample_t*)super;
 	return ccv_cnnp_upsample(self->width_scale, self->height_scale, self->super.name);
 }
+
+// MARK - Reduce Sum Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis[CCV_NNC_MAX_DIM_ALLOC];
+	int count;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_reduce_sum_t;
+
+static void _ccv_cnnp_reduce_sum_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t reduce_sum = CMD_REDUCE_SUM_FORWARD();
+	int i;
+	for (i = 0; i < self->count; i++)
+		reduce_sum.info.reduce.axis[i] = self->count;
+	reduce_sum.info.reduce.count = self->count;
+	ccv_nnc_hint_tensor_auto(reduce_sum, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, reduce_sum, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_sum_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_reduce_sum_isa = {
+	.build = _ccv_cnnp_reduce_sum_build,
+	.copy = _ccv_cnnp_reduce_sum_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_reduce_sum(const int* const axis, const int axis_count, const char* const name)
+{
+	ccv_cnnp_model_reduce_sum_t* const model_reduce_sum = (ccv_cnnp_model_reduce_sum_t*)cccalloc(1, sizeof(ccv_cnnp_model_reduce_sum_t));
+	model_reduce_sum->super.isa = &ccv_cnnp_reduce_sum_isa;
+	model_reduce_sum->super.input_size = 1;
+	model_reduce_sum->super.outputs = &model_reduce_sum->output;
+	model_reduce_sum->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_reduce_sum->super, name);
+	assert(axis_count <= CCV_NNC_MAX_DIM_ALLOC);
+	int i;
+	for (i = 0; i < axis_count; i++)
+		model_reduce_sum->axis[i] = axis[i];
+	model_reduce_sum->count = axis_count;
+	return (ccv_cnnp_model_t*)model_reduce_sum;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_sum_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	return ccv_cnnp_reduce_sum(self->axis, self->count, self->super.name);
+}
+
+// MARK - Reduce Max Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis[CCV_NNC_MAX_DIM_ALLOC];
+	int count;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_reduce_max_t;
+
+static void _ccv_cnnp_reduce_max_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t reduce_max = CMD_REDUCE_MAX_FORWARD();
+	int i;
+	for (i = 0; i < self->count; i++)
+		reduce_max.info.reduce.axis[i] = self->count;
+	reduce_max.info.reduce.count = self->count;
+	ccv_nnc_hint_tensor_auto(reduce_max, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, reduce_max, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_max_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_reduce_max_isa = {
+	.build = _ccv_cnnp_reduce_max_build,
+	.copy = _ccv_cnnp_reduce_max_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_reduce_max(const int* const axis, const int axis_count, const char* const name)
+{
+	ccv_cnnp_model_reduce_max_t* const model_reduce_max = (ccv_cnnp_model_reduce_max_t*)cccalloc(1, sizeof(ccv_cnnp_model_reduce_max_t));
+	model_reduce_max->super.isa = &ccv_cnnp_reduce_max_isa;
+	model_reduce_max->super.input_size = 1;
+	model_reduce_max->super.outputs = &model_reduce_max->output;
+	model_reduce_max->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_reduce_max->super, name);
+	assert(axis_count <= CCV_NNC_MAX_DIM_ALLOC);
+	int i;
+	for (i = 0; i < axis_count; i++)
+		model_reduce_max->axis[i] = axis[i];
+	model_reduce_max->count = axis_count;
+	return (ccv_cnnp_model_t*)model_reduce_max;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_max_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	return ccv_cnnp_reduce_max(self->axis, self->count, self->super.name);
+}

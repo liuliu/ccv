@@ -3242,6 +3242,29 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
  */
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
 /**
+ * Process parameters such as exponential averaging.
+ * parameters = zip(from_parameters, to_parameters).map { cmd(from_parameter, to_parameter) }
+ * @param model The composed model to have parameters zip mapped.
+ * @param parameters The parameters to be written (and read).
+ * @param cmd The command to apply on the parameters.
+ * @param hint The hint supplied to the cmd.
+ * @param flags The flags supplied to the cmd.
+ * @param stream_context The stream context to be associated with.
+ * @param from_model The other composed model to have parameters zipped.
+ * @param from_parameters The parameters to be read.
+ */
+void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
+/**
+ * Process parameters such as clipping. parameters = parameters.map { cmd(parameter) }
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param cmd The command to apply on the parameters.
+ * @param hint The hint supplied to the cmd.
+ * @param flags The flags supplied to the cmd.
+ * @param stream_context The stream context to be associated with.
+ */
+void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context);
+/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
@@ -3539,6 +3562,22 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const int datatype, con
  * @return A upsample model.
  */
 ccv_cnnp_model_t* ccv_cnnp_upsample(const float width_scale, const float height_scale, const char* const name);
+/**
+ * A sum value reducer model.
+ * @param axis The axis to be reduced.
+ * @param axis_count The size of the axis array.
+ * @param name The unique name of the model.
+ * @return A sum value reducer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_sum(const int* const axis, const int axis_count, const char* const name);
+/**
+ * A max value reducer model.
+ * @param axis The axis to be reduced.
+ * @param axis_count The size of the axis array.
+ * @param name The unique name of the model.
+ * @return A max value reducer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_max(const int* const axis, const int axis_count, const char* const name);
 
 /** @} */
 
