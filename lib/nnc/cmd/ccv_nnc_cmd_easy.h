@@ -200,6 +200,10 @@
 #define CMD_EWSQRT_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWSQRT_BACKWARD
 #define CMD_EWSQRT_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_CLAMP_FORWARD
+#define CMD_CLAMP_FORWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
+// CCV_NNC_CLAMP_BACKWARD
+#define CMD_CLAMP_BACKWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
 // CCV_NNC_REDUCE_SUM_FORWARD
 #define CMD_REDUCE_SUM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_SUM_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 // CCV_NNC_REDUCE_SUM_BACKWARD
