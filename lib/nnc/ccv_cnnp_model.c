@@ -416,8 +416,12 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 		const int* dest_outputs;
 		int dest_output_size;
 		ccv_nnc_graph_exec_symbol_io(model->graph, dest_symbol, &dest_inputs, &dest_input_size, &dest_outputs, &dest_output_size);
-		assert(src_input_size == dest_input_size);
-		assert(src_output_size == dest_output_size);
+		// We may have unmatched input / output size because this is the minimizer and it has
+		// different saved_aux (for example, when we shrunk with CMD_NOOP).
+		if (src_input_size != dest_input_size)
+			continue;
+		if (src_output_size != dest_output_size)
+			continue;
 		ccv_nnc_graph_exec_symbol_set(model->graph, dest_symbol, src_cmd);
 		// There may be mismatches of the source tensor symbols and destination tensor symbols. The reason is because
 		// we may later passed-in the minimizer, therefore, we may allocate tensors for minimizer later in the original
