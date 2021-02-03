@@ -174,8 +174,6 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		if (tensor)
 			{ assert(!CCV_IS_TENSOR_VIEW(tensor)); }
 	}
-	// Reset minimizer back to noop, requires dynamic_graph_apply_gradients to set the proper minimizer again.
-	ccv_cnnp_model_set_minimizer(model, CMD_NOOP(), 1, 0, 0);
 	if (dynamic_graph->no_grad)
 	{
 		ccv_nnc_stateful_exec_t stateful_exec = {
