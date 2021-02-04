@@ -699,7 +699,21 @@ static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const
 	// For no-op, we can preserve previous saved_aux_size.
 	if (old_minimizer.cmd != minimizer.cmd && minimizer.cmd != CCV_NNC_NOOP)
 	{
-		const int old_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(old_minimizer);
+		// If the old minimizer is a noop, then the old_saved_aux_size should be whatever its previous
+		// saved_aux_size is, otherwise we will reinit the saved_aux repeatedly if you switch between
+		// noop and a minimizer. We don't want that because we do that in high-level frameworks to
+		// make sure some model parameters don't update if we don't want them to.
+		int old_saved_aux_size;
+		if (old_minimizer.cmd == CCV_NNC_NOOP)
+		{
+			int input_size;
+			ccv_nnc_graph_exec_symbol_io(graph, update_nodes[parameter_indice], 0, &input_size, 0, 0);
+			if (input_size < 2) // This is not legit.
+				old_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(old_minimizer);
+			else // See ccv_nnc_minimizer_saved_aux_size, the saved_aux is inputs excluding gradients and parameters.
+				old_saved_aux_size = input_size - 2;
+		} else
+			old_saved_aux_size = ccv_nnc_minimizer_saved_aux_size(old_minimizer);
 		if (old_saved_aux_size != saved_aux_size)
 		{
 			this_parameter_flag = 1;
