@@ -6,6 +6,10 @@
 #define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)
 // CCV_NNC_RANDOM_UNIFORM_BACKWARD
 #define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_lb, _ub}}}, 0)
+// CCV_NNC_RANDOM_NORMAL_FORWARD
+#define CMD_RANDOM_NORMAL_FORWARD(_std, _mean) ccv_nnc_cmd(CCV_NNC_RANDOM_NORMAL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_std, _mean}}}, 0)
+// CCV_NNC_RANDOM_NORMAL_BACKWARD
+#define CMD_RANDOM_NORMAL_BACKWARD(_std, _mean) ccv_nnc_cmd(CCV_NNC_RANDOM_NORMAL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_std, _mean}}}, 0)
 // CCV_NNC_CONVOLUTION_FORWARD
 #define CMD_CONVOLUTION_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 // CCV_NNC_CONVOLUTION_BACKWARD

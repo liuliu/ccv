@@ -2153,6 +2153,40 @@ TEST_CASE("sigmoid binary cross entropy loss backward no input gradient with pos
 	ccv_nnc_tensor_free(td);
 }
 
+TEST_CASE("random normal distribution")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 100000), "x");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RANDOM_NORMAL_FORWARD(1, 0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(x), "random uniform");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100000), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
+	int i;
+	double mean = 0;
+	for (i = 0; i < 100000; i++)
+		mean += xt->data.f32[i];
+	mean = mean / 100000.0;
+	double std = 0;
+	for (i = 0; i < 100000; i++)
+		std += (xt->data.f32[i] - mean) * (xt->data.f32[i] - mean);
+	std = sqrt(std / 100000.0);
+	REQUIRE_EQ_WITH_TOLERANCE(mean, 0, 1e-2, "mean should be 0");
+	REQUIRE_EQ_WITH_TOLERANCE(std, 1, 1e-2, "std should be 1");
+	ccv_nnc_tensor_free(xt);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 TEST_CASE("random uniform distribution")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
