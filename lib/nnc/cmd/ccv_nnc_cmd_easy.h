@@ -68,6 +68,14 @@
 #define CMD_COMPRESSION_LSSC_FORWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMPRESSION_LSSC_BACKWARD
 #define CMD_COMPRESSION_LSSC_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_MIN_FORWARD
+#define CMD_MIN_FORWARD() ccv_nnc_cmd(CCV_NNC_MIN_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_MIN_BACKWARD
+#define CMD_MIN_BACKWARD() ccv_nnc_cmd(CCV_NNC_MIN_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_MAX_FORWARD
+#define CMD_MAX_FORWARD() ccv_nnc_cmd(CCV_NNC_MAX_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_MAX_BACKWARD
+#define CMD_MAX_BACKWARD() ccv_nnc_cmd(CCV_NNC_MAX_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
 // CCV_NNC_SOFTMAX_FORWARD
 #define CMD_SOFTMAX_FORWARD() ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SOFTMAX_BACKWARD
