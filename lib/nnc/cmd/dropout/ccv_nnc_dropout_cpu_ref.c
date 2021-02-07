@@ -25,8 +25,8 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
+	assert(ccv_nnc_tensor_nd(b->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	const int tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
@@ -158,8 +158,8 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	int hinc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(g->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	assert(h->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(ccv_nnc_tensor_nd(g->info.dim) <= CCV_NNC_MAX_DIM + 2);
+	assert(ccv_nnc_tensor_nd(h->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	ccv_nnc_tensor_view_get_dim(g, dim);
 	assert(ccv_nnc_tensor_view_check_dim(h, dim));
 	int x;

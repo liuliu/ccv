@@ -29,8 +29,8 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 		int dim[CCV_NNC_MAX_DIM_ALLOC];
 		int ainc[CCV_NNC_MAX_DIM_ALLOC];
 		int cinc[CCV_NNC_MAX_DIM_ALLOC];
-		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+		assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
+		assert(ccv_nnc_tensor_nd(c->info.dim) <= CCV_NNC_MAX_DIM + 2);
 		ccv_nnc_tensor_view_get_dim(a, dim);
 		assert(ccv_nnc_tensor_view_check_dim(c, dim));
 		int x;
@@ -87,8 +87,8 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 		return;
 	}
 	int cdim[CCV_NNC_MAX_DIM_ALLOC];
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
+	assert(ccv_nnc_tensor_nd(b->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	ccv_nnc_tensor_view_get_dim(a, cdim); // Fill in cdim first.
 	ccv_nnc_tensor_view_get_broadcast_dim(b, cdim);
 	assert(ccv_nnc_tensor_view_check_broadcast_dim(a, cdim));
@@ -113,7 +113,7 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 	int ainc[CCV_NNC_MAX_DIM_ALLOC];
 	int binc[CCV_NNC_MAX_DIM_ALLOC];
 	int cinc[CCV_NNC_MAX_DIM_ALLOC];
-	assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(ccv_nnc_tensor_nd(c->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_view_check_dim(c, cdim));
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && a_check_dim && b_check_dim)
