@@ -119,11 +119,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			// Super optimal case, just do one for-loop for sum.
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			for (x = 0; x < tensor_count; x++)
-				if (a->data.f32[x] > b->data.f32[x])
+				if (a->data.f32[x] > b->data.f32[x]) {
 					ha->data.f32[x] = g->data.f32[x];
-				else if (a->data.f32[x] < b->data.f32[x])
+					hb->data.f32[x] = 0;
+				} else if (a->data.f32[x] < b->data.f32[x]) {
+					ha->data.f32[x] = 0;
 					hb->data.f32[x] = g->data.f32[x];
-				else
+				} else
 					ha->data.f32[x] = hb->data.f32[x] = g->data.f32[x];
 			return CCV_NNC_EXEC_SUCCESS;
 		}
@@ -148,11 +150,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				for (i[1] = 0; i[1] < dim[1]; i[1]++)
 				{
 					for (x = 0; x < count; x++)
-						if (ap[x] > bp[x])
+						if (ap[x] > bp[x]) {
 							hap[x] = gp[x];
-						else if (ap[x] < bp[x])
+							hbp[x] = 0;
+						} else if (ap[x] < bp[x]) {
+							hap[x] = 0;
 							hbp[x] = gp[x];
-						else
+						} else
 							hap[x] = hbp[x] = gp[x];
 					gp += ginc[2] * ginc[3];
 					ap += ainc[2] * ainc[3];
@@ -176,11 +180,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
 					for (x = 0; x < dim[3]; x++)
-						if (ap[x] > bp[x])
+						if (ap[x] > bp[x]) {
 							hap[x] = gp[x];
-						else if (ap[x] < bp[x])
+							hbp[x] = 0;
+						} else if (ap[x] < bp[x]) {
+							hap[x] = 0;
 							hbp[x] = gp[x];
-						else
+						} else
 							hap[x] = hbp[x] = gp[x];
 					gp += ginc[3];
 					ap += ainc[3];
@@ -207,11 +213,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			// Super optimal case, just do one for-loop for sum.
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			for (x = 0; x < tensor_count; x++)
-				if (a->data.f32[x] > b->data.f32[x])
+				if (a->data.f32[x] > b->data.f32[x]) {
 					ha->data.f32[x] = 1;
-				else if (a->data.f32[x] < b->data.f32[x])
+					hb->data.f32[x] = 0;
+				} else if (a->data.f32[x] < b->data.f32[x]) {
+					ha->data.f32[x] = 0;
 					hb->data.f32[x] = 1;
-				else
+				} else
 					ha->data.f32[x] = hb->data.f32[x] = 1;
 			return CCV_NNC_EXEC_SUCCESS;
 		}
@@ -234,11 +242,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				for (i[1] = 0; i[1] < dim[1]; i[1]++)
 				{
 					for (x = 0; x < count; x++)
-						if (ap[x] > bp[x])
+						if (ap[x] > bp[x]) {
 							hap[x] = 1;
-						else if (ap[x] < bp[x])
+							hbp[x] = 0;
+						} else if (ap[x] < bp[x]) {
+							hap[x] = 0;
 							hbp[x] = 1;
-						else
+						} else
 							hap[x] = hbp[x] = 1;
 					ap += ainc[2] * ainc[3];
 					bp += binc[2] * binc[3];
@@ -260,11 +270,13 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
 					for (x = 0; x < dim[3]; x++)
-						if (ap[x] > bp[x])
+						if (ap[x] > bp[x]) {
 							hap[x] = 1;
-						else if (ap[x] < bp[x])
+							hbp[x] = 0;
+						} else if (ap[x] < bp[x]) {
+							hap[x] = 0;
 							hbp[x] = 1;
-						else
+						} else
 							hap[x] = hbp[x] = 1;
 					ap += ainc[3];
 					bp += binc[3];
