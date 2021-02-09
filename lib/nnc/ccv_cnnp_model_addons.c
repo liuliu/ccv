@@ -1424,7 +1424,7 @@ static void _ccv_cnnp_reduce_sum_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	ccv_nnc_cmd_t reduce_sum = CMD_REDUCE_SUM_FORWARD();
 	int i;
 	for (i = 0; i < self->count; i++)
-		reduce_sum.info.reduce.axis[i] = self->count;
+		reduce_sum.info.reduce.axis[i] = self->axis[i];
 	reduce_sum.info.reduce.count = self->count;
 	ccv_nnc_hint_tensor_auto(reduce_sum, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
@@ -1479,7 +1479,7 @@ static void _ccv_cnnp_reduce_max_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	ccv_nnc_cmd_t reduce_max = CMD_REDUCE_MAX_FORWARD();
 	int i;
 	for (i = 0; i < self->count; i++)
-		reduce_max.info.reduce.axis[i] = self->count;
+		reduce_max.info.reduce.axis[i] = self->axis[i];
 	reduce_max.info.reduce.count = self->count;
 	ccv_nnc_hint_tensor_auto(reduce_max, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
