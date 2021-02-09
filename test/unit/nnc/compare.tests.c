@@ -180,6 +180,32 @@ TEST_CASE("min of two tensor views backward with null")
 	ccv_nnc_tensor_free(hbt);
 }
 
+TEST_CASE("min of two tensors with model")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	int i;
+	for (i = 0; i < 2 * 2 * 3; i++)
+		a->data.f32[i] = i;
+	for (i = 0; i < 2 * 2 * 3; i++)
+		b->data.f32[i] = i - 1;
+	ccv_cnnp_model_t* const min = ccv_cnnp_min(0);
+	const ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, 2, 2, 3);
+	const ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, 2, 2, 3);
+	ccv_cnnp_model_compile(min, TENSOR_PARAM_LIST(a_params, b_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(min, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+		.is_test = 0,
+		.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL
+	}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
+	REQUIRE_TENSOR_EQ(b, c, "c should be the minimal of the two");
+	ccv_cnnp_model_free(min);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+}
+
 TEST_CASE("max of two tensors")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
@@ -347,6 +373,32 @@ TEST_CASE("max of two tensor views backward with null")
 	ccv_nnc_tensor_free(hb);
 	ccv_nnc_tensor_free(hat);
 	ccv_nnc_tensor_free(hbt);
+}
+
+TEST_CASE("max of two tensors with model")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	int i;
+	for (i = 0; i < 2 * 2 * 3; i++)
+		a->data.f32[i] = i;
+	for (i = 0; i < 2 * 2 * 3; i++)
+		b->data.f32[i] = i + 1;
+	ccv_cnnp_model_t* const max = ccv_cnnp_max(0);
+	const ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, 2, 2, 3);
+	const ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, 2, 2, 3);
+	ccv_cnnp_model_compile(max, TENSOR_PARAM_LIST(a_params, b_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(max, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+		.is_test = 0,
+		.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL
+	}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
+	REQUIRE_TENSOR_EQ(b, c, "c should be the maximal of the two");
+	ccv_cnnp_model_free(max);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
 }
 
 #include "case_main.h"
