@@ -1514,3 +1514,95 @@ static ccv_cnnp_model_t* _ccv_cnnp_reduce_max_copy(const ccv_cnnp_model_t* const
 	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
 	return ccv_cnnp_reduce_max(self->axis, self->count, self->super.name);
 }
+
+// MARK - Min Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_min_t;
+
+static void _ccv_cnnp_min_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t min = CMD_MIN_FORWARD();
+	ccv_nnc_hint_tensor_auto(min, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, min, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_min_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_min_isa = {
+	.build = _ccv_cnnp_min_build,
+	.copy = _ccv_cnnp_min_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_min(const char* const name)
+{
+	ccv_cnnp_model_min_t* const model_min = (ccv_cnnp_model_min_t*)cccalloc(1, sizeof(ccv_cnnp_model_min_t));
+	model_min->super.isa = &ccv_cnnp_min_isa;
+	model_min->super.input_size = 2;
+	model_min->super.outputs = &model_min->output;
+	model_min->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_min->super, name);
+	return (ccv_cnnp_model_t*)model_min;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_min_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_min_t* const self = (const ccv_cnnp_model_min_t*)super;
+	return ccv_cnnp_min(self->super.name);
+}
+
+// MARK - Max Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_max_t;
+
+static void _ccv_cnnp_max_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t max = CMD_MAX_FORWARD();
+	ccv_nnc_hint_tensor_auto(max, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, max, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_max_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_max_isa = {
+	.build = _ccv_cnnp_max_build,
+	.copy = _ccv_cnnp_max_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_max(const char* const name)
+{
+	ccv_cnnp_model_max_t* const model_max = (ccv_cnnp_model_max_t*)cccalloc(1, sizeof(ccv_cnnp_model_max_t));
+	model_max->super.isa = &ccv_cnnp_max_isa;
+	model_max->super.input_size = 2;
+	model_max->super.outputs = &model_max->output;
+	model_max->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_max->super, name);
+	return (ccv_cnnp_model_t*)model_max;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_max_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_max_t* const self = (const ccv_cnnp_model_max_t*)super;
+	return ccv_cnnp_max(self->super.name);
+}

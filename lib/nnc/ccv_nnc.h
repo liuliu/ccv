@@ -3582,6 +3582,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_sum(const int* const axis, co
  * @return A max value reducer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_max(const int* const axis, const int axis_count, const char* const name);
+/**
+ * A element-wise min model.
+ * @param name The unique name of the model.
+ * @return A element-wise min model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_min(const char* const name);
+/**
+ * A element-wise max model.
+ * @param name The unique name of the model.
+ * @return A element-wise max model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max(const char* const name);
 
 /** @} */
 
