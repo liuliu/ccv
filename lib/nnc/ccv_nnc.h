@@ -3247,7 +3247,9 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
 /**
  * Process parameters such as exponential averaging.
- * parameters = zip(from_parameters, to_parameters).map { cmd(from_parameter, to_parameter) }
+ * parameters = zip(from_parameters, to_parameters).map { cmd(to_parameter, from_parameter) }
+ * The order is selected in such way because many of our commands only support inplace op if the first
+ * parameter matches.
  * @param model The composed model to have parameters zip mapped.
  * @param parameters The parameters to be written (and read).
  * @param cmd The command to apply on the parameters.

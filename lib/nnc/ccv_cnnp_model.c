@@ -1995,7 +1995,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 		assert(src);
 		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
 		assert(dest);
-		ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(src, dest), TENSOR_LIST(dest), 0);
+		ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), 0);
 		for (j = 1; j < parallel_count; j++)
 		{
 			ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
