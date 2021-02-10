@@ -121,9 +121,9 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		}
 		ccv_array_free(graph->stateful_execs);
 	}
-	khiter_t k;
 	if (graph->synced_streams)
 	{
+		khiter_t k;
 		for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
 		{
 			if (!kh_exist(graph->synced_streams, k))

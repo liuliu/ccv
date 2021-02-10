@@ -81,13 +81,6 @@ typedef struct {
 
 KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)
 
-typedef struct {
-	ccv_nnc_stream_context_t* stream;
-	ccv_nnc_stream_signal_t* synced;
-} ccv_nnc_synced_stream_t;
-
-KHASH_MAP_INIT_INT(synced_stream, ccv_nnc_synced_stream_t);
-
 typedef struct dy_alloc_metadata_s dy_alloc_metadata_t;
 struct dy_alloc_metadata_s {
 	int device;

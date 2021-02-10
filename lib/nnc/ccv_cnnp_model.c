@@ -1961,10 +1961,25 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_free(from_parameter_indices);
 }
 
+static ccv_nnc_synced_stream_t _ccv_cnnp_compiled_data_get_synced_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type)
+{
+	if (!compiled_data->synced_streams)
+		compiled_data->synced_streams = kh_init(synced_stream);
+	int ret = 0;
+	khiter_t k = kh_put(synced_stream, compiled_data->synced_streams, type, &ret);
+	assert(ret >= 0);
+	ccv_nnc_synced_stream_t* const synced_stream = &kh_val(compiled_data->synced_streams, k);
+	// If ret == 0, the key already exist, we can return directly, otherwise, create and return.
+	if (ret != 0)
+	{
+		synced_stream->stream = ccv_nnc_stream_context_new(type);
+		synced_stream->synced = ccv_nnc_stream_signal_new(type);
+	}
+	return *synced_stream;
+}
+
 void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
 {
-	// We don't support pass in the stream context at the moment.
-	assert(!stream_context);
 	ccv_array_t* to_parameter_indices;
 	int to_param_ref;
 	ccv_array_t* from_parameter_indices;
@@ -1991,16 +2006,51 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
 		assert(dest_d >= 0);
 		assert(dest_d < to_compiled_data->parameters->rnum);
-		ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
-		assert(src);
-		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
-		assert(dest);
-		ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), 0);
-		for (j = 1; j < parallel_count; j++)
+		if (parallel_count > 1)
 		{
-			ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
-			if (copy_tensor)
-				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+			ccv_nnc_stream_context_t* streams[parallel_count];
+			ccv_nnc_stream_signal_t* signal;
+			if (stream_context)
+				signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+			for (j = 0; j < parallel_count; j++)
+			{
+				ccv_nnc_tensor_t* const src = to_compiled_data->tensors.parameters[src_d + j * to_parameter_size];
+				ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
+				if (!dest || !src)
+				{
+					streams[j] = 0;
+					continue;
+				}
+				// At the moment, can only handle them on the same device.
+				assert(CCV_TENSOR_GET_MEMORY(src->info.type) == CCV_TENSOR_GET_MEMORY(dest->info.type));
+				assert(CCV_TENSOR_GET_DEVICE_ID(src->info.type) == CCV_TENSOR_GET_DEVICE_ID(dest->info.type));
+				const int stream_type = CCV_TENSOR_GET_MEMORY(src->info.type) == CCV_TENSOR_GPU_MEMORY ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(src->info.type);
+				int type = stream_type;
+				CCV_STREAM_SET_DEVICE_ID(type, device_id);
+				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
+				// Wait signal to finish.
+				if (stream_context)
+					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_0.stream);
+				if (stream_context)
+				{
+					ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
+					ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+				}
+				streams[j] = stream_0.stream;
+			}
+			// If this should be blocking, blocking it.
+			if (!stream_context)
+				for (j = 0; j < parallel_count; j++)
+					if (streams[j])
+						ccv_nnc_stream_context_wait(streams[j]);
+		} else {
+			ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d];
+			assert(src);
+			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
+			assert(dest);
+			ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_context);
 		}
 		// Mark this symbol as init'ed.
 		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
@@ -2012,8 +2062,6 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 
 void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context)
 {
-	// We don't support pass in the stream context at the moment.
-	assert(!stream_context);
 	int to_param_ref;
 	ccv_array_t* const to_parameter_indices = _ccv_cnnp_model_parameter_indices(model, parameters, &to_param_ref);
 	// To models.
@@ -2032,14 +2080,45 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
 		assert(dest_d >= 0);
 		assert(dest_d < to_compiled_data->parameters->rnum);
-		ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
-		assert(dest);
-		ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), 0);
-		for (j = 1; j < parallel_count; j++)
+		if (parallel_count > 1)
 		{
-			ccv_nnc_tensor_t* const copy_tensor = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
-			if (copy_tensor)
-				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dest), TENSOR_LIST(copy_tensor), 0);
+			ccv_nnc_stream_context_t* streams[parallel_count];
+			ccv_nnc_stream_signal_t* signal;
+			if (stream_context)
+				signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+			for (j = 0; j < parallel_count; j++)
+			{
+				ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
+				if (!dest)
+				{
+					streams[j] = 0;
+					continue;
+				}
+				const int stream_type = CCV_TENSOR_GET_MEMORY(dest->info.type) == CCV_TENSOR_GPU_MEMORY ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(dest->info.type);
+				int type = stream_type;
+				CCV_STREAM_SET_DEVICE_ID(type, device_id);
+				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
+				// Wait signal to finish.
+				if (stream_context)
+					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), 0);
+				if (stream_context)
+				{
+					ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
+					ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+				}
+				streams[j] = stream_0.stream;
+			}
+			// If this should be blocking, blocking it.
+			if (!stream_context)
+				for (j = 0; j < parallel_count; j++)
+					if (streams[j])
+						ccv_nnc_stream_context_wait(streams[j]);
+		} else {
+			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
+			assert(dest);
+			ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), stream_context);
 		}
 		// No need to mark this symbol as init'ed, it is already.
 	}
@@ -2215,6 +2294,19 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	if (compiled_data->evaluate.tos)
 		ccfree(compiled_data->evaluate.tos);
 	compiled_data->evaluate.tos = 0;
+	if (compiled_data->synced_streams)
+	{
+		khiter_t k;
+		for (k = kh_begin(compiled_data->synced_streams); k != kh_end(compiled_data->synced_streams); ++k)
+		{
+			if (!kh_exist(compiled_data->synced_streams, k))
+				continue;
+			ccv_nnc_synced_stream_t* const synced_stream = &kh_val(compiled_data->synced_streams, k);
+			ccv_nnc_stream_context_free(synced_stream->stream);
+			ccv_nnc_stream_signal_free(synced_stream->synced);
+		}
+		kh_destroy(synced_stream, compiled_data->synced_streams);
+	}
 	_ccv_cnnp_compiled_data_graph_free(compiled_data);
 	_ccv_cnnp_compiled_data_gradient_free(compiled_data);
 	_ccv_cnnp_compiled_data_backward_free(compiled_data);

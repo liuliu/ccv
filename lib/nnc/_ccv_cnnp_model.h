@@ -11,6 +11,7 @@
 #define GUARD_ccv_cnnp_model_internal_h
 
 #include "ccv_nnc.h"
+#include "_ccv_nnc_stream.h"
 #include "3rdparty/khash/khash.h"
 
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
@@ -77,6 +78,7 @@ typedef struct {
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
+	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	ccv_array_t* parameters;
 	ccv_array_t* internals; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* gradients;
