@@ -125,7 +125,6 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(
 
 static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 0);
 	int i;
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	for (i = 0; i < output_size; i++)
