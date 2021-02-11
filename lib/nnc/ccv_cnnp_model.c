@@ -1342,9 +1342,29 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
 	assert(output_size > 0);
-	// If the gradient is not initialized, I don't initialize it here, but I don't know how to handle parallel count as well.
-	if (compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
-		{ assert(parallel_count <= 1); }
+	// If the gradient is not initialized, continue to setup parallel process. We don't init gradient here, but rather,
+	// we setup proper rewindables so the graph can be rewinded to previous state before we run data parallel.
+	if (parallel_count > 1 && compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
+	{
+		const int evaluate_to_size = compiled_data->evaluate.to_size;
+		compiled_data->evaluate.tos = ccrealloc(compiled_data->evaluate.tos, sizeof(ccv_nnc_graph_exec_symbol_t) * evaluate_to_size * parallel_count + sizeof(ccv_nnc_graph_exec_t) * evaluate_to_size * parallel_count);
+		_ccv_cnnp_model_set_rewindables(model);
+		ccv_nnc_symbolic_graph_data_parallel(model->graph, parallel_count,
+			0, 0,
+			0, 0, 0,
+			0, 0, 0,
+			CCV_NNC_PARALLEL_REDUCE_OP_SUM,
+			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+		int i, j;
+		for (i = 0; i < evaluate_to_size; i++)
+			for (j = 1; j < parallel_count; j++)
+			{
+				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_copy(model->graph, compiled_data->evaluate.tos[i], j);
+				if (copy.d != CCV_NNC_NO_GRAPH_EXEC_SYMBOL)
+					compiled_data->evaluate.tos[compiled_data->evaluate.to_size++] = copy;
+			}
+	}
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model, compiled_data);
@@ -2014,7 +2034,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 				signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
 			for (j = 0; j < parallel_count; j++)
 			{
-				ccv_nnc_tensor_t* const src = to_compiled_data->tensors.parameters[src_d + j * to_parameter_size];
+				ccv_nnc_tensor_t* const src = from_compiled_data->tensors.parameters[src_d + j * to_parameter_size];
 				ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
 				if (!dest || !src)
 				{
