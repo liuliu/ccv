@@ -443,7 +443,13 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 			if (exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
 				continue;
 			if (node->cmd.cmd != CCV_NNC_DATA_TRANSFER_FORWARD &&
-				node->cmd.cmd != CCV_NNC_DATA_TRANSFER_BACKWARD)
+				node->cmd.cmd != CCV_NNC_DATA_TRANSFER_BACKWARD &&
+				// Conversion, if the datatype is the same, it is the data transfer op.
+				node->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_FORWARD &&
+				node->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_BACKWARD &&
+				// Format transform, if the format is the same, it is the data transfer op.
+				node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_FORWARD &&
+				node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_BACKWARD)
 				continue;
 			for (i = 0; i < node->output_size; i++) // For data transfer, we only respect output size.
 				if (node->inputs[i] >= 0 && node->outputs[i] >= 0)
@@ -452,8 +458,12 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					assert(node->outputs[i] < simplify->tensor_symbol_info_size);
 					const ccv_nnc_tensor_symbol_info_t* const input = tensor_symbol_info + node->inputs[i];
 					const ccv_nnc_tensor_symbol_info_t* const output = tensor_symbol_info + node->outputs[i];
-					assert(input->info.datatype == output->info.datatype);
-					assert(input->info.format == output->info.format);
+					// If they are not the same data type, skip. (Likely data conversion op).
+					if (input->info.datatype != output->info.datatype)
+						continue;
+					// If they are not the same format, skip. (Likely format transform op).
+					if (input->info.format != output->info.format)
+						continue;
 					// If they are not on the same device (even for NUMA), skip.
 					if (input->info.type != output->info.type)
 						continue;

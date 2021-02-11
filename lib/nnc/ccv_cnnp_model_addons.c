@@ -41,10 +41,43 @@ static ccv_cnnp_model_t* _ccv_cnnp_sum_copy(const ccv_cnnp_model_t* const self, 
 	return ccv_cnnp_sum(self->name);
 }
 
-static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_concat_t;
+
+static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	const ccv_cnnp_model_concat_t* const self = (const ccv_cnnp_model_concat_t*)super;
 	assert(output_size == 1);
-	// TODO: Concatenate is not done yet.
+	ccv_nnc_tensor_param_t output_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const int nd = ccv_nnc_tensor_nd(output_params.dim);
+	const int axis = self->axis;
+	assert(axis < nd);
+	output_params.dim[axis] = 0;
+	int i, j;
+	for (i = 0; i < input_size; i++)
+	{
+		const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+		const int input_nd = ccv_nnc_tensor_nd(input_params.dim);
+		assert(input_nd == nd);
+		for (j = 0; j < nd; j++)
+			if (j != axis)
+				{ assert(input_params.dim[j] == output_params.dim[j]); }
+		output_params.dim[axis] += input_params.dim[axis];
+	}
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+	ccv_nnc_tensor_symbol_t aliases[input_size];
+	for (i = 0; i < input_size; i++)
+	{
+		const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+		aliases[i] = ccv_nnc_tensor_symbol_alias_new(graph, outputs[0], ofs, output_params.dim, input_params, 0);
+		ofs[axis] += input_params.dim[axis];
+	}
+	// Format transform is more flexible.
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), inputs, input_size, aliases, input_size, 0);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -54,25 +87,22 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_concat_isa = {
 	.copy = _ccv_cnnp_concat_copy,
 };
 
-typedef struct {
-	ccv_cnnp_model_t super;
-	ccv_nnc_tensor_symbol_t output;
-} ccv_cnnp_model_concat_t;
-
-ccv_cnnp_model_t* ccv_cnnp_concat(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_concat(const int axis, const char* const name)
 {
 	ccv_cnnp_model_concat_t* const model_concat = (ccv_cnnp_model_concat_t*)cccalloc(1, sizeof(ccv_cnnp_model_concat_t));
 	model_concat->super.isa = &ccv_cnnp_concat_isa;
 	model_concat->super.input_size = 0;
 	model_concat->super.outputs = &model_concat->output;
 	model_concat->super.output_size = 1;
+	model_concat->axis = axis;
 	ccv_cnnp_model_copy_name(&model_concat->super, name);
 	return (ccv_cnnp_model_t*)model_concat;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_concat(self->name);
+	const ccv_cnnp_model_concat_t* const self = (const ccv_cnnp_model_concat_t*)super;
+	return ccv_cnnp_concat(self->axis, self->super.name);
 }
 
 typedef struct {

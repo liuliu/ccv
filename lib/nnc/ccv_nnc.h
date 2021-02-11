@@ -3406,10 +3406,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sum(const char* const name);
 /**
  * Concatenate input tensors together.
+ * @param axis Along this axis, we concatenate tensors together. Other dimensions need to be exactly the same.
  * @param name The unique name of the model.
  * @return A model that can be applied with multiple inputs, and generate output that is a concatenation of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const int axis, const char* const name);
 /**
  * A convolution model.
  * @param groups The number of kernel groups in the model.
