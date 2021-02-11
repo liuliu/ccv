@@ -416,7 +416,7 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 	ccfree(refs);
 }
 
-static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const binds, const int bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
 	uint32_t* const exec_dead = simplify->exec_dead;
@@ -488,9 +488,11 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					if (input->p_ref || output->p_ref)
 						continue;
 					int flag = 0;
+					for (j = 0; !flag && j < bind_size; j++)
+						flag = (binds[j].d == node->inputs[i] || binds[j].d == node->outputs[i]);
 					for (j = 0; !flag && j < output_size; j++)
 						flag = (outputs[j].d == node->inputs[i] || outputs[j].d == node->outputs[i]);
-					// Either input or output cannot be in the outputs.
+					// Either input or output cannot be in the outputs nor the binds.
 					if (flag)
 						continue;
 					// If the type is the same, check which one is the alias.
@@ -520,7 +522,13 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 		if (exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
 			continue;
 		if (node->cmd.cmd != CCV_NNC_DATA_TRANSFER_FORWARD &&
-			node->cmd.cmd != CCV_NNC_DATA_TRANSFER_BACKWARD)
+			node->cmd.cmd != CCV_NNC_DATA_TRANSFER_BACKWARD &&
+			// Conversion, if the datatype is the same, it is the data transfer op.
+			node->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_FORWARD &&
+			node->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_BACKWARD &&
+			// Format transform, if the format is the same, it is the data transfer op.
+			node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_FORWARD &&
+			node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_BACKWARD)
 			continue;
 		for (i = 0; i < node->output_size; i++) // For data transfer, we only respect output size.
 			if (node->inputs[i] == node->outputs[i])
@@ -957,7 +965,7 @@ static void _ccv_nnc_symbolic_graph_pruning(ccv_nnc_symbolic_graph_simplify_t* c
 	ccfree(r_alias_refs);
 }
 
-void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const binds, const int bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	ccv_nnc_symbolic_graph_simplify_t* const simplify = _ccv_nnc_symbolic_graph_simplify_new(graph, sources, source_size, destinations, destination_size);
 	int i;
@@ -968,7 +976,7 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 				_ccv_nnc_symbolic_graph_common_subexpression_elimination(simplify, outputs, output_size);
 				break;
 			case CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT:
-				_ccv_nnc_symbolic_graph_data_transfer_opt(simplify, outputs, output_size);
+				_ccv_nnc_symbolic_graph_data_transfer_opt(simplify, binds, bind_size, outputs, output_size);
 				break;
 			case CCV_NNC_SIMPLIFY_GRAPH_PRUNING:
 				_ccv_nnc_symbolic_graph_pruning(simplify, outputs, output_size);

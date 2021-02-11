@@ -2074,6 +2074,8 @@ enum {
  * @param graph The symbolic graph.
  * @param passes The array of passes we are going to apply.
  * @param pass_size The size of the passes array.
+ * @param binds The tensor symbols we may bind to an input later (it doesn't prevent pruning any execution nodes).
+ * @param bind_size The size of the bind array.
  * @param outputs The output tensor symbols we want to retain (we are going to prune any execution nodes that is not related to these outputs).
  * @param output_size The size of the output array.
  * @param sources The source execution node symbols array.
@@ -2081,7 +2083,7 @@ enum {
  * @param destinations The destinations execution node symbols array.
  * @param destination_size The size of destination node symbols array.
  */
-void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const binds, const int bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 
 /** @} */
 
