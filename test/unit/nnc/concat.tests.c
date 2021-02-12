@@ -15,11 +15,7 @@ TEST_CASE("concatenate several tensors together")
 {
 	ccv_cnnp_model_t* const concat = ccv_cnnp_concat(0, "concat");
 	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 1, "linear");
-	ccv_cnnp_model_io_t const x = ccv_cnnp_input();
-	ccv_cnnp_model_io_t const y = ccv_cnnp_input();
-	ccv_cnnp_model_io_t z = ccv_cnnp_model_apply(concat, MODEL_IO_LIST(x, y));
-	z = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(z));
-	ccv_cnnp_model_t* const full = ccv_cnnp_model_new(MODEL_IO_LIST(x, y), MODEL_IO_LIST(z), "full");
+	ccv_cnnp_model_t* const full = ccv_cnnp_sequential_new(MODEL_LIST(concat, dense), "full");
 	ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NCHW(32F, 1);
 	ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NCHW(32F, 2);
 	ccv_cnnp_model_compile(full, TENSOR_PARAM_LIST(a_params, b_params), CMD_NOOP(), CMD_NOOP());

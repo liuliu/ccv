@@ -38,10 +38,14 @@ static void _ccv_cnnp_sequential_model_deinit(ccv_cnnp_model_t* const super)
 static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	ccv_cnnp_model_t* const sub_model = self->sequence[0];
+	// Go through each sub model to build the graph.
+	ccv_nnc_tensor_symbol_t input;
+	sub_model->data = self->super.data;
+	ccv_cnnp_model_build(sub_model, graph, inputs, input_size, &input, 1);
+	sub_model->data = 0;
 	int i;
-	ccv_nnc_tensor_symbol_t input = inputs[0];
-	assert(input_size == 1);
-	for (i = 0; i < self->sequence_size; i++)
+	for (i = 1; i < self->sequence_size; i++)
 	{
 		ccv_nnc_tensor_symbol_t output;
 		ccv_cnnp_model_t* const sub_model = self->sequence[i];
@@ -134,7 +138,7 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 	assert(model_size > 0);
 	ccv_cnnp_sequential_model_t* const sequential_model = (ccv_cnnp_sequential_model_t*)cccalloc(1, sizeof(ccv_cnnp_sequential_model_t) + sizeof(ccv_cnnp_model_t*) * (model_size - 1) + sizeof(ccv_nnc_tensor_symbol_t));
 	sequential_model->super.isa = &ccv_cnnp_sequential_model_isa;
-	sequential_model->super.input_size = 1;
+	sequential_model->super.input_size = models[0]->input_size;
 	sequential_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(sequential_model->sequence + model_size);
 	sequential_model->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&sequential_model->super, name);
