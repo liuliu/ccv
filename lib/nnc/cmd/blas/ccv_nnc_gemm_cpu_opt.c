@@ -22,14 +22,34 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	// Cannot compute if w is not transposed and dimensions are batched.
+	// Copy the most of parameters, but reshape the dimension of a to a vector.
+	assert(output_size == 1);
+	switch (cmd.algorithm)
+	{
+		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
+			// Cannot handle this with DIRECT.
+			if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(b->info.dim) > 2 ||
+				ccv_nnc_tensor_nd(w->info.dim) > 2 ||
+				(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
+				cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
+				cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
+				break;
+			return _ccv_nnc_gemm_forw_cpu_opt(a, w, bias, b);
+		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
+			return _ccv_nnc_gemm_forw_cpu_sys(cmd.info.blas.transpose_a, cmd.info.blas.transpose_b, a, w, bias, b);
+		case -1:
+			// Pass-through
+			break;
+	}
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
+	return _ccv_nnc_gemm_forw_cpu_sys(cmd.info.blas.transpose_a, cmd.info.blas.transpose_b, a, w, bias, b);
+#endif
 	if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(b->info.dim) > 2 ||
 		ccv_nnc_tensor_nd(w->info.dim) > 2 ||
 		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
 		cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
 		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
 		return CCV_NNC_EXEC_INVALID;
-	// Copy the most of parameters, but reshape the dimension of a to a vector.
-	assert(output_size == 1);
 	assert(w->info.dim[2] == 0); // It is a 2-d array
 	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -43,22 +63,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(!bias || bdim[0] == bias->info.dim[0]);
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
-	switch (cmd.algorithm)
-	{
-		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
-			return _ccv_nnc_gemm_forw_cpu_opt(a, w, bias, b);
-		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
-			if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) && !CCV_IS_TENSOR_VIEW(b))
-				return _ccv_nnc_gemm_forw_cpu_sys(a, w, bias, b);
-			return CCV_NNC_EXEC_INVALID;
-		case -1:
-			// Pass-through
-			break;
-	}
-#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
-	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) && !CCV_IS_TENSOR_VIEW(b))
-		return _ccv_nnc_gemm_forw_cpu_sys(a, w, bias, b);
-#endif
 	return _ccv_nnc_gemm_forw_cpu_opt(a, w, bias, b);
 }
 
@@ -71,7 +75,29 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* bias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
+	const ccv_nnc_tensor_view_t* w = (input_size > 2) ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
+	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	// Cannot compute if w is not transposed and dimensions are batched.
+	switch (cmd.algorithm)
+	{
+		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
+			// Cannot handle this with DIRECT.
+			if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(g->info.dim) > 2 ||
+				ccv_nnc_tensor_nd(dw->info.dim) > 2 ||
+				(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
+				cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
+				cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
+				break;
+			return _ccv_nnc_gemm_back_cpu_opt(g, a, w, dw, bias, h, flags);
+		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
+			return _ccv_nnc_gemm_back_cpu_sys(cmd.info.blas.transpose_a, cmd.info.blas.transpose_b, g, a, w, dw, bias, h, flags);
+		case -1:
+			// Pass-through
+			break;
+	}
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
+	return _ccv_nnc_gemm_back_cpu_sys(cmd.info.blas.transpose_a, cmd.info.blas.transpose_b, g, a, w, dw, bias, h, flags);
+#else
 	if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(g->info.dim) > 2 ||
 		ccv_nnc_tensor_nd(dw->info.dim) > 2 ||
 		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
@@ -91,8 +117,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(!bias || bias->info.dim[0] == gdim[0]);
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);
-	const ccv_nnc_tensor_view_t* w = (input_size > 2) ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
-	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
 	{
 		assert(h->info.dim[2] == 0); // It is a 2-d array.
@@ -107,25 +131,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(w->info.dim[0] == dw->info.dim[0]);
 		assert(w->info.dim[1] == dw->info.dim[1]);
 	}
-	switch (cmd.algorithm)
-	{
-		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
-			return _ccv_nnc_gemm_back_cpu_opt(g, a, w, dw, bias, h, flags);
-		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
-			if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) &&
-				(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
-				return _ccv_nnc_gemm_back_cpu_sys(g, a, w, dw, bias, h, flags);
-			return CCV_NNC_EXEC_INVALID;
-		case -1:
-			// Pass-through
-			break;
-	}
-#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
-	if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) &&
-		(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
-		return _ccv_nnc_gemm_back_cpu_sys(g, a, w, dw, bias, h, flags);
-#endif
 	return _ccv_nnc_gemm_back_cpu_opt(g, a, w, dw, bias, h, flags);
+#endif
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT)(ccv_nnc_cmd_backend_registry_t* const registry)

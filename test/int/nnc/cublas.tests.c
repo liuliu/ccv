@@ -1055,6 +1055,7 @@ TEST_CASE("cublas forward gemm")
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(tb);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(ha1);
@@ -1104,6 +1105,7 @@ TEST_CASE("cublas forward gemm in half precision")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(tb);
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(ha1);
 	ccv_nnc_tensor_free(tb1);
@@ -1147,6 +1149,7 @@ TEST_CASE("cublas forward gemm no bias")
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(tb);
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(ha1);
 	ccv_nnc_tensor_free(tb1);
@@ -1188,6 +1191,7 @@ TEST_CASE("cublas forward gemm no bias in half precision")
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(tb);
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(ha1);
 	ccv_nnc_tensor_free(tb1);
