@@ -3,8 +3,9 @@ Build Status
 
 -  Travis CI VM: |Build Status on Travis CI VM|
 -  Linux x64: |Build Status on Linux|
--  Raspberry Pi 3: |Build Status on Raspberry Pi 3|
--  Jetson TX2: |Build Status on Jetson TX2|
+-  Raspberry Pi 4: |Build Status on Raspberry Pi 4|
+-  Jetson Nano: |Build Status on Jetson Nano|
+-  AGX Xavier: |Build Status on AGX Xavier|
 
 Backstory
 ---------
@@ -44,7 +45,9 @@ ccv's data models and documentations are distributed under Creative Commons Attr
    :target: https://travis-ci.org/liuliu/ccv
 .. |Build Status on Linux| image:: http://ci.libccv.org/png?builder=linux-x64-runtests
    :target: http://ci.libccv.org/builders/linux-x64-runtests
-.. |Build Status on Raspberry Pi 3| image:: http://ci.libccv.org/png?builder=rbp3-arm-runtests
-   :target: http://ci.libccv.org/builders/rbp3-arm-runtests
-.. |Build Status on Jetson TX2| image:: http://ci.libccv.org/png?builder=jetson-tx2-arm-runtests
-   :target: http://ci.libccv.org/builders/jetson-tx2-arm-runtests
+.. |Build Status on Raspberry Pi 4| image:: http://ci.libccv.org/png?builder=rpi-arm-runtests
+   :target: http://ci.libccv.org/builders/rpi-arm-runtests
+.. |Build Status on Jetson Nano| image:: http://ci.libccv.org/png?builder=jetson-nano-arm-runtests
+   :target: http://ci.libccv.org/builders/jetson-nano-arm-runtests
+.. |Build Status on AGX Xavier| image:: http://ci.libccv.org/png?builder=agx-xavier-arm-runtests
+   :target: http://ci.libccv.org/builders/agx-xavier-arm-runtests
