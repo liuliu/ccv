@@ -25,6 +25,7 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cuda"
     ] + %{ccv_setting_cuda_deps},
+    linkopts = %{ccv_setting_cuda_linkopts}
 )
 
 cc_library(
