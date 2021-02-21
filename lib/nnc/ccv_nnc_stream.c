@@ -323,6 +323,9 @@ int ccv_nnc_device_count(const int type)
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_gpu_device_count();
+#else
+	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
+		return 0;
 #endif
 	return 1; // I don't get core count for CPU yet.
 }
