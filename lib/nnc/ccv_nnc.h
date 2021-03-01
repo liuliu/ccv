@@ -215,6 +215,135 @@ typedef struct ccv_nnc_cmd_vtab_s {
 /** @} */
 
 /**
+ * @defgroup level_1_micro Micro Commands to Define Commands
+ * @{
+ */
+
+/**
+ * @page micro_jittor The concept of meta-ops in Jittor is amazing
+ *
+ * NNC will never do JIT. Particularly, I will never do codegen and compile at runtime, especially with static shapes.
+ * The reason is pretty simple. JIT would be too much architectural dependent and with that, almost impossible for NNC
+ * to be this small embeddable library that you can carry everywhere. However, this shouldn't prevent NNC to generate
+ * proper descriptions of each command so a JIT version can be built if there are architectural support for it. In this
+ * way, the core of NNC can be small and embeddable, but a new backend (identified by the backend attribute) can implement
+ * more sophisticated JIT mechanism.
+ *
+ * More over, I need to generate some code for reference implementations, ideally from some descriptions. This is important
+ * because with 90+ ops, having a correctly implemented command turns out to be more challenging than I expected.
+ * Especially if I want them to be compliant with the metadata describes it (what shape it accepts, what datatype works,
+ * whether it can accept tensor views, and how in-place tensors supported). Many of reference commands are not supporting
+ * all datatypes and tensor views, and this has to be rectified because these are "reference commands", they must be.
+ *
+ * Jittor introduced to the world the idea of meta-ops. Basically, it claims every ops (or macro ops) can be break down to
+ * 3 types of micro ops (they call them meta-ops): a reindex op that can map tensor from one dimensionality to another, an
+ * element-wise op that does element-wise primitive math, and finally, a reduce op that can reduce along particular axis
+ * of a tensor with some elementary math. This feels rather limited initially, but when thinking through it, I am convinced
+ * it should be enough to describe all commands presented in NNC (this shouldn't be a surprise actually).
+ *
+ * Thus, the plan now is to use the meta-ops idea, implementing new micro commands that can describe other commands in
+ * NNC. In this way, I can generate reference implementation from these descriptions and hopefully have better coverage
+ * than my existing CPU / GPU reference implementations.
+ *
+ * To build on-top what Jittor did, if you need to have my dynamism in the ops, it is essential to index with the provided
+ * tensor. With just reindex, binary operands and reduce, you cannot do that. Thus, on top of these 3, we added the 4th
+ * micro op (meta-op) that is "select". This will be sufficient to implement ops such as masking.
+ *
+ */
+
+/**
+ * Abstract micro op representation.
+ */
+typedef struct {
+	int type;
+	int id;
+} ccv_nnc_micro_io_t;
+
+/**
+ * Create a free-form input that represent a tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(void);
+/**
+ * Use shape and reindex expression to reindex the given tensor into a different shape.
+ * The expressions can bind integer parameters which starts with $.
+ *
+ * The expression follows specific pattern, integer parameters starts with $. Dimensions are represented as dn, such
+ * as d0, d1, d2 ... Index into the provided tensor can be represented as i0, i1, i2. These are all 0-indexed.
+ *
+ * Constants are supported, such as 235, 431 etc. Operators supported currently are -, +, /, *.
+ *
+ * Thus, for broadcast a tensor x[w, h] to y[w, h, h], it can be represented as:
+ * shape: { "d0", "d1", "d1" }, reindex: { "i0", "i1", "0" }.
+ * For example, transpose can be represented as:
+ * shape: { "d1", "d0" }, reindex: { "i1", "i0" }
+ *
+ * @param shape The shape expressions per axis.
+ * @param reindex The reindex expressions per axis.
+ * @param reindex_count The dimensions.
+ * @param x The input for reindex operation.
+ * @return The reindexed tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
+/**
+ * Apply pair-wise computations with two tensors. They has to match shape exactly.
+ * @param op The binary operand.
+ * @param x The left input.
+ * @param y The right input.
+ * @return The result tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_binary(const uint32_t op, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t y);
+/**
+ * Apply reduction computation against some dimensions and generate the final reduced tensor.
+ * @param op The reduction operand.
+ * @param axis The axis to reduce.
+ * @param axis_count Number of axes.
+ * @param x The input tensor.
+ * @return The result tensor after reduction.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint32_t op, const int* const axis, const int axis_count, const ccv_nnc_micro_io_t x);
+/**
+ * Use the index tensor to select one value from the x per axis.
+ * @param axis The axis to select.
+ * @param axis_count Number of axes.
+ * @param x The tensor to be indexed.
+ * @param index The integer tensor of indexes.
+ * @return The result tensor with values selected from x with index from index tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_select(const int* const axis, const int axis_count, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t index);
+
+/**
+ * The combined op from micro ops.
+ */
+typedef struct ccv_nnc_micro_combine_s ccv_nnc_micro_combine_t;
+
+/**
+ * Combine micro ops into one, and do some optimization passes. The combined one can be then processed to generate
+ * optimized kernels. Particularly, we can processed the combined one into C code and CUDA code as reference
+ * implementations.
+ * @param inputs The inputs for the combined ops.
+ * @param input_size The number of the inputs.
+ * @param parameters The name of the parameters, this determines the order of the these parameters.
+ * @param parameter_size The number of parameters.
+ * @param outputs The outputs for the combined ops.
+ * @param output_size The number of the outputs.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
+/**
+ * Free the combined op.
+ * @param combine The op to be freed.
+ */
+void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine);
+
+/**
+ * Generate C code from the combined op.
+ * @param combine The combined op to generate some C code.
+ * @return The generated C code string.
+ */
+char* ccv_nnc_micro_combine_c(ccv_nnc_micro_combine_t* const combine);
+
+/** @} */
+
+/**
  * @defgroup level_1_tensor Tensors
  * @{
  */

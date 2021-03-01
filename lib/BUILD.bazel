@@ -386,6 +386,7 @@ cc_library(
 	srcs = [
 		"nnc/_ccv_nnc_tensor_tape.h",
 		"nnc/_ccv_nnc_graph.h",
+		"nnc/_ccv_nnc_micro.h",
 		"nnc/_ccv_nnc_symbolic_graph.h",
 		"nnc/_ccv_nnc_dynamic_graph.h",
 		"nnc/_ccv_cnnp_dataframe.h",
@@ -399,6 +400,7 @@ cc_library(
 		"nnc/ccv_nnc_graph_run.c",
 		"nnc/ccv_nnc_graph_while.c",
 		"nnc/ccv_nnc_graph_case_of.c",
+		"nnc/ccv_nnc_micro.c",
 		"nnc/ccv_nnc_symbolic_graph.c",
 		"nnc/ccv_nnc_symbolic_graph_compile.c",
 		"nnc/ccv_nnc_symbolic_graph_io.c",
