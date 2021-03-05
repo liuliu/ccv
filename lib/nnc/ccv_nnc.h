@@ -257,12 +257,15 @@ typedef struct ccv_nnc_cmd_vtab_s {
 typedef struct {
 	int type;
 	int id;
+	int dimensions;
+	void* data;
 } ccv_nnc_micro_io_t;
 
 /**
  * Create a free-form input that represent a tensor.
+ * @param dimensions The maximum dimension of the input.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(void);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(const int dimensions);
 /**
  * Use shape and reindex expression to reindex the given tensor into a different shape.
  * The expressions can bind integer parameters which starts with $.
@@ -304,12 +307,11 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint32_t op, cons
 /**
  * Use the index tensor to select one value from the x per axis.
  * @param axis The axis to select.
- * @param axis_count Number of axes.
  * @param x The tensor to be indexed.
  * @param index The integer tensor of indexes.
  * @return The result tensor with values selected from x with index from index tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_select(const int* const axis, const int axis_count, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t index);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_select(const int axis, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t index);
 
 /**
  * The combined op from micro ops.
