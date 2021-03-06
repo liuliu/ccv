@@ -724,33 +724,23 @@ CCV_WARN_UNUSED(ccv_nnc_micro_nested_loop_t) _ccv_nnc_micro_reindex_loop(const c
 
 KHASH_SET_INIT_INT(ccv_nnc_ids)
 
-static void _ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term)
-{
-	if (term->type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_EXPR)
-	{
-		_ccv_nnc_micro_loop_index_free(&term->expression->left);
-		_ccv_nnc_micro_loop_index_free(&term->expression->right);
-		ccfree(term->expression);
-	}
-}
-
 CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
 {
 	assert(output_size > 0);
 	assert(input_size > 0);
 	int i, j;
 	// First, id each tensors and binding parameters (bounded var).
-	khash_t(ccv_nnc_micro_var)* const vars = kh_init(ccv_nnc_micro_var);
+	khash_t(ccv_nnc_micro_var)* const id_vars = kh_init(ccv_nnc_micro_var);
 	for (i = 0; i < parameter_size; i++)
 	{
 		int ret;
-		khiter_t k = kh_put(ccv_nnc_micro_var, vars, parameters[i], &ret);
+		khiter_t k = kh_put(ccv_nnc_micro_var, id_vars, parameters[i], &ret);
 		assert(ret != 0);
-		kh_val(vars, k) = ++micro_io_id;
+		kh_val(id_vars, k) = ++micro_io_id;
 	}
 	for (i = 0; i < output_size; i++)
-		_ccv_nnc_id_vars(outputs[i], vars);
-	kh_destroy(ccv_nnc_micro_var, vars);
+		_ccv_nnc_id_vars(outputs[i], id_vars);
+	kh_destroy(ccv_nnc_micro_var, id_vars);
 	// Second, do reverse topological sort (from output and then reverse the order).
 	// We can do this simple thing because there is no overlaps of the outputs, thus, no cases where
 	// output[0] is the input for output[1]. Otherwise we need to detect this, see ccv_cnnp_model_new
@@ -899,23 +889,94 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 			}
 		}
 	}
-	ccv_nnc_micro_combine_t* const combine = (ccv_nnc_micro_combine_t*)ccmalloc(sizeof(ccv_nnc_micro_combine_t));
-	combine->loop_count = loop_count;
+	ccv_nnc_micro_tensor_t* const vars = (ccv_nnc_micro_tensor_t*)cccalloc(reverse_top->rnum + input_size, sizeof(ccv_nnc_micro_tensor_t));
 	for (i = 0; i < reverse_top->rnum; i++)
 	{
 		const ccv_nnc_micro_io_t* const output = (ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
-		if (output->type == CCV_NNC_MICRO_REINDEX)
+		vars[i].dimensions = output->dimensions;
+		vars[i].id = output->id;
+		switch (output->type)
 		{
-			ccv_nnc_micro_reindex_t* const reindex = (ccv_nnc_micro_reindex_t*)output->data;
-			for (j = 0; j < reindex->reindex_count; j++)
-				_ccv_nnc_micro_loop_index_free(&reindex->shape[j]);
+			case CCV_NNC_MICRO_BINARY: {
+				ccv_nnc_micro_binary_t* const binary = (ccv_nnc_micro_binary_t*)output->data;
+				vars[i].input = binary->left.id;
+				vars[i].sibling = binary->right.id;
+				break;
+			}
+			case CCV_NNC_MICRO_SELECT: {
+				ccv_nnc_micro_select_t* const select = (ccv_nnc_micro_select_t*)output->data;
+				vars[i].input = select->x.id;
+				vars[i].shape = (ccv_nnc_micro_loop_index_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_term_t) * output->dimensions);
+				for (j = 0; j < output->dimensions; j++)
+				{
+					if (j != select->axis)
+					{
+						vars[i].shape[j].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
+						vars[i].shape[j].id.type = CCV_NNC_MICRO_AXIS_SIZE_ID;
+						vars[i].shape[j].id.d = j;
+						vars[i].shape[j].id.id = select->x.id;
+					} else {
+						vars[i].shape[j].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL;
+						vars[i].shape[j].immediate_value = 1;
+					}
+				}
+				break;
+			}
+			case CCV_NNC_MICRO_REDUCE: {
+				ccv_nnc_micro_reduce_t* const reduce = (ccv_nnc_micro_reduce_t*)output->data;
+				vars[i].input = reduce->x.id;
+				for (j = 0; j < output->dimensions; j++)
+				{
+					vars[i].shape[j].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
+					vars[i].shape[j].id.type = CCV_NNC_MICRO_AXIS_SIZE_ID;
+					vars[i].shape[j].id.d = j;
+					vars[i].shape[j].id.id = reduce->x.id;
+				}
+				for (j = 0; j < reduce->axis_count; j++)
+				{
+					vars[i].shape[reduce->axis[j]].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL;
+					vars[i].shape[reduce->axis[j]].immediate_value = 1;
+				}
+				break;
+			}
+			case CCV_NNC_MICRO_REINDEX: {
+				ccv_nnc_micro_reindex_t* const reindex = (ccv_nnc_micro_reindex_t*)output->data;
+				vars[i].input = reindex->x.id;
+				vars[i].shape = (ccv_nnc_micro_loop_index_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_term_t) * reindex->reindex_count);
+				memcpy(vars[i].shape, reindex->shape, sizeof(ccv_nnc_micro_loop_index_term_t) * reindex->reindex_count);
+				break;
+			}
 		}
+	}
+	for (i = 0; i < input_size; i++)
+	{
+		vars[i + reverse_top->rnum].dimensions = inputs[i].dimensions;
+		vars[i + reverse_top->rnum].input = -1;
+		vars[i + reverse_top->rnum].id = inputs[i].id;
+	}
+	ccv_nnc_micro_combine_t* const combine = (ccv_nnc_micro_combine_t*)ccmalloc(sizeof(ccv_nnc_micro_combine_t));
+	combine->var_count = reverse_top->rnum + input_size;
+	combine->vars = vars;
+	combine->loop_count = loop_count;
+	combine->loops = loops;
+	for (i = 0; i < reverse_top->rnum; i++)
+	{
+		const ccv_nnc_micro_io_t* const output = (ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
 		if (output->data)
 			ccfree(output->data);
 	}
 	ccv_array_free(reverse_top);
-	combine->loops = loops;
 	return combine;
+}
+
+static void _ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term)
+{
+	if (term->type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_EXPR)
+	{
+		_ccv_nnc_micro_loop_index_free(&term->expression->left);
+		_ccv_nnc_micro_loop_index_free(&term->expression->right);
+		ccfree(term->expression);
+	}
 }
 
 static void _ccv_nnc_micro_block_variable_free(ccv_nnc_micro_loop_variable_t* const var)
@@ -966,8 +1027,19 @@ static void _ccv_nnc_micro_block_expression_free(ccv_nnc_micro_loop_expression_t
 
 void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 {
-	const int loop_count = combine->loop_count;
 	int i, j, k;
+	const int var_count = combine->var_count;
+	for (i = 0; i < var_count; i++)
+	{
+		if (combine->vars[i].shape)
+		{
+			for (j = 0; j < combine->vars[i].dimensions; j++)
+				_ccv_nnc_micro_loop_index_free(&combine->vars[i].shape[j]);
+			ccfree(combine->vars[i].shape);
+		}
+	}
+	ccfree(combine->vars);
+	const int loop_count = combine->loop_count;
 	for (i = 0; i < loop_count; i++)
 	{
 		const int loop_count = combine->loops[i].loop_count;

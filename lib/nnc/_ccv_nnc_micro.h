@@ -174,12 +174,24 @@ typedef struct {
 	ccv_nnc_micro_loop_t* loops;
 } ccv_nnc_micro_nested_loop_t;
 
+typedef struct {
+	int input; // The one it derives its shape from. If shape is nullptr, it has the same shape as input. -1 means it is an input.
+	int sibling; // The sibling that has the same shape.
+	int dimensions;
+	int id;
+	ccv_nnc_micro_loop_index_term_t* shape;
+} ccv_nnc_micro_tensor_t;
+
 // A combined op is constructed with many nested loops. These loops may have data dependencies
 // between each other, but they are ordered in topological order to make sure one is finished
 // after the another.
 struct ccv_nnc_micro_combine_s {
+	// Combined ops only have global vars, there is no local vars. All vars are tensors.
+	int var_count;
+	// loops are our constructs of IR ops really. It is hierarchical.
 	int loop_count;
 	ccv_nnc_micro_nested_loop_t* loops;
+	ccv_nnc_micro_tensor_t* vars;
 };
 
 #endif
