@@ -251,15 +251,27 @@ typedef struct ccv_nnc_cmd_vtab_s {
  *
  */
 
+typedef struct ccv_nnc_micro_io_vtab_s ccv_nnc_micro_io_vtab_t;
+
 /**
  * Abstract micro op representation.
  */
-typedef struct {
-	int type;
-	int id;
+typedef struct ccv_nnc_micro_io_s* ccv_nnc_micro_io_t;
+
+struct ccv_nnc_micro_io_s {
+	const ccv_nnc_micro_io_vtab_t* isa;
+	ccv_nnc_micro_io_t* inputs;
+	int input_size;
 	int dimensions;
-	void* data;
-} ccv_nnc_micro_io_t;
+	int id;
+};
+
+typedef struct {
+	// Type of the scalar is about precision, nothing to restrict the tensor's type. For example, we may assign a int32_t 0
+	// to a float16 tensor element, this is perfectly fine.
+	int type;
+	ccv_numeric_data_t data;
+} ccv_nnc_micro_scalar_t;
 
 /**
  * Create a free-form input that represent a tensor.
@@ -288,13 +300,20 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(const int dimensions);
  */
 CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
 /**
- * Apply pair-wise computations with two tensors. They has to match shape exactly.
+ * Apply element-wise computations with one tensor.
  * @param op The binary operand.
- * @param x The left input.
- * @param y The right input.
+ * @param x The input.
  * @return The result tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_binary(const uint32_t op, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t y);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_unary(const uint32_t op, const ccv_nnc_micro_io_t x);
+/**
+ * Apply pair-wise computations with two tensors. They has to match shape exactly.
+ * @param op The binary operand.
+ * @param left The left input.
+ * @param right The right input.
+ * @return The result tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_binary(const uint32_t op, const ccv_nnc_micro_io_t left, const ccv_nnc_micro_io_t right);
 /**
  * Apply reduction computation against some dimensions and generate the final reduced tensor.
  * @param op The reduction operand.
@@ -312,12 +331,10 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint32_t op, cons
  * @return The result tensor with values selected from x with index from index tensor.
  */
 CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_select(const int axis, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t index);
-
 /**
  * The combined op from micro ops.
  */
 typedef struct ccv_nnc_micro_combine_s ccv_nnc_micro_combine_t;
-
 /**
  * Combine micro ops into one, and do some optimization passes. The combined one can be then processed to generate
  * optimized kernels. Particularly, we can processed the combined one into C code and CUDA code as reference
@@ -335,7 +352,19 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
  * @param combine The op to be freed.
  */
 void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine);
-
+/**
+ * Run combined op in interpret mode. This is only useful for debug internals. Because this is for
+ * generic combined op, there is no hint, or flags, or stream context, or cmd.
+ * @param combine The op.
+ * @param inputs The input tensors.
+ * @param input_size The size of input tensors.
+ * @param parameters The name of parameters.
+ * @param values The value corresponding to the parameters.
+ * @param parameter_size How many parameters.
+ * @param outputs The output tensors.
+ * @param output_size The size of output tensors.
+ */
+void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 /**
  * Generate C code from the combined op.
  * @param combine The combined op to generate some C code.

@@ -401,6 +401,7 @@ cc_library(
 		"nnc/ccv_nnc_graph_while.c",
 		"nnc/ccv_nnc_graph_case_of.c",
 		"nnc/ccv_nnc_micro.c",
+		"nnc/ccv_nnc_micro_core.c",
 		"nnc/ccv_nnc_symbolic_graph.c",
 		"nnc/ccv_nnc_symbolic_graph_compile.c",
 		"nnc/ccv_nnc_symbolic_graph_io.c",

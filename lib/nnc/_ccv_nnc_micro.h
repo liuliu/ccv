@@ -13,14 +13,6 @@
 #include "ccv_nnc.h"
 
 enum {
-	CCV_NNC_MICRO_INPUT,
-	CCV_NNC_MICRO_REINDEX,
-	CCV_NNC_MICRO_BINARY,
-	CCV_NNC_MICRO_REDUCE,
-	CCV_NNC_MICRO_SELECT,
-};
-
-enum {
 	CCV_NNC_MICRO_LOOP_ID,
 	CCV_NNC_MICRO_CARRY_OVER_ID,
 	CCV_NNC_MICRO_AXIS_SIZE_ID,
@@ -35,11 +27,9 @@ typedef struct {
 } ccv_nnc_micro_id_t;
 
 enum {
-	CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE,
-	CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
-	CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
-	CCV_NNC_MICRO_LOOP_INDEX_TYPE_EXPR,
-	CCV_NNC_MICRO_LOOP_INDEX_TYPE_UNBOUND_VAR, // Unbounded variable, shouldn't be there after fully-evaluated.
+	// These could be much more unary ops.
+	CCV_NNC_MICRO_UNARY_OP_LOG,
+	CCV_NNC_MICRO_UNARY_OP_EXP,
 };
 
 enum {
@@ -47,7 +37,27 @@ enum {
 	CCV_NNC_MICRO_BINARY_OP_MINUS,
 	CCV_NNC_MICRO_BINARY_OP_MUL,
 	CCV_NNC_MICRO_BINARY_OP_DIV,
+	CCV_NNC_MICRO_BINARY_OP_MAX,
+	CCV_NNC_MICRO_BINARY_OP_MIN,
 };
+
+enum {
+	CCV_NNC_MICRO_REDUCE_OP_MAX,
+	CCV_NNC_MICRO_REDUCE_OP_MIN,
+	CCV_NNC_MICRO_REDUCE_OP_MEAN, // Mean is complicated, we need a way to compute total for loops after this. It has to be done statically, and that is "interesting".
+	CCV_NNC_MICRO_REDUCE_OP_SUM,
+	CCV_NNC_MICRO_REDUCE_OP_PROD,
+};
+
+enum {
+	CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE,
+	CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
+	CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+	CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+	CCV_NNC_MICRO_LOOP_INDEX_TYPE_UNBOUND_SCALAR, // Unbounded scalar variable, shouldn't be there after fully-evaluated.
+};
+
+typedef struct ccv_nnc_micro_loop_index_binary_s ccv_nnc_micro_loop_index_binary_t;
 
 typedef struct {
 	int type;
@@ -55,15 +65,15 @@ typedef struct {
 		char* name; // binding variable name.
 		ccv_nnc_micro_id_t id;
 		int immediate_value;
-		struct ccv_nnc_micro_loop_index_expression_s* expression;
+		ccv_nnc_micro_loop_index_binary_t* binary;
 	};
 } ccv_nnc_micro_loop_index_term_t;
 
-typedef struct ccv_nnc_micro_loop_index_expression_s {
+struct ccv_nnc_micro_loop_index_binary_s {
 	int op;
 	ccv_nnc_micro_loop_index_term_t left;
 	ccv_nnc_micro_loop_index_term_t right;
-} ccv_nnc_micro_loop_index_expression_t;
+};
 
 typedef struct {
 	ccv_nnc_micro_id_t id;
@@ -72,45 +82,34 @@ typedef struct {
 } ccv_nnc_micro_loop_variable_t;
 
 enum {
-	CCV_NNC_MICRO_LOOP_BINARY_TYPE_VAL,
-	CCV_NNC_MICRO_LOOP_BINARY_TYPE_VAR,
-	CCV_NNC_MICRO_LOOP_BINARY_TYPE_EXPR,
-};
-
-typedef struct ccv_nnc_micro_loop_binary_expression_s {
-	int op;
-	struct {
-		int type;
-		union {
-			double immediate_value;
-			ccv_nnc_micro_loop_variable_t variable;
-			struct ccv_nnc_micro_loop_binary_expression_s* expression;
-		};
-	} left;
-	struct {
-		int type;
-		union {
-			double immediate_value; // We need a method to identify whether this immediate value is an integer.
-			ccv_nnc_micro_loop_variable_t variable;
-			struct ccv_nnc_micro_loop_binary_expression_s* expression;
-		};
-	} right;
-} ccv_nnc_micro_loop_binary_expression_t;
-
-enum {
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID,
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR,
+	CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY,
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY,
 };
 
+typedef struct ccv_nnc_micro_loop_expression_s ccv_nnc_micro_loop_expression_t;
+
 typedef struct {
+	int unary_op;
+	ccv_nnc_micro_loop_expression_t* x;
+} ccv_nnc_micro_loop_unary_t;
+
+typedef struct {
+	int binary_op;
+	ccv_nnc_micro_loop_expression_t* left;
+	ccv_nnc_micro_loop_expression_t* right;
+} ccv_nnc_micro_loop_binary_t;
+
+struct ccv_nnc_micro_loop_expression_s  {
 	int type;
 	union {
 		ccv_nnc_micro_id_t id; // If this is a compound assignment, the id to that.
 		ccv_nnc_micro_loop_variable_t variable;
-		ccv_nnc_micro_loop_binary_expression_t expression;
+		ccv_nnc_micro_loop_unary_t unary;
+		ccv_nnc_micro_loop_binary_t binary;
 	};
-} ccv_nnc_micro_loop_expression_t;
+};
 
 typedef struct {
 	ccv_nnc_micro_loop_variable_t lvalue;
@@ -123,8 +122,8 @@ typedef struct {
 } ccv_nnc_micro_loop_compound_assignment_t;
 
 enum {
-	CCV_NNC_MICRO_LOOP_BLOCK_TYPE_ASSIGNMENT,
-	CCV_NNC_MICRO_LOOP_BLOCK_TYPE_COMPOUND,
+	CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT,
+	CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT,
 };
 
 // A generic statement within a loop.
@@ -135,17 +134,9 @@ typedef struct {
 	int type;
 	union {
 		ccv_nnc_micro_loop_assignment_t assignment;
-		ccv_nnc_micro_loop_compound_assignment_t compound;
+		ccv_nnc_micro_loop_compound_assignment_t compound_assignment;
 	};
-} ccv_nnc_micro_loop_block_t;
-
-enum {
-	CCV_NNC_MICRO_REDUCE_OP_MAX,
-	CCV_NNC_MICRO_REDUCE_OP_MIN,
-	CCV_NNC_MICRO_REDUCE_OP_MEAN, // Mean is complicated, we need a way to compute total for loops after this. It has to be done statically, and that is "interesting".
-	CCV_NNC_MICRO_REDUCE_OP_SUM,
-	CCV_NNC_MICRO_REDUCE_OP_PROD,
-};
+} ccv_nnc_micro_loop_statement_t;
 
 typedef struct {
 	int reduce_op;
@@ -159,20 +150,18 @@ typedef struct {
 typedef struct {
 	ccv_nnc_micro_id_t id; // Loop counter's id, this will be used for indexing.
 	int carry_over_count;
-	int block_count;
+	int statement_count;
 	ccv_nnc_micro_loop_index_term_t start_index;
 	ccv_nnc_micro_loop_index_term_t end_index;
 	ccv_nnc_micro_loop_carry_over_t* carry_overs;
-	ccv_nnc_micro_loop_block_t* blocks;
+	ccv_nnc_micro_loop_statement_t* statements;
 } ccv_nnc_micro_loop_t;
 
-// A nested loop contains many loops within each other.
+// A loop block contains many loops within each other.
 typedef struct {
-	int dep_count;
 	int loop_count;
-	int* deps; // Depend on previous loops, what's their index.
 	ccv_nnc_micro_loop_t* loops;
-} ccv_nnc_micro_nested_loop_t;
+} ccv_nnc_micro_loop_block_t;
 
 typedef struct {
 	int input; // The one it derives its shape from. If shape is nullptr, it has the same shape as input. -1 means it is an input.
@@ -182,6 +171,16 @@ typedef struct {
 	ccv_nnc_micro_loop_index_term_t* shape;
 } ccv_nnc_micro_tensor_t;
 
+// A function contains a list of loop blocks that will be executed serially.
+// It also contains references to its dependencies so a function knows its inputs / outputs.
+typedef struct {
+	int block_count;
+	union {
+		ccv_nnc_micro_loop_block_t* blocks; // Heap-allocated blocks.
+		ccv_nnc_micro_loop_block_t one_block; // In-place block to optimize memory allocation for one block cases.
+	};
+} ccv_nnc_micro_function_t;
+
 // A combined op is constructed with many nested loops. These loops may have data dependencies
 // between each other, but they are ordered in topological order to make sure one is finished
 // after the another.
@@ -189,9 +188,60 @@ struct ccv_nnc_micro_combine_s {
 	// Combined ops only have global vars, there is no local vars. All vars are tensors.
 	int var_count;
 	// loops are our constructs of IR ops really. It is hierarchical.
-	int loop_count;
-	ccv_nnc_micro_nested_loop_t* loops;
+	int function_count;
 	ccv_nnc_micro_tensor_t* vars;
+	ccv_nnc_micro_function_t* functions;
 };
+
+typedef uint32_t(*ccv_nnc_micro_scalar_lookup_f)(const void* const context, const char* const name);
+
+/**
+ * This is the virtual table for micro op.
+ */
+struct ccv_nnc_micro_io_vtab_s {
+	void (*bind_scalars)(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context); /**< Bind scalar name to a scoped id. */
+	void (*numbering)(const ccv_nnc_micro_io_t self, const int id); /**< Assign id to the output of this micro op. */
+	ccv_nnc_micro_function_t (*emit)(const ccv_nnc_micro_io_t self); /**< Emit instructions for this micro op. */
+	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self); /**< Emit backward instructions for this micro op. */
+	ccv_nnc_micro_tensor_t (*return_shape)(const ccv_nnc_micro_io_t self); /**< The shape of the returned tensor. */
+};
+
+extern const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa;
+
+#define CCV_NNC_IS_MICRO_IO_INPUT(x) ((x)->isa == &ccv_nnc_micro_io_input_isa)
+
+static inline void ccv_nnc_micro_numbering(const ccv_nnc_micro_io_t self, const int id)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	if (isa->numbering)
+		isa->numbering(self, id);
+	else
+		self->id = id;
+}
+
+static inline void ccv_nnc_micro_bind_scalars(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	if (isa->bind_scalars)
+		isa->bind_scalars(self, lookup, context);
+}
+
+static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit(const ccv_nnc_micro_io_t self)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	return isa->emit(self);
+}
+
+static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit_grad(const ccv_nnc_micro_io_t self)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	return isa->emit_grad(self);
+}
+
+static inline CCV_WARN_UNUSED(ccv_nnc_micro_tensor_t) ccv_nnc_micro_return_shape(const ccv_nnc_micro_io_t self)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	return isa->return_shape(self);
+}
 
 #endif
