@@ -251,7 +251,35 @@ typedef struct ccv_nnc_cmd_vtab_s {
  *
  */
 
+/**
+ * Abstract vtab for different ccv_nnc_micro_io_t.
+ */
 typedef struct ccv_nnc_micro_io_vtab_s ccv_nnc_micro_io_vtab_t;
+
+enum {
+	// These could be much more unary ops.
+	CCV_NNC_MICRO_UNARY_OP_LOG,
+	CCV_NNC_MICRO_UNARY_OP_EXP,
+};
+
+enum {
+	CCV_NNC_MICRO_BINARY_OP_PLUS,
+	CCV_NNC_MICRO_BINARY_OP_MINUS,
+	CCV_NNC_MICRO_BINARY_OP_MUL,
+	CCV_NNC_MICRO_BINARY_OP_DIV,
+	CCV_NNC_MICRO_BINARY_OP_MAX,
+	CCV_NNC_MICRO_BINARY_OP_MIN,
+};
+
+enum {
+	CCV_NNC_MICRO_REDUCE_OP_MAX,
+	CCV_NNC_MICRO_REDUCE_OP_MIN,
+	CCV_NNC_MICRO_REDUCE_OP_ARGMAX,
+	CCV_NNC_MICRO_REDUCE_OP_ARGMIN,
+	CCV_NNC_MICRO_REDUCE_OP_MEAN, // Mean is complicated, we need a way to compute total for loops after this. It has to be done statically, and that is "interesting".
+	CCV_NNC_MICRO_REDUCE_OP_SUM,
+	CCV_NNC_MICRO_REDUCE_OP_PROD,
+};
 
 /**
  * Abstract micro op representation.
@@ -294,12 +322,13 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(const int dimensions);
  *
  * @param shape The shape expressions per axis.
  * @param shape_count The dimensions of the output.
+ * @param s The tensor to reference shape dimensions.
  * @param reindex The reindex expressions per axis.
  * @param reindex_count The dimensions of the input.
  * @param x The input for reindex operation.
  * @return The reindexed tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const ccv_nnc_micro_io_t s, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
 /**
  * Apply element-wise computations with one tensor.
  * @param op The binary operand.

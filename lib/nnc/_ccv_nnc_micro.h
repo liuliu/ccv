@@ -27,31 +27,6 @@ typedef struct {
 } ccv_nnc_micro_id_t;
 
 enum {
-	// These could be much more unary ops.
-	CCV_NNC_MICRO_UNARY_OP_LOG,
-	CCV_NNC_MICRO_UNARY_OP_EXP,
-};
-
-enum {
-	CCV_NNC_MICRO_BINARY_OP_PLUS,
-	CCV_NNC_MICRO_BINARY_OP_MINUS,
-	CCV_NNC_MICRO_BINARY_OP_MUL,
-	CCV_NNC_MICRO_BINARY_OP_DIV,
-	CCV_NNC_MICRO_BINARY_OP_MAX,
-	CCV_NNC_MICRO_BINARY_OP_MIN,
-};
-
-enum {
-	CCV_NNC_MICRO_REDUCE_OP_MAX,
-	CCV_NNC_MICRO_REDUCE_OP_MIN,
-	CCV_NNC_MICRO_REDUCE_OP_ARGMAX,
-	CCV_NNC_MICRO_REDUCE_OP_ARGMIN,
-	CCV_NNC_MICRO_REDUCE_OP_MEAN, // Mean is complicated, we need a way to compute total for loops after this. It has to be done statically, and that is "interesting".
-	CCV_NNC_MICRO_REDUCE_OP_SUM,
-	CCV_NNC_MICRO_REDUCE_OP_PROD,
-};
-
-enum {
 	CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE,
 	CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
 	CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
@@ -143,7 +118,7 @@ typedef struct {
 typedef struct {
 	int reduce_op;
 	ccv_nnc_micro_id_t id;
-} ccv_nnc_micro_loop_carry_over_t; // The accumulating register.
+} ccv_nnc_micro_loop_carried_t; // The accumulating register.
 
 // A loop is identified with a loop counter id, some blocks inside this loop, some carry overs within
 // this loop and can be used outside of this loop.
@@ -151,11 +126,11 @@ typedef struct {
 // all blocks are executed after the nested loop finished.
 typedef struct {
 	ccv_nnc_micro_id_t id; // Loop counter's id, this will be used for indexing.
-	int carry_over_count;
+	int carried_count;
 	int statement_count;
 	ccv_nnc_micro_loop_index_term_t start_index;
 	ccv_nnc_micro_loop_index_term_t end_index;
-	ccv_nnc_micro_loop_carry_over_t* carry_overs;
+	ccv_nnc_micro_loop_carried_t* carrieds;
 	ccv_nnc_micro_loop_statement_t* statements;
 } ccv_nnc_micro_loop_t;
 
@@ -292,8 +267,8 @@ static inline ccv_nnc_micro_loop_t ccv_nnc_micro_for_in(const ccv_nnc_micro_loop
 	return (ccv_nnc_micro_loop_t){
 		.start_index = start_index,
 		.end_index = end_index,
-		.carry_over_count = 0,
-		.carry_overs = 0,
+		.carried_count = 0,
+		.carrieds = 0,
 		.statement_count = 0,
 		.statements = 0,
 		.id = {
@@ -391,9 +366,9 @@ static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignm
 	};
 }
 
-static inline ccv_nnc_micro_loop_carry_over_t ccv_nnc_micro_loop_carry_over(const uint32_t reduce_op, const int idx)
+static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint32_t reduce_op, const int idx)
 {
-	return (ccv_nnc_micro_loop_carry_over_t){
+	return (ccv_nnc_micro_loop_carried_t){
 		.reduce_op = reduce_op,
 		.id = {
 			.type = CCV_NNC_MICRO_CARRY_OVER_ID,

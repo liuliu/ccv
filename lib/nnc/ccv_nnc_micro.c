@@ -195,8 +195,8 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 				}
 				if (block.loops[k].statements)
 					ccfree(block.loops[k].statements);
-				if (block.loops[j].carry_overs)
-					ccfree(block.loops[j].carry_overs);
+				if (block.loops[k].carrieds)
+					ccfree(block.loops[k].carrieds);
 			}
 			ccfree(block.loops);
 		}
