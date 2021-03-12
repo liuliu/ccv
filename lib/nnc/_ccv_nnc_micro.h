@@ -244,4 +244,149 @@ static inline CCV_WARN_UNUSED(ccv_nnc_micro_tensor_t) ccv_nnc_micro_return_shape
 	return isa->return_shape(self);
 }
 
+/**
+ * Helpers to construct the micro IR.
+ */
+
+static inline ccv_nnc_micro_id_t ccv_nnc_micro_id_of_tensor(const int id)
+{
+	return (ccv_nnc_micro_id_t){
+		.type = CCV_NNC_MICRO_TENSOR_ID,
+		.id = id,
+		.d = 0
+	};
+}
+
+static inline ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_index_of_value(const int value)
+{
+	return (ccv_nnc_micro_loop_index_term_t){
+		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+		.immediate_value = value
+	};
+}
+
+static inline ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_index_of_id(const ccv_nnc_micro_id_t id)
+{
+	return (ccv_nnc_micro_loop_index_term_t){
+		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
+		.id = id
+	};
+}
+
+static inline ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_index_of_axis_size(const int id, const int level)
+{
+	return (ccv_nnc_micro_loop_index_term_t){
+		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
+		.id = {
+			.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
+			.id = id,
+			.d = level
+		}
+	};
+}
+
+static inline ccv_nnc_micro_loop_t ccv_nnc_micro_for_in(const ccv_nnc_micro_loop_index_term_t start_index, const ccv_nnc_micro_loop_index_term_t end_index, const int level)
+{
+	return (ccv_nnc_micro_loop_t){
+		.start_index = start_index,
+		.end_index = end_index,
+		.carry_over_count = 0,
+		.carry_overs = 0,
+		.statement_count = 0,
+		.statements = 0,
+		.id = {
+			.type = CCV_NNC_MICRO_LOOP_ID,
+			.d = 0,
+			.id = level,
+		}
+	};
+}
+
+// This is a macro because C cannot return array type.
+#define ccv_nnc_micro_loop_index_of_loops(_loops, _loop_count) \
+	(ccv_nnc_micro_loop_index_term_t [CCV_NNC_MAX_DIM_ALLOC]){ \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 0 ? _loops[0].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 1 ? _loops[1].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 2 ? _loops[2].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 3 ? _loops[3].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 4 ? _loops[4].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 5 ? _loops[5].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 6 ? _loops[6].id : (ccv_nnc_micro_id_t){} }, \
+		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 7 ? _loops[7].id : (ccv_nnc_micro_id_t){} } \
+	}
+
+static inline ccv_nnc_micro_loop_variable_t ccv_nnc_micro_loop_variable_of_tensor(const int id, const int index_count, const ccv_nnc_micro_loop_index_term_t* const index)
+{
+	ccv_nnc_micro_loop_variable_t variable = {
+		.id = ccv_nnc_micro_id_of_tensor(id),
+		.index_count = index_count
+	};
+	int i;
+	for (i = 0; i < index_count; i++)
+		variable.index[i] = index[i];
+	return variable;
+}
+
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_variable(const ccv_nnc_micro_loop_variable_t variable)
+{
+	return (ccv_nnc_micro_loop_expression_t){
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR,
+		.variable = variable
+	};
+}
+
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_id(const ccv_nnc_micro_id_t id)
+{
+	return (ccv_nnc_micro_loop_expression_t){
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID,
+		.id = id
+	};
+}
+
+static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_assignment(const ccv_nnc_micro_loop_variable_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
+{
+	return (ccv_nnc_micro_loop_statement_t){
+		.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT,
+		.assignment = {
+			.lvalue = lvalue,
+			.rvalue = rvalue
+		}
+	};
+}
+
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_binary(const ccv_nnc_micro_loop_expression_t left, const ccv_nnc_micro_loop_expression_t right)
+{
+	ccv_nnc_micro_loop_expression_t expression = {
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY
+	};
+	expression.binary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.binary.left = left;
+	expression.binary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.binary.right = right;
+	return expression;
+}
+
+static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignment(const ccv_nnc_micro_id_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
+{
+	return (ccv_nnc_micro_loop_statement_t){
+		.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT,
+		.compound_assignment = {
+			.id = lvalue,
+			.rvalue = rvalue
+		}
+	};
+}
+
+static inline ccv_nnc_micro_loop_carry_over_t ccv_nnc_micro_loop_carry_over(const uint32_t reduce_op, const int idx)
+{
+	return (ccv_nnc_micro_loop_carry_over_t){
+		.reduce_op = reduce_op,
+		.id = {
+			.type = CCV_NNC_MICRO_CARRY_OVER_ID,
+			.d = 0,
+			.id = idx
+		}
+	};
+}
+
 #endif

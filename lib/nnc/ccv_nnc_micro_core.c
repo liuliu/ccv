@@ -7,8 +7,6 @@
 
 // MARK - Level-1 API
 
-static __thread int micro_io_id = 0;
-
 const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa = {};
 
 ccv_nnc_micro_io_t ccv_nnc_micro_input(const int dimensions)
@@ -17,7 +15,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_input(const int dimensions)
 	ccv_nnc_micro_io_t input = cccalloc(1, sizeof(struct ccv_nnc_micro_io_s));
 	input->isa = &ccv_nnc_micro_io_input_isa;
 	input->dimensions = dimensions;
-	input->id = ++micro_io_id;
+	input->id = 0;
 	return input;
 }
 
@@ -295,91 +293,6 @@ static void _ccv_nnc_micro_reindex_bind_scalars(const ccv_nnc_micro_io_t super, 
 	}
 }
 
-static ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_index_of_value(const int value)
-{
-	return (ccv_nnc_micro_loop_index_term_t){
-		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
-		.immediate_value = value
-	};
-}
-
-static ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_index_of_axis_size(const int id, const int level)
-{
-	return (ccv_nnc_micro_loop_index_term_t){
-		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
-		.id = {
-			.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
-			.id = id,
-			.d = level
-		}
-	};
-}
-
-static ccv_nnc_micro_loop_t ccv_nnc_micro_for_in(const ccv_nnc_micro_loop_index_term_t start_index, const ccv_nnc_micro_loop_index_term_t end_index, const int level)
-{
-	return (ccv_nnc_micro_loop_t){
-		.start_index = start_index,
-		.end_index = end_index,
-		.carry_over_count = 0,
-		.carry_overs = 0,
-		.statement_count = 0,
-		.statements = 0,
-		.id = {
-			.type = CCV_NNC_MICRO_LOOP_ID,
-			.d = 0,
-			.id = level,
-		}
-	};
-}
-
-// This is a macro because C cannot return array type.
-#define ccv_nnc_micro_loop_index_of_loops(_loops, _loop_count) \
-	(ccv_nnc_micro_loop_index_term_t [CCV_NNC_MAX_DIM_ALLOC]){ \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 0 ? _loops[0].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 1 ? _loops[1].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 2 ? _loops[2].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 3 ? _loops[3].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 4 ? _loops[4].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 5 ? _loops[5].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 6 ? _loops[6].id : (ccv_nnc_micro_id_t){} }, \
-		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 7 ? _loops[7].id : (ccv_nnc_micro_id_t){} } \
-	}
-
-static ccv_nnc_micro_loop_variable_t ccv_nnc_micro_loop_variable_of_tensor(const int id, const int index_count, const ccv_nnc_micro_loop_index_term_t* const index)
-{
-	ccv_nnc_micro_loop_variable_t variable = {
-		.id = {
-			.type = CCV_NNC_MICRO_TENSOR_ID,
-			.id = id,
-			.d = 0
-		},
-		.index_count = index_count
-	};
-	int i;
-	for (i = 0; i < index_count; i++)
-		variable.index[i] = index[i];
-	return variable;
-}
-
-static ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_variable(const ccv_nnc_micro_loop_variable_t variable)
-{
-	return (ccv_nnc_micro_loop_expression_t){
-		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR,
-		.variable = variable
-	};
-}
-
-static ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_assignment(const ccv_nnc_micro_loop_variable_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
-{
-	return (ccv_nnc_micro_loop_statement_t){
-		.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT,
-		.assignment = {
-			.lvalue = lvalue,
-			.rvalue = rvalue
-		}
-	};
-}
-
 static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reindex_emit(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
@@ -432,7 +345,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const c
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reindex_s) + sizeof(ccv_nnc_micro_loop_index_term_t) * reindex_count * 2);
 	self->super.isa = &ccv_nnc_micro_io_reindex_isa;
 	self->super.dimensions = reindex_count;
-	self->super.id = ++micro_io_id;
+	self->super.id = 0;
 	self->super.inputs = &self->x;
 	self->super.input_size = 1;
 	self->reindex_count = reindex_count;
@@ -477,18 +390,6 @@ struct ccv_nnc_micro_io_binary_s {
 	ccv_nnc_micro_io_t left;
 	ccv_nnc_micro_io_t right;
 };
-
-static ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_binary(const ccv_nnc_micro_loop_expression_t left, const ccv_nnc_micro_loop_expression_t right)
-{
-	ccv_nnc_micro_loop_expression_t expression = {
-		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY
-	};
-	expression.binary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
-	*expression.binary.left = left;
-	expression.binary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
-	*expression.binary.right = right;
-	return expression;
-}
 
 static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_binary_emit(const ccv_nnc_micro_io_t super)
 {
@@ -541,7 +442,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_binary(const uint32_t op, const ccv_nnc_micro_i
 	struct ccv_nnc_micro_io_binary_s* const self = (struct ccv_nnc_micro_io_binary_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_binary_s));
 	self->super.isa = &ccv_nnc_micro_io_binary_isa;
 	self->super.dimensions = x->dimensions;
-	self->super.id = ++micro_io_id;
+	self->super.id = 0;
 	self->super.inputs = &self->left;
 	self->super.input_size = 2;
 	self->binary_op = op;
@@ -592,56 +493,40 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 	const int carry_over_loop_idx = has_extra_loop ? 0 : loop_count - self->axis_count - 1;
 	loops[carry_over_loop_idx].carry_over_count = 1;
 	loops[carry_over_loop_idx].carry_overs = (ccv_nnc_micro_loop_carry_over_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_carry_over_t));
-	loops[carry_over_loop_idx].carry_overs[0].reduce_op = self->reduce_op;
-	loops[carry_over_loop_idx].carry_overs[0].id.type = CCV_NNC_MICRO_CARRY_OVER_ID;
-	loops[carry_over_loop_idx].carry_overs[0].id.d = 0;
-	loops[carry_over_loop_idx].carry_overs[0].id.id = ++micro_io_id;
-	ccv_nnc_micro_loop_statement_t statement;
-	statement.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT;
-	statement.compound_assignment.id = loops[carry_over_loop_idx].carry_overs[0].id;
-	statement.compound_assignment.rvalue.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR;
-	statement.compound_assignment.rvalue.variable.id.type = CCV_NNC_MICRO_TENSOR_ID;
-	statement.compound_assignment.rvalue.variable.id.d = 0;
-	statement.compound_assignment.rvalue.variable.id.id = self->x->id;
-	statement.compound_assignment.rvalue.variable.index_count = loop_count;
+	loops[carry_over_loop_idx].carry_overs[0] = ccv_nnc_micro_loop_carry_over(self->reduce_op, carry_over_loop_idx);
 	j = 0;
 	// If loop_count == reduce_axis_count, we have extra loop for carry_overs and block.
 	k = has_extra_loop ? 1 : loop_count - self->axis_count;
+	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
 	for (i = 0; i < loop_count; i++)
-	{
-		statement.compound_assignment.rvalue.variable.index[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		if (reduce_axis[i])
 		{
-			statement.compound_assignment.rvalue.variable.index[i].id = loops[k].id;
+			index[i] = ccv_nnc_micro_index_of_id(loops[k].id);
 			++k;
 		} else {
-			statement.compound_assignment.rvalue.variable.index[i].id = loops[j].id;
+			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
 			++j;
 		}
-	}
+	ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_compound_assignment(
+		loops[carry_over_loop_idx].carry_overs[0].id,
+		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, loop_count, index))
+	);
 	loops[carry_over_loop_idx + self->axis_count].statement_count = 1;
 	loops[carry_over_loop_idx + self->axis_count].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
 	loops[carry_over_loop_idx + self->axis_count].statements[0] = statement;
-	statement.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT;
-	statement.assignment.lvalue.id.type = CCV_NNC_MICRO_TENSOR_ID;
-	statement.assignment.lvalue.id.d = 0;
-	statement.assignment.lvalue.id.id = self->super.id;
-	statement.assignment.lvalue.index_count = loop_count;
 	j = 0;
 	for (i = 0; i < loop_count; i++)
-	{
 		if (reduce_axis[i])
 		{
-			statement.assignment.lvalue.index[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL;
-			statement.assignment.lvalue.index[i].immediate_value = 0;
+			index[i] = ccv_nnc_micro_index_of_value(0);
 		} else {
-			statement.assignment.lvalue.index[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
-			statement.assignment.lvalue.index[i].id = loops[j].id;
+			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
 			++j;
 		}
-	}
-	statement.assignment.rvalue.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID;
-	statement.assignment.rvalue.id = loops[carry_over_loop_idx].carry_overs[0].id;
+	statement = ccv_nnc_micro_loop_assignment(
+		ccv_nnc_micro_loop_variable_of_tensor(self->super.id, loop_count, index),
+		ccv_nnc_micro_loop_expression_of_id(loops[carry_over_loop_idx].carry_overs[0].id)
+	);
 	loops[carry_over_loop_idx].statement_count = 1;
 	loops[carry_over_loop_idx].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
 	loops[carry_over_loop_idx].statements[0] = statement;
@@ -689,7 +574,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reduce(const uint32_t op, const int* const axis
 	struct ccv_nnc_micro_io_reduce_s* const self = (struct ccv_nnc_micro_io_reduce_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reduce_s) + sizeof(int) * (axis_count - 1));
 	self->super.isa = &ccv_nnc_micro_io_reduce_isa;
 	self->super.dimensions = x->dimensions;
-	self->super.id = ++micro_io_id;
+	self->super.id = 0;
 	self->super.inputs = &self->x;
 	self->super.input_size = 1;
 	self->reduce_op = op;
@@ -725,31 +610,18 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_select_emit(cons
 		else
 			loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->super.id, i), i);
 	}
-	ccv_nnc_micro_loop_statement_t statement;
-	statement.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT;
-	statement.assignment.lvalue.id.type = CCV_NNC_MICRO_TENSOR_ID;
-	statement.assignment.lvalue.id.d = 0;
-	statement.assignment.lvalue.id.id = self->super.id;
-	statement.assignment.lvalue.index_count = loop_count;
-	statement.assignment.rvalue.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR;
-	statement.assignment.rvalue.variable.id.type = CCV_NNC_MICRO_TENSOR_ID;
-	statement.assignment.rvalue.variable.id.d = 0;
-	statement.assignment.rvalue.variable.id.id = self->x->id;
-	statement.assignment.rvalue.variable.index_count = loop_count;
+	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
 	for (i = 0; i < loop_count; i++)
 	{
-		statement.assignment.lvalue.index[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
-		statement.assignment.lvalue.index[i].id = loops[i].id;
-		statement.assignment.rvalue.variable.index[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		if (i == self->axis)
-		{
-			// Use the value of index tensor as the index.
-			statement.assignment.rvalue.variable.index[i].id.type = CCV_NNC_MICRO_TENSOR_ID;
-			statement.assignment.rvalue.variable.index[i].id.d = 0;
-			statement.assignment.rvalue.variable.index[i].id.id = self->index->id;
-		} else
-			statement.assignment.rvalue.variable.index[i].id = loops[i].id;
+			index[i] = ccv_nnc_micro_index_of_id(ccv_nnc_micro_id_of_tensor(self->index->id));
+		else
+			index[i] = ccv_nnc_micro_index_of_id(loops[i].id);
 	}
+	const ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_assignment(
+		ccv_nnc_micro_loop_variable_of_tensor(self->super.id, loop_count, ccv_nnc_micro_loop_index_of_loops(loops, loop_count)),
+		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, loop_count, index))
+	);
 	loops[loop_count - 1].statement_count = 1;
 	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
 	loops[loop_count - 1].statements[0] = statement;
@@ -773,15 +645,9 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_select_return_shape(const ccv_nnc_m
 	for (i = 0; i < self->super.dimensions; i++)
 	{
 		if (i != self->axis)
-		{
-			var.shape[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
-			var.shape[i].id.type = CCV_NNC_MICRO_AXIS_SIZE_ID;
-			var.shape[i].id.d = i;
-			var.shape[i].id.id = self->x->id;
-		} else {
-			var.shape[i].type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL;
-			var.shape[i].immediate_value = 1;
-		}
+			var.shape[i] = ccv_nnc_micro_index_of_axis_size(self->x->id, i);
+		else
+			var.shape[i] = ccv_nnc_micro_index_of_value(1);
 	}
 	return var;
 }
@@ -797,7 +663,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_select(const int axis, const ccv_nnc_micro_io_t
 	struct ccv_nnc_micro_io_select_s* const self = (struct ccv_nnc_micro_io_select_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_select_s));
 	self->super.isa = &ccv_nnc_micro_io_select_isa;
 	self->super.dimensions = x->dimensions;
-	self->super.id = ++micro_io_id;
+	self->super.id = 0;
 	self->super.inputs = &self->x;
 	self->super.input_size = 2;
 	self->x = x;
