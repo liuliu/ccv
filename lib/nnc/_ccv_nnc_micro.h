@@ -303,7 +303,7 @@ static inline ccv_nnc_micro_loop_t ccv_nnc_micro_for_in(const ccv_nnc_micro_loop
 }
 
 // This is a macro because C cannot return array type.
-#define ccv_nnc_micro_loop_index_of_loops(_loops, _loop_count) \
+#define ccv_nnc_micro_index_of_loops(_loops, _loop_count) \
 	(ccv_nnc_micro_loop_index_term_t [CCV_NNC_MAX_DIM_ALLOC]){ \
 		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 0 ? _loops[0].id : (ccv_nnc_micro_id_t){} }, \
 		{ .type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID, .id = _loop_count > 1 ? _loops[1].id : (ccv_nnc_micro_id_t){} }, \
