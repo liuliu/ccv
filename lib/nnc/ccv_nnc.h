@@ -293,12 +293,13 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(const int dimensions);
  * shape: { "d1", "d0" }, reindex: { "i1", "i0" }
  *
  * @param shape The shape expressions per axis.
+ * @param shape_count The dimensions of the output.
  * @param reindex The reindex expressions per axis.
- * @param reindex_count The dimensions.
+ * @param reindex_count The dimensions of the input.
  * @param x The input for reindex operation.
  * @return The reindexed tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
 /**
  * Apply element-wise computations with one tensor.
  * @param op The binary operand.
@@ -356,6 +357,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine);
  * Run combined op in interpret mode. This is only useful for debug internals. Because this is for
  * generic combined op, there is no hint, or flags, or stream context, or cmd.
  * @param combine The op.
+ * @param cmd Choice between CMD_CUSTOM_FORWARD and CMD_CUSTOM_BACKWARD.
  * @param inputs The input tensors.
  * @param input_size The size of input tensors.
  * @param parameters The name of parameters.
@@ -364,7 +366,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine);
  * @param outputs The output tensors.
  * @param output_size The size of output tensors.
  */
-void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 /**
  * Generate C code from the combined op.
  * @param combine The combined op to generate some C code.

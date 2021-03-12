@@ -207,6 +207,10 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 	ccfree(combine);
 }
 
+void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+}
+
 char* ccv_nnc_micro_combine_c(ccv_nnc_micro_combine_t* const combine)
 {
 	return 0;

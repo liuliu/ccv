@@ -44,6 +44,8 @@ enum {
 enum {
 	CCV_NNC_MICRO_REDUCE_OP_MAX,
 	CCV_NNC_MICRO_REDUCE_OP_MIN,
+	CCV_NNC_MICRO_REDUCE_OP_ARGMAX,
+	CCV_NNC_MICRO_REDUCE_OP_ARGMIN,
 	CCV_NNC_MICRO_REDUCE_OP_MEAN, // Mean is complicated, we need a way to compute total for loops after this. It has to be done statically, and that is "interesting".
 	CCV_NNC_MICRO_REDUCE_OP_SUM,
 	CCV_NNC_MICRO_REDUCE_OP_PROD,
@@ -354,11 +356,23 @@ static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_assignment(const
 	};
 }
 
-static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_binary(const ccv_nnc_micro_loop_expression_t left, const ccv_nnc_micro_loop_expression_t right)
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_unary(const int unary_op, const ccv_nnc_micro_loop_expression_t x)
 {
 	ccv_nnc_micro_loop_expression_t expression = {
 		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY
 	};
+	expression.unary.unary_op = unary_op;
+	expression.unary.x = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.unary.x = x;
+	return expression;
+}
+
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_binary(const int binary_op, const ccv_nnc_micro_loop_expression_t left, const ccv_nnc_micro_loop_expression_t right)
+{
+	ccv_nnc_micro_loop_expression_t expression = {
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY
+	};
+	expression.binary.binary_op = binary_op;
 	expression.binary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
 	*expression.binary.left = left;
 	expression.binary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
