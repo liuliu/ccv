@@ -298,7 +298,15 @@ typedef struct {
 	// Type of the scalar is about precision, nothing to restrict the tensor's type. For example, we may assign a int32_t 0
 	// to a float16 tensor element, this is perfectly fine.
 	int type;
-	ccv_numeric_data_t data;
+	union {
+		unsigned char u8;
+		int i32;
+		ccv_float16_t f16;
+		float f32;
+		int64_t i64;
+		uint64_t u64;
+		double f64;
+	};
 } ccv_nnc_micro_scalar_t;
 
 /**
@@ -389,13 +397,12 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine);
  * @param cmd Choice between CMD_CUSTOM_FORWARD and CMD_CUSTOM_BACKWARD.
  * @param inputs The input tensors.
  * @param input_size The size of input tensors.
- * @param parameters The name of parameters.
- * @param values The value corresponding to the parameters.
- * @param parameter_size How many parameters.
+ * @param values The value corresponding to the parameters when call ccv_nnc_micro_combine_new.
+ * @param parameter_size How many parameters. It must match when called ccv_nnc_micro_combine_new.
  * @param outputs The output tensors.
  * @param output_size The size of output tensors.
  */
-void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 /**
  * Generate C code from the combined op.
  * @param combine The combined op to generate some C code.

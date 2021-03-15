@@ -1,3 +1,12 @@
+2021-03-14
+----------
+Looking at Jittor's source code, there are some shortcuts they've taken that are interesting. It seems their IR parsed from the source code, which looks like a combination of some template language and C++ code. I choose a different path where the IR is directly constructed, so no parser here.
+
+That has been said, the first step is to implement a simple, but correct interpreter such that I can actually run in the slow mode to verify optimization passes are implemented correctly. I probably need to restrict what data types supported for the interpreter so it can be implemented with reasonable confidence.
+
+This micro op implementation would probably take another month to finish. It definitely exceeds my previous estimation of days work :)
+
+
 2021-01-10
 ----------
 Continue yesterday's discussion, I removed the last sync point (inside the `ccv_nnc_dynamic_graph_evaluate.c`). There is a small bug in static_schedule method such that if there are multiple starting points in a graph, we didn't sync all them to the given stream, thus, causing race issues.

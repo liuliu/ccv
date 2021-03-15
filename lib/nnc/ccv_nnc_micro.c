@@ -74,10 +74,13 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 		ccv_nnc_micro_bind_scalars(output, _scalars_lookup, bind_scalars);
 	}
 	kh_destroy(ccv_nnc_micro_bind_scalar, bind_scalars);
+	// Applying numbering for the inputs. Note that our variables are numbered in reverse topological order.
+	for (i = 0; i < input_size; i++)
+		ccv_nnc_micro_numbering(inputs[i], i + reverse_top->rnum);
 	// Applying numbering for the outputs.
-	for (i = 0; i < reverse_top->rnum; i++)
+	for (i = reverse_top->rnum - 1; i >= 0; i--)
 	{
-		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
+		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
 		ccv_nnc_micro_numbering(output, i);
 	}
 	// Third, lower each ccv_nnc_micro_io_t (except the input) op into nested loops such that we can
@@ -102,6 +105,9 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 		vars[i + reverse_top->rnum].id = inputs[i]->id;
 	}
 	ccv_nnc_micro_combine_t* const combine = (ccv_nnc_micro_combine_t*)ccmalloc(sizeof(ccv_nnc_micro_combine_t));
+	combine->input_size = input_size;
+	combine->output_size = output_size;
+	combine->parameter_size = parameter_size;
 	combine->var_count = reverse_top->rnum + input_size;
 	combine->vars = vars;
 	combine->function_count = function_count;
@@ -207,8 +213,77 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 	ccfree(combine);
 }
 
-void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, const ccv_nnc_tensor_t* const* const inputs, const int input_size, const char* const* const parameters, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+static int _ccv_nnc_micro_shape_interpret(const ccv_nnc_micro_loop_index_term_t shape, const int* const shapes, const ccv_nnc_micro_scalar_t* const values, const int parameter_size)
 {
+	switch (shape.type) {
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+			return shape.immediate_value;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
+			switch (shape.id.type) {
+				case CCV_NNC_MICRO_AXIS_SIZE_ID:
+					return shapes[shape.id.id * CCV_NNC_MAX_DIM_ALLOC + shape.id.d];
+				case CCV_NNC_MICRO_SCALAR_ID:
+					switch (values[shape.id.id].type) {
+						case CCV_8U:
+							return values[shape.id.id].u8;
+						case CCV_32S:
+							return values[shape.id.id].i32;
+						case CCV_64S:
+							return (int)values[shape.id.id].i64;
+					}
+					break;
+			}
+			break;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
+			const int left = _ccv_nnc_micro_shape_interpret(shape.binary->left, shapes, values, parameter_size);
+			const int right = _ccv_nnc_micro_shape_interpret(shape.binary->right, shapes, values, parameter_size);
+			switch (shape.binary->op) {
+				case CCV_NNC_MICRO_BINARY_OP_PLUS:
+					return left + right;
+				case CCV_NNC_MICRO_BINARY_OP_MINUS:
+					return left - right;
+				case CCV_NNC_MICRO_BINARY_OP_MUL:
+					return left * right;
+				case CCV_NNC_MICRO_BINARY_OP_DIV:
+					return left / right;
+				case CCV_NNC_MICRO_BINARY_OP_MAX:
+					return ccv_max(left, right);
+				case CCV_NNC_MICRO_BINARY_OP_MIN:
+					return ccv_min(left, right);
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
+void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+	// We haven't optimized for emit_grad at the moment yet.
+	assert(cmd == CCV_NNC_CUSTOM_FORWARD);
+	int i, j;
+	const int var_count = combine->var_count;
+	assert(input_size == combine->input_size);
+	assert(output_size == combine->output_size);
+	assert(parameter_size == combine->parameter_size);
+	int* const shapes = (int*)cccalloc(var_count, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	ccv_nnc_micro_tensor_t* const vars = combine->vars;
+	for (i = 0; i < input_size; i++)
+		memcpy(shapes + (var_count - input_size + i) * CCV_NNC_MAX_DIM_ALLOC, &inputs[i]->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	for (i = var_count - input_size - 1; i >= 0; i--)
+	{
+		if (vars[i].shape)
+		{
+			for (j = 0; j < vars[i].dimensions; j++)
+				shapes[i * CCV_NNC_MAX_DIM_ALLOC + j] = _ccv_nnc_micro_shape_interpret(vars[i].shape[j], shapes, values, parameter_size);
+		} else
+			memcpy(shapes + i * CCV_NNC_MAX_DIM_ALLOC, shapes + vars[i].input * CCV_NNC_MAX_DIM_ALLOC, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	}
+	const int function_count = combine->function_count;
+	for (i = 0; i < function_count; i++)
+	{
+	}
+	ccfree(shapes);
 }
 
 char* ccv_nnc_micro_combine_c(ccv_nnc_micro_combine_t* const combine)
