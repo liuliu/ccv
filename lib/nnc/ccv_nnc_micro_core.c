@@ -536,15 +536,15 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 		loops[0] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_value(1), 0);
 	for (i = 0; i < loop_count; i++)
 		if (i == self->axis)
-			loops[loop_count + has_extra_loop - 1] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->super.id, i), i + has_extra_loop);
+			loops[loop_count + has_extra_loop - 1] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->x->id, i), i + has_extra_loop);
 		else {
-			loops[j] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->super.id, i), i + has_extra_loop);
+			loops[j] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->x->id, i), i + has_extra_loop);
 			++j;
 		}
 	const int carried_loop_idx = has_extra_loop ? 0 : loop_count - 2;
 	loops[carried_loop_idx].carried_count = 1;
 	loops[carried_loop_idx].carrieds = (ccv_nnc_micro_loop_carried_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_carried_t));
-	loops[carried_loop_idx].carrieds[0] = ccv_nnc_micro_loop_carried(self->reduce_op, carried_loop_idx);
+	loops[carried_loop_idx].carrieds[0] = ccv_nnc_micro_loop_carried(self->reduce_op, 0);
 	j = 0;
 	// If loop_count == reduce_axis_count, we have extra loop for carrieds and block.
 	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
@@ -579,6 +579,7 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 	loops[carried_loop_idx].statements[0] = statement;
 	return (ccv_nnc_micro_function_t){
 		.block_count = 1,
+		.carried_count = 1,
 		.one_block = {
 			.loop_count = loop_count + has_extra_loop,
 			.loops = loops

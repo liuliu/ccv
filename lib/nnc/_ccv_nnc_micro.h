@@ -14,7 +14,7 @@
 
 enum {
 	CCV_NNC_MICRO_LOOP_ID,
-	CCV_NNC_MICRO_CARRY_OVER_ID,
+	CCV_NNC_MICRO_LOOP_CARRIED_ID,
 	CCV_NNC_MICRO_AXIS_SIZE_ID,
 	CCV_NNC_MICRO_TENSOR_ID,
 	CCV_NNC_MICRO_SCALAR_ID,
@@ -151,6 +151,7 @@ typedef struct {
 // A function contains a list of loop blocks that will be executed serially.
 // It also contains references to its dependencies so a function knows its inputs / outputs.
 typedef struct {
+	int carried_count;
 	int block_count;
 	union {
 		ccv_nnc_micro_loop_block_t* blocks; // Heap-allocated blocks.
@@ -374,8 +375,8 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 	return (ccv_nnc_micro_loop_carried_t){
 		.reduce_op = reduce_op,
 		.id = {
-			.type = CCV_NNC_MICRO_CARRY_OVER_ID,
-			.d = 0,
+			.type = CCV_NNC_MICRO_LOOP_CARRIED_ID,
+			.d = reduce_op,
 			.id = idx
 		}
 	};
