@@ -14,7 +14,7 @@ uint64_t uniqid()
 	return sign.u;
 }
 
-#define N (1000000)
+#define N (800000)
 
 TEST_CASE("random cache put/delete/get")
 {
@@ -101,7 +101,7 @@ TEST_CASE("garbage collector 95\% hit rate")
 TEST_CASE("garbage collector 47\% hit rate")
 {
 	int i;
-	// deliberately let only cache size fits 90% of data
+	// deliberately let only cache size fits 45% of data
 	ccv_enable_cache(ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) * N * 45 / 100);
 	for (i = 0; i < N; i++)
 	{
