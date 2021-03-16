@@ -44,9 +44,11 @@ TEST_CASE("represent convolution with micro ops")
 		"i5"
 	}, 4, w);
 	ccv_nnc_micro_io_t yy = ccv_nnc_micro_binary(CCV_NNC_MICRO_BINARY_OP_MUL, xx, ww);
-	ccv_nnc_micro_io_t y5 = ccv_nnc_micro_reduce(CCV_NNC_MICRO_REDUCE_OP_SUM, 5, yy);
-	ccv_nnc_micro_io_t y4 = ccv_nnc_micro_reduce(CCV_NNC_MICRO_REDUCE_OP_SUM, 4, y5);
-	ccv_nnc_micro_io_t y = ccv_nnc_micro_reduce(CCV_NNC_MICRO_REDUCE_OP_SUM, 3, y4);
+	ccv_nnc_micro_io_t y = ccv_nnc_micro_reduce(CCV_NNC_MICRO_REDUCE_OP_SUM, (const int[]){
+		3,
+		4,
+		5
+	}, 3, yy);
 	ccv_nnc_micro_combine_t* combine = ccv_nnc_micro_combine_new((ccv_nnc_micro_io_t[]){
 		x,
 		w

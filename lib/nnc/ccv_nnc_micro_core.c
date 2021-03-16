@@ -517,8 +517,9 @@ ccv_nnc_micro_io_t ccv_nnc_micro_binary(const uint32_t op, const ccv_nnc_micro_i
 struct ccv_nnc_micro_io_reduce_s {
 	struct ccv_nnc_micro_io_s super;
 	uint32_t reduce_op;
-	int axis;
+	int axis_count;
 	ccv_nnc_micro_io_t x;
+	int axis[1];
 };
 
 static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(const ccv_nnc_micro_io_t super)
@@ -527,31 +528,44 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 	const int loop_count = self->super.dimensions;
 	assert(self->x->dimensions == loop_count);
 	// If axis_count == loop_count, we need extra loop to reduce.
-	int has_extra_loop = (1 == loop_count);
+	int has_extra_loop = (self->axis_count == loop_count);
 	ccv_nnc_micro_loop_t* const loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * (loop_count + has_extra_loop));
-	int i, j;
+	int i, j, k;
+	int8_t reduce_axis[loop_count];
+	memset(reduce_axis, 0, sizeof(int8_t) * loop_count);
+	for (i = 0; i < self->axis_count; i++)
+		reduce_axis[self->axis[i]] = 1;
 	j = 0;
 	// If loop_count == reduce_axis_count, we have extra loop for carried variables and blocks.
 	if (has_extra_loop)
+	{
 		loops[0] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_value(1), 0);
+		k = 1;
+	} else
+		k = loop_count - self->axis_count;
 	for (i = 0; i < loop_count; i++)
-		if (i == self->axis)
-			loops[loop_count + has_extra_loop - 1] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->x->id, i), i + has_extra_loop);
-		else {
+		if (reduce_axis[i])
+		{
+			loops[k] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->x->id, i), i + has_extra_loop);
+			++k;
+		} else {
 			loops[j] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(self->x->id, i), i + has_extra_loop);
 			++j;
 		}
-	const int carried_loop_idx = has_extra_loop ? 0 : loop_count - 2;
+	const int carried_loop_idx = has_extra_loop ? 0 : loop_count - self->axis_count - 1;
 	loops[carried_loop_idx].carried_count = 1;
 	loops[carried_loop_idx].carrieds = (ccv_nnc_micro_loop_carried_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_carried_t));
 	loops[carried_loop_idx].carrieds[0] = ccv_nnc_micro_loop_carried(self->reduce_op, 0);
 	j = 0;
+	k = has_extra_loop ? 1 : loop_count - self->axis_count;
 	// If loop_count == reduce_axis_count, we have extra loop for carrieds and block.
 	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
 	for (i = 0; i < loop_count; i++)
-		if (i == self->axis)
-			index[i] = ccv_nnc_micro_index_of_id(loops[loop_count + has_extra_loop - 1].id);
-		else {
+		if (reduce_axis[i])
+		{
+			index[i] = ccv_nnc_micro_index_of_id(loops[k].id);
+			++k;
+		} else {
 			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
 			++j;
 		}
@@ -559,12 +573,12 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 		loops[carried_loop_idx].carrieds[0].id,
 		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, loop_count, index))
 	);
-	loops[carried_loop_idx + 1].statement_count = 1;
-	loops[carried_loop_idx + 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
-	loops[carried_loop_idx + 1].statements[0] = statement;
+	loops[carried_loop_idx + self->axis_count].statement_count = 1;
+	loops[carried_loop_idx + self->axis_count].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	loops[carried_loop_idx + self->axis_count].statements[0] = statement;
 	j = 0;
 	for (i = 0; i < loop_count; i++)
-		if (i == self->axis)
+		if (reduce_axis[i])
 			index[i] = ccv_nnc_micro_index_of_value(0);
 		else {
 			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
@@ -597,7 +611,8 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reduce_return_shape(const ccv_nnc_m
 	int i;
 	for (i = 0; i < self->super.dimensions; i++)
 		var.shape[i] = ccv_nnc_micro_index_of_axis_size(self->x->id, i);
-	var.shape[self->axis] = ccv_nnc_micro_index_of_value(1);
+	for (i = 0; i < self->axis_count; i++)
+		var.shape[self->axis[i]] = ccv_nnc_micro_index_of_value(1);
 	return var;
 }
 
@@ -607,9 +622,9 @@ static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_reduce_isa = {
 	.return_shape = _ccv_nnc_micro_reduce_return_shape
 };
 
-ccv_nnc_micro_io_t ccv_nnc_micro_reduce(const uint32_t op, const int axis, const ccv_nnc_micro_io_t x)
+ccv_nnc_micro_io_t ccv_nnc_micro_reduce(const uint8_t op, const int* const axis, const int axis_count, const ccv_nnc_micro_io_t x)
 {
-	struct ccv_nnc_micro_io_reduce_s* const self = (struct ccv_nnc_micro_io_reduce_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reduce_s));
+	struct ccv_nnc_micro_io_reduce_s* const self = (struct ccv_nnc_micro_io_reduce_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reduce_s) + sizeof(int) * (axis_count - 1));
 	self->super.isa = &ccv_nnc_micro_io_reduce_isa;
 	self->super.dimensions = x->dimensions;
 	self->super.id = 0;
@@ -617,9 +632,12 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reduce(const uint32_t op, const int axis, const
 	self->super.input_size = 1;
 	self->reduce_op = op;
 	self->x = x;
-	assert(axis >= 0);
-	assert(axis < x->dimensions);
-	self->axis = axis;
+	self->axis_count = axis_count;
+	assert(axis_count <= x->dimensions);
+	int i;
+	for (i = 0; i < axis_count; i++)
+	{ assert(axis[i] < x->dimensions); }
+	memcpy(self->axis, axis, sizeof(int) * axis_count);
 	return (ccv_nnc_micro_io_t)self;
 }
 

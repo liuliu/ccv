@@ -116,7 +116,6 @@ typedef struct {
 } ccv_nnc_micro_loop_statement_t;
 
 typedef struct {
-	int reduce_op;
 	ccv_nnc_micro_id_t id;
 } ccv_nnc_micro_loop_carried_t; // The accumulating register.
 
@@ -370,10 +369,9 @@ static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignm
 	};
 }
 
-static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint32_t reduce_op, const int idx)
+static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint8_t reduce_op, const int idx)
 {
 	return (ccv_nnc_micro_loop_carried_t){
-		.reduce_op = reduce_op,
 		.id = {
 			.type = CCV_NNC_MICRO_LOOP_CARRIED_ID,
 			.d = reduce_op,

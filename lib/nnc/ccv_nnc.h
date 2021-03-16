@@ -360,7 +360,7 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_binary(const uint32_t op, cons
  * @param x The input tensor.
  * @return The result tensor after reduction.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint32_t op, const int axis, const ccv_nnc_micro_io_t x);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint8_t op, const int* const axis, const int axis_count, const ccv_nnc_micro_io_t x);
 /**
  * Use the index tensor to select one value from the x per axis.
  * @param axis The axis to select.

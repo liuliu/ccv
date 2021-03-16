@@ -391,7 +391,7 @@ static void _ccv_nnc_micro_loop_interpret(const ccv_nnc_micro_loop_t* const loop
 		{
 			assert(carried_refs[j].id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			assert(carried_refs[j].id.id < carried_count);
-			switch (carried_refs[j].reduce_op)
+			switch (carried_refs[j].id.d)
 			{
 				case CCV_NNC_MICRO_REDUCE_OP_MAX:
 					carrieds[carried_refs[j].id.id].f32 = -FLT_MAX;
@@ -455,7 +455,7 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 		total_size += size;
 	}
 	float** const vars_mem = (float**)ccmalloc(sizeof(float*) * var_count + sizeof(float) * total_size);
-	float* ptr = (float*)(vars_mem + (var_count - input_size - output_size));
+	float* ptr = (float*)(vars_mem + var_count);
 	// Assuming these are not tensor_view_t.
 	for (i = 0; i < output_size; i++)
 	{
