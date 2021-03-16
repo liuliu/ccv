@@ -72,7 +72,7 @@ typedef union ccv_numeric_data_u {
 	void* ptr; // Raw pointer
 } ccv_numeric_data_t;
 
-#define CCV_NNC_MAX_DIM_ALLOC (8)
+#define CCV_NNC_MAX_DIM_ALLOC (12)
 #define CCV_NNC_MAX_DIM (2)
 
 typedef struct {
