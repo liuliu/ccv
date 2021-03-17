@@ -120,6 +120,7 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	ccv_array_free(reverse_top);
 	for (i = 0; i < input_size; i++)
 		ccfree(inputs[i]);
+	ccv_nnc_micro_combine_simplify(combine);
 	return combine;
 }
 
@@ -208,7 +209,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 			}
 			ccfree(block.loops);
 		}
-		if (block_count != 1)
+		if (block_count > 1)
 			ccfree(combine->functions[i].blocks);
 	}
 	ccfree(combine->functions);
@@ -480,14 +481,19 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	const int function_count = combine->function_count;
 	int max_carried_count = 0;
 	for (i = 0; i < function_count; i++)
-		max_carried_count = ccv_max(max_carried_count, functions[i].carried_count);
+	{
+		const int block_count = functions[i].block_count;
+		ccv_nnc_micro_loop_block_t* const blocks = block_count == 1 ? &functions[i].one_block : functions[i].blocks;
+		for (j = 0; j < block_count; j++)
+			max_carried_count = ccv_max(max_carried_count, blocks[j].carried_count);
+	}
 	ccv_nnc_micro_scalar_t* const carrieds = max_carried_count > 0 ? (ccv_nnc_micro_scalar_t*)ccmalloc(sizeof(ccv_nnc_micro_scalar_t) * max_carried_count) : 0;
 	for (i = 0; i < function_count; i++)
 	{
 		const int block_count = functions[i].block_count;
 		ccv_nnc_micro_loop_block_t* const blocks = block_count == 1 ? &functions[i].one_block : functions[i].blocks;
 		for (j = 0; j < block_count; j++)
-			_ccv_nnc_micro_loop_interpret(blocks[j].loops, blocks[j].loop_count, 0, loop_counter, carrieds, functions[i].carried_count, vars_mem, shapes, values, parameter_size);
+			_ccv_nnc_micro_loop_interpret(blocks[j].loops, blocks[j].loop_count, 0, loop_counter, carrieds, blocks[j].carried_count, vars_mem, shapes, values, parameter_size);
 	}
 	if (carrieds)
 		ccfree(carrieds);

@@ -135,6 +135,7 @@ typedef struct {
 
 // A loop block contains many loops within each other.
 typedef struct {
+	int carried_count;
 	int loop_count;
 	ccv_nnc_micro_loop_t* loops;
 } ccv_nnc_micro_loop_block_t;
@@ -150,7 +151,6 @@ typedef struct {
 // A function contains a list of loop blocks that will be executed serially.
 // It also contains references to its dependencies so a function knows its inputs / outputs.
 typedef struct {
-	int carried_count;
 	int block_count;
 	union {
 		ccv_nnc_micro_loop_block_t* blocks; // Heap-allocated blocks.
@@ -379,5 +379,8 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 		}
 	};
 }
+
+// This method has to be mutable for efficiency reasons. Hence I kept it private.
+void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine);
 
 #endif

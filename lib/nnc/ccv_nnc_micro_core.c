@@ -321,6 +321,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reindex_return_shape(const ccv_nnc_
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
 	ccv_nnc_micro_tensor_t var = {};
 	var.dimensions = self->super.dimensions;
+	var.sibling = -1;
 	var.input = self->x->id;
 	var.shape = (ccv_nnc_micro_loop_index_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_term_t) * self->super.dimensions);
 	memcpy(var.shape, self->shape, sizeof(ccv_nnc_micro_loop_index_term_t) * self->super.dimensions);
@@ -423,6 +424,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_unary_return_shape(const ccv_nnc_mi
 	ccv_nnc_micro_tensor_t var = {};
 	var.dimensions = self->super.dimensions;
 	var.input = self->x->id;
+	var.sibling = -1;
 	return var;
 }
 
@@ -593,8 +595,8 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 	loops[carried_loop_idx].statements[0] = statement;
 	return (ccv_nnc_micro_function_t){
 		.block_count = 1,
-		.carried_count = 1,
 		.one_block = {
+			.carried_count = 1,
 			.loop_count = loop_count + has_extra_loop,
 			.loops = loops
 		}
@@ -607,6 +609,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reduce_return_shape(const ccv_nnc_m
 	ccv_nnc_micro_tensor_t var = {};
 	var.dimensions = self->super.dimensions;
 	var.input = self->x->id;
+	var.sibling = -1;
 	var.shape = (ccv_nnc_micro_loop_index_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_term_t) * self->super.dimensions);
 	int i;
 	for (i = 0; i < self->super.dimensions; i++)
@@ -693,6 +696,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_select_return_shape(const ccv_nnc_m
 	ccv_nnc_micro_tensor_t var = {};
 	var.dimensions = self->super.dimensions;
 	var.input = self->x->id;
+	var.sibling = -1;
 	var.shape = (ccv_nnc_micro_loop_index_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_term_t) * self->super.dimensions);
 	int i;
 	for (i = 0; i < self->super.dimensions; i++)
