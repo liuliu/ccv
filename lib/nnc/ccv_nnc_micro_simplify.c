@@ -26,6 +26,7 @@ static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_inde
 				{
 					case CCV_NNC_MICRO_TENSOR_ID:
 					case CCV_NNC_MICRO_AXIS_SIZE_ID: {
+						// Find their group identifier and then compare.
 						int a_root = groups[a_index.id.id];
 						while (groups[a_root] != a_root)
 							a_root = groups[a_root];
@@ -54,11 +55,13 @@ static int _ccv_nnc_same_shape(const ccv_nnc_micro_loop_index_term_t* const a_sh
 	return 1;
 }
 
-static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block, const ccv_nnc_micro_loop_block_t* const right_block, const int* const groups)
+static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block, const ccv_nnc_micro_loop_block_t* const right_block, const int* const groups, int* const left_loop_idx, int* const right_loop_idx)
 {
-	int left_loop_idx[left_block->loop_count];
-	int right_loop_idx[right_block->loop_count];
+	assert(left_block->loop_count > 0);
+	assert(right_block->loop_count > 0);
 	int i, j;
+	int left_right_link[left_block->loop_count];
+	int right_left_link[right_block->loop_count];
 	enum {
 		ONE = -2,
 		UNASSIGNED = -1,
@@ -66,23 +69,23 @@ static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block
 	for (i = 0; i < left_block->loop_count; i++)
 		if (left_block->loops[i].start_index.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && left_block->loops[i].start_index.immediate_value == 0 &&
 			left_block->loops[i].end_index.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && left_block->loops[i].end_index.immediate_value == 1)
-			left_loop_idx[i] = ONE;
+			left_right_link[i] = ONE;
 		else
-			left_loop_idx[i] = UNASSIGNED;
+			left_right_link[i] = UNASSIGNED;
 	for (i = 0; i < right_block->loop_count; i++)
 		if (right_block->loops[i].start_index.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right_block->loops[i].start_index.immediate_value == 0 &&
 			right_block->loops[i].end_index.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right_block->loops[i].end_index.immediate_value == 1)
-			right_loop_idx[i] = ONE;
+			right_left_link[i] = ONE;
 		else
-			right_loop_idx[i] = UNASSIGNED;
+			right_left_link[i] = UNASSIGNED;
 	for (i = 0; i < left_block->loop_count; i++) // Find corresponding loop on the right.
 	{
-		if (left_loop_idx[i] != UNASSIGNED)
+		if (left_right_link[i] != UNASSIGNED)
 			continue;
 		int flag = UNASSIGNED;
 		for (j = 0; j < right_block->loop_count && flag == UNASSIGNED; j++)
 		{
-			if (right_loop_idx[j] != UNASSIGNED)
+			if (right_left_link[j] != UNASSIGNED)
 				continue;
 			if (_ccv_nnc_same_index_term(left_block->loops[i].start_index, right_block->loops[j].start_index, groups) && 
 				_ccv_nnc_same_index_term(left_block->loops[i].end_index, right_block->loops[j].end_index, groups))
@@ -90,18 +93,155 @@ static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block
 		}
 		if (flag != UNASSIGNED)
 		{
-			left_loop_idx[i] = flag;
-			right_loop_idx[flag] = i;
+			left_right_link[i] = flag;
+			right_left_link[flag] = i;
 		}
 	}
 	// If still have unmatched, they don't share the same loop.
 	for (i = 0; i < left_block->loop_count; i++)
-		if (left_loop_idx[i] == UNASSIGNED)
+		if (left_right_link[i] == UNASSIGNED)
 			return 0;
 	for (i = 0; i < right_block->loop_count; i++)
-		if (right_loop_idx[i] == UNASSIGNED)
+		if (right_left_link[i] == UNASSIGNED)
 			return 0;
+	// I don't want to deal with constant loop, hence, if other than the outer-most is a constant loop (0..<1),
+	// we cannot merge.
+	for (i = 1; i < left_block->loop_count; i++)
+		if (left_right_link[i] == ONE)
+			return 0;
+	for (i = 1; i < right_block->loop_count; i++)
+		if (right_left_link[i] == ONE)
+			return 0;
+	assert((left_block->loop_count == right_block->loop_count) ||
+			(left_block->loop_count == right_block->loop_count + 1) ||
+			(left_block->loop_count + 1 == right_block->loop_count));
+	// The loop matches, but the ordering probably doesn't. We reorder loop based on statements.
+	// Hence, two loops can only merge if using the statements as a pivot point and they can still
+	// match things before / after the statement.
+	// If both have statements, check if order preserving within the statement loop (we can be fancier
+	// and recursively call this while using statement as pivoting point, but that is too much to my taste).
+	const int left_start_idx = left_right_link[0] == ONE ? 1 : 0;
+	const int right_start_idx = right_left_link[0] == ONE ? 1 : 0;
+	for (i = 0; i < left_block->loop_count; i++)
+		left_loop_idx[i] = UNASSIGNED;
+	for (i = 0; i < right_block->loop_count; i++)
+		right_loop_idx[i] = UNASSIGNED;
+	if (left_start_idx == 1)
+		left_loop_idx[0] = 0; // Assign their index.
+	if (right_start_idx == 0)
+		right_loop_idx[0] = 0; // Assign their index.
+	const int end_idx = left_right_link[0] == ONE && right_left_link[0] == ONE ? left_block->loop_count - 1 : ccv_min(left_block->loop_count, right_block->loop_count);
+	int pivot_idx = end_idx;
+	int k;
+	for (i = end_idx - 1; i >= 0; i--)
+	{
+		if (left_block->loops[i + left_start_idx].statement_count > 0)
+		{
+			for (j = i + 1, k = i + 1; j < end_idx; j++)
+				if (left_loop_idx[j + left_start_idx] == UNASSIGNED)
+				{
+					left_loop_idx[j + left_start_idx] = k + left_start_idx;
+					// If the right one can be referenced pass previous pivot_idx, it is not right.
+					if (left_right_link[j + left_start_idx] >= pivot_idx + right_start_idx)
+						return 0;
+					right_loop_idx[left_right_link[j + left_start_idx]] = k + right_start_idx;
+					++k;
+					if (k > pivot_idx)
+						return 0;
+				}
+			assert(k == pivot_idx);
+			pivot_idx = i + 1;
+		}
+		if (right_block->loops[i + right_start_idx].statement_count > 0)
+		{
+			for (j = i + 1, k = i + 1; j < end_idx; j++)
+				if (right_loop_idx[j + left_start_idx] == UNASSIGNED)
+				{
+					right_loop_idx[j + right_start_idx] = k + right_start_idx;
+					// If the left one can be referenced pass previous pivot_idx, it is not right.
+					if (right_left_link[j + right_start_idx] >= pivot_idx + left_start_idx)
+						return 0;
+					left_loop_idx[right_left_link[j + right_start_idx]] = k + left_start_idx;
+					++k;
+					if (k > pivot_idx)
+						return 0;
+				}
+			assert(k == pivot_idx);
+			pivot_idx = i + 1;
+		}
+	}
+	if (end_idx == 0)
+		return 1;
+	// Finally, to distribute the rest.
+	for (j = 0, k = 0; j < end_idx; j++)
+	{
+		if (left_loop_idx[j + left_start_idx] == UNASSIGNED)
+		{
+			left_loop_idx[j + left_start_idx] = k + left_start_idx;
+			// If the right one can be referenced pass previous pivot_idx, it is not right.
+			if (left_right_link[j + left_start_idx] >= pivot_idx + right_start_idx)
+				return 0;
+			right_loop_idx[left_right_link[j + left_start_idx]] = k + right_start_idx;
+			++k;
+			if (k > pivot_idx)
+				return 0;
+		}
+	}
+	assert(k == pivot_idx);
 	return 1;
+}
+
+static void _ccv_nnc_loop_order_by(ccv_nnc_micro_loop_block_t* const block, int* const loop_idx, ccv_nnc_micro_loop_t* const loops)
+{
+	int i;
+	for (i = 0; i < block->loop_count; i++)
+		if (loop_idx[i] >= 0)
+			loops[loop_idx[i]] = block->loops[i];
+		else
+			loops[i] = block->loops[i];
+	for (i = 0; i < block->loop_count; i++)
+	{
+		// Essentially, we don't need to move statements, loop-carried variables, just the loop id and the start / end index.
+		block->loops[i].id = loops[i].id;
+		block->loops[i].start_index = loops[i].start_index;
+		block->loops[i].end_index = loops[i].end_index;
+	}
+}
+
+static void _ccv_nnc_expression_rename_carrieds(ccv_nnc_micro_loop_expression_t* const expression, const int start_idx)
+{
+	switch (expression->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
+			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+			expression->id.id += start_idx;
+			break;
+		// We don't need to care about other expressions because loop-carried variable cannot participate these operations.
+	}
+}
+
+static void _ccv_nnc_loop_rename_carrieds(ccv_nnc_micro_loop_block_t* const block, const int start_idx)
+{
+	int i, j;
+	const int loop_count = block->loop_count;
+	ccv_nnc_micro_loop_t* const loops = block->loops;
+	for (i = 0; i < loop_count; i++)
+	{
+		for (j = 0; j < loops[i].carried_count; j++)
+			loops[i].carrieds[j].id.id += start_idx;
+		for (j = 0; j < loops[i].statement_count; j++)
+			switch (loops[i].statements[j].type)
+			{
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
+					_ccv_nnc_expression_rename_carrieds(&loops[i].statements[j].compound_assignment.rvalue, start_idx);
+					break;
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
+					assert(loops[i].statements[j].compound_assignment.id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+					loops[i].statements[j].compound_assignment.id.id += start_idx;
+					_ccv_nnc_expression_rename_carrieds(&loops[i].statements[j].compound_assignment.rvalue, start_idx);
+					break;
+			}
+	}
 }
 
 void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
@@ -157,13 +297,20 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
 	ccv_array_t* const blocks = ccv_array_new(sizeof(ccv_nnc_micro_loop_block_t), 0, 0);
 	ccv_nnc_micro_function_t* const functions = combine->functions;
 	const int function_count = combine->function_count;
+	int max_loop_count = 0;
 	for (i = 0; i < function_count; i++)
 	{
 		const int block_count = functions[i].block_count;
 		ccv_nnc_micro_loop_block_t* const function_blocks = block_count == 1 ? &functions[i].one_block : functions[i].blocks;
 		for (j = 0; j < block_count; j++)
+		{
+			max_loop_count = ccv_max(function_blocks[j].loop_count, max_loop_count);
 			ccv_array_push(blocks, &function_blocks[j]);
+		}
 	}
+	int left_loop_idx[max_loop_count];
+	int right_loop_idx[max_loop_count];
+	ccv_nnc_micro_loop_t loops[max_loop_count];
 	// Merge loops from blocks.
 	for (i = 0; i < blocks->rnum - 1; i++)
 	{
@@ -175,11 +322,77 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
 			ccv_nnc_micro_loop_block_t* const right_block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j);
 			if (right_block->loop_count == 0)
 				continue;
-			if (_ccv_nnc_same_loop(left_block, right_block, groups))
+			// This method not only compares whether they have the same loop or not, but also gives indexes that
+			// to match the loop start / end index, where they should move to. For example, if:
+			// left_loop_idx[2] = 3
+			// right_loop_idx[0] = 3
+			// That means right now, loop at index 2 on the left is the same as loop at index 0 on the right.
+			// And to match exactly, they both need to move to index 3.
+			if (_ccv_nnc_same_loop(left_block, right_block, groups, left_loop_idx, right_loop_idx))
 			{
+				// Make sure if we have extra loop, they are on the left.
+				if (right_block->loop_count > left_block->loop_count)
+				{
+					ccv_nnc_micro_loop_block_t t;
+					CCV_SWAP(*left_block, *right_block, t);
+				}
+				assert(left_block->loop_count == right_block->loop_count || left_block->loop_count == right_block->loop_count + 1);
+				_ccv_nnc_loop_order_by(left_block, left_loop_idx, loops);
+				_ccv_nnc_loop_order_by(right_block, right_loop_idx, loops);
+				const int left_start_idx = left_block->loop_count - right_block->loop_count;
+				if (left_block->carried_count > 0)
+					_ccv_nnc_loop_rename_carrieds(right_block, left_block->carried_count);
+				left_block->carried_count += right_block->carried_count;
+				int k;
+				for (k = 0; k < right_block->loop_count; k++) // Merge loops.
+				{
+					const int left_idx = left_start_idx + k;
+					if (right_block->loops[k].carried_count > 0)
+					{
+						if (left_block->loops[left_idx].carried_count > 0)
+						{
+							left_block->loops[left_idx].carrieds = (ccv_nnc_micro_loop_carried_t*)ccrealloc(left_block->loops[left_idx].carrieds, sizeof(ccv_nnc_micro_loop_carried_t) * (left_block->loops[left_idx].carried_count + right_block->loops[k].carried_count));
+							memcpy(left_block->loops[left_idx].carrieds + left_block->loops[left_idx].carried_count, right_block->loops[k].carrieds, sizeof(ccv_nnc_micro_loop_carried_t) * right_block->loops[k].carried_count);
+							ccfree(right_block->loops[k].carrieds);
+						} else
+							left_block->loops[left_idx].carrieds = right_block->loops[k].carrieds;
+						left_block->loops[left_idx].carried_count += right_block->loops[k].carried_count;
+						right_block->loops[k].carrieds = 0;
+						right_block->loops[k].carried_count = 0;
+					}
+					if (right_block->loops[k].statement_count > 0)
+					{
+						if (left_block->loops[left_idx].statement_count > 0)
+						{
+							left_block->loops[left_idx].statements = (ccv_nnc_micro_loop_statement_t*)ccrealloc(left_block->loops[left_idx].statements, sizeof(ccv_nnc_micro_loop_statement_t) * (left_block->loops[left_idx].statement_count + right_block->loops[k].statement_count));
+							memcpy(left_block->loops[left_idx].statements + left_block->loops[left_idx].statement_count, right_block->loops[k].statements, sizeof(ccv_nnc_micro_loop_statement_t) * right_block->loops[k].statement_count);
+							ccfree(right_block->loops[k].statements);
+						} else
+							left_block->loops[left_idx].statements = right_block->loops[k].statements;
+						left_block->loops[left_idx].statement_count += right_block->loops[k].statement_count;
+						right_block->loops[k].statements = 0;
+						right_block->loops[k].statement_count = 0;
+					}
+				}
+				// Once merged, free the loop.
+				ccfree(right_block->loops);
+				right_block->loops = 0;
+				right_block->loop_count = 0;
 			}
 		}
 	}
+	// Culling out empty blocks.
+	for (i = 0, j = 0; i < blocks->rnum; i++)
+	{
+		const ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
+		if (block->loop_count > 0)
+		{
+			*(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j) = *block;
+			++j;
+		}
+	}
+	// Now we moved everything, set the proper block size.
+	ccv_array_resize(blocks, j);
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)
 		if (functions[i].block_count > 1)
