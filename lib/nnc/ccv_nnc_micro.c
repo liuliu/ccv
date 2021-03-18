@@ -102,7 +102,6 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	{
 		vars[i + reverse_top->rnum].dimensions = inputs[i]->dimensions;
 		vars[i + reverse_top->rnum].input = -1;
-		vars[i + reverse_top->rnum].id = inputs[i]->id;
 	}
 	ccv_nnc_micro_combine_t* const combine = (ccv_nnc_micro_combine_t*)ccmalloc(sizeof(ccv_nnc_micro_combine_t));
 	combine->input_size = input_size;
@@ -120,16 +119,16 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	ccv_array_free(reverse_top);
 	for (i = 0; i < input_size; i++)
 		ccfree(inputs[i]);
-	ccv_nnc_micro_combine_simplify(combine);
+	ccv_nnc_micro_combine_simplify(combine, output_size);
 	return combine;
 }
 
-static void _ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term)
+void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term)
 {
 	if (term->type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY)
 	{
-		_ccv_nnc_micro_loop_index_free(&term->binary->left);
-		_ccv_nnc_micro_loop_index_free(&term->binary->right);
+		ccv_nnc_micro_loop_index_free(&term->binary->left);
+		ccv_nnc_micro_loop_index_free(&term->binary->right);
 		ccfree(term->binary);
 	}
 }
@@ -138,7 +137,7 @@ static void _ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* con
 {
 	int i;
 	for (i = 0; i < var->index_count; i++)
-		_ccv_nnc_micro_loop_index_free(&var->index[i]);
+		ccv_nnc_micro_loop_index_free(&var->index[i]);
 }
 
 static void _ccv_nnc_micro_loop_expression_free(ccv_nnc_micro_loop_expression_t* const expr)
@@ -171,7 +170,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 		if (combine->vars[i].shape)
 		{
 			for (j = 0; j < combine->vars[i].dimensions; j++)
-				_ccv_nnc_micro_loop_index_free(&combine->vars[i].shape[j]);
+				ccv_nnc_micro_loop_index_free(&combine->vars[i].shape[j]);
 			ccfree(combine->vars[i].shape);
 		}
 	}
@@ -449,6 +448,8 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	size_t total_size = 0;
 	for (i = output_size; i < var_count - input_size; i++)
 	{
+		if (vars[i].no_alloc) // This is skipped.
+			continue;
 		// allocating memory for these.
 		size_t size = 1;
 		for (j = 0; j < vars[i].dimensions; j++)
@@ -465,6 +466,11 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	}
 	for (i = output_size; i < var_count - input_size; i++)
 	{
+		if (vars[i].no_alloc) // This is skipped.
+		{
+			vars_mem[i] = 0;
+			continue;
+		}
 		// allocating memory for these.
 		size_t size = 1;
 		for (j = 0; j < vars[i].dimensions; j++)

@@ -14,12 +14,10 @@ static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_inde
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
 			return a_index.immediate_value == b_index.immediate_value;
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
-			assert(a_index.id.type != CCV_NNC_MICRO_LOOP_ID);
-			assert(b_index.id.type != CCV_NNC_MICRO_LOOP_ID);
-			if (groups)
+			if (a_index.id.type != b_index.id.type)
+				return 0;
+			if (groups && (a_index.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID || a_index.id.type == CCV_NNC_MICRO_TENSOR_ID))
 			{
-				if (a_index.id.type != b_index.id.type)
-					return 0;
 				if (a_index.id.d != b_index.id.d)
 					return 0;
 				switch (a_index.id.type)
@@ -38,7 +36,7 @@ static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_inde
 				}
 				return a_index.id.id == b_index.id.id;
 			} else
-				return (a_index.id.type == b_index.id.type && a_index.id.d == b_index.id.d && a_index.id.id == b_index.id.id);
+				return (a_index.id.d == b_index.id.d && a_index.id.id == b_index.id.id);
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
 			return a_index.binary->op == b_index.binary->op && _ccv_nnc_same_index_term(a_index.binary->left, b_index.binary->left, groups) && _ccv_nnc_same_index_term(a_index.binary->right, b_index.binary->right, groups);
 		}
@@ -216,7 +214,16 @@ static void _ccv_nnc_expression_rename_carrieds(ccv_nnc_micro_loop_expression_t*
 			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			expression->id.id += start_idx;
 			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
+			_ccv_nnc_expression_rename_carrieds(expression->binary.left, start_idx);
+			_ccv_nnc_expression_rename_carrieds(expression->binary.right, start_idx);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
+			_ccv_nnc_expression_rename_carrieds(expression->unary.x, start_idx);
+			break;
 		// We don't need to care about other expressions because loop-carried variable cannot participate these operations.
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+			break;
 	}
 }
 
@@ -244,7 +251,119 @@ static void _ccv_nnc_loop_rename_carrieds(ccv_nnc_micro_loop_block_t* const bloc
 	}
 }
 
-void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
+static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_expression_t* const expression, const int* const groups)
+{
+	switch (expression->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+			if (expression->variable.id.type == CCV_NNC_MICRO_TENSOR_ID && expression->variable.id.id == id)
+			{
+				if (var.index_count != expression->variable.index_count)
+					return 2;
+				int i;
+				for (i = 0; i < var.index_count; i++)
+					if (!_ccv_nnc_same_index_term(var.index[i], expression->variable.index[i], groups))
+						return 2;
+				return 1;
+			} else
+				return 0;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
+			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->binary.left, groups);
+			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->binary.right, groups);
+			if (left == 2 || right == 2)
+				return 2;
+			return (left || right);
+		}
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
+			return _ccv_nnc_only_var_in_expression(id, var, expression->unary.x, groups);
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
+			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+			return 0;
+	}
+	return 0;
+}
+
+static int _ccv_nnc_only_var_in_rvalue(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_statement_t statement, const int* const groups)
+{
+	switch (statement.type)
+	{
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
+			return _ccv_nnc_only_var_in_expression(id, var, &statement.assignment.rvalue, groups);
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
+			// Not going to be in lvalue (which is the carried variable only).
+			return _ccv_nnc_only_var_in_expression(id, var, &statement.compound_assignment.rvalue, groups);
+	}
+	return 0;
+}
+
+static ccv_nnc_micro_loop_expression_t _ccv_nnc_expression_deep_copy(const ccv_nnc_micro_loop_expression_t* const expression)
+{
+	switch (expression->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
+			ccv_nnc_micro_loop_expression_t copy = *expression;
+			copy.binary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.binary.left = _ccv_nnc_expression_deep_copy(expression->binary.left);
+			copy.binary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.binary.right = _ccv_nnc_expression_deep_copy(expression->binary.right);
+			return copy;
+		}
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY: {
+			ccv_nnc_micro_loop_expression_t copy = *expression;
+			copy.unary.x = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.unary.x = _ccv_nnc_expression_deep_copy(expression->unary.x);
+			return copy;
+		}
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
+			return *expression;
+	}
+	return *expression;
+}
+
+static void _ccv_nnc_replacing_id_in_expression(ccv_nnc_micro_loop_expression_t* const expression, const int id, ccv_nnc_micro_loop_expression_t rvalue, int* const count)
+{
+	switch (expression->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+			if (expression->variable.id.type == CCV_NNC_MICRO_TENSOR_ID && expression->variable.id.id == id)
+			{
+				if (*count == 0) // First time, just assign to expression.
+					*expression = rvalue;
+				else { // Otherwise, need to make deep copy of it.
+					*expression = _ccv_nnc_expression_deep_copy(&rvalue);
+				}
+				++(*count);
+			}
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
+			_ccv_nnc_replacing_id_in_expression(expression->binary.left, id, rvalue, count);
+			_ccv_nnc_replacing_id_in_expression(expression->binary.right, id, rvalue, count);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
+			_ccv_nnc_replacing_id_in_expression(expression->unary.x, id, rvalue, count);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
+			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+			break;
+	}
+}
+
+static void _ccv_nnc_replacing_id_in_rvalue(ccv_nnc_micro_loop_statement_t* const statement, const int id, ccv_nnc_micro_loop_expression_t rvalue, int* const count)
+{
+	switch (statement->type)
+	{
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
+			_ccv_nnc_replacing_id_in_expression(&statement->assignment.rvalue, id, rvalue, count);
+			break;
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
+			// Not going to be in lvalue (which is the carried variable only).
+			_ccv_nnc_replacing_id_in_expression(&statement->compound_assignment.rvalue, id, rvalue, count);
+			break;
+	}
+}
+
+void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size)
 {
 	// Nothing to simplify for.
 	if (combine->function_count < 1)
@@ -252,6 +371,8 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
 	// Only one block, nothing to simplify for.
 	if (combine->function_count == 1 && combine->functions[0].block_count == 1)
 		return;
+	// This is redundant, but it may be useful for a follow-up refactoring.
+	assert(combine->output_size == output_size);
 	// Union-find to group all variables with the same shape.
 	ccv_nnc_micro_tensor_t* const vars = combine->vars;
 	const int var_count = combine->var_count;
@@ -393,6 +514,70 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine)
 	}
 	// Now we moved everything, set the proper block size.
 	ccv_array_resize(blocks, j);
+	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
+	// var only write / read in one loop. If that is the case, we are going to remove that var.
+	for (i = output_size; i < var_count - combine->input_size; i++)
+	{
+		int count_var = 0;
+		ccv_nnc_micro_loop_variable_t lvalue;
+		ccv_nnc_micro_loop_expression_t rvalue;
+		int block_idx, loop_idx, statement_idx;
+		for (j = 0; j < blocks->rnum; j++)
+		{
+			const ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j);
+			int k, l;
+			const int loop_count = block->loop_count;
+			const ccv_nnc_micro_loop_t* const loops = block->loops;
+			int var_per_block = 0;
+			for (k = 0; k < loop_count; k++)
+			{
+				int flag = 0;
+				const int statement_count = loops[k].statement_count;
+				ccv_nnc_micro_loop_statement_t* const statements = loops[k].statements;
+				for (l = 0; l < statement_count; l++)
+					if (statements[l].type == CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT &&
+						statements[l].assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID &&
+						statements[l].assignment.lvalue.id.id == i)
+					{
+						lvalue = statements[l].assignment.lvalue;
+						rvalue = statements[l].assignment.rvalue;
+						block_idx = j;
+						loop_idx = k;
+						statement_idx = l;
+						++flag;
+					}
+				if (flag > 1) // We have more than 1 assignment for this id, it is not good. We cannot remove it.
+				{
+					var_per_block += flag;
+					continue;
+				}
+				flag = 0;
+				for (l = 0; l < statement_count; l++)
+					flag = ccv_max(flag, _ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups));
+				// If flag == 2, meaning it found a var with a different index. This is a bad news.
+				var_per_block += flag;
+			}
+			count_var += var_per_block;
+		}
+		// If this is used more than one place (write multiple times, have different index, or used in different blocks),
+		// I cannot get rid of it.
+		if (count_var != 1)
+			continue;
+		// Otherwise, now loop again and prepare to get rid of it.
+		ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, block_idx);
+		ccv_nnc_micro_loop_statement_t* statements = block->loops[loop_idx].statements;
+		// First, remove the assignment.
+		if (statement_idx < block->loops[loop_idx].statement_count - 1)
+			memmove(statements + statement_idx, statements + statement_idx + 1, sizeof(ccv_nnc_micro_loop_statement_t) * (block->loops[loop_idx].statement_count - statement_idx - 1));
+		--block->loops[loop_idx].statement_count;
+		const int statement_count = block->loops[loop_idx].statement_count;
+		statements = block->loops[loop_idx].statements = (ccv_nnc_micro_loop_statement_t*)ccrealloc(statements, sizeof(ccv_nnc_micro_loop_statement_t) * statement_count);
+		int k = 0;
+		for (j = 0; j < statement_count; j++)
+			_ccv_nnc_replacing_id_in_rvalue(&statements[j], i, rvalue, &k);
+		// No need to allocate for this var. It is not used, only useful for shape computation.
+		vars[i].no_alloc = 1;
+	}
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)
 		if (functions[i].block_count > 1)

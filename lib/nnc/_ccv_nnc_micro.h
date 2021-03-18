@@ -144,7 +144,7 @@ typedef struct {
 	int input; // The one it derives its shape from. If shape is nullptr, it has the same shape as input. -1 means it is an input.
 	int sibling; // The sibling that has the same shape.
 	int dimensions;
-	int id;
+	int no_alloc; // No need to allocate this tensor.
 	ccv_nnc_micro_loop_index_term_t* shape;
 } ccv_nnc_micro_tensor_t;
 
@@ -381,6 +381,7 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 }
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
-void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine);
+void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size);
+void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
 
 #endif
