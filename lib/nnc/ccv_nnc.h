@@ -215,7 +215,7 @@ typedef struct ccv_nnc_cmd_vtab_s {
 /** @} */
 
 /**
- * @defgroup level_1_micro Micro Commands to Define Commands
+ * @defgroup level_1_uops Micro Commands to Define Commands
  * @{
  */
 
