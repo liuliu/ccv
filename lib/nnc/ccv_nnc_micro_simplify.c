@@ -243,8 +243,11 @@ static void _ccv_nnc_loop_rename_carrieds(ccv_nnc_micro_loop_block_t* const bloc
 					_ccv_nnc_expression_rename_carrieds(&loops[i].statements[j].compound_assignment.rvalue, start_idx);
 					break;
 				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
-					assert(loops[i].statements[j].compound_assignment.id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
-					loops[i].statements[j].compound_assignment.id.id += start_idx;
+					if (loops[i].statements[j].compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID)
+					{
+						assert(loops[i].statements[j].compound_assignment.lvalue.id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+						loops[i].statements[j].compound_assignment.lvalue.id.id += start_idx;
+					}
 					_ccv_nnc_expression_rename_carrieds(&loops[i].statements[j].compound_assignment.rvalue, start_idx);
 					break;
 			}
@@ -429,6 +432,8 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 			ccv_array_push(blocks, &function_blocks[j]);
 		}
 	}
+	// Next, find dependencies between these function blocks and marking these that are dependencies for the final outputs.
+	// We need to build our connections between blocks <-> r/w vars.
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];

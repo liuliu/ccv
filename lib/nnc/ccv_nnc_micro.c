@@ -330,7 +330,7 @@ static void _ccv_nnc_micro_statement_interpret(const ccv_nnc_micro_loop_statemen
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
 			assert(statement.assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID);
 			const ccv_nnc_micro_loop_variable_t variable = statement.assignment.lvalue;
-			float* ptr = vars_mem[statement.assignment.lvalue.id.id];
+			float* ptr = vars_mem[variable.id.id];
 			size_t size = 1;
 			for (i = variable.index_count - 1; i >= 0; i--)
 			{
@@ -342,31 +342,51 @@ static void _ccv_nnc_micro_statement_interpret(const ccv_nnc_micro_loop_statemen
 			break;
 		}
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
-			assert(statement.compound_assignment.id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			const float rvalue = _ccv_nnc_micro_expression_interpret(&statement.compound_assignment.rvalue, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
-			switch (statement.compound_assignment.id.d)
+			switch (statement.compound_assignment.lvalue.type)
 			{
-				case CCV_NNC_MICRO_REDUCE_OP_MAX:
-					carrieds[statement.compound_assignment.id.id].f32 = ccv_max(carrieds[statement.compound_assignment.id.id].f32, rvalue);
+				case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID: {
+					assert(statement.compound_assignment.lvalue.id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+					switch (statement.compound_assignment.lvalue.id.d)
+					{
+						case CCV_NNC_MICRO_REDUCE_OP_MAX:
+							carrieds[statement.compound_assignment.lvalue.id.id].f32 = ccv_max(carrieds[statement.compound_assignment.lvalue.id.id].f32, rvalue);
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_MIN:
+							carrieds[statement.compound_assignment.lvalue.id.id].f32 = ccv_min(carrieds[statement.compound_assignment.lvalue.id.id].f32, rvalue);
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_ARGMAX:
+							assert(0);
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_ARGMIN:
+							assert(0);
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_MEAN:
+							carrieds[statement.compound_assignment.lvalue.id.id].f32 += rvalue;
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_SUM:
+							carrieds[statement.compound_assignment.lvalue.id.id].f32 += rvalue;
+							break;
+						case CCV_NNC_MICRO_REDUCE_OP_PROD:
+							carrieds[statement.compound_assignment.lvalue.id.id].f32 *= rvalue;
+							break;
+					}
 					break;
-				case CCV_NNC_MICRO_REDUCE_OP_MIN:
-					carrieds[statement.compound_assignment.id.id].f32 = ccv_min(carrieds[statement.compound_assignment.id.id].f32, rvalue);
+				}
+				case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR: {
+					assert(statement.compound_assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID);
+					const ccv_nnc_micro_loop_variable_t variable = statement.compound_assignment.lvalue.variable;
+					float* ptr = vars_mem[variable.id.id];
+					size_t size = 1;
+					for (i = variable.index_count - 1; i >= 0; i--)
+					{
+						const int index = _ccv_nnc_micro_index_interpret(variable.index[i], loop_counter, shapes, values, parameter_size);
+						ptr += index * size;
+						size *= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i];
+					}
+					ptr[0] += rvalue;
 					break;
-				case CCV_NNC_MICRO_REDUCE_OP_ARGMAX:
-					assert(0);
-					break;
-				case CCV_NNC_MICRO_REDUCE_OP_ARGMIN:
-					assert(0);
-					break;
-				case CCV_NNC_MICRO_REDUCE_OP_MEAN:
-					carrieds[statement.compound_assignment.id.id].f32 += rvalue;
-					break;
-				case CCV_NNC_MICRO_REDUCE_OP_SUM:
-					carrieds[statement.compound_assignment.id.id].f32 += rvalue;
-					break;
-				case CCV_NNC_MICRO_REDUCE_OP_PROD:
-					carrieds[statement.compound_assignment.id.id].f32 *= rvalue;
-					break;
+				}
 			}
 			break;
 		}

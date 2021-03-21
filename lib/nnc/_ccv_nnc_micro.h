@@ -93,8 +93,17 @@ typedef struct {
 	ccv_nnc_micro_loop_expression_t rvalue;
 } ccv_nnc_micro_loop_assignment_t;
 
+
+typedef struct  {
+	int type;
+	union {
+		ccv_nnc_micro_id_t id; // If this is a compound assignment, the id to that.
+		ccv_nnc_micro_loop_variable_t variable; // This only implies PLUS at the moment.
+	};
+} ccv_nnc_micro_loop_compound_assignment_lvalue_t;
+
 typedef struct {
-	ccv_nnc_micro_id_t id;
+	ccv_nnc_micro_loop_compound_assignment_lvalue_t lvalue; // It shouldn't be unary or binary, only id or variable.
 	ccv_nnc_micro_loop_expression_t rvalue;
 } ccv_nnc_micro_loop_compound_assignment_t;
 
@@ -358,12 +367,29 @@ static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_b
 	return expression;
 }
 
-static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignment(const ccv_nnc_micro_id_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
+static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignment_of_id(const ccv_nnc_micro_id_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
 {
 	return (ccv_nnc_micro_loop_statement_t){
 		.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT,
 		.compound_assignment = {
-			.id = lvalue,
+			.lvalue = {
+				.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID,
+				.id = lvalue
+			},
+			.rvalue = rvalue
+		}
+	};
+}
+
+static inline ccv_nnc_micro_loop_statement_t ccv_nnc_micro_loop_compound_assignment_of_tensor(const ccv_nnc_micro_loop_variable_t lvalue, const ccv_nnc_micro_loop_expression_t rvalue)
+{
+	return (ccv_nnc_micro_loop_statement_t){
+		.type = CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT,
+		.compound_assignment = {
+			.lvalue = {
+				.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR,
+				.variable = lvalue
+			},
 			.rvalue = rvalue
 		}
 	};

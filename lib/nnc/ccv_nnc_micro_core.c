@@ -571,7 +571,7 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
 			++j;
 		}
-	ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_compound_assignment(
+	ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_compound_assignment_of_id(
 		loops[carried_loop_idx].carrieds[0].id,
 		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, loop_count, index))
 	);
