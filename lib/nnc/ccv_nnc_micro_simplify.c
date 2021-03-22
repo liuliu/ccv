@@ -368,6 +368,7 @@ static void _ccv_nnc_replacing_id_in_rvalue(ccv_nnc_micro_loop_statement_t* cons
 
 typedef struct {
 	int flag;
+	int merge_to;
 	ccv_array_t* writes;
 	ccv_array_t* reads;
 } ccv_nnc_micro_loop_block_dependency_t;
@@ -414,6 +415,7 @@ static void _ccv_nnc_micro_block_dependencies(const ccv_nnc_micro_loop_block_t* 
 	int i, j, k;
 	for (i = 0; i < block_size; i++)
 	{
+		block_dependencies[i].merge_to = i;
 		const ccv_nnc_micro_loop_t* const loops = blocks[i].loops;
 		const int loop_count = blocks[i].loop_count;
 		for (j = 0; j < loop_count; j++)
@@ -591,8 +593,6 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
 			vars[i].no_alloc = 1;
 	ccv_array_free(in_use);
-	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
-	// TODO: For loop merging, I need to use dependencies as well. Otherwise the result could be incorrect.
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];
@@ -604,9 +604,36 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 			continue;
 		for (j = i + 1; j < blocks->rnum; j++)
 		{
+			// We always merge from right block to left block. Thus, the right block will always be
+			// in the original form.
 			ccv_nnc_micro_loop_block_t* const right_block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j);
 			if (right_block->loop_count == 0)
 				continue;
+			// First check whether between left and right, there are any blocks that the right block
+			// depends on. If that is the case, we cannot merge the right block into the left block.
+			if (j > i + 1 && block_dependencies[j].reads)
+			{
+				int k, l;
+				int flag = 0;
+				for (k = 0; !flag && k < block_dependencies[j].reads->rnum; k++)
+				{
+					const int read_idx = *(int*)ccv_array_get(block_dependencies[j].reads, k);
+					if (tensor_dependencies[read_idx].writes)
+						for (l = 0; !flag && l < tensor_dependencies[read_idx].writes->rnum; l++)
+						{
+							int block_idx = *(int*)ccv_array_get(tensor_dependencies[read_idx].writes, l);
+							while (block_idx != block_dependencies[block_idx].merge_to)
+								block_idx = block_dependencies[block_idx].merge_to;
+							assert(block_idx <= j);
+							// If the block_idx is between i and j (and not neither). We cannot merge.
+							flag = (block_idx > i && block_idx != j);
+						}
+				}
+				// Cannot merge because we have dependencies in between. Merging will violate that
+				// dependency relationship.
+				if (flag)
+					continue;
+			}
 			// This method not only compares whether they have the same loop or not, but also gives indexes that
 			// to match the loop start / end index, where they should move to. For example, if:
 			// left_loop_idx[2] = 3
@@ -663,9 +690,27 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 				ccfree(right_block->loops);
 				right_block->loops = 0;
 				right_block->loop_count = 0;
+				// Merge all reads and writes tensors into block dependency.
+				if (block_dependencies[j].writes && block_dependencies[j].writes->rnum)
+				{
+					if (!block_dependencies[i].writes)
+						block_dependencies[i].writes = ccv_array_new(sizeof(int), 1, 0);
+					for (k = 0; k < block_dependencies[j].writes->rnum; k++)
+						ccv_array_push(block_dependencies[i].writes, ccv_array_get(block_dependencies[j].writes, k));
+				}
+				if (block_dependencies[j].reads && block_dependencies[j].reads->rnum)
+				{
+					if (!block_dependencies[i].reads)
+						block_dependencies[i].reads = ccv_array_new(sizeof(int), 1, 0);
+					for (k = 0; k < block_dependencies[j].reads->rnum; k++)
+						ccv_array_push(block_dependencies[i].reads, ccv_array_get(block_dependencies[j].reads, k));
+				}
+				// Merged, mark the proper merging dependency.
+				block_dependencies[j].merge_to = i;
 			}
 		}
 	}
+	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
 	// Culling out empty blocks.
 	for (i = 0, j = 0; i < blocks->rnum; i++)
 	{
