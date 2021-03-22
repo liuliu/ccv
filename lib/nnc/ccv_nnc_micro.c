@@ -191,7 +191,7 @@ void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_
 
 void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 {
-	int i, j, k, l;
+	int i, j;
 	const int var_count = combine->var_count;
 	for (i = 0; i < var_count; i++)
 	{
