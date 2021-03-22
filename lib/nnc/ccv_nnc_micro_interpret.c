@@ -238,12 +238,12 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	// We haven't optimized for emit_grad at the moment yet.
 	assert(cmd == CCV_NNC_CUSTOM_FORWARD);
 	int i, j;
-	const int var_count = combine->var_count;
+	const int var_count = combine->forward.var_count;
 	assert(input_size == combine->input_size);
 	assert(output_size == combine->output_size);
 	assert(parameter_size == combine->parameter_size);
 	int* const shapes = (int*)cccalloc(var_count, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	ccv_nnc_micro_tensor_t* const vars = combine->vars;
+	ccv_nnc_micro_tensor_t* const vars = combine->forward.vars;
 	for (i = 0; i < input_size; i++)
 		memcpy(shapes + (var_count - input_size + i) * CCV_NNC_MAX_DIM_ALLOC, &inputs[i]->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	int loop_counter[CCV_NNC_MAX_DIM_ALLOC];
@@ -294,8 +294,8 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 		assert(!CCV_IS_TENSOR_VIEW(inputs[i - (var_count - input_size)]));
 		vars_mem[i] = inputs[i - (var_count - input_size)]->data.f32;
 	}
-	ccv_nnc_micro_function_t* const functions = combine->functions;
-	const int function_count = combine->function_count;
+	ccv_nnc_micro_function_t* const functions = combine->forward.functions;
+	const int function_count = combine->forward.function_count;
 	int max_carried_count = 0;
 	for (i = 0; i < function_count; i++)
 	{

@@ -18,6 +18,31 @@ ccv_nnc_micro_io_t ccv_nnc_micro_input(const int dimensions)
 	input->id = 0;
 	return input;
 }
+struct ccv_nnc_micro_io_grad_s {
+	struct ccv_nnc_micro_io_s super;
+	ccv_nnc_micro_io_t x;
+};
+
+static void _ccv_nnc_micro_grad_numbering(const ccv_nnc_micro_io_t super, const int id, const int var_count)
+{
+	struct ccv_nnc_micro_io_grad_s* const self = (struct ccv_nnc_micro_io_grad_s*)super;
+	const int sid = self->x->id;
+	self->super.id = sid + var_count;
+}
+
+const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_grad_isa = {
+	.numbering = _ccv_nnc_micro_grad_numbering
+};
+
+ccv_nnc_micro_io_t ccv_nnc_micro_grad(const ccv_nnc_micro_io_t x)
+{
+	struct ccv_nnc_micro_io_grad_s* const grad = cccalloc(1, sizeof(struct ccv_nnc_micro_io_grad_s));
+	grad->super.isa = &ccv_nnc_micro_io_grad_isa;
+	grad->super.dimensions = x->dimensions;
+	grad->super.id = 0;
+	grad->x = x;
+	return (ccv_nnc_micro_io_t)grad;
+}
 
 // A simple recursive descent parser. Omitted tokenisation step.
 static int _accept(const char** const pos, int* const remain_size, const char* symbol, int size)
@@ -249,7 +274,7 @@ struct ccv_nnc_micro_io_reindex_s {
 	ccv_nnc_micro_loop_index_term_t* reindex;
 };
 
-static void _ccv_nnc_micro_reindex_numbering(const ccv_nnc_micro_io_t super, const int id)
+static void _ccv_nnc_micro_reindex_numbering(const ccv_nnc_micro_io_t super, const int id, const int var_count)
 {
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
 	const int sid = self->s->id;

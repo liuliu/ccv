@@ -370,6 +370,14 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reduce(const uint8_t op, const
  */
 CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_select(const int axis, const ccv_nnc_micro_io_t x, const ccv_nnc_micro_io_t index);
 /**
+ * Return the gradient for a particular output. For example, if x is ccv_nnc_micro_unary(exp, input),
+ * this represents the gradient of x, not the input. This method is used to generate representation
+ * of gradients for ccv_nnc_micro_combine_new method.
+ * @param x The tensor to take a gradient of.
+ * @return The result tensor that represents the gradient of x.
+ */
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_grad(const ccv_nnc_micro_io_t x);
+/**
  * The combined op from micro ops.
  */
 typedef struct ccv_nnc_micro_combine_s ccv_nnc_micro_combine_t;
@@ -383,8 +391,12 @@ typedef struct ccv_nnc_micro_combine_s ccv_nnc_micro_combine_t;
  * @param parameter_size The number of parameters.
  * @param outputs The outputs for the combined ops.
  * @param output_size The number of the outputs.
+ * @param ingrads The gradient inputs for the combined ops, including any inputs / outputs if there are any.
+ * @param ingrad_size The number of ingrads.
+ * @param outgrads The gradient outputs for the combined ops.
+ * @param outgrad_size The number of outgrads.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, const ccv_nnc_micro_io_t* const ingrads, const int ingrad_size, const ccv_nnc_micro_io_t* const outgrads, const ccv_nnc_micro_io_t* const outgrad_size);
 /**
  * Free the combined op.
  * @param combine The op to be freed.

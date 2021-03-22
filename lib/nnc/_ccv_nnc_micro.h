@@ -167,6 +167,15 @@ typedef struct {
 	};
 } ccv_nnc_micro_function_t;
 
+typedef struct {
+	// Combined ops only have global vars, there is no local vars. All vars are tensors.
+	int var_count;
+	// loops are our constructs of IR ops really. It is hierarchical.
+	int function_count;
+	ccv_nnc_micro_tensor_t* vars;
+	ccv_nnc_micro_function_t* functions;
+} ccv_nnc_micro_program_t;
+
 // A combined op is constructed with many nested loops. These loops may have data dependencies
 // between each other, but they are ordered in topological order to make sure one is finished
 // after the another.
@@ -174,12 +183,8 @@ struct ccv_nnc_micro_combine_s {
 	int input_size; // Size of inputs.
 	int output_size; // Size of outputs.
 	int parameter_size; // Size of parameters.
-	// Combined ops only have global vars, there is no local vars. All vars are tensors.
-	int var_count;
-	// loops are our constructs of IR ops really. It is hierarchical.
-	int function_count;
-	ccv_nnc_micro_tensor_t* vars;
-	ccv_nnc_micro_function_t* functions;
+	ccv_nnc_micro_program_t forward;
+	ccv_nnc_micro_program_t backward;
 };
 
 typedef uint32_t(*ccv_nnc_micro_scalar_lookup_f)(const void* const context, const char* const name);
@@ -189,7 +194,7 @@ typedef uint32_t(*ccv_nnc_micro_scalar_lookup_f)(const void* const context, cons
  */
 struct ccv_nnc_micro_io_vtab_s {
 	void (*bind_scalars)(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context); /**< Bind scalar name to a scoped id. */
-	void (*numbering)(const ccv_nnc_micro_io_t self, const int id); /**< Assign id to the output of this micro op. */
+	void (*numbering)(const ccv_nnc_micro_io_t self, const int id, const int var_count); /**< Assign id to the output of this micro op. */
 	ccv_nnc_micro_function_t (*emit)(const ccv_nnc_micro_io_t self); /**< Emit instructions for this micro op. */
 	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self); /**< Emit backward instructions for this micro op. */
 	ccv_nnc_micro_tensor_t (*return_shape)(const ccv_nnc_micro_io_t self); /**< The shape of the returned tensor. */
@@ -199,11 +204,11 @@ extern const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa;
 
 #define CCV_NNC_IS_MICRO_IO_INPUT(x) ((x)->isa == &ccv_nnc_micro_io_input_isa)
 
-static inline void ccv_nnc_micro_numbering(const ccv_nnc_micro_io_t self, const int id)
+static inline void ccv_nnc_micro_numbering(const ccv_nnc_micro_io_t self, const int id, const int var_count)
 {
 	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
 	if (isa->numbering)
-		isa->numbering(self, id);
+		isa->numbering(self, id, var_count);
 	else
 		self->id = id;
 }
@@ -407,7 +412,7 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 }
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
-void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size);
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const int input_size, const int output_size);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_count);
 

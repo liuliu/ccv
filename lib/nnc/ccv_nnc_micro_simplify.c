@@ -480,19 +480,17 @@ static void _ccv_nnc_micro_dependencies_free(ccv_nnc_micro_loop_block_dependency
 	ccfree(tensor_dependencies);
 }
 
-void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size)
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const int input_size, const int output_size)
 {
 	// Nothing to simplify for.
-	if (combine->function_count < 1)
+	if (program->function_count < 1)
 		return;
 	// Only one block, nothing to simplify for.
-	if (combine->function_count == 1 && combine->functions[0].block_count == 1)
+	if (program->function_count == 1 && program->functions[0].block_count == 1)
 		return;
-	// This is redundant, but it may be useful for a follow-up refactoring.
-	assert(combine->output_size == output_size);
 	// Union-find to group all variables with the same shape.
-	ccv_nnc_micro_tensor_t* const vars = combine->vars;
-	const int var_count = combine->var_count;
+	ccv_nnc_micro_tensor_t* const vars = program->vars;
+	const int var_count = program->var_count;
 	int* const groups = (int*)ccmalloc(sizeof(int) * var_count);
 	int i, j;
 	for (i = 0; i < var_count; i++)
@@ -533,8 +531,8 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 	}
 	// First, flat out all functions into blocks.
 	ccv_array_t* const blocks = ccv_array_new(sizeof(ccv_nnc_micro_loop_block_t), 0, 0);
-	ccv_nnc_micro_function_t* const functions = combine->functions;
-	const int function_count = combine->function_count;
+	ccv_nnc_micro_function_t* const functions = program->functions;
+	const int function_count = program->function_count;
 	int max_loop_count = 0;
 	for (i = 0; i < function_count; i++)
 	{
@@ -725,7 +723,7 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 	ccv_array_resize(blocks, j);
 	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
 	// var only write / read in one loop. If that is the case, we are going to remove that var.
-	for (i = output_size; i < var_count - combine->input_size; i++)
+	for (i = output_size; i < var_count - input_size; i++)
 	{
 		int count_var = 0;
 		ccv_nnc_micro_loop_variable_t lvalue;
@@ -791,15 +789,15 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 	for (i = 0; i < function_count; i++)
 		if (functions[i].block_count > 1)
 			ccfree(functions[i].blocks);
-	combine->functions = (ccv_nnc_micro_function_t*)ccrealloc(combine->functions, sizeof(ccv_nnc_micro_function_t));
-	combine->functions[0].block_count = blocks->rnum;
+	program->functions = (ccv_nnc_micro_function_t*)ccrealloc(program->functions, sizeof(ccv_nnc_micro_function_t));
+	program->functions[0].block_count = blocks->rnum;
 	if (blocks->rnum > 1)
 	{
-		combine->functions[0].blocks = (ccv_nnc_micro_loop_block_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_block_t) * blocks->rnum);
-		memcpy(combine->functions[0].blocks, ccv_array_get(blocks, 0), sizeof(ccv_nnc_micro_loop_block_t) * blocks->rnum);
+		program->functions[0].blocks = (ccv_nnc_micro_loop_block_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_block_t) * blocks->rnum);
+		memcpy(program->functions[0].blocks, ccv_array_get(blocks, 0), sizeof(ccv_nnc_micro_loop_block_t) * blocks->rnum);
 	} else
-		combine->functions[0].one_block = *(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0);
-	combine->function_count = 1;
+		program->functions[0].one_block = *(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0);
+	program->function_count = 1;
 	free(groups);
 	ccv_array_free(blocks);
 }

@@ -56,7 +56,7 @@ TEST_CASE("represent convolution with micro ops")
 		"$kh",
 		"$kw",
 		"$kc"
-	}, 3, &y, 1);
+	}, 3, &y, 1, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4, 4, 5), 0);
 	ccv_nnc_tensor_t* const w_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 3, 5), 0);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 2, 2), 0);
