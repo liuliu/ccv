@@ -161,6 +161,34 @@ static void _ccv_nnc_micro_loop_expression_free(ccv_nnc_micro_loop_expression_t*
 	}
 }
 
+void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_count)
+{
+	int i, j;
+	for (i = 0; i < loop_count; i++)
+	{
+		for (j = 0; j < loops[i].statement_count; j++)
+		{
+			ccv_nnc_micro_loop_statement_t statement = loops[i].statements[j];
+			switch (statement.type)
+			{
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
+					_ccv_nnc_micro_loop_expression_free(&statement.compound_assignment.rvalue);
+					break;
+				}
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
+					_ccv_nnc_micro_loop_variable_free(&statement.assignment.lvalue);
+					_ccv_nnc_micro_loop_expression_free(&statement.assignment.rvalue);
+					break;
+				}
+			}
+		}
+		if (loops[i].statements)
+			ccfree(loops[i].statements);
+		if (loops[i].carrieds)
+			ccfree(loops[i].carrieds);
+	}
+}
+
 void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 {
 	int i, j, k, l;
@@ -183,29 +211,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 		for (j = 0; j < block_count; j++)
 		{
 			ccv_nnc_micro_loop_block_t block = blocks[j];
-			for (k = 0; k < block.loop_count; k++)
-			{
-				for (l = 0; l < block.loops[k].statement_count; l++)
-				{
-					ccv_nnc_micro_loop_statement_t statement = block.loops[k].statements[l];
-					switch (statement.type)
-					{
-						case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
-							_ccv_nnc_micro_loop_expression_free(&statement.compound_assignment.rvalue);
-							break;
-						}
-						case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
-							_ccv_nnc_micro_loop_variable_free(&statement.assignment.lvalue);
-							_ccv_nnc_micro_loop_expression_free(&statement.assignment.rvalue);
-							break;
-						}
-					}
-				}
-				if (block.loops[k].statements)
-					ccfree(block.loops[k].statements);
-				if (block.loops[k].carrieds)
-					ccfree(block.loops[k].carrieds);
-			}
+			ccv_nnc_micro_loops_free(block.loops, block.loop_count);
 			ccfree(block.loops);
 		}
 		if (block_count > 1)

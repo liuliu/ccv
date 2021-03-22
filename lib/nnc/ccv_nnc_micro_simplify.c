@@ -366,6 +366,118 @@ static void _ccv_nnc_replacing_id_in_rvalue(ccv_nnc_micro_loop_statement_t* cons
 	}
 }
 
+typedef struct {
+	int flag;
+	ccv_array_t* writes;
+	ccv_array_t* reads;
+} ccv_nnc_micro_loop_block_dependency_t;
+
+typedef struct {
+	int flag;
+	ccv_array_t* writes;
+	ccv_array_t* reads;
+} ccv_nnc_micro_tensor_dependency_t;
+
+static void _ccv_nnc_micro_block_dependencies_from_rvalue(const ccv_nnc_micro_loop_expression_t* const rvalue, const int i, ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies)
+{
+	switch (rvalue->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+			if (rvalue->variable.id.type == CCV_NNC_MICRO_TENSOR_ID)
+			{
+				if (!block_dependencies[i].reads)
+					block_dependencies[i].reads = ccv_array_new(sizeof(int), 1, 0);
+				const int id = rvalue->variable.id.id;
+				ccv_array_add_unique_int(block_dependencies[i].reads, id);
+				if (!tensor_dependencies[id].reads)
+					tensor_dependencies[id].reads = ccv_array_new(sizeof(int), 1, 0);
+				ccv_array_add_unique_int(tensor_dependencies[id].reads, i);
+			}
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->binary.left, i, block_dependencies, tensor_dependencies);
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->binary.right, i, block_dependencies, tensor_dependencies);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->unary.x, i, block_dependencies, tensor_dependencies);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
+			assert(rvalue->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
+			break;
+	}
+}
+
+static void _ccv_nnc_micro_block_dependencies(const ccv_nnc_micro_loop_block_t* const blocks, const int block_size, const int var_count, ccv_nnc_micro_loop_block_dependency_t** const block_dependencies_ref, ccv_nnc_micro_tensor_dependency_t** const tensor_dependencies_ref)
+{
+	ccv_nnc_micro_loop_block_dependency_t* const block_dependencies = (ccv_nnc_micro_loop_block_dependency_t*)cccalloc(block_size, sizeof(ccv_nnc_micro_loop_block_dependency_t));
+	ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies = (ccv_nnc_micro_tensor_dependency_t*)cccalloc(var_count, sizeof(ccv_nnc_micro_tensor_dependency_t));
+	int i, j, k;
+	for (i = 0; i < block_size; i++)
+	{
+		const ccv_nnc_micro_loop_t* const loops = blocks[i].loops;
+		const int loop_count = blocks[i].loop_count;
+		for (j = 0; j < loop_count; j++)
+		{
+			const ccv_nnc_micro_loop_statement_t* const statements = loops[j].statements;
+			const int statement_count = loops[j].statement_count;
+			for (k = 0; k < statement_count; k++)
+				switch (statements[k].type)
+				{
+					case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
+						assert(statements[k].assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID);
+						const int id = statements[k].assignment.lvalue.id.id;
+						if (!block_dependencies[i].writes)
+							block_dependencies[i].writes = ccv_array_new(sizeof(int), 1, 0);
+						ccv_array_add_unique_int(block_dependencies[i].writes, id);
+						if (!tensor_dependencies[id].writes)
+							tensor_dependencies[id].writes = ccv_array_new(sizeof(int), 1, 0);
+						ccv_array_add_unique_int(tensor_dependencies[id].writes, i);
+						_ccv_nnc_micro_block_dependencies_from_rvalue(&statements[k].assignment.rvalue, i, block_dependencies, tensor_dependencies);
+						break;
+					}
+					case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
+						if (statements[k].compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
+						{
+							assert(statements[k].compound_assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID);
+							const int id = statements[k].compound_assignment.lvalue.id.id;
+							if (!block_dependencies[i].writes)
+								block_dependencies[i].writes = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_add_unique_int(block_dependencies[i].writes, id);
+							if (!tensor_dependencies[id].writes)
+								tensor_dependencies[id].writes = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_add_unique_int(tensor_dependencies[id].writes, i);
+						}
+						_ccv_nnc_micro_block_dependencies_from_rvalue(&statements[k].compound_assignment.rvalue, i, block_dependencies, tensor_dependencies);
+						break;
+					}
+				}
+		}
+	}
+	*block_dependencies_ref = block_dependencies;
+	*tensor_dependencies_ref = tensor_dependencies;
+}
+
+static void _ccv_nnc_micro_dependencies_free(ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const int block_size, ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, const int var_count)
+{
+	int i;
+	for (i = 0; i < block_size; i++)
+	{
+		if (block_dependencies[i].writes)
+			ccv_array_free(block_dependencies[i].writes);
+		if (block_dependencies[i].reads)
+			ccv_array_free(block_dependencies[i].reads);
+	}
+	ccfree(block_dependencies);
+	for (i = 0; i < var_count; i++)
+	{
+		if (tensor_dependencies[i].writes)
+			ccv_array_free(tensor_dependencies[i].writes);
+		if (tensor_dependencies[i].reads)
+			ccv_array_free(tensor_dependencies[i].reads);
+	}
+	ccfree(tensor_dependencies);
+}
+
 void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size)
 {
 	// Nothing to simplify for.
@@ -434,6 +546,53 @@ void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, cons
 	}
 	// Next, find dependencies between these function blocks and marking these that are dependencies for the final outputs.
 	// We need to build our connections between blocks <-> r/w vars.
+	ccv_nnc_micro_loop_block_dependency_t* block_dependencies;
+	ccv_nnc_micro_tensor_dependency_t* tensor_dependencies;
+	const int block_size = blocks->rnum;
+	_ccv_nnc_micro_block_dependencies((ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0), block_size, var_count, &block_dependencies, &tensor_dependencies);
+	ccv_array_t* const in_use = ccv_array_new(sizeof(int), output_size, 0);
+	// Use the dependencies to mark blocks / vars that are in use.
+	for (i = 0; i < output_size; i++)
+	{
+		tensor_dependencies[i].flag = 1; // Mark them as in use.
+		ccv_array_push(in_use, &i);
+	}
+	for (i = 0; i < in_use->rnum; i++)
+	{
+		const int tensor_idx = *(int*)ccv_array_get(in_use, i);
+		if (tensor_dependencies[tensor_idx].writes)
+			for (j = 0; j < tensor_dependencies[tensor_idx].writes->rnum; j++)
+			{
+				const int block_idx = *(int*)ccv_array_get(tensor_dependencies[tensor_idx].writes, j);
+				block_dependencies[block_idx].flag = 1;
+				int k;
+				if (block_dependencies[block_idx].reads)
+					for (k = 0; k < block_dependencies[block_idx].reads->rnum; k++)
+					{
+						const int read_idx = *(int*)ccv_array_get(block_dependencies[block_idx].reads, k);
+						if (!tensor_dependencies[read_idx].flag)
+						{
+							tensor_dependencies[read_idx].flag = 1;
+							ccv_array_push(in_use, &read_idx);
+						}
+					}
+			}
+	}
+	for (i = 0; i < block_size; i++)
+		if (!block_dependencies[i].flag)
+		{
+			ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
+			ccv_nnc_micro_loops_free(block->loops, block->loop_count);
+			ccfree(block->loops);
+			block->loops = 0;
+			block->loop_count = 0;
+		}
+	for (i = 0; i < var_count; i++)
+		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
+			vars[i].no_alloc = 1;
+	ccv_array_free(in_use);
+	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
+	// TODO: For loop merging, I need to use dependencies as well. Otherwise the result could be incorrect.
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];

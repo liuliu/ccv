@@ -409,5 +409,6 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
 void ccv_nnc_micro_combine_simplify(ccv_nnc_micro_combine_t* const combine, const int output_size);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
+void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_count);
 
 #endif
