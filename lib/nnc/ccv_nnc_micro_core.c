@@ -9,6 +9,8 @@
 
 const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa = {};
 
+#define GRAD(_id) (_id + (var_count))
+
 ccv_nnc_micro_io_t ccv_nnc_micro_input(const int dimensions)
 {
 	assert(dimensions <= CCV_NNC_MAX_DIM_ALLOC);
@@ -27,7 +29,7 @@ static void _ccv_nnc_micro_grad_numbering(const ccv_nnc_micro_io_t super, const 
 {
 	struct ccv_nnc_micro_io_grad_s* const self = (struct ccv_nnc_micro_io_grad_s*)super;
 	const int sid = self->x->id;
-	self->super.id = sid + var_count;
+	self->super.id = GRAD(sid);
 }
 
 const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_grad_isa = {
@@ -341,6 +343,49 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reindex_emit(con
 	};
 }
 
+static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reindex_emit_grad(const ccv_nnc_micro_io_t super, const int var_count)
+{
+	// The grad is var_count + original id.
+	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
+	const int reset_loop_count = self->x->dimensions;
+	ccv_nnc_micro_loop_t* const reset_loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * reset_loop_count);
+	// This loop reset grad to 0.
+	int i;
+	for (i = 0; i < reset_loop_count; i++)
+		reset_loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->x->id), i), i);
+	const ccv_nnc_micro_loop_statement_t reset_statement = ccv_nnc_micro_loop_assignment(
+		ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), reset_loop_count, ccv_nnc_micro_index_of_loops(reset_loops, reset_loop_count)),
+		ccv_nnc_micro_loop_expression_of_value(0)
+	);
+	reset_loops[reset_loop_count - 1].statement_count = 1;
+	reset_loops[reset_loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	reset_loops[reset_loop_count - 1].statements[0] = reset_statement;
+	const int loop_count = self->super.dimensions;
+	ccv_nnc_micro_loop_t* const loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	for (i = 0; i < loop_count; i++)
+		loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->super.id), i), i);
+	const ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_compound_assignment_of_tensor(
+		ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), self->x->dimensions, self->reindex),
+		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
+	);
+	loops[loop_count - 1].statement_count = 1;
+	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	loops[loop_count - 1].statements[0] = statement;
+	ccv_nnc_micro_loop_block_t* const blocks = (ccv_nnc_micro_loop_block_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_block_t) * 2);
+	blocks[0] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = reset_loop_count,
+		.loops = reset_loops
+	};
+	blocks[1] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = loop_count,
+		.loops = loops
+	};
+	return (ccv_nnc_micro_function_t){
+		.block_count = 2,
+		.blocks = blocks
+	};
+}
+
 static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reindex_return_shape(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
@@ -357,7 +402,7 @@ static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_reindex_isa = {
 	.numbering = _ccv_nnc_micro_reindex_numbering,
 	.bind_scalars = _ccv_nnc_micro_reindex_bind_scalars,
 	.emit = _ccv_nnc_micro_reindex_emit,
-	.emit_grad = 0,
+	.emit_grad = _ccv_nnc_micro_reindex_emit_grad,
 	.return_shape = _ccv_nnc_micro_reindex_return_shape
 };
 
@@ -443,6 +488,61 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_unary_emit(const
 	};
 }
 
+static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_unary_emit_grad(const ccv_nnc_micro_io_t super, const int var_count)
+{
+	struct ccv_nnc_micro_io_unary_s* const self = (struct ccv_nnc_micro_io_unary_s*)super;
+	const int loop_count = self->super.dimensions;
+	assert(self->x->dimensions == loop_count);
+	assert(loop_count <= CCV_NNC_MAX_DIM_ALLOC);
+	ccv_nnc_micro_loop_t* const loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	int i;
+	for (i = 0; i < loop_count; i++)
+		loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->super.id), i), i);
+	ccv_nnc_micro_loop_statement_t statement;
+	switch (self->unary_op)
+	{
+		case CCV_NNC_MICRO_UNARY_OP_NEG:
+			statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_unary(
+					CCV_NNC_MICRO_UNARY_OP_NEG,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_UNARY_OP_EXP:
+			statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_MUL,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->super.id, loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count))),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_UNARY_OP_LOG:
+			statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_DIV,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count))),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
+				)
+			);
+			break;
+	}
+	loops[loop_count - 1].statement_count = 1;
+	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	loops[loop_count - 1].statements[0] = statement;
+	return (ccv_nnc_micro_function_t){
+		.block_count = 1,
+		.one_block = {
+			.loop_count = loop_count,
+			.loops = loops
+		}
+	};
+}
+
 static ccv_nnc_micro_tensor_t _ccv_nnc_micro_unary_return_shape(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_unary_s* const self = (struct ccv_nnc_micro_io_unary_s*)super;
@@ -455,7 +555,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_unary_return_shape(const ccv_nnc_mi
 
 static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_unary_isa = {
 	.emit = _ccv_nnc_micro_unary_emit,
-	.emit_grad = 0,
+	.emit_grad = _ccv_nnc_micro_unary_emit_grad,
 	.return_shape = _ccv_nnc_micro_unary_return_shape
 };
 
@@ -510,6 +610,157 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_binary_emit(cons
 	};
 }
 
+static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_binary_emit_grad(const ccv_nnc_micro_io_t super, const int var_count)
+{
+	struct ccv_nnc_micro_io_binary_s* const self = (struct ccv_nnc_micro_io_binary_s*)super;
+	const int loop_count = self->super.dimensions;
+	assert(self->left->dimensions == loop_count);
+	assert(self->right->dimensions == loop_count);
+	assert(loop_count <= CCV_NNC_MAX_DIM_ALLOC);
+	int i;
+	ccv_nnc_micro_loop_t* const left_loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	for (i = 0; i < loop_count; i++)
+		left_loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->super.id), i), i);
+	ccv_nnc_micro_loop_t* const right_loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	for (i = 0; i < loop_count; i++)
+		right_loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->super.id), i), i);
+	ccv_nnc_micro_loop_statement_t left_statement;
+	ccv_nnc_micro_loop_statement_t right_statement;
+	switch (self->binary_op)
+	{
+		case CCV_NNC_MICRO_BINARY_OP_DIV:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_DIV,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count))),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+				)
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_MUL,
+					ccv_nnc_micro_loop_expression_of_binary(
+						CCV_NNC_MICRO_BINARY_OP_DIV,
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->super.id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count))),
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+					),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_BINARY_OP_MUL:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_MUL,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count))),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+				)
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_binary(
+					CCV_NNC_MICRO_BINARY_OP_MUL,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->left->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count))),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_BINARY_OP_PLUS:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+			);
+			break;
+		case CCV_NNC_MICRO_BINARY_OP_MINUS:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_unary(
+					CCV_NNC_MICRO_UNARY_OP_NEG,
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_BINARY_OP_MIN:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_ternary(
+					ccv_nnc_micro_loop_expression_of_binary(CCV_NNC_MICRO_BINARY_OP_LESS_THAN,
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count))),
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->left->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+					),
+					ccv_nnc_micro_loop_expression_of_value(0),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+				)
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_ternary(
+					ccv_nnc_micro_loop_expression_of_binary(CCV_NNC_MICRO_BINARY_OP_LESS_THAN,
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->left->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count))),
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+					),
+					ccv_nnc_micro_loop_expression_of_value(0),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+				)
+			);
+			break;
+		case CCV_NNC_MICRO_BINARY_OP_MAX:
+			left_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->left->id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_ternary(
+					ccv_nnc_micro_loop_expression_of_binary(CCV_NNC_MICRO_BINARY_OP_LESS_THAN,
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->left->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count))),
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+					),
+					ccv_nnc_micro_loop_expression_of_value(0),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(left_loops, loop_count)))
+				)
+			);
+			right_statement = ccv_nnc_micro_loop_assignment(
+				ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->right->id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)),
+				ccv_nnc_micro_loop_expression_of_ternary(
+					ccv_nnc_micro_loop_expression_of_binary(CCV_NNC_MICRO_BINARY_OP_LESS_THAN,
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->right->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count))),
+						ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->left->id, loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+					),
+					ccv_nnc_micro_loop_expression_of_value(0),
+					ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(right_loops, loop_count)))
+				)
+			);
+			break;
+	}
+	left_loops[loop_count - 1].statement_count = 1;
+	left_loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	left_loops[loop_count - 1].statements[0] = left_statement;
+	right_loops[loop_count - 1].statement_count = 1;
+	right_loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	right_loops[loop_count - 1].statements[0] = right_statement;
+	ccv_nnc_micro_loop_block_t* const blocks = (ccv_nnc_micro_loop_block_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_block_t) * 2);
+	blocks[0] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = loop_count,
+		.loops = left_loops
+	};
+	blocks[1] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = loop_count,
+		.loops = right_loops
+	};
+	return (ccv_nnc_micro_function_t){
+		.block_count = 2,
+		.blocks = blocks
+	};
+}
+
 static ccv_nnc_micro_tensor_t _ccv_nnc_micro_binary_return_shape(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_binary_s* const self = (struct ccv_nnc_micro_io_binary_s*)super;
@@ -522,7 +773,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_binary_return_shape(const ccv_nnc_m
 
 static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_binary_isa = {
 	.emit = _ccv_nnc_micro_binary_emit,
-	.emit_grad = 0,
+	.emit_grad = _ccv_nnc_micro_binary_emit_grad,
 	.return_shape = _ccv_nnc_micro_binary_return_shape
 };
 
@@ -628,6 +879,68 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit(cons
 	};
 }
 
+static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reduce_emit_grad(const ccv_nnc_micro_io_t super, const int var_count)
+{
+	struct ccv_nnc_micro_io_reduce_s* const self = (struct ccv_nnc_micro_io_reduce_s*)super;
+	assert(self->reduce_op == CCV_NNC_MICRO_REDUCE_OP_SUM); // I haven't figure out how to do mean without add additional opcode.
+	const int loop_count = self->super.dimensions;
+	assert(self->x->dimensions == loop_count);
+	ccv_nnc_micro_loop_t* const loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	int i, j, k;
+	int8_t reduce_axis[loop_count];
+	memset(reduce_axis, 0, sizeof(int8_t) * loop_count);
+	for (i = 0; i < self->axis_count; i++)
+		reduce_axis[self->axis[i]] = 1;
+	j = 0;
+	k = loop_count - self->axis_count;
+	for (i = 0; i < loop_count; i++)
+		if (reduce_axis[i])
+		{
+			loops[k] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->x->id), i), i);
+			++k;
+		} else {
+			loops[j] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->x->id), i), i);
+			++j;
+		}
+	j = 0;
+	k = loop_count - self->axis_count;
+	// If loop_count == reduce_axis_count, we have extra loop for carrieds and block.
+	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
+	for (i = 0; i < loop_count; i++)
+		if (reduce_axis[i])
+		{
+			index[i] = ccv_nnc_micro_index_of_id(loops[k].id);
+			++k;
+		} else {
+			index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
+			++j;
+		}
+	j = 0;
+	ccv_nnc_micro_loop_index_term_t reduced_index[CCV_NNC_MAX_DIM_ALLOC];
+	for (i = 0; i < loop_count; i++)
+		if (reduce_axis[i])
+			reduced_index[i] = ccv_nnc_micro_index_of_value(0);
+		else {
+			reduced_index[i] = ccv_nnc_micro_index_of_id(loops[j].id);
+			++j;
+		}
+	ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_assignment(
+		ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, index),
+		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, reduced_index))
+	);
+	loops[loop_count - 1].statement_count = 1;
+	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	loops[loop_count - 1].statements[0] = statement;
+	return (ccv_nnc_micro_function_t){
+		.block_count = 1,
+		.one_block = {
+			.carried_count = 1,
+			.loop_count = loop_count,
+			.loops = loops
+		}
+	};
+}
+
 static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reduce_return_shape(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_reduce_s* const self = (struct ccv_nnc_micro_io_reduce_s*)super;
@@ -646,7 +959,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_reduce_return_shape(const ccv_nnc_m
 
 static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_reduce_isa = {
 	.emit = _ccv_nnc_micro_reduce_emit,
-	.emit_grad = 0,
+	.emit_grad = _ccv_nnc_micro_reduce_emit_grad,
 	.return_shape = _ccv_nnc_micro_reduce_return_shape
 };
 
@@ -715,6 +1028,57 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_select_emit(cons
 	};
 }
 
+static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_select_emit_grad(const ccv_nnc_micro_io_t super, const int var_count)
+{
+	struct ccv_nnc_micro_io_select_s* const self = (struct ccv_nnc_micro_io_select_s*)super;
+	const int loop_count = self->super.dimensions;
+	assert(self->x->dimensions == loop_count);
+	assert(self->index->dimensions == loop_count);
+	ccv_nnc_micro_loop_t* const reset_loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	int i;
+	for (i = 0; i < loop_count; i++)
+		reset_loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->x->id), i), i);
+	const ccv_nnc_micro_loop_statement_t reset_statement = ccv_nnc_micro_loop_assignment(
+		ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, ccv_nnc_micro_index_of_loops(reset_loops, loop_count)),
+		ccv_nnc_micro_loop_expression_of_value(0)
+	);
+	reset_loops[loop_count - 1].statement_count = 1;
+	reset_loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	reset_loops[loop_count - 1].statements[0] = reset_statement;
+	ccv_nnc_micro_loop_t* const loops = (ccv_nnc_micro_loop_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_t) * loop_count);
+	for (i = 0; i < loop_count; i++)
+		loops[i] = ccv_nnc_micro_for_in(ccv_nnc_micro_index_of_value(0), ccv_nnc_micro_index_of_axis_size(GRAD(self->x->id), i), i);
+	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
+	for (i = 0; i < loop_count; i++)
+	{
+		if (i == self->axis)
+			index[i] = ccv_nnc_micro_index_of_id(ccv_nnc_micro_id_of_tensor(self->index->id));
+		else
+			index[i] = ccv_nnc_micro_index_of_id(loops[i].id);
+	}
+	// This is only for x, nothing for index.
+	const ccv_nnc_micro_loop_statement_t statement = ccv_nnc_micro_loop_compound_assignment_of_tensor(
+		ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->x->id), loop_count, index),
+		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
+	);
+	loops[loop_count - 1].statement_count = 1;
+	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
+	loops[loop_count - 1].statements[0] = statement;
+	ccv_nnc_micro_loop_block_t* const blocks = (ccv_nnc_micro_loop_block_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_block_t) * 2);
+	blocks[0] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = loop_count,
+		.loops = reset_loops
+	};
+	blocks[1] = (ccv_nnc_micro_loop_block_t){
+		.loop_count = loop_count,
+		.loops = loops
+	};
+	return (ccv_nnc_micro_function_t){
+		.block_count = 2,
+		.blocks = blocks
+	};
+}
+
 static ccv_nnc_micro_tensor_t _ccv_nnc_micro_select_return_shape(const ccv_nnc_micro_io_t super)
 {
 	struct ccv_nnc_micro_io_select_s* const self = (struct ccv_nnc_micro_io_select_s*)super;
@@ -736,7 +1100,7 @@ static ccv_nnc_micro_tensor_t _ccv_nnc_micro_select_return_shape(const ccv_nnc_m
 
 static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_select_isa = {
 	.emit = _ccv_nnc_micro_select_emit,
-	.emit_grad = 0,
+	.emit_grad = _ccv_nnc_micro_select_emit_grad,
 	.return_shape = _ccv_nnc_micro_select_return_shape
 };
 

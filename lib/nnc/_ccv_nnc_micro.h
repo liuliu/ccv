@@ -60,9 +60,11 @@ typedef struct {
 
 enum {
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID,
+	CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL,
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR,
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY,
 	CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY,
+	CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY,
 };
 
 typedef struct ccv_nnc_micro_loop_expression_s ccv_nnc_micro_loop_expression_t;
@@ -78,13 +80,21 @@ typedef struct {
 	ccv_nnc_micro_loop_expression_t* right;
 } ccv_nnc_micro_loop_binary_t;
 
+typedef struct {
+	ccv_nnc_micro_loop_expression_t* pivot; // If it is 0, choose left, otherwise choose right.
+	ccv_nnc_micro_loop_expression_t* left;
+	ccv_nnc_micro_loop_expression_t* right;
+} ccv_nnc_micro_loop_ternary_t;
+
 struct ccv_nnc_micro_loop_expression_s  {
 	int type;
 	union {
 		ccv_nnc_micro_id_t id; // If this is a compound assignment, the id to that.
+		ccv_nnc_micro_scalar_t immediate_value;
 		ccv_nnc_micro_loop_variable_t variable;
 		ccv_nnc_micro_loop_unary_t unary;
 		ccv_nnc_micro_loop_binary_t binary;
+		ccv_nnc_micro_loop_ternary_t ternary;
 	};
 };
 
@@ -196,7 +206,7 @@ struct ccv_nnc_micro_io_vtab_s {
 	void (*bind_scalars)(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context); /**< Bind scalar name to a scoped id. */
 	void (*numbering)(const ccv_nnc_micro_io_t self, const int id, const int var_count); /**< Assign id to the output of this micro op. */
 	ccv_nnc_micro_function_t (*emit)(const ccv_nnc_micro_io_t self); /**< Emit instructions for this micro op. */
-	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self); /**< Emit backward instructions for this micro op. */
+	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self, const int var_count); /**< Emit backward instructions for this micro op. */
 	ccv_nnc_micro_tensor_t (*return_shape)(const ccv_nnc_micro_io_t self); /**< The shape of the returned tensor. */
 };
 
@@ -226,10 +236,10 @@ static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit(const
 	return isa->emit(self);
 }
 
-static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit_grad(const ccv_nnc_micro_io_t self)
+static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit_grad(const ccv_nnc_micro_io_t self, const int var_count)
 {
 	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
-	return isa->emit_grad(self);
+	return isa->emit_grad(self, var_count);
 }
 
 static inline CCV_WARN_UNUSED(ccv_nnc_micro_tensor_t) ccv_nnc_micro_return_shape(const ccv_nnc_micro_io_t self)
@@ -329,6 +339,17 @@ static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_v
 	};
 }
 
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_value(const float value)
+{
+	return (ccv_nnc_micro_loop_expression_t){
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL,
+		.immediate_value = {
+			.type = CCV_32F,
+			.f32 = value
+		}
+	};
+}
+
 static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_id(const ccv_nnc_micro_id_t id)
 {
 	return (ccv_nnc_micro_loop_expression_t){
@@ -369,6 +390,20 @@ static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_b
 	*expression.binary.left = left;
 	expression.binary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
 	*expression.binary.right = right;
+	return expression;
+}
+
+static inline ccv_nnc_micro_loop_expression_t ccv_nnc_micro_loop_expression_of_ternary(const ccv_nnc_micro_loop_expression_t pivot, const ccv_nnc_micro_loop_expression_t left, const ccv_nnc_micro_loop_expression_t right)
+{
+	ccv_nnc_micro_loop_expression_t expression = {
+		.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY
+	};
+	expression.ternary.pivot = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.ternary.pivot = pivot;
+	expression.ternary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.ternary.left = left;
+	expression.ternary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+	*expression.ternary.right = right;
 	return expression;
 }
 

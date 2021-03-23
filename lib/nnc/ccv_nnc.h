@@ -258,6 +258,7 @@ typedef struct ccv_nnc_micro_io_vtab_s ccv_nnc_micro_io_vtab_t;
 
 enum {
 	// These could be much more unary ops.
+	CCV_NNC_MICRO_UNARY_OP_NEG,
 	CCV_NNC_MICRO_UNARY_OP_LOG,
 	CCV_NNC_MICRO_UNARY_OP_EXP,
 };
@@ -269,6 +270,8 @@ enum {
 	CCV_NNC_MICRO_BINARY_OP_DIV,
 	CCV_NNC_MICRO_BINARY_OP_MAX,
 	CCV_NNC_MICRO_BINARY_OP_MIN,
+	CCV_NNC_MICRO_BINARY_OP_EQUAL_TO,
+	CCV_NNC_MICRO_BINARY_OP_LESS_THAN,
 };
 
 enum {
