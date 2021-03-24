@@ -138,7 +138,7 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	}
 	for (i = reverse_top->rnum; i < function_count; i++)
 	{
-		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, function_count - 1 - i);
+		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i - reverse_top->rnum);
 		functions[i] = ccv_nnc_micro_emit_grad(output, var_count);
 	}
 	combine->backward.input_size = ingrad_size;
@@ -196,7 +196,7 @@ void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term)
 	}
 }
 
-static void _ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* const var)
+void ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* const var)
 {
 	int i;
 	for (i = 0; i < var->index_count; i++)
@@ -208,18 +208,63 @@ static void _ccv_nnc_micro_loop_expression_free(ccv_nnc_micro_loop_expression_t*
 	switch (expr->type)
 	{
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR: {
-			_ccv_nnc_micro_loop_variable_free(&expr->variable);
+			ccv_nnc_micro_loop_variable_free(&expr->variable);
 			break;
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY: {
 			_ccv_nnc_micro_loop_expression_free(expr->unary.x);
 			ccfree(expr->unary.x);
+			break;
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
 			_ccv_nnc_micro_loop_expression_free(expr->binary.left);
 			ccfree(expr->binary.left);
 			_ccv_nnc_micro_loop_expression_free(expr->binary.right);
 			ccfree(expr->binary.right);
+			break;
+		}
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY: {
+			_ccv_nnc_micro_loop_expression_free(expr->ternary.pivot);
+			ccfree(expr->ternary.pivot);
+			_ccv_nnc_micro_loop_expression_free(expr->ternary.left);
+			ccfree(expr->ternary.left);
+			_ccv_nnc_micro_loop_expression_free(expr->ternary.right);
+			ccfree(expr->ternary.right);
+			break;
+		}
+	}
+}
+
+void ccv_nnc_micro_loop_statement_lvalue_free(ccv_nnc_micro_loop_statement_t* const statement)
+{
+	switch (statement->type)
+	{
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
+			if (statement->compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
+				ccv_nnc_micro_loop_variable_free(&statement->compound_assignment.lvalue.variable);
+			break;
+		}
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
+			ccv_nnc_micro_loop_variable_free(&statement->assignment.lvalue);
+			break;
+		}
+	}
+}
+
+void ccv_nnc_micro_loop_statement_free(ccv_nnc_micro_loop_statement_t* const statement)
+{
+	switch (statement->type)
+	{
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
+			if (statement->compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
+				ccv_nnc_micro_loop_variable_free(&statement->compound_assignment.lvalue.variable);
+			_ccv_nnc_micro_loop_expression_free(&statement->compound_assignment.rvalue);
+			break;
+		}
+		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
+			ccv_nnc_micro_loop_variable_free(&statement->assignment.lvalue);
+			_ccv_nnc_micro_loop_expression_free(&statement->assignment.rvalue);
+			break;
 		}
 	}
 }
@@ -230,23 +275,7 @@ void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_
 	for (i = 0; i < loop_count; i++)
 	{
 		for (j = 0; j < loops[i].statement_count; j++)
-		{
-			ccv_nnc_micro_loop_statement_t statement = loops[i].statements[j];
-			switch (statement.type)
-			{
-				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
-					if (statement.compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
-						_ccv_nnc_micro_loop_variable_free(&statement.compound_assignment.lvalue.variable);
-					_ccv_nnc_micro_loop_expression_free(&statement.compound_assignment.rvalue);
-					break;
-				}
-				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT: {
-					_ccv_nnc_micro_loop_variable_free(&statement.assignment.lvalue);
-					_ccv_nnc_micro_loop_expression_free(&statement.assignment.rvalue);
-					break;
-				}
-			}
-		}
+			ccv_nnc_micro_loop_statement_free(&loops[i].statements[j]);
 		if (loops[i].statements)
 			ccfree(loops[i].statements);
 		if (loops[i].carrieds)
@@ -259,14 +288,12 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 	int i, j;
 	const int var_count = combine->forward.var_count;
 	for (i = 0; i < var_count; i++)
-	{
 		if (combine->forward.vars[i].shape)
 		{
 			for (j = 0; j < combine->forward.vars[i].dimensions; j++)
 				ccv_nnc_micro_loop_index_free(&combine->forward.vars[i].shape[j]);
 			ccfree(combine->forward.vars[i].shape);
 		}
-	}
 	ccfree(combine->forward.vars);
 	int function_count = combine->forward.function_count;
 	for (i = 0; i < function_count; i++)

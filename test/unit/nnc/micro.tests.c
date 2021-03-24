@@ -49,6 +49,9 @@ TEST_CASE("represent convolution with micro ops")
 		4,
 		5
 	}, 3, yy);
+	ccv_nnc_micro_io_t dy = ccv_nnc_micro_grad(y);
+	ccv_nnc_micro_io_t dx = ccv_nnc_micro_grad(x);
+	ccv_nnc_micro_io_t dw = ccv_nnc_micro_grad(w);
 	ccv_nnc_micro_combine_t* combine = ccv_nnc_micro_combine_new((ccv_nnc_micro_io_t[]){
 		x,
 		w
@@ -56,7 +59,14 @@ TEST_CASE("represent convolution with micro ops")
 		"$kh",
 		"$kw",
 		"$kc"
-	}, 3, &y, 1, 0, 0, 0, 0);
+	}, 3, &y, 1, (ccv_nnc_micro_io_t[]){
+		x,
+		w,
+		dy
+	}, 3, (ccv_nnc_micro_io_t[]){
+		dx,
+		dw
+	}, 2);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4, 4, 5), 0);
 	ccv_nnc_tensor_t* const w_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 3, 5), 0);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 2, 2), 0);

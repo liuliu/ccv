@@ -318,7 +318,7 @@ static void _ccv_nnc_micro_reindex_bind_scalars(const ccv_nnc_micro_io_t super, 
 		_ccv_nnc_bind_scalars_in_term(&self->reindex[i], lookup, context);
 }
 
-static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_loop_index_deep_copy(ccv_nnc_micro_loop_index_term_t* const term)
+ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(ccv_nnc_micro_loop_index_term_t* const term)
 {
 	switch (term->type)
 	{
@@ -326,8 +326,8 @@ static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_loop_index_deep_copy(ccv_n
 			ccv_nnc_micro_loop_index_term_t copy = *term;
 			copy.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t));
 			*copy.binary = *term->binary;
-			copy.binary->left = _ccv_nnc_micro_loop_index_deep_copy(&term->binary->left);
-			copy.binary->right = _ccv_nnc_micro_loop_index_deep_copy(&term->binary->right);
+			copy.binary->left = ccv_nnc_micro_loop_index_deep_copy(&term->binary->left);
+			copy.binary->right = ccv_nnc_micro_loop_index_deep_copy(&term->binary->right);
 			return copy;
 		}
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE:
@@ -353,7 +353,7 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reindex_emit(con
 		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(self->x->id, self->x->dimensions, self->reindex))
 	);
 	for (i = 0; i < self->x->dimensions; i++)
-		self->reindex[i] = _ccv_nnc_micro_loop_index_deep_copy(&self->reindex[i]);
+		self->reindex[i] = ccv_nnc_micro_loop_index_deep_copy(&self->reindex[i]);
 	loops[loop_count - 1].statement_count = 1;
 	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
 	loops[loop_count - 1].statements[0] = statement;
@@ -392,7 +392,7 @@ static CCV_WARN_UNUSED(ccv_nnc_micro_function_t) _ccv_nnc_micro_reindex_emit_gra
 		ccv_nnc_micro_loop_expression_of_variable(ccv_nnc_micro_loop_variable_of_tensor(GRAD(self->super.id), loop_count, ccv_nnc_micro_index_of_loops(loops, loop_count)))
 	);
 	for (i = 0; i < self->x->dimensions; i++)
-		self->reindex[i] = _ccv_nnc_micro_loop_index_deep_copy(&self->reindex[i]);
+		self->reindex[i] = ccv_nnc_micro_loop_index_deep_copy(&self->reindex[i]);
 	loops[loop_count - 1].statement_count = 1;
 	loops[loop_count - 1].statements = (ccv_nnc_micro_loop_statement_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_statement_t));
 	loops[loop_count - 1].statements[0] = statement;

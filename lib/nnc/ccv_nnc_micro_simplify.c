@@ -214,6 +214,11 @@ static void _ccv_nnc_expression_rename_carrieds(ccv_nnc_micro_loop_expression_t*
 			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			expression->id.id += start_idx;
 			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY:
+			_ccv_nnc_expression_rename_carrieds(expression->ternary.pivot, start_idx);
+			_ccv_nnc_expression_rename_carrieds(expression->ternary.left, start_idx);
+			_ccv_nnc_expression_rename_carrieds(expression->ternary.right, start_idx);
+			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
 			_ccv_nnc_expression_rename_carrieds(expression->binary.left, start_idx);
 			_ccv_nnc_expression_rename_carrieds(expression->binary.right, start_idx);
@@ -270,6 +275,14 @@ static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loo
 				return 1;
 			} else
 				return 0;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY: {
+			const int pivot = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.pivot, groups);
+			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.left, groups);
+			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.right, groups);
+			if (pivot == 2 || left == 2 || right == 2)
+				return 2;
+			return (pivot || left || right);
+		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
 			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->binary.left, groups);
 			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->binary.right, groups);
@@ -303,6 +316,16 @@ static ccv_nnc_micro_loop_expression_t _ccv_nnc_expression_deep_copy(const ccv_n
 {
 	switch (expression->type)
 	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY: {
+			ccv_nnc_micro_loop_expression_t copy = *expression;
+			copy.ternary.pivot = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.ternary.pivot = _ccv_nnc_expression_deep_copy(expression->ternary.pivot);
+			copy.ternary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.ternary.left = _ccv_nnc_expression_deep_copy(expression->ternary.left);
+			copy.ternary.right = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
+			*copy.ternary.right = _ccv_nnc_expression_deep_copy(expression->ternary.right);
+			return copy;
+		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
 			ccv_nnc_micro_loop_expression_t copy = *expression;
 			copy.binary.left = (ccv_nnc_micro_loop_expression_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_expression_t));
@@ -317,7 +340,13 @@ static ccv_nnc_micro_loop_expression_t _ccv_nnc_expression_deep_copy(const ccv_n
 			*copy.unary.x = _ccv_nnc_expression_deep_copy(expression->unary.x);
 			return copy;
 		}
-		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR: {
+			ccv_nnc_micro_loop_expression_t copy = *expression;
+			int i;
+			for (i = 0; i < copy.variable.index_count; i++)
+				copy.variable.index[i] = ccv_nnc_micro_loop_index_deep_copy(&copy.variable.index[i]);
+			return copy;
+		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
 			return *expression;
 	}
@@ -331,13 +360,18 @@ static void _ccv_nnc_replacing_id_in_expression(ccv_nnc_micro_loop_expression_t*
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
 			if (expression->variable.id.type == CCV_NNC_MICRO_TENSOR_ID && expression->variable.id.id == id)
 			{
+				ccv_nnc_micro_loop_variable_free(&expression->variable);
 				if (*count == 0) // First time, just assign to expression.
 					*expression = rvalue;
-				else { // Otherwise, need to make deep copy of it.
+				else // Otherwise, need to make deep copy of it.
 					*expression = _ccv_nnc_expression_deep_copy(&rvalue);
-				}
 				++(*count);
 			}
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY:
+			_ccv_nnc_replacing_id_in_expression(expression->ternary.pivot, id, rvalue, count);
+			_ccv_nnc_replacing_id_in_expression(expression->ternary.left, id, rvalue, count);
+			_ccv_nnc_replacing_id_in_expression(expression->ternary.right, id, rvalue, count);
 			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
 			_ccv_nnc_replacing_id_in_expression(expression->binary.left, id, rvalue, count);
@@ -394,6 +428,11 @@ static void _ccv_nnc_micro_block_dependencies_from_rvalue(const ccv_nnc_micro_lo
 					tensor_dependencies[id].reads = ccv_array_new(sizeof(int), 1, 0);
 				ccv_array_add_unique_int(tensor_dependencies[id].reads, i);
 			}
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY:
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->ternary.pivot, i, block_dependencies, tensor_dependencies);
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->ternary.left, i, block_dependencies, tensor_dependencies);
+			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->ternary.right, i, block_dependencies, tensor_dependencies);
 			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
 			_ccv_nnc_micro_block_dependencies_from_rvalue(rvalue->binary.left, i, block_dependencies, tensor_dependencies);
@@ -582,6 +621,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 					}
 			}
 	}
+	ccv_array_free(in_use);
 	for (i = 0; i < block_size; i++)
 		if (!block_dependencies[i].flag)
 		{
@@ -591,10 +631,11 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			block->loops = 0;
 			block->loop_count = 0;
 		}
+	/*
 	for (i = 0; i < var_count; i++)
 		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
 			vars[i].no_alloc = 1;
-	ccv_array_free(in_use);
+	*/
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];
@@ -784,6 +825,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 		// Otherwise, now loop again and prepare to get rid of it.
 		ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, block_idx);
 		ccv_nnc_micro_loop_statement_t* statements = block->loops[loop_idx].statements;
+		ccv_nnc_micro_loop_statement_t statement = statements[statement_idx];
 		// First, remove the assignment.
 		if (statement_idx < block->loops[loop_idx].statement_count - 1)
 			memmove(statements + statement_idx, statements + statement_idx + 1, sizeof(ccv_nnc_micro_loop_statement_t) * (block->loops[loop_idx].statement_count - statement_idx - 1));
@@ -793,9 +835,14 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 		int k = 0;
 		for (j = 0; j < statement_count; j++)
 			_ccv_nnc_replacing_id_in_rvalue(&statements[j], i, rvalue, &k);
+		if (k == 0) // If nothing to replace, free up everything.
+			ccv_nnc_micro_loop_statement_free(&statement);
+		else
+			ccv_nnc_micro_loop_statement_lvalue_free(&statement);
 		// No need to allocate for this var. It is not used, only useful for shape computation.
 		vars[i].no_alloc = 1;
 	}
+	free(groups);
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)
 		if (functions[i].block_count > 1)
@@ -809,6 +856,5 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	} else
 		program->functions[0].one_block = *(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0);
 	program->function_count = 1;
-	free(groups);
 	ccv_array_free(blocks);
 }

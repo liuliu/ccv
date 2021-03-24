@@ -463,7 +463,11 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
 void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
+ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
+void ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* const var);
+void ccv_nnc_micro_loop_statement_free(ccv_nnc_micro_loop_statement_t* const statement);
+void ccv_nnc_micro_loop_statement_lvalue_free(ccv_nnc_micro_loop_statement_t* const statement);
 void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_count);
 
 #endif
