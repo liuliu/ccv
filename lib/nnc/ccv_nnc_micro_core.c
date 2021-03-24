@@ -9,7 +9,7 @@
 
 const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa = {};
 
-#define GRAD(_id) (_id + (var_count))
+#define GRAD(_id) (2 * (var_count) - 1 - (_id))
 
 ccv_nnc_micro_io_t ccv_nnc_micro_input(const int dimensions)
 {

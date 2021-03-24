@@ -306,7 +306,6 @@ static int _ccv_nnc_only_var_in_rvalue(const int id, const ccv_nnc_micro_loop_va
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
 			return _ccv_nnc_only_var_in_expression(id, var, &statement.assignment.rvalue, groups);
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
-			// Not going to be in lvalue (which is the carried variable only).
 			return _ccv_nnc_only_var_in_expression(id, var, &statement.compound_assignment.rvalue, groups);
 	}
 	return 0;
@@ -487,6 +486,12 @@ static void _ccv_nnc_micro_block_dependencies(const ccv_nnc_micro_loop_block_t* 
 							if (!tensor_dependencies[id].writes)
 								tensor_dependencies[id].writes = ccv_array_new(sizeof(int), 1, 0);
 							ccv_array_add_unique_int(tensor_dependencies[id].writes, i);
+							if (!block_dependencies[i].reads)
+								block_dependencies[i].reads = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_add_unique_int(block_dependencies[i].reads, id);
+							if (!tensor_dependencies[id].reads)
+								tensor_dependencies[id].reads = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_add_unique_int(tensor_dependencies[id].reads, i);
 						}
 						_ccv_nnc_micro_block_dependencies_from_rvalue(&statements[k].compound_assignment.rvalue, i, block_dependencies, tensor_dependencies);
 						break;
@@ -517,6 +522,54 @@ static void _ccv_nnc_micro_dependencies_free(ccv_nnc_micro_loop_block_dependency
 			ccv_array_free(tensor_dependencies[i].reads);
 	}
 	ccfree(tensor_dependencies);
+}
+
+static int _ccv_nnc_tensor_reads_in_y_from_writes_after_x(const ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, const int x, const int y)
+{
+	int i, j;
+	int flag = 0;
+	for (i = 0; !flag && i < block_dependencies[y].reads->rnum; i++)
+	{
+		const int read_idx = *(int*)ccv_array_get(block_dependencies[y].reads, i);
+		if (tensor_dependencies[read_idx].writes)
+			for (j = 0; !flag && j < tensor_dependencies[read_idx].writes->rnum; j++)
+			{
+				int block_idx = *(int*)ccv_array_get(tensor_dependencies[read_idx].writes, j);
+				while (block_idx != block_dependencies[block_idx].merge_to)
+					block_idx = block_dependencies[block_idx].merge_to;
+				if (!block_dependencies[block_idx].flag) // Not in use, continue.
+					continue;
+				assert(block_idx <= y);
+				// If the block_idx is between i and j (and not neither). We cannot merge.
+				if (block_idx > x && block_idx != y)
+					flag = block_idx;
+			}
+	}
+	return flag;
+}
+
+static int _ccv_nnc_tensor_writes_in_x_reads_before_y(const ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, const int x, const int y)
+{
+	int i, j;
+	int flag = 0;
+	for (i = 0; !flag && i < block_dependencies[x].writes->rnum; i++)
+	{
+		const int write_idx = *(int*)ccv_array_get(block_dependencies[x].writes, i);
+		if (tensor_dependencies[write_idx].reads)
+			for (j = 0; !flag && j < tensor_dependencies[write_idx].reads->rnum; j++)
+			{
+				int block_idx = *(int*)ccv_array_get(tensor_dependencies[write_idx].reads, j);
+				while (block_idx != block_dependencies[block_idx].merge_to)
+					block_idx = block_dependencies[block_idx].merge_to;
+				if (!block_dependencies[block_idx].flag) // Not in use, continue.
+					continue;
+				assert(block_idx >= x);
+				// If the block_idx is between i and j (and not neither). We cannot merge.
+				if (block_idx < y && block_idx != x)
+					flag = block_idx;
+			}
+	}
+	return flag;
 }
 
 void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
@@ -631,11 +684,9 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			block->loops = 0;
 			block->loop_count = 0;
 		}
-	/*
 	for (i = 0; i < var_count; i++)
 		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
 			vars[i].no_alloc = 1;
-	*/
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];
@@ -652,30 +703,21 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			ccv_nnc_micro_loop_block_t* const right_block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j);
 			if (right_block->loop_count == 0)
 				continue;
+			int merge_to_right = 0;
 			// First check whether between left and right, there are any blocks that the right block
 			// depends on. If that is the case, we cannot merge the right block into the left block.
 			if (j > i + 1 && block_dependencies[j].reads)
 			{
-				int k, l;
-				int flag = 0;
-				for (k = 0; !flag && k < block_dependencies[j].reads->rnum; k++)
-				{
-					const int read_idx = *(int*)ccv_array_get(block_dependencies[j].reads, k);
-					if (tensor_dependencies[read_idx].writes)
-						for (l = 0; !flag && l < tensor_dependencies[read_idx].writes->rnum; l++)
-						{
-							int block_idx = *(int*)ccv_array_get(tensor_dependencies[read_idx].writes, l);
-							while (block_idx != block_dependencies[block_idx].merge_to)
-								block_idx = block_dependencies[block_idx].merge_to;
-							assert(block_idx <= j);
-							// If the block_idx is between i and j (and not neither). We cannot merge.
-							flag = (block_idx > i && block_idx != j);
-						}
-				}
+				const int block_idx = _ccv_nnc_tensor_reads_in_y_from_writes_after_x(block_dependencies, tensor_dependencies, i, j);
 				// Cannot merge because we have dependencies in between. Merging will violate that
 				// dependency relationship.
-				if (flag)
-					continue;
+				if (block_idx)
+				{
+					// Now check to see if left can be merged into right? If so, we are lucky.
+					if (_ccv_nnc_tensor_writes_in_x_reads_before_y(block_dependencies, tensor_dependencies, i, j))
+						continue;
+					merge_to_right = 1;
+				}
 			}
 			// This method not only compares whether they have the same loop or not, but also gives indexes that
 			// to match the loop start / end index, where they should move to. For example, if:
@@ -733,23 +775,32 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 				ccfree(right_block->loops);
 				right_block->loops = 0;
 				right_block->loop_count = 0;
-				// Merge all reads and writes tensors into block dependency.
-				if (block_dependencies[j].writes && block_dependencies[j].writes->rnum)
+				int x = i, y = j;
+				if (merge_to_right) // If this is merge to right.
 				{
-					if (!block_dependencies[i].writes)
-						block_dependencies[i].writes = ccv_array_new(sizeof(int), 1, 0);
-					for (k = 0; k < block_dependencies[j].writes->rnum; k++)
-						ccv_array_push(block_dependencies[i].writes, ccv_array_get(block_dependencies[j].writes, k));
+					ccv_nnc_micro_loop_block_t t;
+					CCV_SWAP(*left_block, *right_block, t);
+					x = j, y = i;
 				}
-				if (block_dependencies[j].reads && block_dependencies[j].reads->rnum)
+				// Merge all reads and writes tensors into block dependency.
+				if (block_dependencies[y].writes && block_dependencies[y].writes->rnum)
 				{
-					if (!block_dependencies[i].reads)
-						block_dependencies[i].reads = ccv_array_new(sizeof(int), 1, 0);
-					for (k = 0; k < block_dependencies[j].reads->rnum; k++)
-						ccv_array_push(block_dependencies[i].reads, ccv_array_get(block_dependencies[j].reads, k));
+					if (!block_dependencies[x].writes)
+						block_dependencies[x].writes = ccv_array_new(sizeof(int), 1, 0);
+					for (k = 0; k < block_dependencies[y].writes->rnum; k++)
+						ccv_array_push(block_dependencies[x].writes, ccv_array_get(block_dependencies[y].writes, k));
+				}
+				if (block_dependencies[y].reads && block_dependencies[y].reads->rnum)
+				{
+					if (!block_dependencies[x].reads)
+						block_dependencies[x].reads = ccv_array_new(sizeof(int), 1, 0);
+					for (k = 0; k < block_dependencies[y].reads->rnum; k++)
+						ccv_array_push(block_dependencies[x].reads, ccv_array_get(block_dependencies[y].reads, k));
 				}
 				// Merged, mark the proper merging dependency.
-				block_dependencies[j].merge_to = i;
+				block_dependencies[y].merge_to = x;
+				if (merge_to_right) // If this is merge to right, now left is empty, break.
+					break;
 			}
 		}
 	}
@@ -768,6 +819,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	ccv_array_resize(blocks, j);
 	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
 	// var only write / read in one loop. If that is the case, we are going to remove that var.
+	// We have to do this replacement from bottom to top though.
 	for (i = 0; i < var_count; i++)
 	{
 		int flag = 0;
@@ -804,13 +856,17 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 						loop_idx = k;
 						statement_idx = l;
 						++flag;
+					} else if (statements[l].type == CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT &&
+						statements[l].compound_assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID &&
+						statements[l].compound_assignment.lvalue.id.id == i) {
+						// This is compound assignment, automatically increase by 2.
+						flag += 2;
 					}
 				if (flag > 1) // We have more than 1 assignment for this id, it is not good. We cannot remove it.
 				{
 					var_per_block += flag;
 					continue;
 				}
-				flag = 0;
 				for (l = 0; l < statement_count; l++)
 					flag = ccv_max(flag, _ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups));
 				// If flag == 2, meaning it found a var with a different index. This is a bad news.

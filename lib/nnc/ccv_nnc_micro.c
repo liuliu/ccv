@@ -102,8 +102,8 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	}
 	for (i = var_count; i < 2 * var_count; i++)
 	{
-		vars[i].dimensions = vars[i - var_count].dimensions;
-		vars[i].input = vars[i - var_count].input;
+		vars[i].dimensions = vars[2 * var_count - 1 - i].dimensions;
+		vars[i].input = 2 * var_count - 1 - i;
 	}
 	// Lower each ccv_nnc_micro_io_t (except the input) op into nested loops such that we can
 	// apply optimizations later.

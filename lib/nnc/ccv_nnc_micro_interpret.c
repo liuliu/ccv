@@ -65,6 +65,9 @@ static float _ccv_nnc_micro_expression_interpret(const ccv_nnc_micro_loop_expres
 			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			return carrieds[expression->id.id].f32;
 		}
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL: {
+			return expression->immediate_value.f32;
+		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR: {
 			const ccv_nnc_micro_loop_variable_t variable = expression->variable;
 			assert(variable.id.type == CCV_NNC_MICRO_TENSOR_ID);
