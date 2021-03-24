@@ -178,10 +178,14 @@ typedef struct {
 } ccv_nnc_micro_function_t;
 
 typedef struct {
+	int input_size; // Size of inputs.
+	int output_size; // Size of outputs.
 	// Combined ops only have global vars, there is no local vars. All vars are tensors.
 	int var_count;
 	// loops are our constructs of IR ops really. It is hierarchical.
 	int function_count;
+	int* inputs;
+	int* outputs;
 	ccv_nnc_micro_tensor_t* vars;
 	ccv_nnc_micro_function_t* functions;
 } ccv_nnc_micro_program_t;
@@ -190,8 +194,6 @@ typedef struct {
 // between each other, but they are ordered in topological order to make sure one is finished
 // after the another.
 struct ccv_nnc_micro_combine_s {
-	int input_size; // Size of inputs.
-	int output_size; // Size of outputs.
 	int parameter_size; // Size of parameters.
 	ccv_nnc_micro_program_t forward;
 	ccv_nnc_micro_program_t backward;

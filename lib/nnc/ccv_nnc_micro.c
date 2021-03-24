@@ -77,12 +77,12 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	const int var_count = reverse_top->rnum + input_size;
 	// Applying numbering for the inputs. Note that our variables are numbered in reverse topological order.
 	for (i = 0; i < input_size; i++)
-		ccv_nnc_micro_numbering(inputs[i], i + reverse_top->rnum, var_count);
+		ccv_nnc_micro_numbering(inputs[i], i, var_count);
 	// Applying numbering for the outputs.
 	for (i = reverse_top->rnum - 1; i >= 0; i--)
 	{
-		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
-		ccv_nnc_micro_numbering(output, i, var_count);
+		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
+		ccv_nnc_micro_numbering(output, i + input_size, var_count);
 	}
 	for (i = 0; i < ingrad_size; i++)
 		ccv_nnc_micro_numbering(ingrads[i], -1, var_count);
@@ -90,15 +90,15 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 		ccv_nnc_micro_numbering(outgrads[i], -1, var_count);
 	// Fill in shapes for variables.
 	ccv_nnc_micro_tensor_t* const vars = (ccv_nnc_micro_tensor_t*)cccalloc(var_count * 2, sizeof(ccv_nnc_micro_tensor_t));
-	for (i = 0; i < reverse_top->rnum; i++)
-	{
-		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
-		vars[i] = ccv_nnc_micro_return_shape(output);
-	}
 	for (i = 0; i < input_size; i++)
 	{
-		vars[i + reverse_top->rnum].dimensions = inputs[i]->dimensions;
-		vars[i + reverse_top->rnum].input = -1;
+		vars[i].dimensions = inputs[i]->dimensions;
+		vars[i].input = -1;
+	}
+	for (i = 0; i < reverse_top->rnum; i++)
+	{
+		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
+		vars[i + input_size] = ccv_nnc_micro_return_shape(output);
 	}
 	for (i = var_count; i < 2 * var_count; i++)
 	{
@@ -115,9 +115,15 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 		functions[i] = ccv_nnc_micro_emit(output);
 	}
 	ccv_nnc_micro_combine_t* const combine = (ccv_nnc_micro_combine_t*)ccmalloc(sizeof(ccv_nnc_micro_combine_t));
-	combine->input_size = input_size;
-	combine->output_size = output_size;
 	combine->parameter_size = parameter_size;
+	combine->forward.input_size = input_size;
+	combine->forward.inputs = (int*)ccmalloc(sizeof(int) * (input_size + output_size));
+	for (i = 0; i < input_size; i++)
+		combine->forward.inputs[i] = inputs[i]->id;
+	combine->forward.output_size = output_size;
+	combine->forward.outputs = combine->forward.inputs + input_size;
+	for (i = 0; i < output_size; i++)
+		combine->forward.outputs[i] = outputs[i]->id;
 	combine->forward.var_count = var_count;
 	combine->forward.vars = vars;
 	combine->forward.function_count = function_count;
@@ -135,6 +141,14 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, function_count - 1 - i);
 		functions[i] = ccv_nnc_micro_emit_grad(output, var_count);
 	}
+	combine->backward.input_size = ingrad_size;
+	combine->backward.inputs = ingrad_size + outgrad_size > 0 ? (int*)ccmalloc(sizeof(int) * (ingrad_size + outgrad_size)) : 0;
+	for (i = 0; i < ingrad_size; i++)
+		combine->backward.inputs[i] = ingrads[i]->id;
+	combine->backward.output_size = outgrad_size;
+	combine->backward.outputs = outgrad_size > 0 ? combine->backward.inputs + ingrad_size : 0;
+	for (i = 0; i < outgrad_size; i++)
+		combine->backward.outputs[i] = outgrads[i]->id;
 	combine->backward.var_count = var_count * 2;
 	combine->backward.vars = vars;
 	combine->backward.function_count = function_count;
@@ -269,6 +283,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 			ccfree(combine->forward.functions[i].blocks);
 	}
 	ccfree(combine->forward.functions);
+	ccfree(combine->forward.inputs);
 	// Backward and forward share the same vars.
 	function_count = combine->backward.function_count;
 	for (i = 0; i < function_count; i++)
@@ -285,6 +300,8 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 			ccfree(combine->backward.functions[i].blocks);
 	}
 	ccfree(combine->backward.functions);
+	if (combine->backward.inputs)
+		ccfree(combine->backward.inputs);
 	ccfree(combine);
 }
 

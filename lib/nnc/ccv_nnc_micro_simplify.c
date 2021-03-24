@@ -498,7 +498,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	for (i = 0; i < var_count; i++)
 		groups[i] = i;
 	// If no shape, they should match these input.
-	for (i = var_count - 1; i >= 0; i--)
+	for (i = 0; i < var_count; i++)
 		if (vars[i].input >= 0 && !vars[i].shape)
 		{
 			int root = vars[i].input;
@@ -506,7 +506,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 				root = groups[root];
 			groups[i] = root;
 		}
-	for (i = var_count - 1; i > 0; i--)
+	for (i = 0; i < var_count; i++)
 	{
 		// If this is input (no other tensor as the input), we skip.
 		if (vars[i].input < 0)

@@ -236,19 +236,25 @@ static void _ccv_nnc_micro_loop_interpret(const ccv_nnc_micro_loop_t* const loop
 void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	// We haven't optimized for emit_grad at the moment yet.
-	assert(cmd == CCV_NNC_CUSTOM_FORWARD);
+	assert(cmd == CCV_NNC_CUSTOM_FORWARD || cmd == CCV_NNC_CUSTOM_BACKWARD);
 	int i, j;
-	const int var_count = combine->forward.var_count;
-	assert(input_size == combine->input_size);
-	assert(output_size == combine->output_size);
+	const ccv_nnc_micro_program_t* const program = cmd == CCV_NNC_CUSTOM_FORWARD ? &combine->forward : &combine->backward;
+	const int var_count = program->var_count;
+	assert(input_size == program->input_size);
+	assert(output_size == program->output_size);
 	assert(parameter_size == combine->parameter_size);
 	int* const shapes = (int*)cccalloc(var_count, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	ccv_nnc_micro_tensor_t* const vars = combine->forward.vars;
+	ccv_nnc_micro_tensor_t* const vars = program->vars;
 	for (i = 0; i < input_size; i++)
-		memcpy(shapes + (var_count - input_size + i) * CCV_NNC_MAX_DIM_ALLOC, &inputs[i]->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+		memcpy(shapes + program->inputs[i] * CCV_NNC_MAX_DIM_ALLOC, &inputs[i]->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	int loop_counter[CCV_NNC_MAX_DIM_ALLOC];
-	for (i = var_count - input_size - 1; i >= 0; i--)
+	for (i = 0; i < var_count; i++)
 	{
+		int flag = 0;
+		for (j = 0; !flag && j < input_size; j++)
+			flag = (program->inputs[j] == i);
+		if (flag)
+			continue;
 		if (vars[i].shape)
 		{
 			for (j = 0; j < vars[i].dimensions; j++)
@@ -257,8 +263,15 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 			memcpy(shapes + i * CCV_NNC_MAX_DIM_ALLOC, shapes + vars[i].input * CCV_NNC_MAX_DIM_ALLOC, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	}
 	size_t total_size = 0;
-	for (i = output_size; i < var_count - input_size; i++)
+	for (i = 0; i < var_count; i++)
 	{
+		int flag = 0;
+		for (j = 0; !flag && j < input_size; j++)
+			flag = (program->inputs[j] == i);
+		for (j = 0; !flag && j < output_size; j++)
+			flag = (program->outputs[j] == i);
+		if (flag)
+			continue;
 		if (vars[i].no_alloc) // This is skipped.
 			continue;
 		// allocating memory for these.
@@ -273,10 +286,17 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	for (i = 0; i < output_size; i++)
 	{
 		assert(!CCV_IS_TENSOR_VIEW(outputs[i]));
-		vars_mem[i] = outputs[i]->data.f32;
+		vars_mem[program->outputs[i]] = outputs[i]->data.f32;
 	}
-	for (i = output_size; i < var_count - input_size; i++)
+	for (i = 0; i < var_count; i++)
 	{
+		int flag = 0;
+		for (j = 0; !flag && j < input_size; j++)
+			flag = (program->inputs[j] == i);
+		for (j = 0; !flag && j < output_size; j++)
+			flag = (program->outputs[j] == i);
+		if (flag)
+			continue;
 		if (vars[i].no_alloc) // This is skipped.
 		{
 			vars_mem[i] = 0;
@@ -289,13 +309,13 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 		vars_mem[i] = ptr;
 		ptr += size;
 	}
-	for (i = var_count - input_size; i < var_count; i++)
+	for (i = 0; i < input_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(inputs[i - (var_count - input_size)]));
-		vars_mem[i] = inputs[i - (var_count - input_size)]->data.f32;
+		assert(!CCV_IS_TENSOR_VIEW(inputs[i]));
+		vars_mem[program->inputs[i]] = inputs[i]->data.f32;
 	}
-	ccv_nnc_micro_function_t* const functions = combine->forward.functions;
-	const int function_count = combine->forward.function_count;
+	ccv_nnc_micro_function_t* const functions = program->functions;
+	const int function_count = program->function_count;
 	int max_carried_count = 0;
 	for (i = 0; i < function_count; i++)
 	{
