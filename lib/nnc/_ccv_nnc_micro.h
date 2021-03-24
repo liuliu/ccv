@@ -208,15 +208,21 @@ struct ccv_nnc_micro_io_vtab_s {
 	ccv_nnc_micro_function_t (*emit)(const ccv_nnc_micro_io_t self); /**< Emit instructions for this micro op. */
 	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self, const int var_count); /**< Emit backward instructions for this micro op. */
 	ccv_nnc_micro_tensor_t (*return_shape)(const ccv_nnc_micro_io_t self); /**< The shape of the returned tensor. */
+	void (*deinit)(const ccv_nnc_micro_io_t self); /**< Deinit this micro io. */
 };
 
 extern const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_input_isa;
+extern const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_grad_isa;
 
 #define CCV_NNC_IS_MICRO_IO_INPUT(x) ((x)->isa == &ccv_nnc_micro_io_input_isa)
+#define CCV_NNC_IS_MICRO_IO_GRAD(x) ((x)->isa == &ccv_nnc_micro_io_grad_isa)
 
 static inline void ccv_nnc_micro_numbering(const ccv_nnc_micro_io_t self, const int id, const int var_count)
 {
 	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	// If we numbering with negative id, we really just enumerate the grad.
+	if (id < 0 && !CCV_NNC_IS_MICRO_IO_GRAD(self))
+		return;
 	if (isa->numbering)
 		isa->numbering(self, id, var_count);
 	else
@@ -228,6 +234,13 @@ static inline void ccv_nnc_micro_bind_scalars(const ccv_nnc_micro_io_t self, ccv
 	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
 	if (isa->bind_scalars)
 		isa->bind_scalars(self, lookup, context);
+}
+
+static inline void ccv_nnc_micro_deinit(const ccv_nnc_micro_io_t self)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	if (isa->deinit)
+		isa->deinit(self);
 }
 
 static inline CCV_WARN_UNUSED(ccv_nnc_micro_function_t) ccv_nnc_micro_emit(const ccv_nnc_micro_io_t self)
@@ -447,7 +460,7 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 }
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
-void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const int input_size, const int output_size);
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loops_free(ccv_nnc_micro_loop_t* const loops, const int loop_count);
 

@@ -480,13 +480,15 @@ static void _ccv_nnc_micro_dependencies_free(ccv_nnc_micro_loop_block_dependency
 	ccfree(tensor_dependencies);
 }
 
-void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const int input_size, const int output_size)
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
 {
 	// Nothing to simplify for.
 	if (program->function_count < 1)
 		return;
 	// Only one block, nothing to simplify for.
 	if (program->function_count == 1 && program->functions[0].block_count == 1)
+		return;
+	if (input_size == 0 || output_size == 0)
 		return;
 	// Union-find to group all variables with the same shape.
 	ccv_nnc_micro_tensor_t* const vars = program->vars;
@@ -554,9 +556,11 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	// Use the dependencies to mark blocks / vars that are in use.
 	for (i = 0; i < output_size; i++)
 	{
-		tensor_dependencies[i].flag = 1; // Mark them as in use.
-		ccv_array_push(in_use, &i);
+		tensor_dependencies[outputs[i]->id].flag = 1; // Mark them as in use.
+		ccv_array_push(in_use, &outputs[i]->id);
 	}
+	for (i = 0; i < input_size; i++)
+		tensor_dependencies[inputs[i]->id].flag = 1; // Mark inputs as in use so we don't go pass them.
 	for (i = 0; i < in_use->rnum; i++)
 	{
 		const int tensor_idx = *(int*)ccv_array_get(in_use, i);
@@ -723,8 +727,15 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	ccv_array_resize(blocks, j);
 	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
 	// var only write / read in one loop. If that is the case, we are going to remove that var.
-	for (i = output_size; i < var_count - input_size; i++)
+	for (i = 0; i < var_count; i++)
 	{
+		int flag = 0;
+		for (j = 0; !flag && j < input_size; j++)
+			flag = (inputs[j]->id == i);
+		for (j = 0; !flag && j < output_size; j++)
+			flag = (outputs[j]->id == i);
+		if (flag) // This is in outputs or inputs.
+			continue;
 		int count_var = 0;
 		ccv_nnc_micro_loop_variable_t lvalue;
 		ccv_nnc_micro_loop_expression_t rvalue;

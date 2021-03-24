@@ -399,7 +399,7 @@ typedef struct ccv_nnc_micro_combine_s ccv_nnc_micro_combine_t;
  * @param outgrads The gradient outputs for the combined ops.
  * @param outgrad_size The number of outgrads.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, const ccv_nnc_micro_io_t* const ingrads, const int ingrad_size, const ccv_nnc_micro_io_t* const outgrads, const ccv_nnc_micro_io_t* const outgrad_size);
+CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nnc_micro_io_t* const inputs, const int input_size, const char* const* const parameters, const int parameter_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, const ccv_nnc_micro_io_t* const ingrads, const int ingrad_size, const ccv_nnc_micro_io_t* const outgrads, const int outgrad_size);
 /**
  * Free the combined op.
  * @param combine The op to be freed.
