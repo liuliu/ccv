@@ -572,121 +572,62 @@ static int _ccv_nnc_tensor_writes_in_x_reads_before_y(const ccv_nnc_micro_loop_b
 	return flag;
 }
 
-void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
+static void _ccv_nnc_tensor_remove_dead_store(const ccv_nnc_micro_tensor_dependency_t* const tensor_dependency, const int tensor_idx, ccv_array_t* const blocks)
 {
-	// Nothing to simplify for.
-	if (program->function_count < 1)
-		return;
-	// Only one block, nothing to simplify for.
-	if (program->function_count == 1 && program->functions[0].block_count == 1)
-		return;
-	if (input_size == 0 || output_size == 0)
-		return;
-	// Union-find to group all variables with the same shape.
-	ccv_nnc_micro_tensor_t* const vars = program->vars;
-	const int var_count = program->var_count;
-	int* const groups = (int*)ccmalloc(sizeof(int) * var_count);
-	int i, j;
-	for (i = 0; i < var_count; i++)
-		groups[i] = i;
-	// If no shape, they should match these input.
-	for (i = 0; i < var_count; i++)
-		if (vars[i].input >= 0 && !vars[i].shape)
+	int i, j, k, l;;
+	if (tensor_dependency->writes)
+		for (i = 0; i < tensor_dependency->writes->rnum; i++)
 		{
-			int root = vars[i].input;
-			while (groups[root] != root)
-				root = groups[root];
-			groups[i] = root;
-		}
-	for (i = 0; i < var_count; i++)
-	{
-		// If this is input (no other tensor as the input), we skip.
-		if (vars[i].input < 0)
-			continue;
-		int root = i;
-		while (groups[root] != root)
-			root = groups[root];
-		// If the sibling exists and we haven't visited yet, mark them has the same group as us.
-		if (vars[i].sibling >= 0 && vars[i].sibling < i && groups[vars[i].sibling] < 0)
-			groups[vars[i].sibling] = root;
-	}
-	for (i = var_count - 1; i > 0; i--)
-	{
-		// Now matching the shape.
-		if (vars[i].input < 0 || !vars[i].shape)
-			continue;
-		int root = i;
-		while (groups[root] != root)
-			root = groups[root];
-		for (j = i - 1; j >= 0; j--)
-			if (vars[j].shape && vars[j].dimensions == vars[i].dimensions &&
-				_ccv_nnc_same_shape(vars[j].shape, vars[i].shape, vars[i].dimensions))
-				groups[j] = root;
-	}
-	// First, flat out all functions into blocks.
-	ccv_array_t* const blocks = ccv_array_new(sizeof(ccv_nnc_micro_loop_block_t), 0, 0);
-	ccv_nnc_micro_function_t* const functions = program->functions;
-	const int function_count = program->function_count;
-	int max_loop_count = 0;
-	for (i = 0; i < function_count; i++)
-	{
-		const int block_count = functions[i].block_count;
-		ccv_nnc_micro_loop_block_t* const function_blocks = block_count == 1 ? &functions[i].one_block : functions[i].blocks;
-		for (j = 0; j < block_count; j++)
-		{
-			max_loop_count = ccv_max(function_blocks[j].loop_count, max_loop_count);
-			ccv_array_push(blocks, &function_blocks[j]);
-		}
-	}
-	// Next, find dependencies between these function blocks and marking these that are dependencies for the final outputs.
-	// We need to build our connections between blocks <-> r/w vars.
-	ccv_nnc_micro_loop_block_dependency_t* block_dependencies;
-	ccv_nnc_micro_tensor_dependency_t* tensor_dependencies;
-	const int block_size = blocks->rnum;
-	_ccv_nnc_micro_block_dependencies((ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0), block_size, var_count, &block_dependencies, &tensor_dependencies);
-	ccv_array_t* const in_use = ccv_array_new(sizeof(int), output_size, 0);
-	// Use the dependencies to mark blocks / vars that are in use.
-	for (i = 0; i < output_size; i++)
-	{
-		tensor_dependencies[outputs[i]->id].flag = 1; // Mark them as in use.
-		ccv_array_push(in_use, &outputs[i]->id);
-	}
-	for (i = 0; i < input_size; i++)
-		tensor_dependencies[inputs[i]->id].flag = 1; // Mark inputs as in use so we don't go pass them.
-	for (i = 0; i < in_use->rnum; i++)
-	{
-		const int tensor_idx = *(int*)ccv_array_get(in_use, i);
-		if (tensor_dependencies[tensor_idx].writes)
-			for (j = 0; j < tensor_dependencies[tensor_idx].writes->rnum; j++)
+			const int write_idx = *(int*)ccv_array_get(tensor_dependency->writes, i);
+			ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, write_idx);
+			int flag = 0;
+			for (j = 0; j < block->loop_count; j++)
 			{
-				const int block_idx = *(int*)ccv_array_get(tensor_dependencies[tensor_idx].writes, j);
-				block_dependencies[block_idx].flag = 1;
-				int k;
-				if (block_dependencies[block_idx].reads)
-					for (k = 0; k < block_dependencies[block_idx].reads->rnum; k++)
+				ccv_nnc_micro_loop_statement_t* const statements = block->loops[j].statements;
+				for (k = 0, l = 0; k < block->loops[j].statement_count; k++)
+				{
+					// It cannot be compound assignment, in this case, this tensor will be in read, and
+					// it will be in active use (anything "read" in an active block will be marked as in use).
+					assert(!(statements[k].type == CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT &&
+						statements[k].compound_assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID &&
+						statements[k].compound_assignment.lvalue.id.id == tensor_idx));
+					if (statements[k].type == CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT &&
+						statements[k].assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID &&
+						statements[k].assignment.lvalue.id.id == tensor_idx)
 					{
-						const int read_idx = *(int*)ccv_array_get(block_dependencies[block_idx].reads, k);
-						if (!tensor_dependencies[read_idx].flag)
-						{
-							tensor_dependencies[read_idx].flag = 1;
-							ccv_array_push(in_use, &read_idx);
-						}
+						// This is a dead store, prepare to remove.
+						ccv_nnc_micro_loop_statement_free(&statements[k]);
+					} else {
+						statements[l] = statements[k];
+						++l;
 					}
+				}
+				if (l < block->loops[j].statement_count)
+				{
+					if (l > 0)
+						block->loops[j].statements = (ccv_nnc_micro_loop_statement_t*)ccrealloc(block->loops[j].statements, sizeof(ccv_nnc_micro_loop_statement_t) * l);
+					else {
+						ccfree(block->loops[j].statements);
+						block->loops[j].statements = 0;
+					}
+					block->loops[j].statement_count = 0;
+				}
+				if (block->loops[j].statement_count > 0)
+					flag = 1;
 			}
-	}
-	ccv_array_free(in_use);
-	for (i = 0; i < block_size; i++)
-		if (!block_dependencies[i].flag)
-		{
-			ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
-			ccv_nnc_micro_loops_free(block->loops, block->loop_count);
-			ccfree(block->loops);
-			block->loops = 0;
-			block->loop_count = 0;
+			if (!flag) // No statement for this block, remove this whole block.
+			{
+				ccv_nnc_micro_loops_free(block->loops, block->loop_count);
+				ccfree(block->loops);
+				block->loops = 0;
+				block->loop_count = 0;
+			}
 		}
-	for (i = 0; i < var_count; i++)
-		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
-			vars[i].no_alloc = 1;
+}
+
+static void _ccv_nnc_loop_merging(ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, ccv_array_t* const blocks, const int max_loop_count, const int* const groups)
+{
+	int i, j;
 	int left_loop_idx[max_loop_count];
 	int right_loop_idx[max_loop_count];
 	ccv_nnc_micro_loop_t loops[max_loop_count];
@@ -804,19 +745,11 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			}
 		}
 	}
-	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
-	// Culling out empty blocks.
-	for (i = 0, j = 0; i < blocks->rnum; i++)
-	{
-		const ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
-		if (block->loop_count > 0)
-		{
-			*(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j) = *block;
-			++j;
-		}
-	}
-	// Now we moved everything, set the proper block size.
-	ccv_array_resize(blocks, j);
+}
+
+static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var_count, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, ccv_array_t* const blocks, const int* const groups)
+{
+	int i, j;
 	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
 	// var only write / read in one loop. If that is the case, we are going to remove that var.
 	// We have to do this replacement from bottom to top though.
@@ -851,11 +784,16 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 						statements[l].assignment.lvalue.id.id == i)
 					{
 						lvalue = statements[l].assignment.lvalue;
-						rvalue = statements[l].assignment.rvalue;
-						block_idx = j;
-						loop_idx = k;
-						statement_idx = l;
-						++flag;
+						if (_ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups))
+							flag = 2;
+						else {
+							// If the variable not showing up on the right-side, we can continue.
+							rvalue = statements[l].assignment.rvalue;
+							block_idx = j;
+							loop_idx = k;
+							statement_idx = l;
+							++flag;
+						}
 					} else if (statements[l].type == CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT &&
 						statements[l].compound_assignment.lvalue.id.type == CCV_NNC_MICRO_TENSOR_ID &&
 						statements[l].compound_assignment.lvalue.id.id == i) {
@@ -898,6 +836,141 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 		// No need to allocate for this var. It is not used, only useful for shape computation.
 		vars[i].no_alloc = 1;
 	}
+}
+
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
+{
+	// Nothing to simplify for.
+	if (program->function_count < 1)
+		return;
+	// Only one block, nothing to simplify for.
+	if (program->function_count == 1 && program->functions[0].block_count == 1)
+		return;
+	if (input_size == 0 || output_size == 0)
+		return;
+	// Union-find to group all variables with the same shape.
+	ccv_nnc_micro_tensor_t* const vars = program->vars;
+	const int var_count = program->var_count;
+	int* const groups = (int*)ccmalloc(sizeof(int) * var_count);
+	int i, j;
+	for (i = 0; i < var_count; i++)
+		groups[i] = i;
+	// If no shape, they should match these input.
+	for (i = 0; i < var_count; i++)
+		if (vars[i].input >= 0 && !vars[i].shape)
+		{
+			int root = vars[i].input;
+			while (groups[root] != root)
+				root = groups[root];
+			groups[i] = root;
+		}
+	for (i = 0; i < var_count; i++)
+	{
+		// If this is input (no other tensor as the input), we skip.
+		if (vars[i].input < 0)
+			continue;
+		int root = i;
+		while (groups[root] != root)
+			root = groups[root];
+		// If the sibling exists and we haven't visited yet, mark them has the same group as us.
+		if (vars[i].sibling >= 0 && vars[i].sibling < i && groups[vars[i].sibling] < 0)
+			groups[vars[i].sibling] = root;
+	}
+	for (i = var_count - 1; i > 0; i--)
+	{
+		// Now matching the shape.
+		if (vars[i].input < 0 || !vars[i].shape)
+			continue;
+		int root = i;
+		while (groups[root] != root)
+			root = groups[root];
+		for (j = i - 1; j >= 0; j--)
+			if (vars[j].shape && vars[j].dimensions == vars[i].dimensions &&
+				_ccv_nnc_same_shape(vars[j].shape, vars[i].shape, vars[i].dimensions))
+				groups[j] = root;
+	}
+	// First, flat out all functions into blocks.
+	ccv_array_t* const blocks = ccv_array_new(sizeof(ccv_nnc_micro_loop_block_t), 0, 0);
+	ccv_nnc_micro_function_t* const functions = program->functions;
+	const int function_count = program->function_count;
+	int max_loop_count = 0;
+	for (i = 0; i < function_count; i++)
+	{
+		const int block_count = functions[i].block_count;
+		ccv_nnc_micro_loop_block_t* const function_blocks = block_count == 1 ? &functions[i].one_block : functions[i].blocks;
+		for (j = 0; j < block_count; j++)
+		{
+			max_loop_count = ccv_max(function_blocks[j].loop_count, max_loop_count);
+			ccv_array_push(blocks, &function_blocks[j]);
+		}
+	}
+	// Next, find dependencies between these function blocks and marking these that are dependencies for the final outputs.
+	// We need to build our connections between blocks <-> r/w vars.
+	ccv_nnc_micro_loop_block_dependency_t* block_dependencies;
+	ccv_nnc_micro_tensor_dependency_t* tensor_dependencies;
+	const int block_size = blocks->rnum;
+	_ccv_nnc_micro_block_dependencies((ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, 0), block_size, var_count, &block_dependencies, &tensor_dependencies);
+	ccv_array_t* const in_use = ccv_array_new(sizeof(int), output_size, 0);
+	// Use the dependencies to mark blocks / vars that are in use.
+	for (i = 0; i < output_size; i++)
+	{
+		tensor_dependencies[outputs[i]->id].flag = 1; // Mark them as in use.
+		ccv_array_push(in_use, &outputs[i]->id);
+	}
+	for (i = 0; i < input_size; i++)
+		tensor_dependencies[inputs[i]->id].flag = 1; // Mark inputs as in use so we don't go pass them.
+	for (i = 0; i < in_use->rnum; i++)
+	{
+		const int tensor_idx = *(int*)ccv_array_get(in_use, i);
+		if (tensor_dependencies[tensor_idx].writes)
+			for (j = 0; j < tensor_dependencies[tensor_idx].writes->rnum; j++)
+			{
+				const int block_idx = *(int*)ccv_array_get(tensor_dependencies[tensor_idx].writes, j);
+				block_dependencies[block_idx].flag = 1;
+				int k;
+				if (block_dependencies[block_idx].reads)
+					for (k = 0; k < block_dependencies[block_idx].reads->rnum; k++)
+					{
+						const int read_idx = *(int*)ccv_array_get(block_dependencies[block_idx].reads, k);
+						if (!tensor_dependencies[read_idx].flag)
+						{
+							tensor_dependencies[read_idx].flag = 1;
+							ccv_array_push(in_use, &read_idx);
+						}
+					}
+			}
+	}
+	ccv_array_free(in_use);
+	for (i = 0; i < block_size; i++)
+		if (!block_dependencies[i].flag)
+		{
+			ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
+			ccv_nnc_micro_loops_free(block->loops, block->loop_count);
+			ccfree(block->loops);
+			block->loops = 0;
+			block->loop_count = 0;
+		}
+	for (i = 0; i < var_count; i++)
+		if (!tensor_dependencies[i].flag) // If this tensor is not visited, there is no need to alloc.
+		{
+			_ccv_nnc_tensor_remove_dead_store(&tensor_dependencies[i], i, blocks);
+			vars[i].no_alloc = 1;
+		}
+	_ccv_nnc_loop_merging(block_dependencies, tensor_dependencies, blocks, max_loop_count, groups);
+	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
+	// Culling out empty blocks.
+	for (i = 0, j = 0; i < blocks->rnum; i++)
+	{
+		const ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
+		if (block->loop_count > 0)
+		{
+			*(ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, j) = *block;
+			++j;
+		}
+	}
+	// Now we moved everything, set the proper block size.
+	ccv_array_resize(blocks, j);
+	_ccv_nnc_var_subst(vars, var_count, inputs, input_size, outputs, output_size, blocks, groups);
 	free(groups);
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)

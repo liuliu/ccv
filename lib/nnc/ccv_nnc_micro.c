@@ -125,7 +125,10 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	for (i = 0; i < output_size; i++)
 		combine->forward.outputs[i] = outputs[i]->id;
 	combine->forward.var_count = var_count;
-	combine->forward.vars = vars;
+	// We copied forward.vars so backward.vars and forward.vars can maintain separate states.
+	// However, shape and related allocations are shared because these are not going to be mutated.
+	combine->forward.vars = (ccv_nnc_micro_tensor_t*)ccmalloc(sizeof(ccv_nnc_micro_tensor_t) * var_count);
+	memcpy(combine->forward.vars, vars, sizeof(ccv_nnc_micro_tensor_t) * var_count);
 	combine->forward.function_count = function_count;
 	combine->forward.functions = functions;
 	ccv_nnc_micro_program_simplify(&combine->forward, inputs, input_size, outputs, output_size);
@@ -295,6 +298,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 			ccfree(combine->forward.vars[i].shape);
 		}
 	ccfree(combine->forward.vars);
+	ccfree(combine->backward.vars);
 	int function_count = combine->forward.function_count;
 	for (i = 0; i < function_count; i++)
 	{
