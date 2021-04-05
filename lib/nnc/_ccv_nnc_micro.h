@@ -55,6 +55,7 @@ struct ccv_nnc_micro_loop_index_binary_s {
 typedef struct {
 	ccv_nnc_micro_id_t id;
 	int index_count;
+	int no_check_bound[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_micro_loop_index_term_t index[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_micro_loop_variable_t;
 
@@ -463,7 +464,7 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
 void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
-ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(ccv_nnc_micro_loop_index_term_t* const term);
+ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(const ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* const var);
 void ccv_nnc_micro_loop_statement_free(ccv_nnc_micro_loop_statement_t* const statement);

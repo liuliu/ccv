@@ -838,6 +838,409 @@ static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var
 	}
 }
 
+static int _ccv_nnc_index_check_axis_size(const ccv_nnc_micro_loop_index_term_t index, int* const axis_size_ref, int* const d_ref, const int* const groups)
+{
+	switch (index.type)
+	{
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE:
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+			return 1;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY:
+			return _ccv_nnc_index_check_axis_size(index.binary->left, axis_size_ref, d_ref, groups) && _ccv_nnc_index_check_axis_size(index.binary->left, axis_size_ref, d_ref, groups);
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID: {
+			if (index.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID)
+			{
+				int root = groups[index.id.id];
+				while (groups[root] != root)
+					root = groups[root];
+				if (*axis_size_ref == -1)
+					*axis_size_ref = root;
+				if (*d_ref == -1)
+					*d_ref = index.id.d;
+				return root == *axis_size_ref && index.id.d == *d_ref;
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static int _ccv_nnc_index_binary_size(const ccv_nnc_micro_loop_index_term_t index)
+{
+	switch (index.type)
+	{
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE:
+			return 0;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
+			return 1;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY:
+			if (index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS || index.binary->op == CCV_NNC_MICRO_BINARY_OP_MINUS)
+				return _ccv_nnc_index_binary_size(index.binary->left) + _ccv_nnc_index_binary_size(index.binary->right);
+			else
+				return 1;
+	}
+	return 0;
+}
+
+typedef struct {
+	int sign:7;
+	int ignore:1;
+	ccv_nnc_micro_loop_index_term_t term;
+} ccv_nnc_micro_loop_binary_term_t;
+
+static void _ccv_nnc_index_term_flatten(ccv_nnc_micro_loop_binary_term_t* const binary_terms, const ccv_nnc_micro_loop_index_term_t index, const int sign, int* const i)
+{
+	switch (index.type)
+	{
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE: // No need to occupy.
+			break;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
+			binary_terms[*i].term = index;
+			binary_terms[*i].sign = sign;
+			binary_terms[*i].ignore = 0;
+			++(*i);
+			break;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY:
+			if (index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS || index.binary->op == CCV_NNC_MICRO_BINARY_OP_MINUS)
+			{
+				_ccv_nnc_index_term_flatten(binary_terms, index.binary->left, sign, i);
+				if (index.binary->op == CCV_NNC_MICRO_BINARY_OP_MINUS) // Switch sign.
+					_ccv_nnc_index_term_flatten(binary_terms, index.binary->right, sign == CCV_NNC_MICRO_BINARY_OP_PLUS ? CCV_NNC_MICRO_BINARY_OP_MINUS : CCV_NNC_MICRO_BINARY_OP_PLUS, i);
+				else
+					_ccv_nnc_index_term_flatten(binary_terms, index.binary->right, sign, i);
+			} else {
+				binary_terms[*i].term = index;
+				binary_terms[*i].sign = sign;
+				binary_terms[*i].ignore = 0;
+				++(*i);
+			}
+			break;
+	}
+}
+
+// 0 is we don't understand, -1 is false, 1 is true.
+static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_term_t left, const ccv_nnc_micro_loop_index_term_t right, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+{
+	// Special case 1.
+	if (left.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
+		return left.immediate_value <= right.immediate_value ? 1 : -1;
+	// Special case 2.
+	if (left.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && left.immediate_value == 0 && right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID && right.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID)
+		return 1;
+	// Special case 3.
+	if (left.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID && left.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID && right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right.immediate_value == 0)
+		return -1;
+	// Special case 4. We cannot understand this.
+	if (right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
+		return 0;
+	// We only have either left and right are ID or BINARY. However, we cannot make any progress if it is referenced to more than 1 axis_size & d.
+	int axis_size = -1, d = -1;
+	if (!(_ccv_nnc_index_check_axis_size(left, &axis_size, &d, groups) && _ccv_nnc_index_check_axis_size(right, &axis_size, &d, groups)))
+		return 0;
+	// Now, we only have one variable in both left and right, need to flat the binary tree (if possible) and reduce it to constant if possible.
+	// We can only flatten if it is + / - at the moment.
+	const int left_binary_size = _ccv_nnc_index_binary_size(left);
+	assert(left_binary_size >= 1);
+	const int right_binary_size = _ccv_nnc_index_binary_size(right);
+	assert(right_binary_size >= 1);
+	ccv_nnc_micro_loop_binary_term_t* const left_binary_terms = (ccv_nnc_micro_loop_binary_term_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_binary_term_t) * (left_binary_size + right_binary_size));
+	ccv_nnc_micro_loop_binary_term_t* const right_binary_terms = left_binary_terms + left_binary_size;
+	int i, j;
+	i = 0;
+	_ccv_nnc_index_term_flatten(left_binary_terms, left, CCV_NNC_MICRO_BINARY_OP_PLUS, &i);
+	assert(i == left_binary_size);
+	i = 0;
+	_ccv_nnc_index_term_flatten(right_binary_terms, right, CCV_NNC_MICRO_BINARY_OP_PLUS, &i);
+	assert(i == right_binary_size);
+	for (i = 0; i < left_binary_size; i++)
+		for (j = 0; j < right_binary_size; j++)
+			// If they are the same, we can ignore now.
+			if (!left_binary_terms[i].ignore && !right_binary_terms[j].ignore &&
+				_ccv_nnc_same_index_term(left_binary_terms[i].term, right_binary_terms[j].term, groups) &&
+				left_binary_terms[i].sign == right_binary_terms[j].sign)
+			{
+				left_binary_terms[i].ignore = 1;
+				right_binary_terms[i].ignore = 1;
+			}
+	// After reduced, we should only have immediate values left, otherwise we cannot progress.
+	int left_val = 0;
+	for (i = 0; i < left_binary_size; i++)
+		if (!left_binary_terms[i].ignore)
+		{
+			if (left_binary_terms[i].term.type != CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
+			{
+				ccfree(left_binary_terms);
+				return 0;
+			} else
+				left_val += left_binary_terms[i].sign == CCV_NNC_MICRO_BINARY_OP_PLUS ? left_binary_terms[i].term.immediate_value : -left_binary_terms[i].term.immediate_value;
+		}
+	int right_val = 0;
+	for (i = 0; i < right_binary_size; i++)
+		if (!right_binary_terms[i].ignore)
+		{
+			if (right_binary_terms[i].term.type != CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
+			{
+				ccfree(left_binary_terms);
+				return 0;
+			} else
+				right_val += right_binary_terms[i].sign == CCV_NNC_MICRO_BINARY_OP_PLUS ? right_binary_terms[i].term.immediate_value : -right_binary_terms[i].term.immediate_value;
+		}
+	ccfree(left_binary_terms);
+	return left_val <= right_val ? 1 : -1;
+}
+
+static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_index_term_t index, ccv_nnc_micro_loop_index_term_t* const low_ref, ccv_nnc_micro_loop_index_term_t* const high_ref, const ccv_nnc_micro_loop_t* const loops, const int loop_count)
+{
+	switch (index.type)
+	{
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE:
+			*low_ref = (ccv_nnc_micro_loop_index_term_t){
+				.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+				.immediate_value = 0
+			};
+			*high_ref = (ccv_nnc_micro_loop_index_term_t){
+				.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+				.immediate_value = 0
+			};
+			return 1;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
+			if (index.id.type == CCV_NNC_MICRO_LOOP_ID)
+			{
+				assert(index.id.id >= 0 && index.id.id < loop_count);
+				*low_ref = ccv_nnc_micro_loop_index_deep_copy(&loops[index.id.id].start_index);
+				*high_ref = ccv_nnc_micro_loop_index_deep_copy(&loops[index.id.id].end_index);
+			} else {
+				*low_ref = index;
+				*high_ref = index;
+			}
+			return 1;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+			*low_ref = index;
+			*high_ref = index;
+			return 1;
+		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
+			// Get low, high from both left and right, and then construct new low / high.
+			ccv_nnc_micro_loop_index_term_t left_low, left_high;
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->left, &left_low, &left_high, loops, loop_count))
+				return 0;
+			ccv_nnc_micro_loop_index_term_t right_low, right_high;
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->right, &right_low, &right_high, loops, loop_count))
+			{
+				ccv_nnc_micro_loop_index_free(&left_low);
+				ccv_nnc_micro_loop_index_free(&left_high);
+				return 0;
+			}
+			// If left is not a range, or right is not a range, it is simple, just copy over.
+			if (_ccv_nnc_same_index_term(left_low, left_high, 0) || _ccv_nnc_same_index_term(right_low, right_high, 0))
+			{
+				*low_ref = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				low_ref->binary->op = index.binary->op;
+				low_ref->binary->left = left_low;
+				low_ref->binary->right = right_low;
+				*high_ref = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				high_ref->binary->op = index.binary->op;
+				high_ref->binary->left = left_high;
+				high_ref->binary->right = right_high;
+				return 1;
+			}
+			// Cannot handle -, because lower bound will go to negative, similar for /. Only can handle + and *.
+			if (!((index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS || index.binary->op == CCV_NNC_MICRO_BINARY_OP_MUL)) ||
+				// If lower bound is not a non-negative integer, we cannot compute interesting low / high bound, abort.
+				(left_low.type != CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL || left_low.immediate_value < 0) ||
+				(right_low.type != CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL || right_low.immediate_value < 0))
+			{
+				ccv_nnc_micro_loop_index_free(&left_low);
+				ccv_nnc_micro_loop_index_free(&left_high);
+				ccv_nnc_micro_loop_index_free(&right_low);
+				ccv_nnc_micro_loop_index_free(&right_high);
+				return 0;
+			}
+			*low_ref = (ccv_nnc_micro_loop_index_term_t){
+				.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL,
+				.immediate_value = index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS ? left_low.immediate_value + right_low.immediate_value : left_low.immediate_value * right_low.immediate_value,
+			};
+			// higher bound is not inclusive, hence, we need to minus extra 1 for this.
+			if (index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS)
+			{
+				// (left - 1) + (right - 1) + 1
+				ccv_nnc_micro_loop_index_term_t sum = {
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				sum.binary->op = CCV_NNC_MICRO_BINARY_OP_PLUS;
+				sum.binary->left = left_high;
+				sum.binary->right = right_high;
+				*high_ref = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				high_ref->binary->op = CCV_NNC_MICRO_BINARY_OP_MINUS;
+				high_ref->binary->left = sum;
+				high_ref->binary->right = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+					.immediate_value = 1
+				};
+			} else {
+				// (left - 1) * (right - 1) + 1
+				ccv_nnc_micro_loop_index_term_t prod = {
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				prod.binary->op = CCV_NNC_MICRO_BINARY_OP_MUL;
+				prod.binary->left = left_high;
+				prod.binary->right = right_high;
+				ccv_nnc_micro_loop_index_term_t minus_left = {
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				minus_left.binary->op = CCV_NNC_MICRO_BINARY_OP_MINUS;
+				minus_left.binary->left = prod;
+				minus_left.binary->right = left_high;
+				ccv_nnc_micro_loop_index_term_t minus_right = {
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				minus_right.binary->op = CCV_NNC_MICRO_BINARY_OP_MINUS;
+				minus_right.binary->left = minus_left;
+				minus_right.binary->right = right_high;
+				*high_ref = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
+					.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t))
+				};
+				high_ref->binary->op = CCV_NNC_MICRO_BINARY_OP_PLUS;
+				high_ref->binary->left = minus_right;
+				high_ref->binary->right = (ccv_nnc_micro_loop_index_term_t){
+					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+					.immediate_value = 2
+				};
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_t* const variable, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+{
+	if (variable->id.type != CCV_NNC_MICRO_TENSOR_ID)
+		return;
+	int i;
+	assert(variable->id.id >= 0 && variable->id.id < var_count);
+	ccv_nnc_micro_loop_index_term_t index_zero = {
+		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
+		.immediate_value = 0
+	};
+	for (i = 0; i < variable->index_count; i++)
+	{
+		ccv_nnc_micro_loop_index_term_t shape = {
+			.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
+			.id = {
+				.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
+				.id = variable->id.id,
+				.d = i
+			}
+		};
+		switch (variable->index[i].type)
+		{
+			case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
+				// For loop id, we can check the range to see if it is within the shape.
+				if (variable->index[i].id.type == CCV_NNC_MICRO_LOOP_ID)
+				{
+					assert(variable->index[i].id.id >= 0 && variable->index[i].id.id < loop_count);
+					if (_ccv_nnc_index_less_than_or_equal_to(index_zero, loops[variable->index[i].id.id].start_index, vars, var_count, groups) == 1 &&
+						(_ccv_nnc_index_less_than_or_equal_to(loops[variable->index[i].id.id].end_index, shape, vars, var_count, groups) == 1 ||
+						 (vars[variable->id.id].shape != 0 && _ccv_nnc_index_less_than_or_equal_to(loops[variable->index[i].id.id].end_index, vars[variable->id.id].shape[i], vars, var_count, groups) == 1)))
+						variable->no_check_bound[i] = 1;
+					else
+						variable->no_check_bound[i] = 0;
+				} else // If it is anything other than loop id, we have to check the bound.
+					variable->no_check_bound[i] = 0;
+				break;
+			case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
+				// Compute higher / lower bounds along the expression.
+				ccv_nnc_micro_loop_index_term_t low, high;
+				// Cannot find high low, mark no_check_bound[i] = 0
+				if (!_ccv_nnc_micro_low_high_bound_from_index(variable->index[i], &low, &high, loops, loop_count))
+				{
+					variable->no_check_bound[i] = 0;
+					break;
+				}
+				if (_ccv_nnc_index_less_than_or_equal_to(index_zero, low, vars, var_count, groups) == 1 &&
+					(_ccv_nnc_index_less_than_or_equal_to(high, shape, vars, var_count, groups) == 1 ||
+					 (vars[variable->id.id].shape != 0 && _ccv_nnc_index_less_than_or_equal_to(high, vars[variable->id.id].shape[i], vars, var_count, groups) == 1)))
+					variable->no_check_bound[i] = 1;
+				else
+					variable->no_check_bound[i] = 0;
+				ccv_nnc_micro_loop_index_free(&low);
+				ccv_nnc_micro_loop_index_free(&high);
+				break;
+			}
+			case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
+				// If the index is an integer, and it is bigger than 0, we need to check bound (there is no assertion the end index is larger than anything other than 0).
+				if (variable->index[i].immediate_value == 0)
+					variable->no_check_bound[i] = 1;
+				else
+					variable->no_check_bound[i] = 0;
+				break;
+		}
+	}
+}
+
+static void _ccv_nnc_micro_check_bound_for_expression(ccv_nnc_micro_loop_expression_t* const expression, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+{
+	switch (expression->type)
+	{
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
+			_ccv_nnc_micro_check_bound_for_variable(&expression->variable, loops, loop_count, vars, var_count, groups);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY:
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.pivot, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.left, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.right, loops, loop_count, vars, var_count, groups);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
+			_ccv_nnc_micro_check_bound_for_expression(expression->binary.left, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->binary.right, loops, loop_count, vars, var_count, groups);
+			break;
+		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
+			_ccv_nnc_micro_check_bound_for_expression(expression->unary.x, loops, loop_count, vars, var_count, groups);
+			break;
+	}
+}
+
+static void _ccv_nnc_micro_check_bound_for_block(ccv_nnc_micro_loop_block_t* const block, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+{
+	int i, j;
+	for (i = 0; i < block->loop_count; i++)
+	{
+		const int statement_count = block->loops[i].statement_count;
+		ccv_nnc_micro_loop_statement_t* const statements = block->loops[i].statements;
+		for (j = 0; j < statement_count; j++)
+		{
+			switch (statements[j].type)
+			{
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
+					_ccv_nnc_micro_check_bound_for_variable(&statements[j].assignment.lvalue, block->loops, block->loop_count, vars, var_count, groups);
+					_ccv_nnc_micro_check_bound_for_expression(&statements[j].assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups);
+					break;
+				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
+					if (statements[j].compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
+						_ccv_nnc_micro_check_bound_for_variable(&statements[j].compound_assignment.lvalue.variable, block->loops, block->loop_count, vars, var_count, groups);
+					_ccv_nnc_micro_check_bound_for_expression(&statements[j].compound_assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups);
+					break;
+			}
+		}
+	}
+}
+
 void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
 {
 	// Nothing to simplify for.
@@ -970,7 +1373,14 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	}
 	// Now we moved everything, set the proper block size.
 	ccv_array_resize(blocks, j);
+	// Substitute variables.
 	_ccv_nnc_var_subst(vars, var_count, inputs, input_size, outputs, output_size, blocks, groups);
+	// Mark whether we need to check bound for a particular variable or not.
+	for (i = 0; i < blocks->rnum; i++)
+	{
+		ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
+		_ccv_nnc_micro_check_bound_for_block(block, vars, var_count, groups);
+	}
 	free(groups);
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)

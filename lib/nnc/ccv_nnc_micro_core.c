@@ -318,7 +318,7 @@ static void _ccv_nnc_micro_reindex_bind_scalars(const ccv_nnc_micro_io_t super, 
 		_ccv_nnc_bind_scalars_in_term(&self->reindex[i], lookup, context);
 }
 
-ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(ccv_nnc_micro_loop_index_term_t* const term)
+ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(const ccv_nnc_micro_loop_index_term_t* const term)
 {
 	switch (term->type)
 	{

@@ -132,4 +132,8 @@ TEST_CASE("represent convolution with micro ops")
 	ccv_nnc_micro_combine_free(combine);
 }
 
+TEST_CASE("represent matrix multiplication with micro ops")
+{
+}
+
 #include "case_main.h"
