@@ -838,33 +838,6 @@ static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var
 	}
 }
 
-static int _ccv_nnc_index_check_axis_size(const ccv_nnc_micro_loop_index_term_t index, int* const axis_size_ref, int* const d_ref, const int* const groups)
-{
-	switch (index.type)
-	{
-		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE:
-		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL:
-			return 1;
-		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY:
-			return _ccv_nnc_index_check_axis_size(index.binary->left, axis_size_ref, d_ref, groups) && _ccv_nnc_index_check_axis_size(index.binary->left, axis_size_ref, d_ref, groups);
-		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID: {
-			if (index.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID)
-			{
-				int root = groups[index.id.id];
-				while (groups[root] != root)
-					root = groups[root];
-				if (*axis_size_ref == -1)
-					*axis_size_ref = root;
-				if (*d_ref == -1)
-					*d_ref = index.id.d;
-				return root == *axis_size_ref && index.id.d == *d_ref;
-			}
-			return 1;
-		}
-	}
-	return 0;
-}
-
 static int _ccv_nnc_index_binary_size(const ccv_nnc_micro_loop_index_term_t index)
 {
 	switch (index.type)
@@ -935,10 +908,6 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	// Special case 4. We cannot understand this.
 	if (right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
 		return 0;
-	// We only have either left and right are ID or BINARY. However, we cannot make any progress if it is referenced to more than 1 axis_size & d.
-	int axis_size = -1, d = -1;
-	if (!(_ccv_nnc_index_check_axis_size(left, &axis_size, &d, groups) && _ccv_nnc_index_check_axis_size(right, &axis_size, &d, groups)))
-		return 0;
 	// Now, we only have one variable in both left and right, need to flat the binary tree (if possible) and reduce it to constant if possible.
 	// We can only flatten if it is + / - at the moment.
 	const int left_binary_size = _ccv_nnc_index_binary_size(left);
@@ -954,6 +923,27 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	i = 0;
 	_ccv_nnc_index_term_flatten(right_binary_terms, right, CCV_NNC_MICRO_BINARY_OP_PLUS, &i);
 	assert(i == right_binary_size);
+	// Matching signs in left terms.
+	for (i = 0; i < left_binary_size - 1; i++)
+		for (j = i + 1; j < left_binary_size; j++)
+			if (!left_binary_terms[i].ignore && !left_binary_terms[j].ignore &&
+				_ccv_nnc_same_index_term(left_binary_terms[i].term, left_binary_terms[j].term, groups) &&
+				left_binary_terms[i].sign != left_binary_terms[j].sign)
+			{
+				left_binary_terms[i].ignore = 1;
+				left_binary_terms[j].ignore = 1;
+			}
+	// Matching signs in right terms.
+	for (i = 0; i < right_binary_size - 1; i++)
+		for (j = i + 1; j < right_binary_size; j++)
+			if (!right_binary_terms[i].ignore && !right_binary_terms[j].ignore &&
+				_ccv_nnc_same_index_term(right_binary_terms[i].term, right_binary_terms[j].term, groups) &&
+				right_binary_terms[i].sign != right_binary_terms[j].sign)
+			{
+				right_binary_terms[i].ignore = 1;
+				right_binary_terms[j].ignore = 1;
+			}
+	// Matching left to right.
 	for (i = 0; i < left_binary_size; i++)
 		for (j = 0; j < right_binary_size; j++)
 			// If they are the same, we can ignore now.
@@ -962,7 +952,7 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 				left_binary_terms[i].sign == right_binary_terms[j].sign)
 			{
 				left_binary_terms[i].ignore = 1;
-				right_binary_terms[i].ignore = 1;
+				right_binary_terms[j].ignore = 1;
 			}
 	// After reduced, we should only have immediate values left, otherwise we cannot progress.
 	int left_val = 0;
@@ -991,7 +981,25 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	return left_val <= right_val ? 1 : -1;
 }
 
-static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_index_term_t index, ccv_nnc_micro_loop_index_term_t* const low_ref, ccv_nnc_micro_loop_index_term_t* const high_ref, const ccv_nnc_micro_loop_t* const loops, const int loop_count)
+// If this index term refers to an axis size that actually has a expression, refer to that instead (like for reindex operation).
+static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_index_shape_merging(const ccv_nnc_micro_loop_index_term_t index, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+{
+	ccv_nnc_micro_loop_index_term_t result = index;
+	for (;;)
+	{
+		if (!(result.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID && result.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID))
+			return result;
+		int root = groups[result.id.id];
+		while (groups[root] != root)
+			root = groups[root];
+		if (vars[root].shape == 0)
+			return result;
+		assert(result.id.d >= 0 && result.id.d < vars[root].dimensions);
+		result = vars[root].shape[result.id.d];
+	}
+}
+
+static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_index_term_t index, ccv_nnc_micro_loop_index_term_t* const low_ref, ccv_nnc_micro_loop_index_term_t* const high_ref, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
 {
 	switch (index.type)
 	{
@@ -1008,9 +1016,16 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
 			if (index.id.type == CCV_NNC_MICRO_LOOP_ID)
 			{
-				assert(index.id.id >= 0 && index.id.id < loop_count);
-				*low_ref = ccv_nnc_micro_loop_index_deep_copy(&loops[index.id.id].start_index);
-				*high_ref = ccv_nnc_micro_loop_index_deep_copy(&loops[index.id.id].end_index);
+				int loop_idx = -1;
+				int i;
+				for (i = 0; loop_idx < 0 && i < loop_count; i++)
+					if (loops[i].id.id == index.id.id)
+						loop_idx = i;
+				assert(loop_idx >= 0);
+				const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups);
+				const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups);
+				*low_ref = ccv_nnc_micro_loop_index_deep_copy(&start_index);
+				*high_ref = ccv_nnc_micro_loop_index_deep_copy(&end_index);
 			} else {
 				*low_ref = index;
 				*high_ref = index;
@@ -1023,10 +1038,10 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
 			// Get low, high from both left and right, and then construct new low / high.
 			ccv_nnc_micro_loop_index_term_t left_low, left_high;
-			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->left, &left_low, &left_high, loops, loop_count))
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->left, &left_low, &left_high, loops, loop_count, vars, var_count, groups))
 				return 0;
 			ccv_nnc_micro_loop_index_term_t right_low, right_high;
-			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->right, &right_low, &right_high, loops, loop_count))
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->right, &right_low, &right_high, loops, loop_count, vars, var_count, groups))
 			{
 				ccv_nnc_micro_loop_index_free(&left_low);
 				ccv_nnc_micro_loop_index_free(&left_high);
@@ -1052,10 +1067,10 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 				return 1;
 			}
 			// Cannot handle -, because lower bound will go to negative, similar for /. Only can handle + and *.
-			if (!((index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS || index.binary->op == CCV_NNC_MICRO_BINARY_OP_MUL)) ||
+			if (!(index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS || index.binary->op == CCV_NNC_MICRO_BINARY_OP_MUL) ||
 				// If lower bound is not a non-negative integer, we cannot compute interesting low / high bound, abort.
-				(left_low.type != CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL || left_low.immediate_value < 0) ||
-				(right_low.type != CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL || right_low.immediate_value < 0))
+				(left_low.type != CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL || left_low.immediate_value < 0) ||
+				(right_low.type != CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL || right_low.immediate_value < 0))
 			{
 				ccv_nnc_micro_loop_index_free(&left_low);
 				ccv_nnc_micro_loop_index_free(&left_high);
@@ -1064,7 +1079,7 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 				return 0;
 			}
 			*low_ref = (ccv_nnc_micro_loop_index_term_t){
-				.type = CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAL,
+				.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
 				.immediate_value = index.binary->op == CCV_NNC_MICRO_BINARY_OP_PLUS ? left_low.immediate_value + right_low.immediate_value : left_low.immediate_value * right_low.immediate_value,
 			};
 			// higher bound is not inclusive, hence, we need to minus extra 1 for this.
@@ -1132,7 +1147,7 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 {
 	if (variable->id.type != CCV_NNC_MICRO_TENSOR_ID)
 		return;
-	int i;
+	int i, j;
 	assert(variable->id.id >= 0 && variable->id.id < var_count);
 	ccv_nnc_micro_loop_index_term_t index_zero = {
 		.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL,
@@ -1140,24 +1155,29 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 	};
 	for (i = 0; i < variable->index_count; i++)
 	{
-		ccv_nnc_micro_loop_index_term_t shape = {
+		const ccv_nnc_micro_loop_index_term_t shape = _ccv_nnc_micro_index_shape_merging((ccv_nnc_micro_loop_index_term_t){
 			.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
 			.id = {
 				.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
 				.id = variable->id.id,
 				.d = i
 			}
-		};
+		}, vars, var_count, groups);
 		switch (variable->index[i].type)
 		{
 			case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
 				// For loop id, we can check the range to see if it is within the shape.
 				if (variable->index[i].id.type == CCV_NNC_MICRO_LOOP_ID)
 				{
-					assert(variable->index[i].id.id >= 0 && variable->index[i].id.id < loop_count);
-					if (_ccv_nnc_index_less_than_or_equal_to(index_zero, loops[variable->index[i].id.id].start_index, vars, var_count, groups) == 1 &&
-						(_ccv_nnc_index_less_than_or_equal_to(loops[variable->index[i].id.id].end_index, shape, vars, var_count, groups) == 1 ||
-						 (vars[variable->id.id].shape != 0 && _ccv_nnc_index_less_than_or_equal_to(loops[variable->index[i].id.id].end_index, vars[variable->id.id].shape[i], vars, var_count, groups) == 1)))
+					int loop_idx = -1;
+					for (j = 0; loop_idx < 0 && j < loop_count; j++)
+						if (loops[j].id.id == variable->index[i].id.id)
+							loop_idx = j;
+					assert(loop_idx >= 0);
+					const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups);
+					const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups);
+					if (_ccv_nnc_index_less_than_or_equal_to(index_zero, start_index, vars, var_count, groups) == 1 &&
+						_ccv_nnc_index_less_than_or_equal_to(end_index, shape, vars, var_count, groups) == 1)
 						variable->no_check_bound[i] = 1;
 					else
 						variable->no_check_bound[i] = 0;
@@ -1168,14 +1188,13 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 				// Compute higher / lower bounds along the expression.
 				ccv_nnc_micro_loop_index_term_t low, high;
 				// Cannot find high low, mark no_check_bound[i] = 0
-				if (!_ccv_nnc_micro_low_high_bound_from_index(variable->index[i], &low, &high, loops, loop_count))
+				if (!_ccv_nnc_micro_low_high_bound_from_index(variable->index[i], &low, &high, loops, loop_count, vars, var_count, groups))
 				{
 					variable->no_check_bound[i] = 0;
 					break;
 				}
 				if (_ccv_nnc_index_less_than_or_equal_to(index_zero, low, vars, var_count, groups) == 1 &&
-					(_ccv_nnc_index_less_than_or_equal_to(high, shape, vars, var_count, groups) == 1 ||
-					 (vars[variable->id.id].shape != 0 && _ccv_nnc_index_less_than_or_equal_to(high, vars[variable->id.id].shape[i], vars, var_count, groups) == 1)))
+					_ccv_nnc_index_less_than_or_equal_to(high, shape, vars, var_count, groups) == 1)
 					variable->no_check_bound[i] = 1;
 				else
 					variable->no_check_bound[i] = 0;
