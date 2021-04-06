@@ -56,7 +56,7 @@ static int _ccv_nnc_micro_index_interpret(const ccv_nnc_micro_loop_index_term_t 
 	return 0;
 }
 
-static float _ccv_nnc_micro_expression_interpret(const ccv_nnc_micro_loop_expression_t* const expression, const int* const loop_counter, const ccv_nnc_micro_scalar_t* const carrieds, const int carried_count, float* const* const vars_mem, const int* const shapes, const ccv_nnc_micro_scalar_t* const values, const int parameter_size)
+static float _ccv_nnc_micro_expression_interpret(const ccv_nnc_micro_loop_expression_t* const expression, const int* const loop_counter, const ccv_nnc_micro_scalar_t* const carrieds, const int carried_count, float* const* const vars_mem, const int* const shapes, const ccv_nnc_micro_scalar_t* const values, const int parameter_size, int* const out_of_bound_ref)
 {
 	int i;
 	switch (expression->type)
@@ -73,16 +73,27 @@ static float _ccv_nnc_micro_expression_interpret(const ccv_nnc_micro_loop_expres
 			assert(variable.id.type == CCV_NNC_MICRO_TENSOR_ID);
 			float* ptr = vars_mem[variable.id.id];
 			size_t size = 1;
-			for (i = variable.index_count - 1; i >= 0; i--)
+			int out_of_bound = 0;
+			for (i = variable.index_count - 1; !out_of_bound && i >= 0; i--)
 			{
 				const int index = _ccv_nnc_micro_index_interpret(variable.index[i], loop_counter, shapes, values, parameter_size);
+				if (!variable.no_check_bound[i] &&
+					(index < 0 || index >= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i]))
+					out_of_bound = 1;
 				ptr += index * size;
 				size *= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i];
+			}
+			if (out_of_bound)
+			{
+				*out_of_bound_ref = 1;
+				return 0;
 			}
 			return ptr[0];
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY: {
-			const float left = _ccv_nnc_micro_expression_interpret(expression->unary.x, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
+			const float left = _ccv_nnc_micro_expression_interpret(expression->unary.x, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size, out_of_bound_ref);
+			if (*out_of_bound_ref)
+				return 0;
 			switch (expression->unary.unary_op)
 			{
 				case CCV_NNC_MICRO_UNARY_OP_EXP:
@@ -93,8 +104,12 @@ static float _ccv_nnc_micro_expression_interpret(const ccv_nnc_micro_loop_expres
 			break;
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
-			const float left = _ccv_nnc_micro_expression_interpret(expression->binary.left, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
-			const float right = _ccv_nnc_micro_expression_interpret(expression->binary.right, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
+			const float left = _ccv_nnc_micro_expression_interpret(expression->binary.left, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size, out_of_bound_ref);
+			if (*out_of_bound_ref)
+				return 0;
+			const float right = _ccv_nnc_micro_expression_interpret(expression->binary.right, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size, out_of_bound_ref);
+			if (*out_of_bound_ref)
+				return 0;
 			switch (expression->binary.binary_op)
 			{
 				case CCV_NNC_MICRO_BINARY_OP_PLUS:
@@ -126,17 +141,29 @@ static void _ccv_nnc_micro_statement_interpret(const ccv_nnc_micro_loop_statemen
 			const ccv_nnc_micro_loop_variable_t variable = statement.assignment.lvalue;
 			float* ptr = vars_mem[variable.id.id];
 			size_t size = 1;
-			for (i = variable.index_count - 1; i >= 0; i--)
+			int out_of_bound = 0;
+			for (i = variable.index_count - 1; !out_of_bound && i >= 0; i--)
 			{
 				const int index = _ccv_nnc_micro_index_interpret(variable.index[i], loop_counter, shapes, values, parameter_size);
+				if (!variable.no_check_bound[i] &&
+					(index < 0 || index >= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i]))
+					out_of_bound = 1;
 				ptr += index * size;
 				size *= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i];
 			}
-			ptr[0] = _ccv_nnc_micro_expression_interpret(&statement.assignment.rvalue, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
+			if (out_of_bound)
+				return;
+			const float val = _ccv_nnc_micro_expression_interpret(&statement.assignment.rvalue, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size, &out_of_bound);
+			if (out_of_bound)
+				return;
+			ptr[0] = val;
 			break;
 		}
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT: {
-			const float rvalue = _ccv_nnc_micro_expression_interpret(&statement.compound_assignment.rvalue, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size);
+			int out_of_bound = 0;
+			const float rvalue = _ccv_nnc_micro_expression_interpret(&statement.compound_assignment.rvalue, loop_counter, carrieds, carried_count, vars_mem, shapes, values, parameter_size, &out_of_bound);
+			if (out_of_bound)
+				return;
 			switch (statement.compound_assignment.lvalue.type)
 			{
 				case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID: {
@@ -172,12 +199,17 @@ static void _ccv_nnc_micro_statement_interpret(const ccv_nnc_micro_loop_statemen
 					const ccv_nnc_micro_loop_variable_t variable = statement.compound_assignment.lvalue.variable;
 					float* ptr = vars_mem[variable.id.id];
 					size_t size = 1;
-					for (i = variable.index_count - 1; i >= 0; i--)
+					for (i = variable.index_count - 1; !out_of_bound && i >= 0; i--)
 					{
 						const int index = _ccv_nnc_micro_index_interpret(variable.index[i], loop_counter, shapes, values, parameter_size);
+						if (!variable.no_check_bound[i] &&
+							(index < 0 || index >= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i]))
+							out_of_bound = 1;
 						ptr += index * size;
 						size *= shapes[variable.id.id * CCV_NNC_MAX_DIM_ALLOC + i];
 					}
+					if (out_of_bound)
+						return;
 					ptr[0] += rvalue;
 					break;
 				}

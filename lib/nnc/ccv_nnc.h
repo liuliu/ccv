@@ -321,25 +321,26 @@ CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_input(const int dimensions);
  * Use shape and reindex expression to reindex the given tensor into a different shape.
  * The expressions can bind integer parameters which starts with $.
  *
- * The expression follows specific pattern, integer parameters starts with $. Dimensions are represented as dn, such
- * as d0, d1, d2 ... Index into the provided tensor can be represented as i0, i1, i2. These are all 0-indexed.
+ * The expression follows specific pattern, integer parameters starts with $. Dimensions are represented as dXn, such
+ * as dA0, dA1, dA2 ... Index into the provided tensor can be represented as i0, i1, i2. These are all 0-indexed.
  *
  * Constants are supported, such as 235, 431 etc. Operators supported currently are -, +, /, *.
  *
  * Thus, for broadcast a tensor x[w, h] to y[w, h, h], it can be represented as:
- * shape: { "d0", "d1", "d1" }, reindex: { "i0", "i1", "0" }.
+ * shape: { "dA0", "dA1", "dA1" }, reindex: { "i0", "i1", "0" }.
  * For example, transpose can be represented as:
- * shape: { "d1", "d0" }, reindex: { "i1", "i0" }
+ * shape: { "dA1", "dA0" }, reindex: { "i1", "i0" }
  *
  * @param shape The shape expressions per axis.
  * @param shape_count The dimensions of the output.
- * @param s The tensor to reference shape dimensions.
+ * @param ss The tensors to reference shape dimensions.
+ * @param s_count The number of tensors to reference shape dimensions.
  * @param reindex The reindex expressions per axis.
  * @param reindex_count The dimensions of the input.
  * @param x The input for reindex operation.
  * @return The reindexed tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const ccv_nnc_micro_io_t s, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
+CCV_WARN_UNUSED(ccv_nnc_micro_io_t) ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const ccv_nnc_micro_io_t* const ss, const int s_count, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x);
 /**
  * Apply element-wise computations with one tensor.
  * @param op The binary operand.

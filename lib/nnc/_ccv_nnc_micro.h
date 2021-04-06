@@ -23,7 +23,7 @@ enum {
 typedef struct {
 	uint8_t type;
 	uint8_t d; // Only used for axis_size, identify which axis for a tensor.
-	uint16_t id;
+	int16_t id;
 } ccv_nnc_micro_id_t;
 
 enum {

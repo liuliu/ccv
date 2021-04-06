@@ -905,9 +905,6 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	// Special case 3.
 	if (left.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID && left.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID && right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right.immediate_value == 0)
 		return -1;
-	// Special case 4. We cannot understand this.
-	if (right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
-		return 0;
 	// Now, we only have one variable in both left and right, need to flat the binary tree (if possible) and reduce it to constant if possible.
 	// We can only flatten if it is + / - at the moment.
 	const int left_binary_size = _ccv_nnc_index_binary_size(left);

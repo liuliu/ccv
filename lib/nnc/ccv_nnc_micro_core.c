@@ -68,7 +68,7 @@ static int _expect(const char** const pos, int* const remain_size, const char* s
 	return 0;
 }
 
-static int _constant(const char** const pos, int* const remain_size, int* id)
+static int _constant(const char** const pos, int* const remain_size, int* const id)
 {
 	int size = 0;
 	*id = 0;
@@ -83,7 +83,7 @@ static int _constant(const char** const pos, int* const remain_size, int* id)
 	return size > 0;
 }
 
-static int _index(const char** const pos, int* const remain_size, int* id)
+static int _index(const char** const pos, int* const remain_size, int* const id)
 {
 	if (!(*remain_size > 0 && pos[0][0] == 'i'))
 		return 0;
@@ -104,16 +104,19 @@ static int _index(const char** const pos, int* const remain_size, int* id)
 	return 0;
 }
 
-static int _dim(const char** const pos, int* const remain_size, int* id)
+static int _dim(const char** const pos, int* const remain_size, int* const id, int* const d)
 {
-	if (!(*remain_size > 0 && pos[0][0] == 'd'))
+	if (!(*remain_size > 1 && pos[0][0] == 'd'))
 		return 0;
-	int size = 1;
-	*id = 0;
+	if (!(pos[0][1] >= 'A' && pos[0][1] <= 'Z'))
+		return 0;
+	*id = pos[0][1] - 'A';
+	int size = 2;
+	*d = 0;
 	while (*remain_size - size > 0 && pos[0][size] >= '0' && pos[0][size] <= '9')
 	{
-		*id *= 10;
-		*id += (pos[0][size] - '0');
+		*d *= 10;
+		*d += (pos[0][size] - '0');
 		++size;
 	}
 	if (size > 1)
@@ -154,7 +157,7 @@ static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* cons
 {
 	ccv_nnc_micro_loop_index_term_t term;
 	while (_accept(pos, remain_size, " ", 1)) {}
-	int id;
+	int id, d;
 	char* name;
 	if (_constant(pos, remain_size, &id)) {
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL;
@@ -163,11 +166,11 @@ static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* cons
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		term.id.type = CCV_NNC_MICRO_LOOP_ID;
 		term.id.id = id;
-	} else if (_dim(pos, remain_size, &id)) {
+	} else if (_dim(pos, remain_size, &id, &d)) {
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		term.id.type = CCV_NNC_MICRO_AXIS_SIZE_ID;
-		term.id.d = id;
-		term.id.id = -1;
+		term.id.d = d;
+		term.id.id = -(id + 1);
 	} else if (_var(pos, remain_size, &name)) {
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_UNBOUND_SCALAR;
 		term.name = name;
@@ -253,39 +256,49 @@ static void _no_index(const ccv_nnc_micro_loop_index_term_t term)
 	}
 }
 
-static void _sid_to_axis_size_term(ccv_nnc_micro_loop_index_term_t* const term, const int sid)
+static void _sid_to_axis_size_term(ccv_nnc_micro_loop_index_term_t* const term, const int* const sids, const int sid_count)
 {
 	switch (term->type) {
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
 			// Can only be axis size id. No loop index.
-			if (term->id.type == CCV_NNC_MICRO_AXIS_SIZE_ID)
-				term->id.id = sid;
+			if (term->id.type == CCV_NNC_MICRO_AXIS_SIZE_ID && term->id.id < 0)
+			{
+				const int id = -(term->id.id + 1);
+				assert(id >= 0 && id < sid_count);
+				term->id.id = sids[id];
+			}
 			break;
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY:
-			_sid_to_axis_size_term(&term->binary->left, sid);
-			_sid_to_axis_size_term(&term->binary->right, sid);
+			_sid_to_axis_size_term(&term->binary->left, sids, sid_count);
+			_sid_to_axis_size_term(&term->binary->right, sids, sid_count);
 			break;
 	}
 }
 
 struct ccv_nnc_micro_io_reindex_s {
 	struct ccv_nnc_micro_io_s super;
-	ccv_nnc_micro_io_t s;
+	int s_count;
 	ccv_nnc_micro_io_t x;
 	ccv_nnc_micro_loop_index_term_t* shape;
 	ccv_nnc_micro_loop_index_term_t* reindex;
+	ccv_nnc_micro_io_t* ss;
 };
 
 static void _ccv_nnc_micro_reindex_numbering(const ccv_nnc_micro_io_t super, const int id, const int var_count)
 {
 	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
-	const int sid = self->s->id;
-	int i;
-	for (i = 0; i < self->super.dimensions; i++)
-		_sid_to_axis_size_term(&self->shape[i], sid);
-	for (i = 0; i < self->x->dimensions; i++)
-		_sid_to_axis_size_term(&self->reindex[i], sid);
 	self->super.id = id;
+	// No need to update axis size.
+	if (self->s_count == 0)
+		return;
+	int sids[self->s_count];
+	int i;
+	for (i = 0; i < self->s_count; i++)
+		sids[i] = self->ss[i]->id;
+	for (i = 0; i < self->super.dimensions; i++)
+		_sid_to_axis_size_term(&self->shape[i], sids, self->s_count);
+	for (i = 0; i < self->x->dimensions; i++)
+		_sid_to_axis_size_term(&self->reindex[i], sids, self->s_count);
 }
 
 static void _ccv_nnc_bind_scalars_in_term(ccv_nnc_micro_loop_index_term_t* const term, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context)
@@ -440,27 +453,31 @@ static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_reindex_isa = {
 	.deinit = _ccv_nnc_micro_reindex_deinit
 };
 
-ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const ccv_nnc_micro_io_t s, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x)
+ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const int shape_count, const ccv_nnc_micro_io_t* const ss, const int s_count, const char* const* const reindex, const int reindex_count, const ccv_nnc_micro_io_t x)
 {
 	assert(shape_count <= CCV_NNC_MAX_DIM_ALLOC);
 	assert(reindex_count <= CCV_NNC_MAX_DIM_ALLOC);
 	assert(reindex_count == x->dimensions);
 	int i;
-	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reindex_s) + sizeof(ccv_nnc_micro_loop_index_term_t) * (shape_count + reindex_count));
+	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)cccalloc(1, sizeof(struct ccv_nnc_micro_io_reindex_s) + sizeof(ccv_nnc_micro_loop_index_term_t) * (shape_count + reindex_count) + sizeof(ccv_nnc_micro_io_t) * (s_count + 1));
 	self->super.isa = &ccv_nnc_micro_io_reindex_isa;
 	self->super.dimensions = shape_count;
 	self->super.id = 0;
-	self->super.inputs = &self->s;
-	self->super.input_size = 2;
-	self->s = s;
 	self->x = x;
 	self->shape = (ccv_nnc_micro_loop_index_term_t*)(self + 1);
 	self->reindex = self->shape + shape_count;
+	self->ss = (ccv_nnc_micro_io_t*)(self->reindex + reindex_count);
+	self->s_count = s_count;
+	self->ss[s_count] = x;
+	self->super.inputs = self->ss;
+	self->super.input_size = s_count + 1;
+	if (s_count > 0)
+		memcpy(self->ss, ss, sizeof(ccv_nnc_micro_io_t) * s_count);
 	// Parse shape into expressions and validate the grammar. Do this upfront so we don't fail on parsing
 	// later, which can be confusing.
 	// CFG:
 	// VAR -> $[a-zA-Z0-9]+
-	// DIM -> d[0-9]+
+	// DIM -> d[A-Z]{1}[0-9]+
 	// INDEX -> i[0-9]+
 	// CONST -> [0-9]+
 	// FACTOR -> VAR | DIM | CONST | INDEX
