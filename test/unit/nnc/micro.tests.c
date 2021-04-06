@@ -231,6 +231,84 @@ TEST_CASE("represent convolution with micro ops, no external variables")
 
 TEST_CASE("represent matrix multiplication with micro ops")
 {
+	ccv_nnc_micro_io_t a = ccv_nnc_micro_input(2);
+	ccv_nnc_micro_io_t b = ccv_nnc_micro_input(2);
+	ccv_nnc_micro_io_t aa = ccv_nnc_micro_reindex((const char*[]){
+		"dA0",
+		"dA1",
+		"dB1"
+	}, 3, (const ccv_nnc_micro_io_t[]){
+		a,
+		b
+	}, 2, (const char*[]){
+		"i0",
+		"i1"
+	}, 2, a);
+	ccv_nnc_micro_io_t bb = ccv_nnc_micro_reindex((const char*[]){
+		"dA0",
+		"dA1",
+		"dB1"
+	}, 3, (const ccv_nnc_micro_io_t[]){
+		a,
+		b
+	}, 2, (const char*[]){
+		"i1",
+		"i2"
+	}, 2, b);
+	ccv_nnc_micro_io_t cc = ccv_nnc_micro_binary(CCV_NNC_MICRO_BINARY_OP_MUL, aa, bb);
+	ccv_nnc_micro_io_t c = ccv_nnc_micro_reduce(CCV_NNC_MICRO_REDUCE_OP_SUM, (const int[]){
+		1
+	}, 1, cc);
+	ccv_nnc_micro_io_t dc = ccv_nnc_micro_grad(c);
+	ccv_nnc_micro_io_t da = ccv_nnc_micro_grad(a);
+	ccv_nnc_micro_io_t db = ccv_nnc_micro_grad(b);
+	ccv_nnc_micro_combine_t* combine = ccv_nnc_micro_combine_new((ccv_nnc_micro_io_t[]){
+		a,
+		b
+	}, 2, 0, 0, &c, 1, (ccv_nnc_micro_io_t[]){
+		dc,
+		a,
+		b
+	}, 3, (ccv_nnc_micro_io_t[]){
+		da,
+		db
+	}, 2);
+	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const c_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < 4 * 2; i++)
+		a_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 2 * 3; i++)
+		b_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_micro_combine_interpret(combine, CCV_NNC_CUSTOM_FORWARD, TENSOR_LIST(a_tensor, b_tensor), 0, 0, TENSOR_LIST(c_tensor));
+	ccv_nnc_tensor_t* const gtc_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a_tensor, b_tensor), TENSOR_LIST(gtc_tensor), 0);
+	REQUIRE_TENSOR_EQ(c_tensor, gtc_tensor, "micro op composed matrix multiplication should match the existing matrix multiplication");
+	ccv_nnc_tensor_t* const da_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const db_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const dc_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	for (i = 0; i < 4 * 3; i++)
+		dc_tensor->data.f32[i] = 1;
+	ccv_nnc_tensor_t dc_tensor_t = ccv_nnc_tensor(dc_tensor->data.f32, CPU_TENSOR_NHWC(32F, 4, 1, 3), 0);
+	ccv_nnc_micro_combine_interpret(combine, CCV_NNC_CUSTOM_BACKWARD, TENSOR_LIST(&dc_tensor_t, a_tensor, b_tensor), 0, 0, TENSOR_LIST(da_tensor, db_tensor));
+	ccv_nnc_tensor_t* const gtda_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const gtdb_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dc_tensor, a_tensor, b_tensor), TENSOR_LIST(gtda_tensor, gtdb_tensor), 0);
+	REQUIRE_TENSOR_EQ(da_tensor, gtda_tensor, "micro op composed matrix multiplication should match the existing matrix multiplication");
+	REQUIRE_TENSOR_EQ(db_tensor, gtdb_tensor, "micro op composed matrix multiplication should match the existing matrix multiplication");
+	ccv_nnc_tensor_free(gtda_tensor);
+	ccv_nnc_tensor_free(gtdb_tensor);
+	ccv_nnc_tensor_free(da_tensor);
+	ccv_nnc_tensor_free(db_tensor);
+	ccv_nnc_tensor_free(dc_tensor);
+	ccv_nnc_tensor_free(gtc_tensor);
+	ccv_nnc_tensor_free(c_tensor);
+	ccv_nnc_tensor_free(b_tensor);
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_micro_combine_free(combine);
 }
 
 #include "case_main.h"
