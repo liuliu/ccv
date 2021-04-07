@@ -143,7 +143,7 @@ TEST_CASE("represent convolution with micro ops, no external variables")
 		"dA2 - dB2 + 1",
 		"dB1",
 		"dB2",
-		"dA3",
+		"dA3[=dB3]",
 		"dB0"
 	}, 7, (const ccv_nnc_micro_io_t[]){
 		x,
@@ -160,7 +160,7 @@ TEST_CASE("represent convolution with micro ops, no external variables")
 		"dA2 - dB2 + 1",
 		"dB1",
 		"dB2",
-		"dA3",
+		"dA3[=dB3]",
 		"dB0"
 	}, 7, (const ccv_nnc_micro_io_t[]){
 		x,
@@ -235,7 +235,7 @@ TEST_CASE("represent matrix multiplication with micro ops")
 	ccv_nnc_micro_io_t b = ccv_nnc_micro_input(2);
 	ccv_nnc_micro_io_t aa = ccv_nnc_micro_reindex((const char*[]){
 		"dA0",
-		"dA1",
+		"dA1[=dB0]",
 		"dB1"
 	}, 3, (const ccv_nnc_micro_io_t[]){
 		a,
@@ -246,7 +246,7 @@ TEST_CASE("represent matrix multiplication with micro ops")
 	}, 2, a);
 	ccv_nnc_micro_io_t bb = ccv_nnc_micro_reindex((const char*[]){
 		"dA0",
-		"dA1",
+		"dB0[=dA1]",
 		"dB1"
 	}, 3, (const ccv_nnc_micro_io_t[]){
 		a,

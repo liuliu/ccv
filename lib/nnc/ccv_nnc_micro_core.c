@@ -104,7 +104,7 @@ static int _index(const char** const pos, int* const remain_size, int* const id)
 	return 0;
 }
 
-static int _dim(const char** const pos, int* const remain_size, int* const id, int* const d)
+static int _dim(const char** const pos, int* const remain_size, int* const id, int* const d, ccv_array_t* const equal_assertions)
 {
 	if (!(*remain_size > 1 && pos[0][0] == 'd'))
 		return 0;
@@ -123,6 +123,32 @@ static int _dim(const char** const pos, int* const remain_size, int* const id, i
 	{
 		*remain_size -= size;
 		*pos += size;
+		while (_accept(pos, remain_size, " ", 1)) {}
+		if (_accept(pos, remain_size, "[", 1))
+		{
+			while (_accept(pos, remain_size, " ", 1)) {}
+			_expect(pos, remain_size, "=", 1);
+			while (_accept(pos, remain_size, " ", 1)) {}
+			int next_id;
+			int next_d;
+			if (!_dim(pos, remain_size, &next_id, &next_d, equal_assertions))
+				{ assert(0 && "unexpected symbol"); }
+			const ccv_nnc_micro_id_equal_assertion_t equal_assertion = {
+				.left = {
+					.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
+					.id = -(*id + 1),
+					.d = *d
+				},
+				.right = {
+					.type = CCV_NNC_MICRO_AXIS_SIZE_ID,
+					.id = -(next_id + 1),
+					.d = next_d
+				}
+			};
+			ccv_array_push(equal_assertions, &equal_assertion);
+			while (_accept(pos, remain_size, " ", 1)) {}
+			_expect(pos, remain_size, "]", 1);
+		}
 		return 1;
 	}
 	return 0;
@@ -151,9 +177,9 @@ static int _var(const char** const pos, int* const remain_size, char** name)
 	return 0;
 }
 
-static CCV_WARN_UNUSED(ccv_nnc_micro_loop_index_term_t) _expression(const char** const pos, int* const remain_size);
+static CCV_WARN_UNUSED(ccv_nnc_micro_loop_index_term_t) _expression(const char** const pos, int* const remain_size, ccv_array_t* const equal_assertions);
 
-static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* const remain_size)
+static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* const remain_size, ccv_array_t* const equal_assertions)
 {
 	ccv_nnc_micro_loop_index_term_t term;
 	while (_accept(pos, remain_size, " ", 1)) {}
@@ -166,7 +192,7 @@ static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* cons
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		term.id.type = CCV_NNC_MICRO_LOOP_ID;
 		term.id.id = id;
-	} else if (_dim(pos, remain_size, &id, &d)) {
+	} else if (_dim(pos, remain_size, &id, &d, equal_assertions)) {
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID;
 		term.id.type = CCV_NNC_MICRO_AXIS_SIZE_ID;
 		term.id.d = d;
@@ -175,7 +201,7 @@ static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* cons
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_UNBOUND_SCALAR;
 		term.name = name;
 	} else if (_accept(pos, remain_size, "(", 1)) {
-		term = _expression(pos, remain_size);
+		term = _expression(pos, remain_size, equal_assertions);
 		_expect(pos, remain_size, ")", 1);
 	} else {
 		assert(0 && "factor: syntax error");
@@ -184,17 +210,17 @@ static ccv_nnc_micro_loop_index_term_t _factor(const char** const pos, int* cons
 	return term;
 }
 
-static ccv_nnc_micro_loop_index_term_t _term(const char** const pos, int* const remain_size)
+static ccv_nnc_micro_loop_index_term_t _term(const char** const pos, int* const remain_size, ccv_array_t* const equal_assertions)
 {
 	while (_accept(pos, remain_size, " ", 1)) {}
-	ccv_nnc_micro_loop_index_term_t term = _factor(pos, remain_size);
+	ccv_nnc_micro_loop_index_term_t term = _factor(pos, remain_size, equal_assertions);
 	while (*remain_size > 0 && (pos[0][0] == '*' || pos[0][0] == '/'))
 	{
 		const int op = pos[0][0] == '*' ? CCV_NNC_MICRO_BINARY_OP_MUL : CCV_NNC_MICRO_BINARY_OP_DIV;
 		*remain_size -= 1;
 		*pos += 1;
 		const ccv_nnc_micro_loop_index_term_t left = term;
-		const ccv_nnc_micro_loop_index_term_t right = _factor(pos, remain_size);
+		const ccv_nnc_micro_loop_index_term_t right = _factor(pos, remain_size, equal_assertions);
 		term.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY;
 		term.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t));
 		term.binary->op = op;
@@ -205,7 +231,7 @@ static ccv_nnc_micro_loop_index_term_t _term(const char** const pos, int* const 
 	return term;
 }
 
-static ccv_nnc_micro_loop_index_term_t _expression(const char** const pos, int* const remain_size)
+static ccv_nnc_micro_loop_index_term_t _expression(const char** const pos, int* const remain_size, ccv_array_t* const equal_assertions)
 {
 	while (_accept(pos, remain_size, " ", 1)) {}
 	int prefix_op = -1;
@@ -215,14 +241,14 @@ static ccv_nnc_micro_loop_index_term_t _expression(const char** const pos, int* 
 		*remain_size -= 1;
 		*pos += 1;
 	}
-	ccv_nnc_micro_loop_index_term_t node = _term(pos, remain_size);
+	ccv_nnc_micro_loop_index_term_t node = _term(pos, remain_size, equal_assertions);
 	while (*remain_size > 0 && (pos[0][0] == '+' || pos[0][0] == '-'))
 	{
 		const int op = pos[0][0] == '+' ? CCV_NNC_MICRO_BINARY_OP_PLUS : CCV_NNC_MICRO_BINARY_OP_MINUS;
 		*remain_size -= 1;
 		*pos += 1;
 		const ccv_nnc_micro_loop_index_term_t left = node;
-		const ccv_nnc_micro_loop_index_term_t right = _term(pos, remain_size);
+		const ccv_nnc_micro_loop_index_term_t right = _term(pos, remain_size, equal_assertions);
 		node.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY;
 		node.binary = (ccv_nnc_micro_loop_index_binary_t*)ccmalloc(sizeof(ccv_nnc_micro_loop_index_binary_t));
 		node.binary->op = op;
@@ -282,6 +308,7 @@ struct ccv_nnc_micro_io_reindex_s {
 	ccv_nnc_micro_loop_index_term_t* shape;
 	ccv_nnc_micro_loop_index_term_t* reindex;
 	ccv_nnc_micro_io_t* ss;
+	ccv_array_t* equal_assertions;
 };
 
 static void _ccv_nnc_micro_reindex_numbering(const ccv_nnc_micro_io_t super, const int id, const int var_count)
@@ -299,6 +326,33 @@ static void _ccv_nnc_micro_reindex_numbering(const ccv_nnc_micro_io_t super, con
 		_sid_to_axis_size_term(&self->shape[i], sids, self->s_count);
 	for (i = 0; i < self->x->dimensions; i++)
 		_sid_to_axis_size_term(&self->reindex[i], sids, self->s_count);
+	for (i = 0; i < self->equal_assertions->rnum; i++)
+	{
+		ccv_nnc_micro_id_equal_assertion_t* const equal_assertion = (ccv_nnc_micro_id_equal_assertion_t*)ccv_array_get(self->equal_assertions, i);
+		if (equal_assertion->left.type == CCV_NNC_MICRO_AXIS_SIZE_ID && equal_assertion->left.id < 0)
+		{
+				const int id = -(equal_assertion->left.id + 1);
+				assert(id >= 0 && id < self->s_count);
+				equal_assertion->left.id = sids[id];
+		}
+		if (equal_assertion->right.type == CCV_NNC_MICRO_AXIS_SIZE_ID && equal_assertion->right.id < 0)
+		{
+				const int id = -(equal_assertion->right.id + 1);
+				assert(id >= 0 && id < self->s_count);
+				equal_assertion->right.id = sids[id];
+		}
+	}
+}
+
+static void _ccv_nnc_micro_reindex_equal_assertions(const ccv_nnc_micro_io_t super, ccv_array_t* const equal_assertions)
+{
+	struct ccv_nnc_micro_io_reindex_s* const self = (struct ccv_nnc_micro_io_reindex_s*)super;
+	int i;
+	for (i = 0; i < self->equal_assertions->rnum; i++)
+	{
+		ccv_nnc_micro_id_equal_assertion_t* const equal_assertion = (ccv_nnc_micro_id_equal_assertion_t*)ccv_array_get(self->equal_assertions, i);
+		ccv_array_push(equal_assertions, equal_assertion);
+	}
 }
 
 static void _ccv_nnc_bind_scalars_in_term(ccv_nnc_micro_loop_index_term_t* const term, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context)
@@ -442,10 +496,12 @@ static void _ccv_nnc_micro_reindex_deinit(const ccv_nnc_micro_io_t super)
 	int i;
 	for (i = 0; i < self->x->dimensions; i++)
 		ccv_nnc_micro_loop_index_free(&self->reindex[i]);
+	ccv_array_free(self->equal_assertions);
 }
 
 static const ccv_nnc_micro_io_vtab_t ccv_nnc_micro_io_reindex_isa = {
 	.numbering = _ccv_nnc_micro_reindex_numbering,
+	.equal_assertions = _ccv_nnc_micro_reindex_equal_assertions,
 	.bind_scalars = _ccv_nnc_micro_reindex_bind_scalars,
 	.emit = _ccv_nnc_micro_reindex_emit,
 	.emit_grad = _ccv_nnc_micro_reindex_emit_grad,
@@ -473,6 +529,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const i
 	self->super.input_size = s_count + 1;
 	if (s_count > 0)
 		memcpy(self->ss, ss, sizeof(ccv_nnc_micro_io_t) * s_count);
+	ccv_array_t* const equal_assertions = self->equal_assertions = ccv_array_new(sizeof(ccv_nnc_micro_id_equal_assertion_t), 0, 0);
 	// Parse shape into expressions and validate the grammar. Do this upfront so we don't fail on parsing
 	// later, which can be confusing.
 	// CFG:
@@ -490,7 +547,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const i
 	{
 		int remain_size = strlen(shape[i]);
 		const char* pos = shape[i];
-		ccv_nnc_micro_loop_index_term_t term = _expression(&pos, &remain_size);
+		ccv_nnc_micro_loop_index_term_t term = _expression(&pos, &remain_size, equal_assertions);
 		_no_index(term); // Make sure this is not index, no loop index.
 		self->shape[i] = term;
 	}
@@ -499,7 +556,7 @@ ccv_nnc_micro_io_t ccv_nnc_micro_reindex(const char* const* const shape, const i
 	{
 		int remain_size = strlen(reindex[i]);
 		const char* pos = reindex[i];
-		self->reindex[i] = _expression(&pos, &remain_size);
+		self->reindex[i] = _expression(&pos, &remain_size, equal_assertions);
 	}
 	return (ccv_nnc_micro_io_t)self;
 }

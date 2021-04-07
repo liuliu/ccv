@@ -26,6 +26,11 @@ typedef struct {
 	int16_t id;
 } ccv_nnc_micro_id_t;
 
+typedef struct {
+	ccv_nnc_micro_id_t left;
+	ccv_nnc_micro_id_t right;
+} ccv_nnc_micro_id_equal_assertion_t;
+
 enum {
 	CCV_NNC_MICRO_LOOP_INDEX_TYPE_NONE,
 	CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID,
@@ -208,6 +213,7 @@ typedef uint32_t(*ccv_nnc_micro_scalar_lookup_f)(const void* const context, cons
 struct ccv_nnc_micro_io_vtab_s {
 	void (*bind_scalars)(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context); /**< Bind scalar name to a scoped id. */
 	void (*numbering)(const ccv_nnc_micro_io_t self, const int id, const int var_count); /**< Assign id to the output of this micro op. */
+	void (*equal_assertions)(const ccv_nnc_micro_io_t self, ccv_array_t* const equal_assertions); /**< Collect assertions about id equal. */
 	ccv_nnc_micro_function_t (*emit)(const ccv_nnc_micro_io_t self); /**< Emit instructions for this micro op. */
 	ccv_nnc_micro_function_t (*emit_grad)(const ccv_nnc_micro_io_t self, const int var_count); /**< Emit backward instructions for this micro op. */
 	ccv_nnc_micro_tensor_t (*return_shape)(const ccv_nnc_micro_io_t self); /**< The shape of the returned tensor. */
@@ -230,6 +236,13 @@ static inline void ccv_nnc_micro_numbering(const ccv_nnc_micro_io_t self, const 
 		isa->numbering(self, id, var_count);
 	else
 		self->id = id;
+}
+
+static inline void ccv_nnc_micro_equal_assertions(const ccv_nnc_micro_io_t self, ccv_array_t* const equal_assertions)
+{
+	const ccv_nnc_micro_io_vtab_t* const isa = self->isa;
+	if (isa->equal_assertions)
+		isa->equal_assertions(self, equal_assertions);
 }
 
 static inline void ccv_nnc_micro_bind_scalars(const ccv_nnc_micro_io_t self, ccv_nnc_micro_scalar_lookup_f lookup, const void* const context)
@@ -463,7 +476,7 @@ static inline ccv_nnc_micro_loop_carried_t ccv_nnc_micro_loop_carried(const uint
 }
 
 // This method has to be mutable for efficiency reasons. Hence I kept it private.
-void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size);
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, const ccv_array_t* const equal_assertions);
 ccv_nnc_micro_loop_index_term_t ccv_nnc_micro_loop_index_deep_copy(const ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loop_index_free(ccv_nnc_micro_loop_index_term_t* const term);
 void ccv_nnc_micro_loop_variable_free(ccv_nnc_micro_loop_variable_t* const var);

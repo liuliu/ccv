@@ -3,8 +3,12 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
 #include "_ccv_nnc_micro.h"
+#include "3rdparty/khash/khash.h"
 
-static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_index, const ccv_nnc_micro_loop_index_term_t b_index, const int* const groups)
+#define MICRO_ID_TO_INT(x) (((x).id << 8) | ((x).d))
+KHASH_MAP_INIT_INT(ccv_nnc_axis_id_group, int)
+
+static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_index, const ccv_nnc_micro_loop_index_term_t b_index, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	if (a_index.type != b_index.type)
 		return 0;
@@ -16,6 +20,33 @@ static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_inde
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
 			if (a_index.id.type != b_index.id.type)
 				return 0;
+			// Check within the axis_id_groups to see if there is a match, if there is no match, we can proceed (to use the group table again to check).
+			if (axis_id_groups && a_index.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID)
+			{
+				ccv_nnc_micro_id_t a_id = a_index.id;
+				while (groups && groups[a_id.id] != a_id.id)
+					a_id.id = groups[a_id.id];
+				int a_root = MICRO_ID_TO_INT(a_id);
+				khiter_t k;
+				for (;;) {
+					k = kh_get(ccv_nnc_axis_id_group, axis_id_groups, a_root);
+					if (k == kh_end(axis_id_groups))
+						break;
+					a_root = kh_val(axis_id_groups, k);
+				}
+				ccv_nnc_micro_id_t b_id = b_index.id;
+				while (groups && groups[b_id.id] != b_id.id)
+					b_id.id = groups[b_id.id];
+				int b_root = MICRO_ID_TO_INT(b_id);
+				for (;;) {
+					k = kh_get(ccv_nnc_axis_id_group, axis_id_groups, b_root);
+					if (k == kh_end(axis_id_groups))
+						break;
+					b_root = kh_val(axis_id_groups, k);
+				}
+				if (a_root == b_root)
+					return 1;
+			}
 			if (groups && (a_index.id.type == CCV_NNC_MICRO_AXIS_SIZE_ID || a_index.id.type == CCV_NNC_MICRO_TENSOR_ID))
 			{
 				if (a_index.id.d != b_index.id.d)
@@ -38,7 +69,7 @@ static int _ccv_nnc_same_index_term(const ccv_nnc_micro_loop_index_term_t a_inde
 			} else
 				return (a_index.id.d == b_index.id.d && a_index.id.id == b_index.id.id);
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
-			return a_index.binary->op == b_index.binary->op && _ccv_nnc_same_index_term(a_index.binary->left, b_index.binary->left, groups) && _ccv_nnc_same_index_term(a_index.binary->right, b_index.binary->right, groups);
+			return a_index.binary->op == b_index.binary->op && _ccv_nnc_same_index_term(a_index.binary->left, b_index.binary->left, groups, axis_id_groups) && _ccv_nnc_same_index_term(a_index.binary->right, b_index.binary->right, groups, axis_id_groups);
 		}
 	}
 	return 0;
@@ -48,12 +79,12 @@ static int _ccv_nnc_same_shape(const ccv_nnc_micro_loop_index_term_t* const a_sh
 {
 	int i;
 	for (i = 0; i < dimensions; i++)
-		if (!_ccv_nnc_same_index_term(a_shape[i], b_shape[i], 0))
+		if (!_ccv_nnc_same_index_term(a_shape[i], b_shape[i], 0, 0))
 			return 0;
 	return 1;
 }
 
-static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block, const ccv_nnc_micro_loop_block_t* const right_block, const int* const groups, int* const left_loop_idx, int* const right_loop_idx)
+static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block, const ccv_nnc_micro_loop_block_t* const right_block, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups, int* const left_loop_idx, int* const right_loop_idx)
 {
 	assert(left_block->loop_count > 0);
 	assert(right_block->loop_count > 0);
@@ -85,8 +116,8 @@ static int _ccv_nnc_same_loop(const ccv_nnc_micro_loop_block_t* const left_block
 		{
 			if (right_left_link[j] != UNASSIGNED)
 				continue;
-			if (_ccv_nnc_same_index_term(left_block->loops[i].start_index, right_block->loops[j].start_index, groups) && 
-				_ccv_nnc_same_index_term(left_block->loops[i].end_index, right_block->loops[j].end_index, groups))
+			if (_ccv_nnc_same_index_term(left_block->loops[i].start_index, right_block->loops[j].start_index, groups, axis_id_groups) && 
+				_ccv_nnc_same_index_term(left_block->loops[i].end_index, right_block->loops[j].end_index, groups, axis_id_groups))
 				flag = j;
 		}
 		if (flag != UNASSIGNED)
@@ -259,7 +290,7 @@ static void _ccv_nnc_loop_rename_carrieds(ccv_nnc_micro_loop_block_t* const bloc
 	}
 }
 
-static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_expression_t* const expression, const int* const groups)
+static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_expression_t* const expression, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	switch (expression->type)
 	{
@@ -270,28 +301,28 @@ static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loo
 					return 2;
 				int i;
 				for (i = 0; i < var.index_count; i++)
-					if (!_ccv_nnc_same_index_term(var.index[i], expression->variable.index[i], groups))
+					if (!_ccv_nnc_same_index_term(var.index[i], expression->variable.index[i], groups, axis_id_groups))
 						return 2;
 				return 1;
 			} else
 				return 0;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY: {
-			const int pivot = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.pivot, groups);
-			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.left, groups);
-			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.right, groups);
+			const int pivot = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.pivot, groups, axis_id_groups);
+			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.left, groups, axis_id_groups);
+			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->ternary.right, groups, axis_id_groups);
 			if (pivot == 2 || left == 2 || right == 2)
 				return 2;
 			return (pivot || left || right);
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY: {
-			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->binary.left, groups);
-			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->binary.right, groups);
+			const int left = _ccv_nnc_only_var_in_expression(id, var, expression->binary.left, groups, axis_id_groups);
+			const int right = _ccv_nnc_only_var_in_expression(id, var, expression->binary.right, groups, axis_id_groups);
 			if (left == 2 || right == 2)
 				return 2;
 			return (left || right);
 		}
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
-			return _ccv_nnc_only_var_in_expression(id, var, expression->unary.x, groups);
+			return _ccv_nnc_only_var_in_expression(id, var, expression->unary.x, groups, axis_id_groups);
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_ID:
 			assert(expression->id.type == CCV_NNC_MICRO_LOOP_CARRIED_ID);
 			return 0;
@@ -299,14 +330,14 @@ static int _ccv_nnc_only_var_in_expression(const int id, const ccv_nnc_micro_loo
 	return 0;
 }
 
-static int _ccv_nnc_only_var_in_rvalue(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_statement_t statement, const int* const groups)
+static int _ccv_nnc_only_var_in_rvalue(const int id, const ccv_nnc_micro_loop_variable_t var, const ccv_nnc_micro_loop_statement_t statement, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	switch (statement.type)
 	{
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
-			return _ccv_nnc_only_var_in_expression(id, var, &statement.assignment.rvalue, groups);
+			return _ccv_nnc_only_var_in_expression(id, var, &statement.assignment.rvalue, groups, axis_id_groups);
 		case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
-			return _ccv_nnc_only_var_in_expression(id, var, &statement.compound_assignment.rvalue, groups);
+			return _ccv_nnc_only_var_in_expression(id, var, &statement.compound_assignment.rvalue, groups, axis_id_groups);
 	}
 	return 0;
 }
@@ -625,7 +656,7 @@ static void _ccv_nnc_tensor_remove_dead_store(const ccv_nnc_micro_tensor_depende
 		}
 }
 
-static void _ccv_nnc_loop_merging(ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, ccv_array_t* const blocks, const int max_loop_count, const int* const groups)
+static void _ccv_nnc_loop_merging(ccv_nnc_micro_loop_block_dependency_t* const block_dependencies, const ccv_nnc_micro_tensor_dependency_t* const tensor_dependencies, ccv_array_t* const blocks, const int max_loop_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	int i, j;
 	int left_loop_idx[max_loop_count];
@@ -666,7 +697,7 @@ static void _ccv_nnc_loop_merging(ccv_nnc_micro_loop_block_dependency_t* const b
 			// right_loop_idx[0] = 3
 			// That means right now, loop at index 2 on the left is the same as loop at index 0 on the right.
 			// And to match exactly, they both need to move to index 3.
-			if (_ccv_nnc_same_loop(left_block, right_block, groups, left_loop_idx, right_loop_idx))
+			if (_ccv_nnc_same_loop(left_block, right_block, groups, axis_id_groups, left_loop_idx, right_loop_idx))
 			{
 				// Make sure if we have extra loop, they are on the left.
 				if (right_block->loop_count > left_block->loop_count)
@@ -747,7 +778,7 @@ static void _ccv_nnc_loop_merging(ccv_nnc_micro_loop_block_dependency_t* const b
 	}
 }
 
-static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var_count, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, ccv_array_t* const blocks, const int* const groups)
+static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var_count, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, ccv_array_t* const blocks, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	int i, j;
 	// These are simple programs, so we are going to loop over all blocks to see whether a non-output-input
@@ -784,7 +815,7 @@ static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var
 						statements[l].assignment.lvalue.id.id == i)
 					{
 						lvalue = statements[l].assignment.lvalue;
-						if (_ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups))
+						if (_ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups, axis_id_groups))
 							flag = 2;
 						else {
 							// If the variable not showing up on the right-side, we can continue.
@@ -806,7 +837,7 @@ static void _ccv_nnc_var_subst(ccv_nnc_micro_tensor_t* const vars, const int var
 					continue;
 				}
 				for (l = 0; l < statement_count; l++)
-					flag = ccv_max(flag, _ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups));
+					flag = ccv_max(flag, _ccv_nnc_only_var_in_rvalue(i, lvalue, statements[l], groups, axis_id_groups));
 				// If flag == 2, meaning it found a var with a different index. This is a bad news.
 				var_per_block += flag;
 			}
@@ -894,7 +925,7 @@ static void _ccv_nnc_index_term_flatten(ccv_nnc_micro_loop_binary_term_t* const 
 }
 
 // 0 is we don't understand, -1 is false, 1 is true.
-static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_term_t left, const ccv_nnc_micro_loop_index_term_t right, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_term_t left, const ccv_nnc_micro_loop_index_term_t right, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	// Special case 1.
 	if (left.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL && right.type == CCV_NNC_MICRO_LOOP_INDEX_TYPE_VAL)
@@ -924,7 +955,7 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	for (i = 0; i < left_binary_size - 1; i++)
 		for (j = i + 1; j < left_binary_size; j++)
 			if (!left_binary_terms[i].ignore && !left_binary_terms[j].ignore &&
-				_ccv_nnc_same_index_term(left_binary_terms[i].term, left_binary_terms[j].term, groups) &&
+				_ccv_nnc_same_index_term(left_binary_terms[i].term, left_binary_terms[j].term, groups, axis_id_groups) &&
 				left_binary_terms[i].sign != left_binary_terms[j].sign)
 			{
 				left_binary_terms[i].ignore = 1;
@@ -934,7 +965,7 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 	for (i = 0; i < right_binary_size - 1; i++)
 		for (j = i + 1; j < right_binary_size; j++)
 			if (!right_binary_terms[i].ignore && !right_binary_terms[j].ignore &&
-				_ccv_nnc_same_index_term(right_binary_terms[i].term, right_binary_terms[j].term, groups) &&
+				_ccv_nnc_same_index_term(right_binary_terms[i].term, right_binary_terms[j].term, groups, axis_id_groups) &&
 				right_binary_terms[i].sign != right_binary_terms[j].sign)
 			{
 				right_binary_terms[i].ignore = 1;
@@ -945,7 +976,7 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 		for (j = 0; j < right_binary_size; j++)
 			// If they are the same, we can ignore now.
 			if (!left_binary_terms[i].ignore && !right_binary_terms[j].ignore &&
-				_ccv_nnc_same_index_term(left_binary_terms[i].term, right_binary_terms[j].term, groups) &&
+				_ccv_nnc_same_index_term(left_binary_terms[i].term, right_binary_terms[j].term, groups, axis_id_groups) &&
 				left_binary_terms[i].sign == right_binary_terms[j].sign)
 			{
 				left_binary_terms[i].ignore = 1;
@@ -979,7 +1010,7 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 }
 
 // If this index term refers to an axis size that actually has a expression, refer to that instead (like for reindex operation).
-static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_index_shape_merging(const ccv_nnc_micro_loop_index_term_t index, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_index_shape_merging(const ccv_nnc_micro_loop_index_term_t index, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	ccv_nnc_micro_loop_index_term_t result = index;
 	for (;;)
@@ -996,7 +1027,7 @@ static ccv_nnc_micro_loop_index_term_t _ccv_nnc_micro_index_shape_merging(const 
 	}
 }
 
-static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_index_term_t index, ccv_nnc_micro_loop_index_term_t* const low_ref, ccv_nnc_micro_loop_index_term_t* const high_ref, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_index_term_t index, ccv_nnc_micro_loop_index_term_t* const low_ref, ccv_nnc_micro_loop_index_term_t* const high_ref, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	switch (index.type)
 	{
@@ -1019,8 +1050,8 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 					if (loops[i].id.id == index.id.id)
 						loop_idx = i;
 				assert(loop_idx >= 0);
-				const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups);
-				const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups);
+				const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups, axis_id_groups);
+				const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups, axis_id_groups);
 				*low_ref = ccv_nnc_micro_loop_index_deep_copy(&start_index);
 				*high_ref = ccv_nnc_micro_loop_index_deep_copy(&end_index);
 			} else {
@@ -1035,17 +1066,17 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 		case CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY: {
 			// Get low, high from both left and right, and then construct new low / high.
 			ccv_nnc_micro_loop_index_term_t left_low, left_high;
-			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->left, &left_low, &left_high, loops, loop_count, vars, var_count, groups))
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->left, &left_low, &left_high, loops, loop_count, vars, var_count, groups, axis_id_groups))
 				return 0;
 			ccv_nnc_micro_loop_index_term_t right_low, right_high;
-			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->right, &right_low, &right_high, loops, loop_count, vars, var_count, groups))
+			if (!_ccv_nnc_micro_low_high_bound_from_index(index.binary->right, &right_low, &right_high, loops, loop_count, vars, var_count, groups, axis_id_groups))
 			{
 				ccv_nnc_micro_loop_index_free(&left_low);
 				ccv_nnc_micro_loop_index_free(&left_high);
 				return 0;
 			}
 			// If left is not a range, or right is not a range, it is simple, just copy over.
-			if (_ccv_nnc_same_index_term(left_low, left_high, 0) || _ccv_nnc_same_index_term(right_low, right_high, 0))
+			if (_ccv_nnc_same_index_term(left_low, left_high, groups, axis_id_groups) || _ccv_nnc_same_index_term(right_low, right_high, groups, axis_id_groups))
 			{
 				*low_ref = (ccv_nnc_micro_loop_index_term_t){
 					.type = CCV_NNC_MICRO_LOOP_INDEX_TYPE_BINARY,
@@ -1140,7 +1171,7 @@ static int _ccv_nnc_micro_low_high_bound_from_index(const ccv_nnc_micro_loop_ind
 	return 0;
 }
 
-static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_t* const variable, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_t* const variable, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	if (variable->id.type != CCV_NNC_MICRO_TENSOR_ID)
 		return;
@@ -1159,7 +1190,7 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 				.id = variable->id.id,
 				.d = i
 			}
-		}, vars, var_count, groups);
+		}, vars, var_count, groups, axis_id_groups);
 		switch (variable->index[i].type)
 		{
 			case CCV_NNC_MICRO_LOOP_INDEX_TYPE_ID:
@@ -1171,10 +1202,10 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 						if (loops[j].id.id == variable->index[i].id.id)
 							loop_idx = j;
 					assert(loop_idx >= 0);
-					const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups);
-					const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups);
-					if (_ccv_nnc_index_less_than_or_equal_to(index_zero, start_index, vars, var_count, groups) == 1 &&
-						_ccv_nnc_index_less_than_or_equal_to(end_index, shape, vars, var_count, groups) == 1)
+					const ccv_nnc_micro_loop_index_term_t start_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].start_index, vars, var_count, groups, axis_id_groups);
+					const ccv_nnc_micro_loop_index_term_t end_index = _ccv_nnc_micro_index_shape_merging(loops[loop_idx].end_index, vars, var_count, groups, axis_id_groups);
+					if (_ccv_nnc_index_less_than_or_equal_to(index_zero, start_index, vars, var_count, groups, axis_id_groups) == 1 &&
+						_ccv_nnc_index_less_than_or_equal_to(end_index, shape, vars, var_count, groups, axis_id_groups) == 1)
 						variable->no_check_bound[i] = 1;
 					else
 						variable->no_check_bound[i] = 0;
@@ -1185,13 +1216,13 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 				// Compute higher / lower bounds along the expression.
 				ccv_nnc_micro_loop_index_term_t low, high;
 				// Cannot find high low, mark no_check_bound[i] = 0
-				if (!_ccv_nnc_micro_low_high_bound_from_index(variable->index[i], &low, &high, loops, loop_count, vars, var_count, groups))
+				if (!_ccv_nnc_micro_low_high_bound_from_index(variable->index[i], &low, &high, loops, loop_count, vars, var_count, groups, axis_id_groups))
 				{
 					variable->no_check_bound[i] = 0;
 					break;
 				}
-				if (_ccv_nnc_index_less_than_or_equal_to(index_zero, low, vars, var_count, groups) == 1 &&
-					_ccv_nnc_index_less_than_or_equal_to(high, shape, vars, var_count, groups) == 1)
+				if (_ccv_nnc_index_less_than_or_equal_to(index_zero, low, vars, var_count, groups, axis_id_groups) == 1 &&
+					_ccv_nnc_index_less_than_or_equal_to(high, shape, vars, var_count, groups, axis_id_groups) == 1)
 					variable->no_check_bound[i] = 1;
 				else
 					variable->no_check_bound[i] = 0;
@@ -1210,29 +1241,29 @@ static void _ccv_nnc_micro_check_bound_for_variable(ccv_nnc_micro_loop_variable_
 	}
 }
 
-static void _ccv_nnc_micro_check_bound_for_expression(ccv_nnc_micro_loop_expression_t* const expression, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static void _ccv_nnc_micro_check_bound_for_expression(ccv_nnc_micro_loop_expression_t* const expression, const ccv_nnc_micro_loop_t* const loops, const int loop_count, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	switch (expression->type)
 	{
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR:
-			_ccv_nnc_micro_check_bound_for_variable(&expression->variable, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_variable(&expression->variable, loops, loop_count, vars, var_count, groups, axis_id_groups);
 			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_TERNAY:
-			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.pivot, loops, loop_count, vars, var_count, groups);
-			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.left, loops, loop_count, vars, var_count, groups);
-			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.right, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.pivot, loops, loop_count, vars, var_count, groups, axis_id_groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.left, loops, loop_count, vars, var_count, groups, axis_id_groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->ternary.right, loops, loop_count, vars, var_count, groups, axis_id_groups);
 			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_BINARY:
-			_ccv_nnc_micro_check_bound_for_expression(expression->binary.left, loops, loop_count, vars, var_count, groups);
-			_ccv_nnc_micro_check_bound_for_expression(expression->binary.right, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->binary.left, loops, loop_count, vars, var_count, groups, axis_id_groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->binary.right, loops, loop_count, vars, var_count, groups, axis_id_groups);
 			break;
 		case CCV_NNC_MICRO_LOOP_EXPR_TYPE_UNARY:
-			_ccv_nnc_micro_check_bound_for_expression(expression->unary.x, loops, loop_count, vars, var_count, groups);
+			_ccv_nnc_micro_check_bound_for_expression(expression->unary.x, loops, loop_count, vars, var_count, groups, axis_id_groups);
 			break;
 	}
 }
 
-static void _ccv_nnc_micro_check_bound_for_block(ccv_nnc_micro_loop_block_t* const block, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups)
+static void _ccv_nnc_micro_check_bound_for_block(ccv_nnc_micro_loop_block_t* const block, const ccv_nnc_micro_tensor_t* const vars, const int var_count, const int* const groups, khash_t(ccv_nnc_axis_id_group)* const axis_id_groups)
 {
 	int i, j;
 	for (i = 0; i < block->loop_count; i++)
@@ -1244,20 +1275,20 @@ static void _ccv_nnc_micro_check_bound_for_block(ccv_nnc_micro_loop_block_t* con
 			switch (statements[j].type)
 			{
 				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_ASSIGNMENT:
-					_ccv_nnc_micro_check_bound_for_variable(&statements[j].assignment.lvalue, block->loops, block->loop_count, vars, var_count, groups);
-					_ccv_nnc_micro_check_bound_for_expression(&statements[j].assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups);
+					_ccv_nnc_micro_check_bound_for_variable(&statements[j].assignment.lvalue, block->loops, block->loop_count, vars, var_count, groups, axis_id_groups);
+					_ccv_nnc_micro_check_bound_for_expression(&statements[j].assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups, axis_id_groups);
 					break;
 				case CCV_NNC_MICRO_LOOP_STATEMENT_TYPE_COMPOUND_ASSIGNMENT:
 					if (statements[j].compound_assignment.lvalue.type == CCV_NNC_MICRO_LOOP_EXPR_TYPE_VAR)
-						_ccv_nnc_micro_check_bound_for_variable(&statements[j].compound_assignment.lvalue.variable, block->loops, block->loop_count, vars, var_count, groups);
-					_ccv_nnc_micro_check_bound_for_expression(&statements[j].compound_assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups);
+						_ccv_nnc_micro_check_bound_for_variable(&statements[j].compound_assignment.lvalue.variable, block->loops, block->loop_count, vars, var_count, groups, axis_id_groups);
+					_ccv_nnc_micro_check_bound_for_expression(&statements[j].compound_assignment.rvalue, block->loops, block->loop_count, vars, var_count, groups, axis_id_groups);
 					break;
 			}
 		}
 	}
 }
 
-void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size)
+void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, const ccv_nnc_micro_io_t* const inputs, const int input_size, const ccv_nnc_micro_io_t* const outputs, const int output_size, const ccv_array_t* const equal_assertions)
 {
 	// Nothing to simplify for.
 	if (program->function_count < 1)
@@ -1307,6 +1338,40 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			if (vars[j].shape && vars[j].dimensions == vars[i].dimensions &&
 				_ccv_nnc_same_shape(vars[j].shape, vars[i].shape, vars[i].dimensions))
 				groups[j] = root;
+	}
+	// Group equal assertions on axis together.
+	khash_t(ccv_nnc_axis_id_group)* const axis_id_groups = kh_init(ccv_nnc_axis_id_group);
+	for (i = 0; i < equal_assertions->rnum; i++)
+	{
+		const ccv_nnc_micro_id_equal_assertion_t* const equal_assertion = (ccv_nnc_micro_id_equal_assertion_t*)ccv_array_get(equal_assertions, i);
+		ccv_nnc_micro_id_t left = equal_assertion->left;
+		while (groups[left.id] != left.id)
+			left.id = groups[left.id];
+		int left_root = MICRO_ID_TO_INT(left);
+		khiter_t k;
+		for (;;) {
+			k = kh_get(ccv_nnc_axis_id_group, axis_id_groups, left_root);
+			if (k == kh_end(axis_id_groups))
+				break;
+			left_root = kh_val(axis_id_groups, k);
+		}
+		ccv_nnc_micro_id_t right = equal_assertion->right;
+		while (groups[right.id] != right.id)
+			left.id = groups[right.id];
+		int right_root = MICRO_ID_TO_INT(equal_assertion->right);
+		for (;;) {
+			k = kh_get(ccv_nnc_axis_id_group, axis_id_groups, right_root);
+			if (k == kh_end(axis_id_groups))
+				break;
+			right_root = kh_val(axis_id_groups, k);
+		}
+		if (left_root != right_root) // k is the right root at the moment.
+		{
+			int ret;
+			k = kh_put(ccv_nnc_axis_id_group, axis_id_groups, right_root, &ret);
+			assert(ret != 0);
+			kh_val(axis_id_groups, k) = left_root;
+		}
 	}
 	// First, flat out all functions into blocks.
 	ccv_array_t* const blocks = ccv_array_new(sizeof(ccv_nnc_micro_loop_block_t), 0, 0);
@@ -1375,7 +1440,7 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 			_ccv_nnc_tensor_remove_dead_store(&tensor_dependencies[i], i, blocks);
 			vars[i].no_alloc = 1;
 		}
-	_ccv_nnc_loop_merging(block_dependencies, tensor_dependencies, blocks, max_loop_count, groups);
+	_ccv_nnc_loop_merging(block_dependencies, tensor_dependencies, blocks, max_loop_count, groups, axis_id_groups);
 	_ccv_nnc_micro_dependencies_free(block_dependencies, block_size, tensor_dependencies, var_count);
 	// Culling out empty blocks.
 	for (i = 0, j = 0; i < blocks->rnum; i++)
@@ -1390,14 +1455,15 @@ void ccv_nnc_micro_program_simplify(ccv_nnc_micro_program_t* const program, cons
 	// Now we moved everything, set the proper block size.
 	ccv_array_resize(blocks, j);
 	// Substitute variables.
-	_ccv_nnc_var_subst(vars, var_count, inputs, input_size, outputs, output_size, blocks, groups);
+	_ccv_nnc_var_subst(vars, var_count, inputs, input_size, outputs, output_size, blocks, groups, axis_id_groups);
 	// Mark whether we need to check bound for a particular variable or not.
 	for (i = 0; i < blocks->rnum; i++)
 	{
 		ccv_nnc_micro_loop_block_t* const block = (ccv_nnc_micro_loop_block_t*)ccv_array_get(blocks, i);
-		_ccv_nnc_micro_check_bound_for_block(block, vars, var_count, groups);
+		_ccv_nnc_micro_check_bound_for_block(block, vars, var_count, groups, axis_id_groups);
 	}
 	free(groups);
+	kh_destroy(ccv_nnc_axis_id_group, axis_id_groups);
 	// Reallocate function to be 1.
 	for (i = 0; i < function_count; i++)
 		if (functions[i].block_count > 1)

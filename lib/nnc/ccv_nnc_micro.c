@@ -78,11 +78,13 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	// Applying numbering for the inputs. Note that our variables are numbered in reverse topological order.
 	for (i = 0; i < input_size; i++)
 		ccv_nnc_micro_numbering(inputs[i], i, var_count);
-	// Applying numbering for the outputs.
+	ccv_array_t* const equal_assertions = ccv_array_new(sizeof(ccv_nnc_micro_id_equal_assertion_t), 0, 0);
+	// Applying numbering for the outputs and collect equal assertions.
 	for (i = reverse_top->rnum - 1; i >= 0; i--)
 	{
 		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
 		ccv_nnc_micro_numbering(output, i + input_size, var_count);
+		ccv_nnc_micro_equal_assertions(output, equal_assertions);
 	}
 	for (i = 0; i < ingrad_size; i++)
 		ccv_nnc_micro_numbering(ingrads[i], -1, var_count);
@@ -131,7 +133,7 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	memcpy(combine->forward.vars, vars, sizeof(ccv_nnc_micro_tensor_t) * var_count);
 	combine->forward.function_count = function_count;
 	combine->forward.functions = functions;
-	ccv_nnc_micro_program_simplify(&combine->forward, inputs, input_size, outputs, output_size);
+	ccv_nnc_micro_program_simplify(&combine->forward, inputs, input_size, outputs, output_size, equal_assertions);
 	function_count = reverse_top->rnum * 2;
 	functions = (ccv_nnc_micro_function_t*)ccmalloc(sizeof(ccv_nnc_micro_function_t) * function_count);
 	for (i = 0; i < reverse_top->rnum; i++)
@@ -156,7 +158,8 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	combine->backward.vars = vars;
 	combine->backward.function_count = function_count;
 	combine->backward.functions = functions;
-	ccv_nnc_micro_program_simplify(&combine->backward, ingrads, ingrad_size, outgrads, outgrad_size);
+	ccv_nnc_micro_program_simplify(&combine->backward, ingrads, ingrad_size, outgrads, outgrad_size, equal_assertions);
+	ccv_array_free(equal_assertions);
 	for (i = 0; i < reverse_top->rnum; i++)
 	{
 		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
