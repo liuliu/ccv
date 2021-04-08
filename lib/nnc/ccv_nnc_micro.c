@@ -159,7 +159,7 @@ CCV_WARN_UNUSED(ccv_nnc_micro_combine_t*) ccv_nnc_micro_combine_new(const ccv_nn
 	combine->backward.function_count = function_count;
 	combine->backward.functions = functions;
 	ccv_nnc_micro_program_simplify(&combine->backward, ingrads, ingrad_size, outgrads, outgrad_size, equal_assertions);
-	ccv_array_free(equal_assertions);
+	combine->equal_assertions = equal_assertions;
 	for (i = 0; i < reverse_top->rnum; i++)
 	{
 		const ccv_nnc_micro_io_t output = *(ccv_nnc_micro_io_t*)ccv_array_get(reverse_top, i);
@@ -336,6 +336,7 @@ void ccv_nnc_micro_combine_free(ccv_nnc_micro_combine_t* const combine)
 	ccfree(combine->backward.functions);
 	if (combine->backward.inputs)
 		ccfree(combine->backward.inputs);
+	ccv_array_free(combine->equal_assertions);
 	ccfree(combine);
 }
 

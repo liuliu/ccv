@@ -203,6 +203,7 @@ struct ccv_nnc_micro_combine_s {
 	int parameter_size; // Size of parameters.
 	ccv_nnc_micro_program_t forward;
 	ccv_nnc_micro_program_t backward;
+	ccv_array_t* equal_assertions;
 };
 
 typedef uint32_t(*ccv_nnc_micro_scalar_lookup_f)(const void* const context, const char* const name);

@@ -297,6 +297,12 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 		} else
 			memcpy(shapes + i * CCV_NNC_MAX_DIM_ALLOC, shapes + vars[i].input * CCV_NNC_MAX_DIM_ALLOC, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	}
+	const ccv_array_t* const equal_assertions = combine->equal_assertions;
+	for (i = 0; i < equal_assertions->rnum; i++)
+	{
+		ccv_nnc_micro_id_equal_assertion_t* const equal_assertion = ccv_array_get(equal_assertions, i);
+		assert(shapes[equal_assertion->left.id * CCV_NNC_MAX_DIM_ALLOC + equal_assertion->left.d] == shapes[equal_assertion->right.id * CCV_NNC_MAX_DIM_ALLOC + equal_assertion->right.d]);
+	}
 	size_t total_size = 0;
 	for (i = 0; i < var_count; i++)
 	{
