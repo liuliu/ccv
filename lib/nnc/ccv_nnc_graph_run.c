@@ -634,6 +634,10 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 			stream_0_signal = ccv_nnc_stream_context_emit_signal_new(CO_P(stream_context));
 			if (stream_0_signal)
 				ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], stream_0_signal);
+			else if (CO_P(schedule)->stream_1_size) {
+				ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->begin);
+				stream_0_signal = CO_P(schedule)->begin;
+			}
 		} else if (CO_P(schedule)->stream_1_size) {
 			ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->begin);
 			stream_0_signal = CO_P(schedule)->begin;
@@ -641,8 +645,7 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		int i, flag = 0;
 		for (i = 0; i < CO_P(schedule)->stream_1_size; i++)
 		{
-			if (stream_0_signal)
-				ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_P(schedule)->stream_1s[i]], stream_0_signal);
+			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_P(schedule)->stream_1s[i]], stream_0_signal);
 			if (!flag)
 			{
 				PRINT(CCV_CLI_INFO, ", Wait: %d", CO_P(schedule)->stream_1s[i]);
@@ -715,9 +718,10 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 				_ccv_nnc_graph_rewrap(CO_P(graph));
 			}
 		}
+		assert(CO_V(stream_0) == 0);
 		int i;
 		for (i = 0; i < CO_P(schedule)->wait_size; i++)
-			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(graph)->signals[CO_P(schedule)->waits[i]]);
+			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[0], CO_P(graph)->signals[CO_P(schedule)->waits[i]]);
 	} else {
 		CO_P(graph)->while_count = 0;
 		co_apply(_ccv_nnc_graph_exec_run_loop, (CO_P(graph), CO_V(exec_info), CO_V(schd_info), CO_P(schedule)->psort, 0, CO_P(schedule)->psort ? CO_P(schedule)->psort_size : CO_P(schedule)->exec_info_size, CO_P(tensor_tape), CO_P(flags)));

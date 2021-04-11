@@ -699,6 +699,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = src_vocab_vec[j], tvin[j * 2 + 1] = tgt_vocab_vec[j], tvout[j * 2] = src_vocab_vec_grad[j], tvout[j * 2 + 1] = tgt_vocab_vec_grad[j];
+		ccv_nnc_stream_context_wait(stream);
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
 		for (j = 0; j < device_count; j++)
 		{
@@ -784,6 +785,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 				tgt_vocab_vec_grad[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 			}
 		}
+		ccv_nnc_stream_context_wait(stream);
 	}
 	ccv_nnc_stream_context_free(stream);
 	ccv_nnc_tensor_free(seq_indices_);

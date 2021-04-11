@@ -49,7 +49,6 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			.is_test = stateful_exec->is_test,
 		}, inputs, input_size, outputs, output_size, 0, stream_context);
 	} else {
-		const int parallel_count = ccv_max(model->parallel_count, 1);
 		const int ingrad_size = model->output_size * parallel_count;
 		assert(ingrad_size <= input_size);
 		if (stateful_exec->disable_outgrad == CCV_CNNP_DISABLE_OUTGRAD_NONE)
