@@ -544,8 +544,10 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			if (stream_context)
 			{
 				if (stream_0.stream)
-					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
-				else
+				{
+					if (signal)
+						ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+				} else
 					ccv_nnc_stream_context_wait(stream_context);
 			}
 			if (stream_0.stream)

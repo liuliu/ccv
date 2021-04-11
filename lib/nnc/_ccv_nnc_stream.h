@@ -44,9 +44,11 @@ struct ccv_nnc_stream_context_s {
 	// For hooks
 	ccv_array_t* destructor_hooks;
 	int reuse_destructor_hook;
+	ccv_nnc_stream_signal_t* checkpoint;
 };
 
 typedef struct {
+	int in_use;
 	ccv_nnc_signal_container_t* container;
 	ccv_nnc_stream_signal_t* signal;
 } ccv_nnc_signal_handler_t;
@@ -58,6 +60,23 @@ CCV_WARN_UNUSED(co_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_st
 int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream);
 
 ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_context_t* const stream);
+/**
+ * This is used in ccv_nnc_dynamic_graph_evaluate.c to workaround a particular CUDA ordering issue where when you have:
+ * signal_a -> stream_0, stream_1, stream_2, stream_3
+ * ... do some computations on stream_0, 1, 2, 3.
+ * stream_1 -> signal_b, stream_2 -> signal_c, stream_3 -> signal_d
+ * signal_b, signal_c, signal_d -> stream_0
+ * stream_0 -> signal_e
+ * signal_e -> stream_4
+ * stream_4 -> signal_f // signal_f is redundant.
+ * signal_f -> stream_5, stream_6, stream_7
+ * where stream_0, stream_4 on device 0, stream_1, stream_5 on device 1, stream_2, stream_6 on device 3, stream_3, stream_7 on device 4.
+ *
+ * In above case, the signal_f can cause CUDA internal issues hence we need to retain signal_e somehow, passing
+ * them directly to stream_5, stream_6, stream_7 to wait for. This checkpoint is used for that signal slot.
+ */
+ccv_nnc_stream_signal_t* ccv_nnc_stream_context_checkpoint(ccv_nnc_stream_context_t* const stream);
+void ccv_nnc_stream_context_set_checkpoint(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const checkpoint);
 
 typedef struct {
 	ccv_nnc_callback_f fn;

@@ -381,6 +381,7 @@ static void _ccv_nnc_stream_signal_callback(void* const callback_context)
 	ccv_nnc_signal_container_t* const container = handler->container;
 	pthread_mutex_lock(&container->mutex);
 	ccv_array_push(container->empty, &handler);
+	handler->in_use = 0;
 	pthread_mutex_unlock(&container->mutex);
 }
 
@@ -388,8 +389,18 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_c
 {
 	ccv_nnc_signal_handler_t* const handler = _ccv_nnc_signal_container_get_handler(stream);
 	ccv_nnc_stream_context_emit_signal(stream, handler->signal);
+	handler->in_use = 1;
 	// Because the callback only handles CPU things, we can avoid another async jump because no CUDA related stuff touched.
 	_ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_stream_signal_callback, _ccv_nnc_sync_dispatch, handler);
-	return handler->signal;
+	return handler->in_use ? handler->signal : 0;
 }
 
+ccv_nnc_stream_signal_t* ccv_nnc_stream_context_checkpoint(ccv_nnc_stream_context_t* const stream)
+{
+	return stream->checkpoint;
+}
+
+void ccv_nnc_stream_context_set_checkpoint(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const checkpoint)
+{
+	stream->checkpoint = checkpoint;
+}
