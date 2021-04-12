@@ -348,5 +348,6 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_c
 	 */
 	if (!stream->event)
 		stream->event = ccv_nnc_stream_signal_new(ccv_nnc_stream_context_type(stream));
+	ccv_nnc_stream_context_emit_signal(stream, stream->event);
 	return stream->event;
 }

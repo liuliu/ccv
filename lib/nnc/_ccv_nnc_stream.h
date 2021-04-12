@@ -13,7 +13,6 @@
 #include "ccv_nnc.h"
 #include "co.h"
 #include "3rdparty/khash/khash.h"
-#include <pthread.h>
 
 struct ccv_nnc_stream_signal_s {
 	int type;
