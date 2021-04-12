@@ -1983,21 +1983,21 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_free(from_parameter_indices);
 }
 
-static ccv_nnc_synced_stream_t _ccv_cnnp_compiled_data_get_synced_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type)
+static ccv_nnc_stream_context_t* _ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type)
 {
-	if (!compiled_data->synced_streams)
-		compiled_data->synced_streams = kh_init(synced_stream);
+	if (!compiled_data->stream_map)
+		compiled_data->stream_map = kh_init(stream_map);
 	int ret = 0;
-	khiter_t k = kh_put(synced_stream, compiled_data->synced_streams, type, &ret);
+	khiter_t k = kh_put(stream_map, compiled_data->stream_map, type, &ret);
 	assert(ret >= 0);
-	ccv_nnc_synced_stream_t* const synced_stream = &kh_val(compiled_data->synced_streams, k);
+	ccv_nnc_stream_context_t* stream = kh_val(compiled_data->stream_map, k);
 	// If ret == 0, the key already exist, we can return directly, otherwise, create and return.
 	if (ret != 0)
 	{
-		synced_stream->stream = ccv_nnc_stream_context_new(type);
-		synced_stream->synced = ccv_nnc_stream_signal_new(type);
+		stream = ccv_nnc_stream_context_new(type);
+		kh_val(compiled_data->stream_map, k) = stream;
 	}
-	return *synced_stream;
+	return stream;
 }
 
 void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
@@ -2050,17 +2050,17 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(src->info.type);
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
-				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
+				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
 				// Wait signal to finish.
 				if (stream_context)
-					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
-				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_0.stream);
+					ccv_nnc_stream_context_wait_signal(stream_0, signal);
+				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_0);
 				if (stream_context)
 				{
-					ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
-					ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+					ccv_nnc_stream_context_wait_signal(stream_context, signal);
 				}
-				streams[j] = stream_0.stream;
+				streams[j] = stream_0;
 			}
 			// If this should be blocking, blocking it.
 			if (!stream_context)
@@ -2120,17 +2120,17 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(dest->info.type);
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
-				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
+				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
 				// Wait signal to finish.
 				if (stream_context)
-					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+					ccv_nnc_stream_context_wait_signal(stream_0, signal);
 				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), 0);
 				if (stream_context)
 				{
-					ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
-					ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+					ccv_nnc_stream_context_wait_signal(stream_context, signal);
 				}
-				streams[j] = stream_0.stream;
+				streams[j] = stream_0;
 			}
 			// If this should be blocking, blocking it.
 			if (!stream_context)
@@ -2316,18 +2316,17 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	if (compiled_data->evaluate.tos)
 		ccfree(compiled_data->evaluate.tos);
 	compiled_data->evaluate.tos = 0;
-	if (compiled_data->synced_streams)
+	if (compiled_data->stream_map)
 	{
 		khiter_t k;
-		for (k = kh_begin(compiled_data->synced_streams); k != kh_end(compiled_data->synced_streams); ++k)
+		for (k = kh_begin(compiled_data->stream_map); k != kh_end(compiled_data->stream_map); ++k)
 		{
-			if (!kh_exist(compiled_data->synced_streams, k))
+			if (!kh_exist(compiled_data->stream_map, k))
 				continue;
-			ccv_nnc_synced_stream_t* const synced_stream = &kh_val(compiled_data->synced_streams, k);
-			ccv_nnc_stream_context_free(synced_stream->stream);
-			ccv_nnc_stream_signal_free(synced_stream->synced);
+			ccv_nnc_stream_context_t* const stream = kh_val(compiled_data->stream_map, k);
+			ccv_nnc_stream_context_free(stream);
 		}
-		kh_destroy(synced_stream, compiled_data->synced_streams);
+		kh_destroy(stream_map, compiled_data->stream_map);
 	}
 	_ccv_cnnp_compiled_data_graph_free(compiled_data);
 	_ccv_cnnp_compiled_data_gradient_free(compiled_data);

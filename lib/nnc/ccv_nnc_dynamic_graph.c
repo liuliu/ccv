@@ -21,7 +21,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	// These may not be used as frequent, init as needed.
 	graph->stateful_execs = 0;
 	graph->reuse_stateful_exec = -1;
-	graph->synced_streams = 0;
+	graph->stream_map = 0;
 	graph->ws = 0;
 	return graph;
 }
@@ -121,18 +121,17 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		}
 		ccv_array_free(graph->stateful_execs);
 	}
-	if (graph->synced_streams)
+	if (graph->stream_map)
 	{
 		khiter_t k;
-		for (k = kh_begin(graph->synced_streams); k != kh_end(graph->synced_streams); ++k)
+		for (k = kh_begin(graph->stream_map); k != kh_end(graph->stream_map); ++k)
 		{
-			if (!kh_exist(graph->synced_streams, k))
+			if (!kh_exist(graph->stream_map, k))
 				continue;
-			ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
-			ccv_nnc_stream_context_free(synced_stream->stream);
-			ccv_nnc_stream_signal_free(synced_stream->synced);
+			ccv_nnc_stream_context_t* const stream = kh_val(graph->stream_map, k);
+			ccv_nnc_stream_context_free(stream);
 		}
-		kh_destroy(synced_stream, graph->synced_streams);
+		kh_destroy(stream_map, graph->stream_map);
 	}
 	ccv_nnc_dynamic_graph_xpu_alloc_destroy(graph);
 	ccfree(graph);
@@ -395,21 +394,21 @@ void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_gr
 	dynamic_graph->no_grad = no_grad;
 }
 
-static ccv_nnc_synced_stream_t _ccv_nnc_dynamic_graph_get_synced_stream(ccv_nnc_dynamic_graph_t* const graph, const int type)
+static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_graph_get_stream(ccv_nnc_dynamic_graph_t* const graph, const int type)
 {
-	if (!graph->synced_streams)
-		graph->synced_streams = kh_init(synced_stream);
+	if (!graph->stream_map)
+		graph->stream_map = kh_init(stream_map);
 	int ret = 0;
-	khiter_t k = kh_put(synced_stream, graph->synced_streams, type, &ret);
+	khiter_t k = kh_put(stream_map, graph->stream_map, type, &ret);
 	assert(ret >= 0);
-	ccv_nnc_synced_stream_t* const synced_stream = &kh_val(graph->synced_streams, k);
+	ccv_nnc_stream_context_t* stream = kh_val(graph->stream_map, k);
 	// If ret == 0, the key already exist, we can return directly, otherwise, create and return.
 	if (ret != 0)
 	{
-		synced_stream->stream = ccv_nnc_stream_context_new(type);
-		synced_stream->synced = ccv_nnc_stream_signal_new(type);
+		stream = ccv_nnc_stream_context_new(type);
+		kh_val(graph->stream_map, k) = stream;
 	}
-	return *synced_stream;
+	return stream;
 }
 
 typedef struct {
@@ -422,7 +421,7 @@ static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_graph_neighbor_context_discove
 	ccv_nnc_dynamic_graph_neighbor_context_discovery_t* const discovery = (ccv_nnc_dynamic_graph_neighbor_context_discovery_t*)context;
 	int type = discovery->stream_type;
 	CCV_STREAM_SET_DEVICE_ID(type, device_id);
-	return _ccv_nnc_dynamic_graph_get_synced_stream(discovery->graph, type).stream;
+	return _ccv_nnc_dynamic_graph_get_stream(discovery->graph, type);
 }
 
 void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_graph_exec_symbol_t* const graph_execs)
@@ -531,30 +530,30 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
 			const int tensor_type = flag ? CCV_TENSOR_GPU_MEMORY : CCV_TENSOR_CPU_MEMORY;
 			const int device_id_size = ccv_nnc_device_ids_for_io(input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, tensor_type, device_ids, max_device_id_size);
-			ccv_nnc_synced_stream_t stream_0 = {};
+			ccv_nnc_stream_context_t* stream_0 = 0;
 			for (j = 0; j < device_id_size; j++)
 			{
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_ids[j]);
-				ccv_nnc_synced_stream_t synced_stream = _ccv_nnc_dynamic_graph_get_synced_stream(graph, type);
-				if (!stream_0.stream)
-					stream_0 = synced_stream;
+				ccv_nnc_stream_context_t* const stream = _ccv_nnc_dynamic_graph_get_stream(graph, type);
+				if (!stream_0)
+					stream_0 = stream;
 			}
 			// Wait signal to finish.
 			if (stream_context)
 			{
-				if (stream_0.stream)
-					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
+				if (stream_0)
+					ccv_nnc_stream_context_wait_signal(stream_0, signal);
 				else
 					ccv_nnc_stream_context_wait(stream_context);
 			}
-			if (stream_0.stream)
+			if (stream_0)
 			{
 				ccv_nnc_dynamic_graph_neighbor_context_discovery_t discovery = {
 					.graph = graph,
 					.stream_type = stream_type
 				};
-				ccv_nnc_stream_context_set_neighbor_discovery(stream_0.stream, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
+				ccv_nnc_stream_context_set_neighbor_discovery(stream_0, _ccv_nnc_dynamic_graph_neighbor_context_discovery, &discovery);
 			}
 			PRINT(CCV_CLI_INFO, "%s: [%d] -> [%d]\n", ccv_nnc_cmd_name(cmd.cmd), per_input_size, per_output_size);
 			int k;
@@ -565,7 +564,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 					ccv_nnc_print_tensor_info(input_tensors[k + i * per_input_size]);
 				PRINT(CCV_CLI_INFO, "\n");
 			}
-			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0.stream);
+			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
 			for (k = 0; k < per_output_size; k++)
 			{
 				PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", k + 1, output_tensors[k], (output_tensors[k] ? output_tensors[k]->data.u8 : 0), (output_tensors[k] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[k]->info.type) : -1));
@@ -573,12 +572,12 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 					ccv_nnc_print_tensor_info(output_tensors[k]);
 				PRINT(CCV_CLI_INFO, "\n");
 			}
-			if (stream_context && stream_0.stream)
+			if (stream_context && stream_0)
 			{
-				ccv_nnc_stream_context_emit_signal(stream_0.stream, stream_0.synced);
-				ccv_nnc_stream_context_wait_signal(stream_context, stream_0.synced);
+				ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+				ccv_nnc_stream_context_wait_signal(stream_context, signal);
 			}
-			streams[i] = stream_0.stream;
+			streams[i] = stream_0;
 		}
 		if (!stream_context)
 			for (i = 0; i < parallel_count; i++)

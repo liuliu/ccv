@@ -56,11 +56,6 @@ typedef struct {
 
 typedef void(*ccv_nnc_async_callback_f)(ccv_nnc_async_callback_t* const async);
 
-typedef struct {
-	ccv_nnc_stream_context_t* stream;
-	ccv_nnc_stream_signal_t* synced;
-} ccv_nnc_synced_stream_t;
-
-KHASH_MAP_INIT_INT(synced_stream, ccv_nnc_synced_stream_t);
+KHASH_MAP_INIT_INT(stream_map, ccv_nnc_stream_context_t*);
 
 #endif

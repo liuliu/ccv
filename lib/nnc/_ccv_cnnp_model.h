@@ -78,7 +78,7 @@ typedef struct {
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	khash_t(synced_stream)* synced_streams; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
+	khash_t(stream_map)* stream_map; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	ccv_array_t* parameters;
 	ccv_array_t* internals; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* gradients;
