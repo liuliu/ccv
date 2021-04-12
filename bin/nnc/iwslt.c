@@ -689,6 +689,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			tvin[j * 2] = tgt_word_vec[j], tvin[j * 2 + 1] = pos_vec[j];
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_ADD_FORWARD(sqrt_d_model, 1), ccv_nnc_no_hint, 0, tvin, device_count * 2, tgt_combine_vec, device_count, device_count, stream);
 		ccv_nnc_dynamic_graph_evaluate(dynamic_graph, wmt, 0, vec, device_count * 4, out, device_count, 0, stream);
+		ccv_nnc_stream_context_wait(stream);
 		// Loss.
 		ccv_nnc_tensor_variable_t softmax[device_count];
 		for (j = 0; j < device_count; j++)
@@ -699,7 +700,6 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		ccv_nnc_dynamic_graph_exec(dynamic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, tvin, device_count * 2, tvout, device_count * 2, device_count, stream);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = src_vocab_vec[j], tvin[j * 2 + 1] = tgt_vocab_vec[j], tvout[j * 2] = src_vocab_vec_grad[j], tvout[j * 2 + 1] = tgt_vocab_vec_grad[j];
-		ccv_nnc_stream_context_wait(stream);
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, softmax, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, stream);
 		for (j = 0; j < device_count; j++)
 		{
@@ -721,6 +721,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		elapsed_token += batch_size * word_size * device_count;
 		if ((i + 1) % 50 == 0)
 		{
+			ccv_nnc_stream_context_wait(stream);
 			ccv_nnc_tensor_t out_t = ccv_nnc_tensor(out_->data.f32, CPU_TENSOR_NCHW(32F, batch_size * word_size, tgt_vocab_size), 0);
 			ccv_nnc_tensor_t tgt_t = ccv_nnc_tensor(tgt_->data.i32, CPU_TENSOR_NCHW(32S, batch_size, word_size), 0);
 			int correct = 0, overall = 0;

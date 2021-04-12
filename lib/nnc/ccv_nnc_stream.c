@@ -240,20 +240,8 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 		co_scheduler_t* const scheduler = stream_context->scheduler;
 		co_scheduler_free(scheduler);
 	}
-	if (stream_context->container)
-	{
-		ccv_nnc_signal_container_t* const container = stream_context->container;
-		pthread_mutex_destroy(&container->mutex);
-		int i;
-		for (i = 0; i < container->empty->rnum; i++)
-		{
-			ccv_nnc_signal_handler_t* const handler = *(ccv_nnc_signal_handler_t**)ccv_array_get(container->empty, i);
-			ccv_nnc_stream_signal_free(handler->signal);
-			ccfree(handler);
-		}
-		ccv_array_free(container->empty);
-		ccfree(container);
-	}
+	if (stream_context->event)
+		ccv_nnc_stream_signal_free(stream_context->event);
 	ccfree(stream_context);
 }
 
@@ -351,56 +339,14 @@ int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const s
 
 // MARK - Signal Container
 
-static ccv_nnc_signal_handler_t* const _ccv_nnc_signal_container_get_handler(ccv_nnc_stream_context_t* const stream)
-{
-	if (!stream->container)
-	{
-		ccv_nnc_signal_container_t* const container = stream->container = (ccv_nnc_signal_container_t*)ccmalloc(sizeof(ccv_nnc_signal_container_t));
-		container->empty = ccv_array_new(sizeof(ccv_nnc_signal_handler_t*), 0, 0);
-		pthread_mutex_init(&container->mutex, 0);
-	}
-	ccv_nnc_signal_container_t* const container = stream->container;
-	ccv_nnc_signal_handler_t* handler;
-	pthread_mutex_lock(&container->mutex);
-	if (container->empty->rnum > 0)
-	{
-		handler = *(ccv_nnc_signal_handler_t**)ccv_array_get(container->empty, container->empty->rnum - 1);
-		--container->empty->rnum;
-	} else {
-		handler = (ccv_nnc_signal_handler_t*)ccmalloc(sizeof(ccv_nnc_signal_handler_t));
-		handler->container = container;
-		handler->signal = ccv_nnc_stream_signal_new(ccv_nnc_stream_context_type(stream));
-	}
-	pthread_mutex_unlock(&container->mutex);
-	return handler;
-}
-
-static void _ccv_nnc_stream_signal_callback(void* const callback_context)
-{
-	ccv_nnc_signal_handler_t* const handler = (ccv_nnc_signal_handler_t*)callback_context;
-	ccv_nnc_signal_container_t* const container = handler->container;
-	pthread_mutex_lock(&container->mutex);
-	ccv_array_push(container->empty, &handler);
-	handler->in_use = 0;
-	pthread_mutex_unlock(&container->mutex);
-}
-
 ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_context_t* const stream)
 {
-	ccv_nnc_signal_handler_t* const handler = _ccv_nnc_signal_container_get_handler(stream);
-	ccv_nnc_stream_context_emit_signal(stream, handler->signal);
-	handler->in_use = 1;
-	// Because the callback only handles CPU things, we can avoid another async jump because no CUDA related stuff touched.
-	_ccv_nnc_stream_context_add_callback(stream, _ccv_nnc_stream_signal_callback, _ccv_nnc_sync_dispatch, handler);
-	return handler->in_use ? handler->signal : 0;
-}
-
-ccv_nnc_stream_signal_t* ccv_nnc_stream_context_checkpoint(ccv_nnc_stream_context_t* const stream)
-{
-	return stream->checkpoint;
-}
-
-void ccv_nnc_stream_context_set_checkpoint(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const checkpoint)
-{
-	stream->checkpoint = checkpoint;
+	/**
+	 * We don't need complex containers for this. Based on CUDA documentation, Record will record the
+	 * most recent ones, and capture will use the most recent ones. Thus, even if we reuse the same event
+	 * again and again and again, as long as we emit and immediate wait, we won't have any problems.
+	 */
+	if (!stream->event)
+		stream->event = ccv_nnc_stream_signal_new(ccv_nnc_stream_context_type(stream));
+	return stream->event;
 }

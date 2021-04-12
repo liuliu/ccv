@@ -23,8 +23,7 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			if (neighbor_context && neighbor_context != stream_context)
 			{
 				ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(neighbor_context);
-				if (signal)
-					ccv_nnc_stream_context_wait_signal(stream_context, signal);
+				ccv_nnc_stream_context_wait_signal(stream_context, signal);
 				wait_for_any_neighbor = 1;
 			}
 		}
@@ -73,7 +72,6 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		}
 		stateful_exec->did_backward_but_not_apply_gradients = 1;
 	}
-	ccv_nnc_stream_signal_t* checkpoint;
 	if (stream_context)
 	{
 		// Should have new scheduler created.
@@ -86,20 +84,17 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		// The main coroutine should be cleared.
 		assert(!stream_context->main);
 		stream_context->main = old_main;
-		checkpoint = ccv_nnc_stream_context_checkpoint(stream_context);
-		ccv_nnc_stream_context_set_checkpoint(stream_context, 0);
 	}
 	if (wait_for_any_neighbor) // Find all neighbor context and wait on them all.
 	{
 		assert(stream_context);
-		ccv_nnc_stream_signal_t* const signal = checkpoint ? checkpoint : ccv_nnc_stream_context_emit_signal_new(stream_context);
-		if (signal)
-			for (i = 0; i < parallel_count; i++)
-			{
-				ccv_nnc_stream_context_t* const neighbor_context = ccv_nnc_stream_context_find_neighbor(stream_context, i);
-				if (neighbor_context && neighbor_context != stream_context)
-					ccv_nnc_stream_context_wait_signal(neighbor_context, signal);
-			}
+		ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+		for (i = 0; i < parallel_count; i++)
+		{
+			ccv_nnc_stream_context_t* const neighbor_context = ccv_nnc_stream_context_find_neighbor(stream_context, i);
+			if (neighbor_context && neighbor_context != stream_context)
+				ccv_nnc_stream_context_wait_signal(neighbor_context, signal);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

@@ -632,12 +632,7 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		{
 			// Make sure when we start work on streams[0], the current stream context is done.
 			stream_0_signal = ccv_nnc_stream_context_emit_signal_new(CO_P(stream_context));
-			if (stream_0_signal)
-				ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], stream_0_signal);
-			else if (CO_P(schedule)->stream_1_size) {
-				ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->begin);
-				stream_0_signal = CO_P(schedule)->begin;
-			}
+			ccv_nnc_stream_context_wait_signal(CO_P(graph)->streams[CO_V(stream_0)], stream_0_signal);
 		} else if (CO_P(schedule)->stream_1_size) {
 			ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->begin);
 			stream_0_signal = CO_P(schedule)->begin;
@@ -744,7 +739,6 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		assert(CO_P(exec_idx) == -1);
 		ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->end);
 		ccv_nnc_stream_context_wait_signal(CO_P(stream_context), CO_P(schedule)->end);
-		ccv_nnc_stream_context_set_checkpoint(CO_P(stream_context), CO_P(schedule)->end);
 	}
 	// Reset main to 0 if it is current me.
 	if (CO_P(exec_idx) == -1 && CO_P(stream_context)->main == co_self())

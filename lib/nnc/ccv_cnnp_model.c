@@ -2052,7 +2052,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
 				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
 				// Wait signal to finish.
-				if (stream_context && signal)
+				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
 				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_0.stream);
 				if (stream_context)
@@ -2122,7 +2122,7 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
 				ccv_nnc_synced_stream_t stream_0 = _ccv_cnnp_compiled_data_get_synced_stream(to_compiled_data, type);
 				// Wait signal to finish.
-				if (stream_context && signal)
+				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0.stream, signal);
 				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), 0);
 				if (stream_context)
