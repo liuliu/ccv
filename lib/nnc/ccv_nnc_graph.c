@@ -1220,6 +1220,8 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			for (i = 0; i < schd_info[idx].wait_size; i++)
 				schd_info[idx].waits[i] = signal_idxs[schd_info[idx].waits[i]];
 		} ccv_nnc_graph_visit_endfor
+		for (i = 0; i < schedule->stream_1_size; i++)
+			schedule->stream_1s[i] = stream_idxs[schedule->stream_1s[i]];
 		for (i = 0; i < schedule->wait_size; i++)
 			schedule->waits[i] = signal_idxs[schedule->waits[i]];
 		// Rebind who is the stream 0 (default stream).
