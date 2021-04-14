@@ -796,6 +796,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_stream_signal_type(const ccv_nnc_stream_signal_t* c
  */
 void ccv_nnc_stream_context_emit_signal(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const signal);
 /**
+ * Emit a signal on a stream directly. It will be managed by the stream. You have to use it immediately after return.
+ * @param stream The stream context where the signal will be emitted.
+ * @return The new signal emitted on the stream context.
+ */
+ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_context_t* const stream);
+/**
  * Wait a signal on a stream.
  * @param stream The stream context that will be blocked by the signal.
  * @param signal The signal to be waited. It can be on a different device of the stream.

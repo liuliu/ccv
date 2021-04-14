@@ -162,7 +162,6 @@ typedef struct {
 
 typedef struct {
 	ccv_nnc_stream_context_t* stream_context;
-	ccv_nnc_stream_signal_t* signal;
 } ccv_cnnp_dataframe_column_ctx_t;
 
 KHASH_MAP_INIT_INT64(iter_ctx, ccv_cnnp_dataframe_column_ctx_t*)
@@ -342,8 +341,6 @@ static ccv_cnnp_dataframe_column_ctx_t _ccv_cnnp_child_column_ctx_for_stream_typ
 		assert(column_idx < column_size);
 		if (!ctx[column_idx].stream_context)
 			ctx[column_idx].stream_context = ccv_nnc_stream_context_new(stream_type);
-		if (!ctx[column_idx].signal)
-			ctx[column_idx].signal = ccv_nnc_stream_signal_new(stream_type);
 		child_ctx = ctx[column_idx];
 	}
 	return child_ctx;
@@ -391,8 +388,8 @@ static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafram
 			derived_column_data->data_enum(column_idx, row_idxs, row_size, fetched_data, derived_column_data->context, child_ctx.stream_context);
 		if (child_ctx.stream_context != stream_context)
 		{
-			ccv_nnc_stream_context_emit_signal(child_ctx.stream_context, child_ctx.signal);
-			ccv_nnc_stream_context_wait_signal(stream_context, child_ctx.signal);
+			ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(child_ctx.stream_context);
+			ccv_nnc_stream_context_wait_signal(stream_context, signal);
 		}
 	} else {
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
@@ -400,8 +397,8 @@ static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafram
 		column_data->data_enum(column_idx, row_idxs, row_size, fetched_data, column_data->context, child_ctx.stream_context);
 		if (child_ctx.stream_context != stream_context)
 		{
-			ccv_nnc_stream_context_emit_signal(child_ctx.stream_context, child_ctx.signal);
-			ccv_nnc_stream_context_wait_signal(stream_context, child_ctx.signal);
+			ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(child_ctx.stream_context);
+			ccv_nnc_stream_context_wait_signal(stream_context, signal);
 		}
 	}
 	for (i = 0; i < row_size; i++)
@@ -697,8 +694,6 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 			{
 				if (ctx[i].stream_context)
 					ccv_nnc_stream_context_free(ctx[i].stream_context);
-				if (ctx[i].signal)
-					ccv_nnc_stream_signal_free(ctx[i].signal);
 			}
 		}
 		kh_destroy(iter_ctx, column_ctx);

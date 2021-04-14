@@ -47,8 +47,6 @@ CCV_WARN_UNUSED(co_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_st
 #define co_stream_await(_stream) do { if (!_co_stream_await(_self_, _stream)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__: ; } while (0)
 int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream);
 
-ccv_nnc_stream_signal_t* ccv_nnc_stream_context_emit_signal_new(ccv_nnc_stream_context_t* const stream);
-
 typedef struct {
 	ccv_nnc_callback_f fn;
 	void* callback_context;
