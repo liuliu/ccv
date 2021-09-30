@@ -744,6 +744,51 @@ static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const se
 	return ccv_cnnp_sigmoid(self->name);
 }
 
+// MARK - Tanh Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_tanh_t;
+
+static void _ccv_cnnp_tanh_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t tanh = CMD_TANH_FORWARD();
+	ccv_nnc_hint_tensor_auto(tanh, (ccv_nnc_tensor_param_t []){
+			params,
+		}, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t tanh_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, tanh, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(tanh_output), 0);
+	outputs[0] = tanh_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_tanh_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_tanh_isa = {
+	.build = _ccv_cnnp_tanh_build,
+	.copy = _ccv_cnnp_tanh_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_tanh(const char* const name)
+{
+	ccv_cnnp_model_tanh_t* const model_tanh = (ccv_cnnp_model_tanh_t*)cccalloc(1, sizeof(ccv_cnnp_model_tanh_t));
+	model_tanh->super.isa = &ccv_cnnp_tanh_isa;
+	model_tanh->super.input_size = 1;
+	model_tanh->super.outputs = &model_tanh->output;
+	model_tanh->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_tanh->super, name);
+	return (ccv_cnnp_model_t*)model_tanh;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_tanh_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_tanh(self->name);
+}
+
 // MARK - Swish Layer
 
 typedef struct {

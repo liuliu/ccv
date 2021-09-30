@@ -3671,6 +3671,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
 /**
+ * A tanh activation layer model.
+ * @return A tanh activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
+/**
  * A swish activation layer model.
  * @return A swish activation layer model.
  */
