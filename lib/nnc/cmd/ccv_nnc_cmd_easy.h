@@ -192,6 +192,8 @@
 #define CMD_INDEX_SELECT_BACKWARD() ccv_nnc_cmd(CCV_NNC_INDEX_SELECT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_RMSPROP_FORWARD
 #define CMD_RMSPROP_FORWARD(_rate, _decay, _alpha, _momentum, _epsilon) ccv_nnc_cmd(CCV_NNC_RMSPROP_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsprop={.rate=_rate,.decay=_decay,.alpha=_alpha,.momentum=_momentum,.epsilon=_epsilon}}), 0)
+// CCV_NNC_LAMB_FORWARD
+#define CMD_LAMB_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_LAMB_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lamb={.step=_step,.rate=_rate,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
 // CCV_NNC_EWSUM_FORWARD
 #define CMD_EWSUM_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWSUM_BACKWARD

@@ -107,6 +107,14 @@ typedef struct {
 			float epsilon; /**< [adam.epsilon] The epsilon for standard derivation. */
 		} adam;
 		struct {
+			int step; /**< [lamb.step] Step t in lamb optimizer. */
+			float rate; /**< [lamb.rate] The learning rate. */
+			float beta1; /**< [lamb.beta1] The beta1 hyper-parameter in lamb optimizer. */
+			float beta2; /**< [lamb.beta2] The beta2 hyper-parameter in lamb optimizer. */
+			float decay; /**< [lamb.decay] This is the weight decay parameter, which represents L2 regularization. */
+			float epsilon; /**< [lamb.epsilon] The epsilon for standard derivation. */
+		} lamb;
+		struct {
 			float rate; /**< [rmsprop.rate] The learning rate. */
 			float decay; /**< [rmsprop.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
 			float alpha; /**< [rmsprop.momentum] The alpha hyper-parameter. */

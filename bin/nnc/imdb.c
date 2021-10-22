@@ -308,8 +308,8 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
-	const int aux_size = ccv_nnc_minimizer_saved_aux_size(adam);
+	ccv_nnc_cmd_t optim = CMD_LAMB_FORWARD(1, 0.001, 0.9, 0.999, 0, 1e-6);
+	const int aux_size = ccv_nnc_minimizer_saved_aux_size(optim);
 	ccv_nnc_tensor_variable_t saved_auxs[device_count * aux_size * 2];
 	for (i = 0; i < device_count; i++)
 	{
@@ -336,8 +336,8 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	// ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
 	for (i = 0; i < 1000000; i++)
 	{
-		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
-		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
+		float learn_rate = 0.001;
+		optim = CMD_LAMB_FORWARD(i + 1, learn_rate, 0.9, 0.999, 0, 1e-6);
 		int status = ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count * 3, 0);
 		assert(status == 0);
 		// if (i == 0) // Use the first iter, it doesn't have truncated data.
@@ -434,10 +434,10 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = seq_vec[j], tvout[j * 2] = vocab_vec_grad[j], tvout[j * 2 + 1] = seq_vec_grad[j];
 		ccv_nnc_dynamic_graph_backward(dynamic_graph, sigmoid, device_count, 0, tvin, device_count * 2, tvout, device_count * 2, 0);
-		ccv_cnnp_model_set_minimizer(transformer, adam, 0, 0, 0);
+		ccv_cnnp_model_set_minimizer(transformer, optim, 0, 0, 0);
 		for (j = 0; j < device_count; j++)
 			tvin[j * 2] = vocab_vec_grad[j], tvin[j * 2 + 1] = seq_vec_grad[j], tvout[j * 2] = vocab_vec[j], tvout[j * 2 + 1] = seq_vec[j];
-		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, adam, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, 0);
+		ccv_nnc_dynamic_graph_apply_gradients(dynamic_graph, optim, tvin, device_count * 2, tvout, device_count * 2, saved_auxs, device_count, 0);
 		for (j = 0; j < device_count; j++)
 		{
 			ccv_nnc_tensor_variable_free(dynamic_graph, vec[j * 2]);
