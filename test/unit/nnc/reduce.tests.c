@@ -210,4 +210,45 @@ TEST_CASE("reduce max for [[1, 2, 3], [4, 5, 6]] on axis 0 with model")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("argmax for [[1, 2, 7], [5, 6, 4]] on axis 0")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 7;
+	a->data.f32[3] = 5;
+	a->data.f32[4] = 6;
+	a->data.f32[5] = 4;
+	ccv_nnc_cmd_exec(CMD_ARGMAX_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	int btp[] = {
+		1, 1, 0
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 3), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("argmax for [[1, 2, 7], [5, 6, 4]] on axis 1")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 1), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 7;
+	a->data.f32[3] = 5;
+	a->data.f32[4] = 6;
+	a->data.f32[5] = 4;
+	ccv_nnc_cmd_exec(CMD_ARGMAX_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	int btp[] = {
+		2,
+		1
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 2, 1), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

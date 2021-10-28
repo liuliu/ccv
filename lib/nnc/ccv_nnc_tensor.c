@@ -295,8 +295,6 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 	// Otherwise, do our own thing.
 	if (CCV_GET_DATA_TYPE(a->type) != CCV_GET_DATA_TYPE(b->type))
 		return -1;
-	// Only support 32F at this point.
-	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 	int i, c = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
 	{
@@ -306,6 +304,10 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 			return -1;
 		c *= a->info.dim[i];
 	}
+	if (CCV_GET_DATA_TYPE(a->type) == CCV_32S)
+		return memcmp(a->data.ptr, b->data.ptr, sizeof(int) * c) == 0 ? 0 : -1;
+	// Only support 32F at this point.
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 	// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
 	// http://floating-point-gui.de/errors/comparison/
 	static const float epsi = FLT_EPSILON;
