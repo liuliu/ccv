@@ -101,7 +101,7 @@ static void _ccv_nnc_argmax_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, cons
 	int i;
 	for (i = 0; i < cmd.reduce.count; i++)
 		outputs[0].dim[cmd.reduce.axis[i]] = 1; // Reduce the dimension to 1.
-	outputs[0].type = CCV_32S;
+	outputs[0].datatype = CCV_32S;
 }
 
 static void _ccv_nnc_argmax_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
