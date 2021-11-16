@@ -63,24 +63,23 @@ static int _ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_classi
 {
 	FILE* r = fopen(file, "r");
 	if (r == 0) return -1;
-	int stat = 0;
-	stat |= fscanf(r, "%d", &classifier->count);
+	(void)fscanf(r, "%d", &classifier->count);
 	union { float fl; int i; } fli;
-	stat |= fscanf(r, "%d", &fli.i);
+	(void)fscanf(r, "%d", &fli.i);
 	classifier->threshold = fli.fl;
 	classifier->feature = (ccv_bbf_feature_t*)ccmalloc(classifier->count * sizeof(ccv_bbf_feature_t));
 	classifier->alpha = (float*)ccmalloc(classifier->count * 2 * sizeof(float));
 	int i, j;
 	for (i = 0; i < classifier->count; i++)
 	{
-		stat |= fscanf(r, "%d", &classifier->feature[i].size);
+		(void)fscanf(r, "%d", &classifier->feature[i].size);
 		for (j = 0; j < classifier->feature[i].size; j++)
 		{
-			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
-			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
+			(void)fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
+			(void)fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
 		}
 		union { float fl; int i; } flia, flib;
-		stat |= fscanf(r, "%d %d", &flia.i, &flib.i);
+		(void)fscanf(r, "%d %d", &flia.i, &flib.i);
 		classifier->alpha[i * 2] = flia.fl;
 		classifier->alpha[i * 2 + 1] = flib.fl;
 	}
@@ -863,10 +862,9 @@ static int _ccv_write_bbf_stage_classifier(const char* file, ccv_bbf_stage_class
 
 static int _ccv_read_background_data(const char* file, unsigned char** negdata, int* negnum, ccv_size_t size)
 {
-	int stat = 0;
 	FILE* r = fopen(file, "rb");
 	if (r == 0) return -1;
-	stat |= fread(negnum, sizeof(int), 1, r);
+	(void)fread(negnum, sizeof(int), 1, r);
 	int i;
 	int isizs012 = _ccv_width_padding(size.width) * size.height +
 				   _ccv_width_padding(size.width >> 1) * (size.height >> 1) +
@@ -874,7 +872,7 @@ static int _ccv_read_background_data(const char* file, unsigned char** negdata, 
 	for (i = 0; i < *negnum; i++)
 	{
 		negdata[i] = (unsigned char*)ccmalloc(isizs012);
-		stat |= fread(negdata[i], 1, isizs012, r);
+		(void)fread(negdata[i], 1, isizs012, r);
 	}
 	fclose(r);
 	return 0;
@@ -897,20 +895,19 @@ static int _ccv_write_background_data(const char* file, unsigned char** negdata,
 
 static int _ccv_resume_bbf_cascade_training_state(const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum)
 {
-	int stat = 0;
 	FILE* r = fopen(file, "r");
 	if (r == 0) return -1;
-	stat |= fscanf(r, "%d %d %d", i, k, bg);
+	(void)fscanf(r, "%d %d %d", i, k, bg);
 	int j;
 	union { double db; int i[2]; } dbi;
 	for (j = 0; j < posnum; j++)
 	{
-		stat |= fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
+		(void)fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
 		pw[j] = dbi.db;
 	}
 	for (j = 0; j < negnum; j++)
 	{
-		stat |= fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
+		(void)fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
 		nw[j] = dbi.db;
 	}
 	fclose(r);

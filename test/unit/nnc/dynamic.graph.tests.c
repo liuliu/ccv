@@ -713,6 +713,30 @@ TEST_CASE("dynamic graph to compute f(x) = x * y, where y[0] = 10 * z, y[1] = 2 
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph to compute f(x) = x * y', where y[0, 0] = 2, y[0, 1] = 4, x = [10], y' = y^T, gradient against y")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 2;
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 4;
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(10), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, 0);
+	ccv_nnc_tensor_variable_t y_t = ccv_nnc_tensor_variable_alias_new(graph, y, ccv_nnc_no_ofs, DIM_ALLOC(), CPU_TENSOR_NHWC(32F, 2, 1));
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y_t), TENSOR_VARIABLE_LIST(f), 0, 0);
+	ccv_nnc_tensor_variable_t dy_t = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_free(graph, x); // Cannot free y_t, it has to be freed in lock step with y.
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(f), 0, TENSOR_VARIABLE_LIST(y_t), TENSOR_VARIABLE_LIST(dy_t), 0);
+	float gt[] = {10, 10};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ccv_nnc_tensor_from_variable(graph, dy_t)->data.f32, gt, 2, 1e-5, "should be equal");
+	ccv_nnc_tensor_variable_free(graph, y_t);
+	ccv_nnc_tensor_variable_free(graph, f);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("long chain to autograd, simulate random free of unused tensors due to garbage collection")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
