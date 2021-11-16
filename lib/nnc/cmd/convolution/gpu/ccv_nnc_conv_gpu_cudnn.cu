@@ -247,7 +247,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 		cudnnConvolutionBwdDataAlgo_t data_algo;
-		switch (cmd.algorithm / CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT)
+		const int data_algorithm = cmd.algorithm < 0 ? -1 : cmd.algorithm / CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT;
+		switch (data_algorithm)
 		{
 			case CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_0:
 				data_algo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_0;
