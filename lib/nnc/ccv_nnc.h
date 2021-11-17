@@ -926,6 +926,13 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_new(ccv_nnc_graph_t* co
  */
 void ccv_nnc_graph_exec_set(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_cmd_t cmd);
 /**
+ * Return the command on an existing execution node.
+ * @param graph The concrete graph.
+ * @param exec The execution node reference.
+ * @return The wrapped command.
+ */
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_cmd(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec);
+/**
  * Set hint for an existing execution node.
  * @param graph The concrete graph.
  * @param exec The execution node reference.
@@ -1702,7 +1709,8 @@ void ccv_nnc_symbolic_graph_sources_to_destinations(const ccv_nnc_symbolic_graph
 int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph);
 /**
  * Re-init the graph exec arena with updated symbolic graph. This updated some hyper-parameters of
- * executions to match the updated symbolic graph.
+ * executions to match the updated symbolic graph. Note that this will try to keep the backend / algorithm
+ * selection from previous graph if possible (meaning if the command still match).
  * @param graph_exec_arena The graph exec arena object provided mapping between symbolic and concrete graph.
  * @param graph The concrete graph generated through compile method.
  * @param symbolic_graph The updated symbolic graph.

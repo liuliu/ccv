@@ -4044,8 +4044,15 @@ void ccv_nnc_graph_exec_reinit(ccv_nnc_graph_exec_arena_t* const graph_exec_aren
 		const ccv_nnc_graph_exec_t graph_exec = graph_exec_arena->graph_execs[i];
 		if (graph_exec.d < 0)
 			continue;
+		const ccv_nnc_cmd_t existing_cmd = ccv_nnc_graph_exec_cmd(graph, graph_exec);
 		const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, i);
-		ccv_nnc_graph_exec_set(graph, graph_exec, symbol_info->cmd);
+		ccv_nnc_cmd_t new_cmd = symbol_info->cmd;
+		if (new_cmd.cmd == existing_cmd.cmd) // If the command matches, replacing the backend and algorithm to the existing one, which hypothetically has been autotuned..
+		{
+			new_cmd.backend = existing_cmd.backend;
+			new_cmd.algorithm = existing_cmd.algorithm;
+		}
+		ccv_nnc_graph_exec_set(graph, graph_exec, new_cmd);
 	}
 }
 
