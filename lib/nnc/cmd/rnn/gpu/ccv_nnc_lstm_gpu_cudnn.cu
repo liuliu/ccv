@@ -7,7 +7,7 @@ extern "C" {
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
 
-#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8000
+#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8100 // _v8 API were added in 8.0.2.
 
 static inline int use_persist_common_heuristics(const int num_layers, const int hidden_size, const int bidirectional, const int input_size)
 {
@@ -245,7 +245,7 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8000
+#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8100
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
@@ -256,7 +256,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_nn
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_LSTM_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8000
+#if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8100
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
