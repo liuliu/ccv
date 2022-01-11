@@ -724,6 +724,20 @@ cudnnReduceTensorDescriptor_t ccv_nnc_stream_context_get_reduce_tensor_descripto
 	return desc;
 }
 
+cudnnRNNDescriptor_t ccv_nnc_stream_context_get_rnn_descriptor(const ccv_nnc_stream_context_t* const stream_context)
+{
+	cudnnRNNDescriptor_t desc;
+	cudnnCreateRNNDescriptor(&desc);
+	return desc;
+}
+
+cudnnRNNDataDescriptor_t ccv_nnc_stream_context_get_rnn_data_descriptor(const ccv_nnc_stream_context_t* const stream_context)
+{
+	cudnnRNNDataDescriptor_t desc;
+	cudnnCreateRNNDataDescriptor(&desc);
+	return desc;
+}
+
 cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnTensorDescriptor_t desc;
@@ -759,6 +773,16 @@ void ccv_nnc_stream_context_return_op_tensor_descriptor(const ccv_nnc_stream_con
 void ccv_nnc_stream_context_return_pooling_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnPoolingDescriptor_t pooling_desc)
 {
 	cudnnDestroyPoolingDescriptor(pooling_desc);
+}
+
+void  ccv_nnc_stream_context_return_rnn_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnRNNDescriptor_t rnn_desc)
+{
+	cudnnDestroyRNNDescriptor(rnn_desc);
+}
+
+void  ccv_nnc_stream_context_return_rnn_data_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnRNNDataDescriptor_t rnn_data_desc)
+{
+	cudnnDestroyRNNDataDescriptor(rnn_data_desc);
 }
 
 void ccv_nnc_stream_context_return_reduce_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnReduceTensorDescriptor_t reduce_tensor_desc)

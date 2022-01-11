@@ -598,6 +598,21 @@ int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int i
 	return device_id_size;
 }
 
+void* ccv_nnc_cmd_aux(const ccv_nnc_cmd_t cmd)
+{
+	if (cmd.cmd == CCV_NNC_NOOP ||
+		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD ||
+		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
+		return 0;
+	assert(cmd.backend != CCV_NNC_NO_BACKEND);
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
+	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
+	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
+	return api_registry.aux;
+}
+
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// If it is no-op, return as if succeed already.

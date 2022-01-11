@@ -36,8 +36,9 @@ typedef struct {
 	int tensor_datatypes; /**< [datatypes] The supported data types for this API implementation. */
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
-	ccv_nnc_cmd_exec_f exec;
-	ccv_nnc_cmd_autotune_f autotune;
+	ccv_nnc_cmd_exec_f exec; /**< [exec] The function for command execution. */
+	ccv_nnc_cmd_autotune_f autotune; /**< [autotune] The function to find the best algorithm to apply. */
+	void* aux; /**< [aux] The additional information available for a particular command under a particular backend. */
 } ccv_nnc_cmd_backend_registry_t;
 
 static inline int ccv_nnc_tensor_hw(const ccv_nnc_tensor_param_t a, const int nd)

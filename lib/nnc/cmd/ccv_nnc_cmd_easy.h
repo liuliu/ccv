@@ -18,6 +18,10 @@
 #define CMD_SWISH_FORWARD() ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SWISH_BACKWARD
 #define CMD_SWISH_BACKWARD() ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_LSTM_FORWARD
+#define CMD_LSTM_FORWARD(_hidden_size, _proj_size, _num_layers, _bias, _batch_first, _bidirectional, _dropout, _is_test) ccv_nnc_cmd(CCV_NNC_LSTM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.rnn={.hidden_size=_hidden_size,.proj_size=_proj_size,.num_layers=_num_layers,.bias=_bias,.batch_first=_batch_first,.bidirectional=_bidirectional,.dropout=_dropout,.is_test=_is_test}}), 0)
+// CCV_NNC_LSTM_BACKWARD
+#define CMD_LSTM_BACKWARD(_hidden_size, _proj_size, _num_layers, _bias, _batch_first, _bidirectional, _dropout, _is_test) ccv_nnc_cmd(CCV_NNC_LSTM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.rnn={.hidden_size=_hidden_size,.proj_size=_proj_size,.num_layers=_num_layers,.bias=_bias,.batch_first=_batch_first,.bidirectional=_bidirectional,.dropout=_dropout,.is_test=_is_test}}), 0)
 // CCV_NNC_DROPOUT_FORWARD
 #define CMD_DROPOUT_FORWARD_X_F(...) ("This should not be used, you should have either 1 parameter or 2 parameters for CMD_DROPOUT_FORWARD")
 #define CMD_DROPOUT_FORWARD_X_1(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=0}}), 0)

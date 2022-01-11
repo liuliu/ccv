@@ -71,6 +71,16 @@ typedef struct {
 			int groups; /**< [convolution.groups] The number of groups for convolutional layer. */
 		} convolution;
 		struct {
+			int hidden_size; /**< [rnn.hidden_size] The number of features in the hidden state h. */
+			int proj_size; /**< [rnn.proj_size] The number of features in the hidden state h. */
+			int num_layers; /**< [rnn.num_layers] The number of layers for RNN. */
+			int bias; /**< [rnn.bias] If 0, the layer won't use bias weights. */
+			int batch_first; /**< [rnn.batch_first] If 1, will batch before sequence. */
+			int bidirectional; /**< [rnn.bidrectional] Enable bidirectional mode of RNN.*/
+			float dropout; /**< [rnn.dropout] If non-zero, enable dropout at each layer of RNN.*/
+			int is_test; /**< [rnn.is_test] Whether running this kernel in test mode or not. */
+		} rnn;
+		struct {
 			int reserved; /**< [pool.reserved] A reserved field. */
 		} pool;
 		struct {
@@ -638,6 +648,13 @@ CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, con
  * @return 1 if the command can be executed with the given input / output pattern.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
+/**
+ * Return auxillary information related to a particular command with a particular backend.
+ * A backend is required to be useful for this method.
+ * @param cmd The wrapped cmmand to check auxillary information.
+ * @return The auxillary information specific to a particular command with a particular backend.
+ */
+CCV_WARN_UNUSED(void*) ccv_nnc_cmd_aux(const ccv_nnc_cmd_t cmd);
 /**
  * Execute a given command.
  * @param cmd The wrapped command to be executed.

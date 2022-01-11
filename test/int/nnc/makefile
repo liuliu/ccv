@@ -3,7 +3,7 @@ include ../../../lib/config.mk
 export LSAN_OPTIONS=suppressions=known-leaks.txt
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
-TARGETS = cudnn.tests cublas.tests schedule.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests parallel.tests nccl.tests compression.tests index.tests dynamic.graph.tests cifar.tests imdb.tests loss.tests random.tests swish.tests sgd.tests rmsprop.tests adam.tests upsample.tests smooth_l1.tests roi_align.tests nms.tests compare.tests transform.tests cnnp.core.tests concat.tests lamb.tests reduce.tests
+TARGETS = cudnn.tests cublas.tests schedule.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests parallel.tests nccl.tests compression.tests index.tests dynamic.graph.tests cifar.tests imdb.tests loss.tests random.tests swish.tests sgd.tests rmsprop.tests adam.tests upsample.tests smooth_l1.tests roi_align.tests nms.tests compare.tests transform.tests cnnp.core.tests concat.tests lamb.tests reduce.tests lstm.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
