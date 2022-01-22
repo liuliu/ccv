@@ -18,13 +18,13 @@ static int _ccv_nnc_lstm_back_bitmask(const int input_size, const int output_siz
 {
 	// input: dy, dhy, dcy, [dr]
 	// output: dx, [dxs], dhx, dcx.
-	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (0u << 4) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (0u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
 		return 1;
 	// Output dx, [dxs], dhx, dcx and dw.
-	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (0u << 4) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
 		return 1;
-	// Output dw.
-	if ((input_bitmasks[0] & 8191u) == ((0u << 0) | (0u << 1) | (0u << 2) | (1u << 3) | (0u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (0u << 8) | (0u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
+	// Output dw (this needs to be invoked after dx, dhx, dcx computed, thus, functionally the same as above).
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
 		return 1;
 	return 0;
 }

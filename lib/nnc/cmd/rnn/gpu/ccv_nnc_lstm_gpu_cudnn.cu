@@ -228,8 +228,12 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	CUDNN_ENFORCE(cudnnRNNBackwardData_v8(cudnn, rnn, dev_seq_lengths, y, inputs[9]->data.ptr, inputs[0]->data.ptr, x, outputs[0]->data.ptr, h.descriptor, inputs[6]->data.ptr, inputs[1]->data.ptr, outputs[2]->data.ptr, c.descriptor, inputs[7]->data.ptr, inputs[2]->data.ptr, outputs[3]->data.ptr, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
 	if (outputs[4])
 	{
+		const ccv_nnc_cudnn_tensor_view_descriptor_t dw = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[4]);
+		static const float zero = 0;
+		CUDNN_ENFORCE(cudnnSetTensor(cudnn, dw.descriptor, dw.data.u8, &zero));
 		assert(outputs[4]->info.datatype == inputs[0]->info.datatype);
-		CUDNN_ENFORCE(cudnnRNNBackwardWeights_v8(cudnn, rnn, CUDNN_WGRAD_MODE_SET, dev_seq_lengths, x, inputs[4]->data.ptr, h.descriptor, inputs[6]->data.ptr, y, inputs[9]->data.ptr, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
+		CUDNN_ENFORCE(cudnnRNNBackwardWeights_v8(cudnn, rnn, CUDNN_WGRAD_MODE_ADD, dev_seq_lengths, x, inputs[4]->data.ptr, h.descriptor, inputs[6]->data.ptr, y, inputs[9]->data.ptr, weight_size, outputs[4]->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(dw);
 	}
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, x);
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, y);
