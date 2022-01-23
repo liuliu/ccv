@@ -86,6 +86,39 @@ TEST_CASE("LSTM forward")
 	ccv_nnc_tensor_free(r);
 }
 
+TEST_CASE("LSTM forward without hx, cx, hy, cy")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	const int weight_d = weight_dim(0, 6, 24, 24, 24, 1);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, weight_d, 24), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	const int r_d = r_dim(0, 0, 1, 6, 5, 24, 24);
+	ccv_nnc_tensor_t* const r = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, r_d, 24), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 5 * 24; i++)
+		x->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 24 * weight_d; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const gx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x, w), TENSOR_LIST(gx, gw), 0);
+	ccv_nnc_tensor_t* const gy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gr = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, r_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_LSTM_FORWARD(24, 0, 6, 1, 0, 0, 0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gx, 0, 0, 0, gw), TENSOR_LIST(gy, 0, 0, gr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gy, gr), TENSOR_LIST(y, r), 0);
+	ccv_nnc_tensor_free(gx);
+	ccv_nnc_tensor_free(gw);
+	ccv_nnc_tensor_free(gy);
+	ccv_nnc_tensor_free(gr);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(r);
+}
+
 TEST_CASE("LSTM forward with dropout")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
@@ -332,6 +365,126 @@ TEST_CASE("LSTM backward")
 	ccv_nnc_tensor_free(dx);
 	ccv_nnc_tensor_free(dhx);
 	ccv_nnc_tensor_free(dcx);
+	ccv_nnc_tensor_free(dw);
+}
+
+TEST_CASE("LSTM backward without dhy, dcy, dhx, dcx")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_LSTM_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const hx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const cx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1, 24), 0);
+	const int weight_d = weight_dim(0, 6, 24, 24, 24, 1);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, weight_d, 24), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const cy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1, 24), 0);
+	const int r_d = r_dim(0, 0, 1, 6, 5, 24, 24);
+	ccv_nnc_tensor_t* const r = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, r_d, 24), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 5 * 24; i++)
+		x->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 6 * 24; i++)
+		hx->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 6 * 24; i++)
+		cx->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 24 * weight_d; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const gx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const ghx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const gcx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x, hx, cx, w), TENSOR_LIST(gx, ghx, gcx, gw), 0);
+	ccv_nnc_tensor_t* const gy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const ghy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const gcy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 6, 1, 24), 0);
+	ccv_nnc_tensor_t* const gr = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, r_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_LSTM_FORWARD(24, 0, 6, 1, 0, 0, 0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gx, 0, ghx, gcx, gw), TENSOR_LIST(gy, ghy, gcy, gr), 0);
+	ccv_nnc_tensor_t* const dy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	for (i = 0; i < 5 * 24; i++)
+		dy->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const gdy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy), TENSOR_LIST(gdy), 0);
+	ccv_nnc_tensor_t* const gdx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gdw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_LSTM_BACKWARD(24, 0, 6, 1, 0, 0, 0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gdy, 0, 0, 0, gx, 0, ghx, gcx, gw, gy, ghy, gcy, gr), TENSOR_LIST(gdx, 0, 0, 0, gdw), 0);
+	ccv_nnc_tensor_t* const dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const dw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gy, ghy, gcy, gr, gdx, gdw), TENSOR_LIST(y, hy, cy, r, dx, dw), 0);
+	ccv_nnc_tensor_free(gx);
+	ccv_nnc_tensor_free(ghx);
+	ccv_nnc_tensor_free(gcx);
+	ccv_nnc_tensor_free(gw);
+	ccv_nnc_tensor_free(gy);
+	ccv_nnc_tensor_free(ghy);
+	ccv_nnc_tensor_free(gcy);
+	ccv_nnc_tensor_free(gr);
+	ccv_nnc_tensor_free(gdy);
+	ccv_nnc_tensor_free(gdx);
+	ccv_nnc_tensor_free(gdw);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(hx);
+	ccv_nnc_tensor_free(cx);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(cy);
+	ccv_nnc_tensor_free(r);
+	ccv_nnc_tensor_free(dy);
+	ccv_nnc_tensor_free(dx);
+	ccv_nnc_tensor_free(dw);
+}
+
+TEST_CASE("LSTM backward without hx, cx, hy, cy, dhy, dcy, dhx, dcx")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_LSTM_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	const int weight_d = weight_dim(0, 6, 24, 24, 24, 1);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, weight_d, 24), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	const int r_d = r_dim(0, 0, 1, 6, 5, 24, 24);
+	ccv_nnc_tensor_t* const r = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, r_d, 24), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 5 * 24; i++)
+		x->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 24 * weight_d; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const gx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x, w), TENSOR_LIST(gx, gw), 0);
+	ccv_nnc_tensor_t* const gy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gr = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, r_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_LSTM_FORWARD(24, 0, 6, 1, 0, 0, 0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gx, 0, 0, 0, gw), TENSOR_LIST(gy, 0, 0, gr), 0);
+	ccv_nnc_tensor_t* const dy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	for (i = 0; i < 5 * 24; i++)
+		dy->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const gdy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy), TENSOR_LIST(gdy), 0);
+	ccv_nnc_tensor_t* const gdx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const gdw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_LSTM_BACKWARD(24, 0, 6, 1, 0, 0, 0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gdy, 0, 0, 0, gx, 0, 0, 0, gw, gy, 0, 0, gr), TENSOR_LIST(gdx, 0, 0, 0, gdw), 0);
+	ccv_nnc_tensor_t* const dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 24), 0);
+	ccv_nnc_tensor_t* const dw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, weight_d, 24), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gy, gr, gdx, gdw), TENSOR_LIST(y, r, dx, dw), 0);
+	ccv_nnc_tensor_free(gx);
+	ccv_nnc_tensor_free(gw);
+	ccv_nnc_tensor_free(gy);
+	ccv_nnc_tensor_free(gr);
+	ccv_nnc_tensor_free(gdy);
+	ccv_nnc_tensor_free(gdx);
+	ccv_nnc_tensor_free(gdw);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(r);
+	ccv_nnc_tensor_free(dy);
+	ccv_nnc_tensor_free(dx);
 	ccv_nnc_tensor_free(dw);
 }
 

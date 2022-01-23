@@ -5,8 +5,8 @@
 
 static int _ccv_nnc_lstm_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// input: x, [xs], hx, cx, w.
-	// output: y, hy, cy, [r]
+	// input: x, [xs], [hx], [cx], w.
+	// output: y, [hy], [cy], [r]
 	if (input_size == 5 && (input_bitmasks[0] & 31u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5)) && output_bitmasks[0] == ((1u << 0) | (1u << 1) | (1u << 2)))
 		return 1;
 	if (input_size == 5 && (input_bitmasks[0] & 31u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5)) && output_bitmasks[0] == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3)))
@@ -16,15 +16,15 @@ static int _ccv_nnc_lstm_forw_bitmask(const int input_size, const int output_siz
 
 static int _ccv_nnc_lstm_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// input: dy, dhy, dcy, [dr]
-	// output: dx, [dxs], dhx, dcx.
-	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (0u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
+	// input: dy, [dhy], [dcy], [dr]
+	// output: dx, [dxs], [dhx], [dcx].
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (0u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
 		return 1;
-	// Output dx, [dxs], dhx, dcx and dw.
-	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
+	// Output dx, [dxs], [dhx], [dcx] and dw.
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
 		return 1;
 	// Output dw (this needs to be invoked after dx, dhx, dcx computed, thus, functionally the same as above).
-	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (1u << 7) | (1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12)) && output_bitmasks[0] == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
+	if ((input_bitmasks[0] & 8191u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && output_bitmasks[0] == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
 		return 1;
 	return 0;
 }

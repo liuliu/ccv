@@ -75,20 +75,26 @@ static int _ccv_nnc_lstm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(inputs[0]->info.datatype == CCV_16F || inputs[0]->info.datatype == CCV_32F);
 	cudnnRNNDataDescriptor_t x = ccv_nnc_stream_context_get_rnn_data_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetRNNDataDescriptor(x, inputs[0]->info.datatype == CCV_16F ? CUDNN_DATA_HALF : CUDNN_DATA_FLOAT, data_layout, max_seq_count, batch_count, feature_count, seq_lengths, 0));
-	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[3]);
+	const int proj_size = cmd.info.rnn.proj_size == 0 ? cmd.info.rnn.hidden_size : cmd.info.rnn.proj_size;
+	cudnnTensorDescriptor_t h = ccv_nnc_stream_context_get_tensor_descriptor(stream_context);
+	const int bidirectional_num_layers = cmd.info.rnn.num_layers * (!!cmd.info.rnn.bidirectional + 1);
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(h, ccv_nnc_cudnn_datatype(inputs[0]->info.datatype), bidirectional_num_layers, batch_count, proj_size, 1, batch_count * proj_size, proj_size, 1, 1));
+	assert(!inputs[2] || (inputs[2]->info.dim[0] == bidirectional_num_layers && inputs[2]->info.dim[1] == batch_count && inputs[2]->info.dim[2] == proj_size));
+	cudnnTensorDescriptor_t c = ccv_nnc_stream_context_get_tensor_descriptor(stream_context);
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(c, ccv_nnc_cudnn_datatype(inputs[0]->info.datatype), bidirectional_num_layers, batch_count, cmd.info.rnn.hidden_size, 1, batch_count * cmd.info.rnn.hidden_size, cmd.info.rnn.hidden_size, 1, 1));
+	assert(!inputs[3] || (inputs[3]->info.dim[0] == bidirectional_num_layers && inputs[3]->info.dim[1] == batch_count && inputs[3]->info.dim[2] == cmd.info.rnn.hidden_size));
 	const ccv_nnc_tensor_t* const w = inputs[4];
-	assert(inputs[0]->info.datatype == inputs[2]->info.datatype);
-	assert(inputs[2]->info.datatype == inputs[3]->info.datatype);
-	assert(inputs[3]->info.datatype == inputs[4]->info.datatype);
+	assert(!inputs[2] || inputs[0]->info.datatype == inputs[2]->info.datatype);
+	assert(!inputs[3] || inputs[0]->info.datatype == inputs[3]->info.datatype);
+	assert(inputs[0]->info.datatype == inputs[4]->info.datatype);
 	const int y_nd = ccv_nnc_tensor_nd(outputs[0]->info.dim);
 	const int output_feature_count = outputs[0]->info.dim[y_nd - 1];
 	cudnnRNNDataDescriptor_t y = ccv_nnc_stream_context_get_rnn_data_descriptor(stream_context);
 	// Note that the paddingFill is NULL, meaning what is in the padding is undefined.
 	CUDNN_ENFORCE(cudnnSetRNNDataDescriptor(y, outputs[0]->info.datatype == CCV_16F ? CUDNN_DATA_HALF : CUDNN_DATA_FLOAT, data_layout, max_seq_count, batch_count, output_feature_count, seq_lengths, 0));
 	assert(outputs[0]->info.datatype == inputs[0]->info.datatype);
-	assert(inputs[2]->info.datatype == outputs[1]->info.datatype);
-	assert(inputs[3]->info.datatype == outputs[2]->info.datatype);
+	assert(!inputs[2] || !outputs[1] || inputs[2]->info.datatype == outputs[1]->info.datatype);
+	assert(!inputs[3] || !outputs[2] || inputs[3]->info.datatype == outputs[2]->info.datatype);
 	ccv_nnc_tensor_t* const r = output_size >= 4 ? outputs[3] : 0;
 	if (r)
 		{ assert(outputs[0]->info.datatype == outputs[3]->info.datatype); }
@@ -96,7 +102,6 @@ static int _ccv_nnc_lstm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int is_test = cmd.info.rnn.is_test;
 	const cudnnDataType_t data_type = inputs[0]->info.datatype == CCV_16F ? CUDNN_DATA_HALF : CUDNN_DATA_FLOAT;
 	const cudnnMathType_t math_type = inputs[0]->info.datatype == CCV_16F ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
-	const int proj_size = cmd.info.rnn.proj_size == 0 ? cmd.info.rnn.hidden_size : cmd.info.rnn.proj_size;
 	assert(output_feature_count == proj_size * (!!cmd.info.rnn.bidirectional + 1));
 	cudnnRNNAlgo_t rnn_algo = use_persist_common_heuristics(cmd.info.rnn.num_layers, cmd.info.rnn.hidden_size, cmd.info.rnn.bidirectional, feature_count) ? CUDNN_RNN_ALGO_PERSIST_DYNAMIC : CUDNN_RNN_ALGO_STANDARD;
 	cudnnDropoutDescriptor_t dropout_desc = cmd.info.rnn.dropout == 0 ? 0 : ccv_nnc_stream_context_get_dropout_descriptor(stream_context, cmd.info.rnn.dropout);
@@ -129,11 +134,11 @@ static int _ccv_nnc_lstm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	cudnnGetRNNWeightSpaceSize(cudnn, rnn, &weight_size);
 	assert(CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * ccv_nnc_tensor_count(w->info) >= weight_size);
 	assert(weight_size > 0);
-	CUDNN_ENFORCE(cudnnRNNForward(cudnn, rnn, fwd_mode, dev_seq_lengths, x, inputs[0]->data.ptr, y, outputs[0]->data.ptr, h.descriptor, inputs[2]->data.ptr, outputs[1]->data.ptr, c.descriptor, inputs[3]->data.ptr, outputs[2]->data.ptr, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r ? r->data.ptr : 0));
+	CUDNN_ENFORCE(cudnnRNNForward(cudnn, rnn, fwd_mode, dev_seq_lengths, x, inputs[0]->data.ptr, y, outputs[0]->data.ptr, h, inputs[2] ? inputs[2]->data.ptr : 0, outputs[1] ? outputs[1]->data.ptr : 0, c, inputs[3] ? inputs[3]->data.ptr : 0, outputs[2] ? outputs[2]->data.ptr : 0, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r ? r->data.ptr : 0));
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, x);
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, y);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
+	ccv_nnc_stream_context_return_tensor_descriptor(stream_context, h);
+	ccv_nnc_stream_context_return_tensor_descriptor(stream_context, c);
 	ccv_nnc_stream_context_return_rnn_descriptor(stream_context, rnn);
 	if (dropout_desc)
 		ccv_nnc_stream_context_return_dropout_descriptor(stream_context, dropout_desc);
@@ -144,7 +149,7 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size >= 13);
 	assert(output_size >= 3);
-	assert(outputs[0] && outputs[2] && outputs[3]);
+	assert(outputs[0] || (outputs[0] && outputs[2] && outputs[3]));
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudnnRNNDescriptor_t rnn = ccv_nnc_stream_context_get_rnn_descriptor(stream_context);
 	assert(!cmd.info.rnn.is_test);
@@ -204,19 +209,21 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 		CUDA_ENFORCE(cudaMemcpyAsync(dev_seq_lengths, seq_lengths, sizeof(int) * batch_count, cudaMemcpyHostToDevice, stream));
 	}
-	assert(inputs[0]->info.datatype == inputs[1]->info.datatype);
-	assert(inputs[1]->info.datatype == inputs[2]->info.datatype);
-	assert(inputs[2]->info.datatype == inputs[6]->info.datatype);
-	assert(inputs[6]->info.datatype == inputs[7]->info.datatype);
-	assert(inputs[7]->info.datatype == inputs[8]->info.datatype);
+	assert(!inputs[1] || inputs[0]->info.datatype == inputs[1]->info.datatype);
+	assert(!inputs[2] || inputs[0]->info.datatype == inputs[2]->info.datatype);
+	assert(!inputs[6] || inputs[0]->info.datatype == inputs[6]->info.datatype);
+	assert(!inputs[7] || inputs[0]->info.datatype == inputs[7]->info.datatype);
+	assert(inputs[0]->info.datatype == inputs[8]->info.datatype);
 	assert(inputs[8]->info.datatype == inputs[9]->info.datatype);
-	assert(inputs[9]->info.datatype == inputs[10]->info.datatype);
-	assert(inputs[10]->info.datatype == inputs[11]->info.datatype);
 	assert(outputs[0]->info.datatype == inputs[0]->info.datatype);
-	assert(outputs[0]->info.datatype == outputs[2]->info.datatype);
-	assert(outputs[2]->info.datatype == outputs[3]->info.datatype);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[6]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[7]);
+	assert(!outputs[2] || outputs[0]->info.datatype == outputs[2]->info.datatype);
+	assert(!outputs[3] || outputs[0]->info.datatype == outputs[3]->info.datatype);
+	cudnnTensorDescriptor_t h = ccv_nnc_stream_context_get_tensor_descriptor(stream_context);
+	const int bidirectional_num_layers = cmd.info.rnn.num_layers * (!!cmd.info.rnn.bidirectional + 1);
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(h, ccv_nnc_cudnn_datatype(inputs[0]->info.datatype), bidirectional_num_layers, batch_count, proj_size, 1, batch_count * proj_size, proj_size, 1, 1));
+	assert(!inputs[2] || (inputs[2]->info.dim[0] == bidirectional_num_layers && inputs[2]->info.dim[1] == batch_count && inputs[2]->info.dim[2] == proj_size));
+	cudnnTensorDescriptor_t c = ccv_nnc_stream_context_get_tensor_descriptor(stream_context);
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(c, ccv_nnc_cudnn_datatype(inputs[0]->info.datatype), bidirectional_num_layers, batch_count, cmd.info.rnn.hidden_size, 1, batch_count * cmd.info.rnn.hidden_size, cmd.info.rnn.hidden_size, 1, 1));
 	size_t weight_size = 0;
 	cudnnGetRNNWeightSpaceSize(cudnn, rnn, &weight_size);
 	const ccv_nnc_tensor_t* const w = inputs[8];
@@ -225,20 +232,20 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(reserve_size > 0);
 	const ccv_nnc_tensor_t* const r = inputs[12];
 	assert(CCV_GET_DATA_TYPE_SIZE(r->info.datatype) * ccv_nnc_tensor_count(r->info) >= reserve_size);
-	CUDNN_ENFORCE(cudnnRNNBackwardData_v8(cudnn, rnn, dev_seq_lengths, y, inputs[9]->data.ptr, inputs[0]->data.ptr, x, outputs[0]->data.ptr, h.descriptor, inputs[6]->data.ptr, inputs[1]->data.ptr, outputs[2]->data.ptr, c.descriptor, inputs[7]->data.ptr, inputs[2]->data.ptr, outputs[3]->data.ptr, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
+	CUDNN_ENFORCE(cudnnRNNBackwardData_v8(cudnn, rnn, dev_seq_lengths, y, inputs[9]->data.ptr, inputs[0]->data.ptr, x, outputs[0]->data.ptr, h, inputs[6] ? inputs[6]->data.ptr : 0, inputs[1] ? inputs[1]->data.ptr : 0, outputs[2] ? outputs[2]->data.ptr : 0, c, inputs[7] ? inputs[7]->data.ptr : 0, inputs[2] ? inputs[2]->data.ptr : 0, outputs[3] ? outputs[3]->data.ptr : 0, weight_size, w->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
 	if (outputs[4])
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t dw = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[4]);
 		static const float zero = 0;
 		CUDNN_ENFORCE(cudnnSetTensor(cudnn, dw.descriptor, dw.data.u8, &zero));
 		assert(outputs[4]->info.datatype == inputs[0]->info.datatype);
-		CUDNN_ENFORCE(cudnnRNNBackwardWeights_v8(cudnn, rnn, CUDNN_WGRAD_MODE_ADD, dev_seq_lengths, x, inputs[4]->data.ptr, h.descriptor, inputs[6]->data.ptr, y, inputs[9]->data.ptr, weight_size, outputs[4]->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
+		CUDNN_ENFORCE(cudnnRNNBackwardWeights_v8(cudnn, rnn, CUDNN_WGRAD_MODE_ADD, dev_seq_lengths, x, inputs[4]->data.ptr, h, inputs[6] ? inputs[6]->data.ptr : 0, y, inputs[9]->data.ptr, weight_size, outputs[4]->data.ptr, workspace_size, workspace, reserve_size, r->data.ptr));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(dw);
 	}
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, x);
 	ccv_nnc_stream_context_return_rnn_data_descriptor(stream_context, y);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
+	ccv_nnc_stream_context_return_tensor_descriptor(stream_context, h);
+	ccv_nnc_stream_context_return_tensor_descriptor(stream_context, c);
 	ccv_nnc_stream_context_return_rnn_descriptor(stream_context, rnn);
 	if (dropout_desc)
 		ccv_nnc_stream_context_return_dropout_descriptor(stream_context, dropout_desc);
