@@ -3857,6 +3857,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_min(const char* const name);
  * @return A element-wise max model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max(const char* const name);
+/**
+ * A Long-Short Term Memory model.
+ * @param masked Whether a mask tensor provided.
+ * @param hidden_size The number of features in the hidden state h.
+ * @param proj_size The number of features in the hidden state h.
+ * @param num_layers The number of layers for RNN.
+ * @param bias If 0, the layer won't use bias weights.
+ * @param batch_first If 1, will batch before sequence.
+ * @param bidrectional Enable bidirectional mode of RNN.
+ * @param dropout If non-zero, enable dropout at each layer of RNN.
+ * @param name The unique name of the model.
+ * @return A LSTM model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const char* const name);
 
 /** @} */
 

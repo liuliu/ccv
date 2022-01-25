@@ -1681,3 +1681,119 @@ static ccv_cnnp_model_t* _ccv_cnnp_max_copy(const ccv_cnnp_model_t* const super,
 	const ccv_cnnp_model_max_t* const self = (const ccv_cnnp_model_max_t*)super;
 	return ccv_cnnp_max(self->super.name);
 }
+
+// MARK - LSTM Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int masked;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t weights;
+	ccv_nnc_tensor_symbol_t reserves;
+	ccv_nnc_cmd_param_t params;
+	ccv_nnc_graph_exec_symbol_t lstm;
+} ccv_cnnp_model_lstm_t;
+
+static int _ccv_cnnp_lstm_weight_dim(int bidirectional, int num_layers, int input_size, int hidden_size, int proj_size, int bias)
+{
+	const int D = !!bidirectional + 1;
+	if (hidden_size == proj_size)
+		return (num_layers * (bias ? 8 : 0) + (num_layers - 1) * (hidden_size * 4 * D + hidden_size * 4) + input_size * 4 + hidden_size * 4) * D;
+	else
+		return (num_layers * (bias ? 8 : 0) + (num_layers - 1) * (proj_size * 4 * D + proj_size * 4) + (proj_size * 4 + input_size * 4) + num_layers * proj_size) * D;
+}
+
+static void _ccv_cnnp_lstm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	assert(input_size == self->super.input_size);
+	assert(output_size == 1);
+	const int proj_size = self->params.rnn.proj_size == 0 ? self->params.rnn.hidden_size : self->params.rnn.proj_size;
+	ccv_nnc_tensor_param_t input_params[5];
+	input_params[0]= ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (input_size == 2)
+		input_params[1] = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	input_params[4] = input_params[0];
+	memset(input_params[4].dim, 0, sizeof(input_params[4].dim));
+	const int x_nd = ccv_nnc_tensor_nd(input_params[0].dim);
+	const int feature_count = input_params[0].dim[x_nd - 1];
+	input_params[4].dim[0] = _ccv_cnnp_lstm_weight_dim(self->params.rnn.bidirectional, self->params.rnn.num_layers, feature_count, self->params.rnn.hidden_size, proj_size, self->params.rnn.bias);
+	input_params[4].dim[1] = self->params.rnn.hidden_size;
+	const ccv_nnc_cmd_t lstm = ccv_nnc_cmd(CCV_NNC_LSTM_FORWARD, 0, self->params, 0);
+	ccv_nnc_tensor_param_t output_params[4];
+	ccv_nnc_hint_tensor_auto(lstm, input_params, 5, ccv_nnc_no_hint, output_params, 4);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
+	self->weights = ccv_nnc_tensor_symbol_new(graph, input_params[4], 0);
+	self->reserves = ccv_nnc_tensor_symbol_new(graph, output_params[3], 0);
+	const ccv_nnc_tensor_symbol_t mask = input_size == 2 ? inputs[1] : NO_TENSOR_SYMBOL;
+	self->lstm = ccv_nnc_graph_exec_symbol_new(graph, lstm, TENSOR_SYMBOL_LIST(inputs[0], mask, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, self->weights), TENSOR_SYMBOL_LIST(outputs[0], NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, self->reserves), 0);
+}
+
+static void _ccv_cnnp_lstm_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	if (self->weights.graph)
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->weights);
+}
+
+static void _ccv_cnnp_lstm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+{
+	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	if (self->weights.graph)
+		add_to_array(parameters, self->weights);
+}
+
+static void _ccv_cnnp_lstm_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
+{
+	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	if (self->reserves.graph)
+		add_to_array(outputs, self->reserves);
+}
+
+static void _ccv_cnnp_lstm_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
+{
+	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	if (self->lstm.graph)
+	{
+		self->params.rnn.is_test = is_test;
+		updater(context, self->lstm, ccv_nnc_cmd(CCV_NNC_LSTM_FORWARD, 0, self->params, 0), ccv_nnc_no_hint);
+	}
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_lstm_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_lstm_isa = {
+	.build = _ccv_cnnp_lstm_build,
+	.init_states = _ccv_cnnp_lstm_init_states,
+	.add_to_parameter = _ccv_cnnp_lstm_add_to_parameter,
+	.add_to_output = _ccv_cnnp_lstm_add_to_output,
+	.copy = _ccv_cnnp_lstm_copy,
+	.set_is_test = _ccv_cnnp_lstm_set_is_test,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const char* const name)
+{
+	ccv_cnnp_model_lstm_t* const model_lstm = (ccv_cnnp_model_lstm_t*)cccalloc(1, sizeof(ccv_cnnp_model_lstm_t));
+	model_lstm->super.isa = &ccv_cnnp_lstm_isa;
+	model_lstm->super.input_size = masked ? 2 : 1;
+	model_lstm->super.outputs = &model_lstm->output;
+	model_lstm->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_lstm->super, name);
+	model_lstm->masked = masked;
+	model_lstm->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_lstm->weights.graph = 0;
+	model_lstm->params.rnn.hidden_size = hidden_size;
+	model_lstm->params.rnn.proj_size = proj_size;
+	model_lstm->params.rnn.num_layers = num_layers;
+	model_lstm->params.rnn.bias = bias;
+	model_lstm->params.rnn.batch_first = batch_first;
+	model_lstm->params.rnn.bidirectional = bidirectional;
+	model_lstm->params.rnn.dropout = dropout;
+	return (ccv_cnnp_model_t*)model_lstm;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_lstm_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_lstm_t* const self = (const ccv_cnnp_model_lstm_t*)super;
+	return ccv_cnnp_lstm(self->masked, self->params.rnn.hidden_size, self->params.rnn.proj_size, self->params.rnn.num_layers, self->params.rnn.bias, self->params.rnn.batch_first, self->params.rnn.bidirectional, self->params.rnn.dropout, self->super.name);
+}
