@@ -1352,17 +1352,65 @@ static ccv_cnnp_model_t* _ccv_cnnp_masked_fill_copy(const ccv_cnnp_model_t* cons
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
-	ccv_nnc_tensor_symbol_t vocab;
-	int datatype;
-	int vocab_size;
-	int embed_size;
 } ccv_cnnp_model_index_select_t;
 
 static void _ccv_cnnp_index_select_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	assert(input_size == 2);
+	assert(output_size == 1);
+	const ccv_nnc_tensor_param_t vocab_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const ccv_nnc_tensor_param_t index_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t index_select = CMD_INDEX_SELECT_FORWARD();
+	ccv_nnc_hint_tensor_auto(index_select, (ccv_nnc_tensor_param_t []){
+			vocab_params,
+			index_params,
+		}, 2, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, index_select, TENSOR_SYMBOL_LIST(inputs[0], inputs[1]), TENSOR_SYMBOL_LIST(output), 0);
+	outputs[0] = output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_index_select_isa = {
+	.build = _ccv_cnnp_index_select_build,
+	.copy = _ccv_cnnp_index_select_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_index_select(const char* const name)
+{
+	ccv_cnnp_model_index_select_t* const model_index_select = (ccv_cnnp_model_index_select_t*)cccalloc(1, sizeof(ccv_cnnp_model_index_select_t));
+	model_index_select->super.isa = &ccv_cnnp_index_select_isa;
+	model_index_select->super.input_size = 2;
+	model_index_select->super.outputs = &model_index_select->output;
+	model_index_select->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_index_select->super, name);
+	return (ccv_cnnp_model_t*)model_index_select;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
+	return ccv_cnnp_index_select(self->super.name);
+}
+
+// MARK - Embedding Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t vocab;
+	int datatype;
+	int vocab_size;
+	int embed_size;
+} ccv_cnnp_model_embedding_t;
+
+static void _ccv_cnnp_embedding_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
+	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t vocab_params = params;
 	memset(vocab_params.dim, 0, sizeof(vocab_params.dim));
@@ -1373,62 +1421,62 @@ static void _ccv_cnnp_index_select_build(ccv_cnnp_model_t* const super, ccv_nnc_
 		self->vocab = ccv_nnc_tensor_symbol_new(graph, vocab_params, 0);
 	assert(self->vocab.graph == graph);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t index_select = CMD_INDEX_SELECT_FORWARD();
-	ccv_nnc_hint_tensor_auto(index_select, (ccv_nnc_tensor_param_t []){
+	const ccv_nnc_cmd_t embedding = CMD_INDEX_SELECT_FORWARD();
+	ccv_nnc_hint_tensor_auto(embedding, (ccv_nnc_tensor_param_t []){
 			vocab_params,
 			params,
 		}, 2, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, index_select, TENSOR_SYMBOL_LIST(self->vocab, inputs[0]), TENSOR_SYMBOL_LIST(output), 0);
+	ccv_nnc_graph_exec_symbol_new(graph, embedding, TENSOR_SYMBOL_LIST(self->vocab, inputs[0]), TENSOR_SYMBOL_LIST(output), 0);
 	outputs[0] = output;
 }
 
-static void _ccv_cnnp_index_select_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static void _ccv_cnnp_embedding_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
-	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
+	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
 	const float std = sqrtf(2) / sqrtf(self->vocab_size + self->embed_size);
 	const float bound = sqrtf(3) * std;
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->vocab);
 }
 
-static void _ccv_cnnp_index_select_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+static void _ccv_cnnp_embedding_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
-	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
+	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
 	add_to_array(parameters, self->vocab);
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* const super, void* const context);
+static ccv_cnnp_model_t* _ccv_cnnp_embedding_copy(const ccv_cnnp_model_t* const super, void* const context);
 
-static const ccv_cnnp_model_vtab_t ccv_cnnp_index_select_isa = {
-	.build = _ccv_cnnp_index_select_build,
-	.init_states = _ccv_cnnp_index_select_init_states,
-	.add_to_parameter = _ccv_cnnp_index_select_add_to_parameter,
-	.copy = _ccv_cnnp_index_select_copy,
+static const ccv_cnnp_model_vtab_t ccv_cnnp_embedding_isa = {
+	.build = _ccv_cnnp_embedding_build,
+	.init_states = _ccv_cnnp_embedding_init_states,
+	.add_to_parameter = _ccv_cnnp_embedding_add_to_parameter,
+	.copy = _ccv_cnnp_embedding_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_index_select(const int datatype, const int vocab_size, const int embed_size, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const char* const name)
 {
-	ccv_cnnp_model_index_select_t* const model_index_select = (ccv_cnnp_model_index_select_t*)cccalloc(1, sizeof(ccv_cnnp_model_index_select_t));
-	model_index_select->super.isa = &ccv_cnnp_index_select_isa;
-	model_index_select->super.input_size = 1;
-	model_index_select->super.outputs = &model_index_select->output;
-	model_index_select->super.output_size = 1;
-	ccv_cnnp_model_copy_name(&model_index_select->super, name);
-	model_index_select->vocab.d = CCV_NNC_NO_TENSOR_SYMBOL;
-	model_index_select->vocab.graph = 0;
+	ccv_cnnp_model_embedding_t* const model_embedding = (ccv_cnnp_model_embedding_t*)cccalloc(1, sizeof(ccv_cnnp_model_embedding_t));
+	model_embedding->super.isa = &ccv_cnnp_embedding_isa;
+	model_embedding->super.input_size = 1;
+	model_embedding->super.outputs = &model_embedding->output;
+	model_embedding->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_embedding->super, name);
+	model_embedding->vocab.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_embedding->vocab.graph = 0;
 	assert(datatype == CCV_32F || datatype == CCV_16F);
-	model_index_select->datatype = datatype;
+	model_embedding->datatype = datatype;
 	assert(vocab_size > 0);
-	model_index_select->vocab_size = vocab_size;
+	model_embedding->vocab_size = vocab_size;
 	assert(embed_size > 0);
-	model_index_select->embed_size = embed_size;
-	return (ccv_cnnp_model_t*)model_index_select;
+	model_embedding->embed_size = embed_size;
+	return (ccv_cnnp_model_t*)model_embedding;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_index_select_copy(const ccv_cnnp_model_t* const super, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_embedding_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	ccv_cnnp_model_index_select_t* const self = (ccv_cnnp_model_index_select_t*)super;
-	return ccv_cnnp_index_select(self->datatype, self->vocab_size, self->embed_size, self->super.name);
+	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
+	return ccv_cnnp_embedding(self->datatype, self->vocab_size, self->embed_size, self->super.name);
 }
 
 // MARK - Pool Layers

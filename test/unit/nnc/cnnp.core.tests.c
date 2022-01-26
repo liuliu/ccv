@@ -1135,19 +1135,24 @@ TEST_CASE("model can have multiple outputs and some of them can be used in the c
 	ccv_cnnp_model_free(multi_layer);
 }
 
-TEST_CASE("index select can generate vector embedding")
+TEST_CASE("index select model can select a part from vocabulary")
 {
-	ccv_cnnp_model_t* const index_select = ccv_cnnp_index_select(CCV_32F, 10, 8, 0);
+	ccv_cnnp_model_t* const index_select = ccv_cnnp_index_select(0);
+	const ccv_nnc_tensor_param_t v_params = CPU_TENSOR_NHWC(32F, 10, 8);
+	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, v_params, 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 10 * 8; i++)
+		v->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32S, 3);
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, x_params, 0);
-	ccv_cnnp_model_compile(index_select, TENSOR_PARAM_LIST(x_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_compile(index_select, TENSOR_PARAM_LIST(v_params, x_params), CMD_NOOP(), CMD_NOOP());
 	x->data.i32[0] = 1;
 	x->data.i32[1] = 0;
 	x->data.i32[2] = 5;
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 8), 0);
-	ccv_cnnp_model_evaluate(index_select, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
-	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 8), 0);
-	ccv_cnnp_model_parameter_copy(index_select, ccv_cnnp_model_parameters(index_select, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0), v);
+	ccv_cnnp_model_evaluate(index_select, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(v, x), TENSOR_LIST(y), 0, 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 1 * 8, y->data.f32, 8, 1e-5, "index 1st vector");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 0 * 8, y->data.f32 + 8, 8, 1e-5, "index 0th vector");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 5 * 8, y->data.f32 + 8 * 2, 8, 1e-5, "index 5th vector");
@@ -1155,6 +1160,28 @@ TEST_CASE("index select can generate vector embedding")
 	ccv_nnc_tensor_free(y);
 	ccv_nnc_tensor_free(v);
 	ccv_cnnp_model_free(index_select);
+}
+
+TEST_CASE("embedding model can generate vector embedding")
+{
+	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32F, 10, 8, 0);
+	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32S, 3);
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, x_params, 0);
+	ccv_cnnp_model_compile(embedding, TENSOR_PARAM_LIST(x_params), CMD_NOOP(), CMD_NOOP());
+	x->data.i32[0] = 1;
+	x->data.i32[1] = 0;
+	x->data.i32[2] = 5;
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 8), 0);
+	ccv_cnnp_model_evaluate(embedding, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 8), 0);
+	ccv_cnnp_model_parameter_copy(embedding, ccv_cnnp_model_parameters(embedding, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0), v);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 1 * 8, y->data.f32, 8, 1e-5, "index 1st vector");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 0 * 8, y->data.f32 + 8, 8, 1e-5, "index 0th vector");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, v->data.f32 + 5 * 8, y->data.f32 + 8 * 2, 8, 1e-5, "index 5th vector");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(v);
+	ccv_cnnp_model_free(embedding);
 }
 
 static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)

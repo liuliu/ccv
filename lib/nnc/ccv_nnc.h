@@ -3814,13 +3814,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dropout(const float p, const int ent
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_masked_fill(const float eq, const float fill, const char* const name);
 /**
  * A index select model.
+ * @param name The unique name of the model.
+ * @return A index select model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const char* const name);
+/**
+ * An dictionary embedding model. This can be thought as index select model but the vocabulary
+ * tensor is within this model itself.
  * @param datatype The data type of the vocabulary.
  * @param vocab_size The size of the vocabulary.
  * @param embed_size The size of the embedding.
  * @param name The unique name of the model.
  * @return A index select model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const int datatype, const int vocab_size, const int embed_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const char* const name);
 /**
  * A upsample model.
  * @param width_scale The scale of the width of the input.
