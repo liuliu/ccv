@@ -1781,7 +1781,10 @@ static void _ccv_cnnp_lstm_init_states(ccv_cnnp_model_t* const super, ccv_nnc_sy
 {
 	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
 	if (self->weights.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->weights);
+	{
+		const float stdv = 1.0 / sqrt(self->params.rnn.hidden_size);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-stdv, stdv), ccv_nnc_no_hint, 0, 0, self->weights);
+	}
 }
 
 static void _ccv_cnnp_lstm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
@@ -1789,13 +1792,6 @@ static void _ccv_cnnp_lstm_add_to_parameter(ccv_cnnp_model_t* const super, const
 	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
 	if (self->weights.graph)
 		add_to_array(parameters, self->weights);
-}
-
-static void _ccv_cnnp_lstm_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
-{
-	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
-	if (self->reserves.graph)
-		add_to_array(outputs, self->reserves);
 }
 
 static void _ccv_cnnp_lstm_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
@@ -1814,7 +1810,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_lstm_isa = {
 	.build = _ccv_cnnp_lstm_build,
 	.init_states = _ccv_cnnp_lstm_init_states,
 	.add_to_parameter = _ccv_cnnp_lstm_add_to_parameter,
-	.add_to_output = _ccv_cnnp_lstm_add_to_output,
 	.copy = _ccv_cnnp_lstm_copy,
 	.set_is_test = _ccv_cnnp_lstm_set_is_test,
 };
