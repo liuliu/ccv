@@ -98,8 +98,8 @@ static ccv_cnnp_model_t* _classifier_lstm_new(const int batch_size, const int ba
 	ccv_cnnp_model_io_t const x = ccv_cnnp_input();
 	ccv_cnnp_model_io_t const mask = ccv_cnnp_input();
 	ccv_cnnp_model_io_t const index = ccv_cnnp_input();
-	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_lstm(1, 1024, 0, 2, 1, 1, 0, dropout, 0), MODEL_IO_LIST(x, mask));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(batch_size * batch_length, 1024), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_lstm(1, hidden_size, 0, num_layers, 1, 1, 0, dropout, 0), MODEL_IO_LIST(x, mask));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(batch_size * batch_length, 128), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_index_select(0), MODEL_IO_LIST(out, index));
 	// Last layer, get it to 1.
 	out = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(out));
@@ -241,7 +241,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 	}
 	classifier_lstm_params_t classifier_lstm_params = {
 		.num_layers = 2,
-		.hidden_size = 1024,
+		.hidden_size = 128,
 		.dropout = 0.2,
 	};
 	ccv_cnnp_model_t* const lstm = ccv_cnnp_dynamic_new(_dynamic_classifier_lstm, &classifier_lstm_params, 0);
@@ -382,7 +382,7 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		if ((i + 1) % epoch_end == 0)
 		{
 			int correct = 0;
-			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, 3);
+			ccv_cnnp_dataframe_iter_t* const test_iter = ccv_cnnp_dataframe_iter_new(test_batched_data, test_gpu_batched, 4);
 			int k;
 			ccv_cnnp_dataframe_shuffle(test_data);
 			ccv_nnc_dynamic_graph_set_no_grad(dynamic_graph, 1);
