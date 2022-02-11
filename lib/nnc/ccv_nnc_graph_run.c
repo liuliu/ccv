@@ -1011,6 +1011,7 @@ int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flag
 	assert(graph->stream_size > 0);
 	const ccv_nnc_graph_static_schedule_t* const schedule = _schedule ? _schedule : graph->default_schedule;
 	assert(schedule);
+	assert(schedule->stream_0 < graph->stream_size);
 	ccv_nnc_stream_context_t* const stream_context = _stream_context ? _stream_context : graph->streams[schedule->stream_0];
 	co_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
 	co_routine_t* const task = co_new(_ccv_nnc_graph_topsorted_run_coro, (graph, -1, schedule, 0, tensor_tape, stream_context, flags));

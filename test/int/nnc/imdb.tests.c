@@ -1006,12 +1006,12 @@ static void _ccv_cnnp_mask_to_index(void* const* const* const column_data, const
 		ccv_nnc_tensor_t* output = (ccv_nnc_tensor_t*)data[i];
 		ccv_nnc_tensor_param_t params = input->info;
 		output = output ? ccv_nnc_tensor_resize(output, params) : ccv_nnc_tensor_new(0, params, 0);
-		int max_seq_length = -1;
+		int max_seq_length = 0;
 		for (j = 0; j < params.dim[0]; j++)
 			if (input->data.i32[j] > max_seq_length)
 				max_seq_length = input->data.i32[j];
 		for (j = 0; j < params.dim[0]; j++)
-			output->data.i32[j] = max_seq_length * j + input->data.i32[j] - 1;
+			output->data.i32[j] = ccv_max(max_seq_length * j + input->data.i32[j] - 1, 0);
 		data[i] = output;
 	}
 }
