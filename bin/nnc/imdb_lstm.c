@@ -227,18 +227,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(vocab_vec_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, vocab_vec[i])), 0);
 	}
 	ccv_nnc_tensor_free(vocab_vec_cpu);
-	ccv_nnc_tensor_t* const seq_indices_cpu = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32S, batch_size * max_length), 0);
-	for (i = 0; i < batch_size; i++)
-		for (j = 0; j < max_length; j++)
-			seq_indices_cpu->data.i32[i * max_length + j] = j;
-	ccv_nnc_tensor_variable_t seq_indices[1];
-	for (i = 0; i < 1; i++)
-	{
-		ccv_nnc_tensor_param_t seq_params = GPU_TENSOR_NCHW(000, 32S, batch_size * max_length);
-		CCV_TENSOR_SET_DEVICE_ID(seq_params.type, i);
-		seq_indices[i] = ccv_nnc_tensor_constant_new(dynamic_graph, seq_params);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[i])), 0);
-	}
 	classifier_lstm_params_t classifier_lstm_params = {
 		.num_layers = 2,
 		.hidden_size = 128,
@@ -284,10 +272,9 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 		ccv_nnc_tensor_variable_t word_vec[1];
 		ccv_nnc_tensor_variable_t vec[1 * 3];
 		ccv_nnc_tensor_variable_t out[1];
-		int batch_length = 0;
 		for (j = 0; j < 1; j++)
 		{
-			batch_length = tensor[j * 4][0]->info.dim[1];
+			const int batch_length = tensor[j * 4][0]->info.dim[1];
 			ccv_nnc_tensor_param_t word_indices_params = GPU_TENSOR_NCHW(000, 32S, batch_size * batch_length);
 			CCV_TENSOR_SET_DEVICE_ID(word_indices_params.type, j);
 			word_indices_tensor[j] = ccv_nnc_tensor(tensor[j * 4][0]->data.f32, word_indices_params, 0);
@@ -313,14 +300,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 3 + 2], &index_tensor[j]);
 			out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 		}
-		for (j = 0; j < batch_size; j++)
-		{
-			int k;
-			for (k = 0; k < batch_length; k++)
-				seq_indices_cpu->data.i32[j * batch_length + k] = k;
-		}
-		for (j = 0; j < 1; j++)
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[j])), 0);
 		ccv_nnc_tensor_variable_t tvin[1 * 2];
 		for (j = 0; j < 1; j++)
 			tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = word_indices[j];
@@ -375,8 +354,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_nnc_tensor_variable_free(dynamic_graph, sigmoid[j]);
 			ccv_nnc_tensor_variable_free(dynamic_graph, vocab_vec_grad[j]);
 		}
-		// if (i == 0) // Free data associated with that.
-		//	ccv_cnnp_dataframe_iter_free(first_iter);
 		if ((i + 1) % 50 == 0)
 			printf("epoch %d (%d/%d), training accuracy %lf\n", epoch, (i + 1) - epoch * epoch_end, epoch_end, overall_accuracy);
 		if ((i + 1) % epoch_end == 0)
@@ -425,14 +402,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 					ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 3 + 2], &index_tensor[j]);
 					out[j] = ccv_nnc_tensor_variable_new(dynamic_graph);
 				}
-				for (j = 0; j < batch_size; j++)
-				{
-					int k;
-					for (k = 0; k < batch_length; k++)
-						seq_indices_cpu->data.i32[j * batch_length + k] = k;
-				}
-				for (j = 0; j < 1; j++)
-					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(seq_indices_cpu), TENSOR_LIST(ccv_nnc_tensor_from_variable(dynamic_graph, seq_indices[j])), 0);
 				ccv_nnc_tensor_variable_t tvin[2];
 				for (j = 0; j < 1; j++)
 					tvin[j * 2] = vocab_vec[j], tvin[j * 2 + 1] = word_indices[j];
@@ -469,7 +438,6 @@ static void train_imdb(const int vocab_size, const int batch_size, const int max
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
 	}
-	ccv_nnc_tensor_free(seq_indices_cpu);
 	ccv_cnnp_model_free(lstm);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batched_data);
