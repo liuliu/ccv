@@ -302,7 +302,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &p, tcu.descriptor, tcu.data.u8, &zero, bcu.descriptor, bcu.data.u8));
 			ccv_nnc_cudnn_deinit_tensor_view_descriptor(tcu);
 		} else {
-			CUDNN_ENFORCE(cudnnOpTensor(cudnn, mul, &p, gacu.descriptor, gacu.data.u8, &p, gcu.descriptor, gcu.data.u8, &zero, bcu.descriptor, bcu.data.u8));
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, mul, &p, gcu.descriptor, gcu.data.u8, &p, gacu.descriptor, gacu.data.u8, &zero, bcu.descriptor, bcu.data.u8));
 		}
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(gacu);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(bcu);
