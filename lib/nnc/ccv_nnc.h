@@ -3872,7 +3872,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max(const char* const name);
  * @param num_layers The number of layers for RNN.
  * @param bias If 0, the layer won't use bias weights.
  * @param batch_first If 1, will batch before sequence.
- * @param bidrectional Enable bidirectional mode of RNN.
+ * @param bidirectional Enable bidirectional mode of RNN.
  * @param dropout If non-zero, enable dropout at each layer of RNN.
  * @param name The unique name of the model.
  * @return A LSTM model.
