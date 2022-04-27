@@ -712,7 +712,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 	ccv_cnnp_model_free(final);
 }
 
-static int _ccv_cnnp_model_clip_by_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_cnnp_model_clip_grad_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_tensor_t* const old_norm2 = outputs[1];
 	ccv_nnc_tensor_t* const norm2 = outputs[2];
@@ -721,8 +721,8 @@ static int _ccv_cnnp_model_clip_by_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, co
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static ccv_nnc_cmd_vtab_t clip_by_norm_reduce_norm2_vtab = {
-	.exec = _ccv_cnnp_model_clip_by_norm_reduce_norm2
+static ccv_nnc_cmd_vtab_t clip_grad_norm_reduce_norm2_vtab = {
+	.exec = _ccv_cnnp_model_clip_grad_norm_reduce_norm2
 };
 
 TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4 and clip grad to max_norm = 0.5")
@@ -749,7 +749,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4 and clip grad to max_n
 		.requires_grad = 1,
 	}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
 	ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
-	ccv_cnnp_model_parameter_gradients_clip_by_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
+	ccv_cnnp_model_parameters_clip_grad_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
 	ccv_nnc_tensor_t* old_norm2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* norm2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(old_norm2), 0);
@@ -757,7 +757,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4 and clip grad to max_n
 	ccv_cnnp_model_apply_gradients(final, 0);
 	ccv_nnc_cmd_t reduce_cmd = {
 		.cmd = CCV_NNC_CUSTOM_FORWARD,
-		.isa = &clip_by_norm_reduce_norm2_vtab,
+		.isa = &clip_grad_norm_reduce_norm2_vtab,
 	};
 	ccv_cnnp_model_parameter_gradients_map(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(old_norm2, norm2), 0);
 	REQUIRE(norm2->data.f32[0] < 0.5 + 1e-5, "norm2 should be smaller than max_norm");
@@ -769,7 +769,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4 and clip grad to max_n
 		.requires_grad = 1,
 	}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
 	ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
-	ccv_cnnp_model_parameter_gradients_clip_by_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
+	ccv_cnnp_model_parameters_clip_grad_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(old_norm2), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(norm2), 0);
 	ccv_cnnp_model_parameter_gradients_map(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(old_norm2, norm2), 0);

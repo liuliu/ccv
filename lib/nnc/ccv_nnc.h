@@ -3593,14 +3593,14 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
  */
 
 /**
- * Process parameter gradients with normalization. Exactly the same as PyTorch's clip_by_norm_
+ * Process parameter gradients with normalization. Exactly the same as PyTorch's clip_grad_norm_
  * @param model The composed model to have parameters mapped.
  * @param parameters The parameters to be mapped.
  * @param norm_type Currently only support 2.
  * @param max_norm The max value for norm.
  * @param stream_context The stream context to be associated with.
  */
-void ccv_cnnp_model_parameter_gradients_clip_by_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
