@@ -15,13 +15,13 @@ static void* _ccv_nnc_dynamic_compile_alloc(const int type, const int pinned_mem
 	assert(type & CCV_TENSOR_GPU_MEMORY);
 	ccv_nnc_dy_xpu_alloc_t* const xpu_alloc  = (ccv_nnc_dy_xpu_alloc_t*)arg;
 	const int device = CCV_TENSOR_GET_DEVICE_ID(type);
-	return ccv_nnc_dynamic_graph_xpu_alloc(xpu_alloc->graph, device, xpu_alloc->stream, size);
+	return ccv_nnc_xpu_alloc(xpu_alloc->xpu_alloc, device, xpu_alloc->stream, size);
 }
 
 static void _ccv_nnc_dynamic_compile_free(void* const ptr, void* const arg)
 {
-	ccv_nnc_dynamic_graph_t* const graph = (ccv_nnc_dynamic_graph_t*)arg;
-	ccv_nnc_dynamic_graph_xpu_free(graph, ptr);
+	ccv_nnc_xpu_alloc_t* const xpu_alloc = (ccv_nnc_xpu_alloc_t*)arg;
+	ccv_nnc_xpu_free(xpu_alloc, ptr);
 }
 
 const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa = {
@@ -329,7 +329,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
-		.graph = dynamic_graph,
+		.xpu_alloc = &dynamic_graph->xpu_alloc,
 		.stream = stream_context
 	};
 	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
@@ -337,7 +337,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			.isa = &ccv_nnc_dy_allocator_isa,
 			.context = {
 				.alloc = &xpu_alloc,
-				.free = dynamic_graph,
+				.free = &dynamic_graph->xpu_alloc,
 			}
 		}
 	};

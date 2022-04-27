@@ -12,12 +12,12 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	ccv_nnc_dynamic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_dynamic_graph_t));
 	graph->no_grad = 0;
 	graph->reuse_var = -1;
-	graph->mp_hdr = -1;
 	graph->vars = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
 	graph->tape = ccv_nnc_symbolic_graph_new();
-	graph->freed = kh_init(dy_str);
-	graph->allocd = kh_init(dy_alloc);
+	graph->xpu_alloc.mp_hdr = -1;
+	graph->xpu_alloc.freed = kh_init(dy_str);
+	graph->xpu_alloc.allocd = kh_init(dy_alloc);
 	// These may not be used as frequent, init as needed.
 	graph->stateful_execs = 0;
 	graph->reuse_stateful_exec = -1;
@@ -40,7 +40,7 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 			else {
 				if (!tensor_variable->alias_index_ref && // Return this memory to the graph.
 					CCV_TENSOR_GET_MEMORY(tensor_variable->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
-					ccv_nnc_dynamic_graph_xpu_free(graph, tensor_variable->tensor_view->data.ptr);
+					ccv_nnc_xpu_free(&graph->xpu_alloc, tensor_variable->tensor_view->data.ptr);
 				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
 			}
 		}
@@ -80,7 +80,7 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 			else {
 				if (!bind->alias_ref && // Return this memory to the graph.
 					CCV_TENSOR_GET_MEMORY(bind->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
-					ccv_nnc_dynamic_graph_xpu_free(graph, bind->tensor_view->data.ptr);
+					ccv_nnc_xpu_free(&graph->xpu_alloc, bind->tensor_view->data.ptr);
 				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)bind->tensor_view);
 			}
 		}
@@ -133,7 +133,7 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 		}
 		kh_destroy(stream_map, graph->stream_map);
 	}
-	ccv_nnc_dynamic_graph_xpu_alloc_destroy(graph);
+	ccv_nnc_xpu_alloc_destroy(&graph->xpu_alloc);
 	ccfree(graph);
 }
 
@@ -270,7 +270,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 			return 0;
 		void* ptr = 0;
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
-			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
+			ptr = ccv_nnc_xpu_alloc(&graph->xpu_alloc, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, tensor_variable->info, 0);
 		assert(tensor_variable->tensor_view->data.u8);
 		return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
@@ -287,7 +287,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		void* ptr = 0;
 		assert(variable_to->info.type == tensor_variable->info.type);
 		if (CCV_TENSOR_GET_MEMORY(variable_to->info.type) == CCV_TENSOR_GPU_MEMORY)
-			ptr = ccv_nnc_dynamic_graph_xpu_alloc(graph, CCV_TENSOR_GET_DEVICE_ID(variable_to->info.type), stream_context, ccv_nnc_tensor_data_size(variable_to->info));
+			ptr = ccv_nnc_xpu_alloc(&graph->xpu_alloc, CCV_TENSOR_GET_DEVICE_ID(variable_to->info.type), stream_context, ccv_nnc_tensor_data_size(variable_to->info));
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, variable_to->info, 0);
 		assert(variable_to->tensor_view->data.u8);
 	}
