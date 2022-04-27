@@ -2000,7 +2000,7 @@ static ccv_nnc_stream_context_t* _ccv_cnnp_compiled_data_get_stream(ccv_cnnp_com
 	return stream;
 }
 
-void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
+void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
 {
 	ccv_array_t* to_parameter_indices;
 	int to_param_ref;
@@ -2015,7 +2015,15 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	const int to_parameter_size = to_compiled_data->parameters->rnum;
 	const int rnum = (to_param_ref < 0 && from_param_ref < 0) ? from_parameter_indices->rnum : 1;
+	assert(aux_in_size >= 0);
+	assert(aux_out_size >= 0);
 	int i, j;
+	ccv_nnc_tensor_t* inputs[aux_in_size + 2];
+	ccv_nnc_tensor_t* outputs[aux_out_size + 1];
+	for (i = 0; i < aux_in_size; i++)
+		inputs[i + 2] = aux_ins[i];
+	for (i = 0; i < aux_out_size; i++)
+		outputs[i + 1] = aux_outs[i];
 	for (i = 0; i < rnum; i++)
 	{
 		const int src_d = *(int*)ccv_array_get(from_parameter_indices,from_param_ref >= 0 ? from_param_ref : i);
@@ -2054,7 +2062,9 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 				// Wait signal to finish.
 				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0, signal);
-				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_0);
+				inputs[0] = outputs[0] = dest;
+				inputs[1] = src;
+				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 2, outputs, aux_out_size + 1, stream_0);
 				if (stream_context)
 				{
 					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
@@ -2072,7 +2082,9 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 			assert(src);
 			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
 			assert(dest);
-			ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest, src), TENSOR_LIST(dest), stream_context);
+			inputs[0] = outputs[0] = dest;
+			inputs[1] = src;
+			ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 2, outputs, aux_out_size + 1, stream_context);
 		}
 		// Mark this symbol as init'ed.
 		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(to_compiled_data->parameters, dest_d))->d;
@@ -2082,7 +2094,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 	ccv_array_free(from_parameter_indices);
 }
 
-void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int to_param_ref;
 	ccv_array_t* const to_parameter_indices = _ccv_cnnp_model_parameter_indices(model, parameters, &to_param_ref);
@@ -2096,7 +2108,15 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	const int to_parameter_size = to_compiled_data->parameters->rnum;
 	const int rnum = (to_param_ref < 0) ? to_parameter_indices->rnum : 1;
+	assert(aux_in_size >= 0);
+	assert(aux_out_size >= 0);
 	int i, j;
+	ccv_nnc_tensor_t* inputs[aux_in_size + 1];
+	ccv_nnc_tensor_t* outputs[aux_out_size + 1];
+	for (i = 0; i < aux_in_size; i++)
+		inputs[i + 1] = aux_ins[i];
+	for (i = 0; i < aux_out_size; i++)
+		outputs[i + 1] = aux_outs[i];
 	for (i = 0; i < rnum; i++)
 	{
 		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
@@ -2124,7 +2144,8 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 				// Wait signal to finish.
 				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0, signal);
-				ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), 0);
+				inputs[0] = outputs[0] = dest;
+				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, 0);
 				if (stream_context)
 				{
 					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
@@ -2140,7 +2161,88 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 		} else {
 			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d];
 			assert(dest);
-			ccv_nnc_cmd_exec(cmd, hint, flags, TENSOR_LIST(dest), TENSOR_LIST(dest), stream_context);
+			inputs[0] = outputs[0] = dest;
+			ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_context);
+		}
+		// No need to mark this symbol as init'ed, it is already.
+	}
+	ccv_array_free(to_parameter_indices);
+}
+
+void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	int to_param_ref;
+	ccv_array_t* const to_parameter_indices = _ccv_cnnp_model_parameter_indices(model, parameters, &to_param_ref);
+	// To models.
+	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
+	assert(to_compiled_data);
+	// Tensor has to be inited already.
+	assert(!!to_compiled_data->tensors_init.v);
+	ccv_nnc_tensor_t** tensor_gradients;
+	if (to_compiled_data->backward.count > 1)
+		tensor_gradients = to_compiled_data->tensors.accum_gradients;
+	else
+		tensor_gradients = to_compiled_data->tensors.gradients;
+	assert(tensor_gradients);
+	// From models.
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int to_parameter_size = to_compiled_data->parameters->rnum;
+	const int rnum = (to_param_ref < 0) ? to_parameter_indices->rnum : 1;
+	assert(aux_in_size >= 0);
+	assert(aux_out_size >= 0);
+	int i, j;
+	ccv_nnc_tensor_t* inputs[aux_in_size + 1];
+	ccv_nnc_tensor_t* outputs[aux_out_size + 1];
+	for (i = 0; i < aux_in_size; i++)
+		inputs[i + 1] = aux_ins[i];
+	for (i = 0; i < aux_out_size; i++)
+		outputs[i + 1] = aux_outs[i];
+	for (i = 0; i < rnum; i++)
+	{
+		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
+		assert(dest_d >= 0);
+		assert(dest_d < to_compiled_data->parameters->rnum);
+		if (parallel_count > 1)
+		{
+			ccv_nnc_stream_context_t* streams[parallel_count];
+			ccv_nnc_stream_signal_t* signal;
+			if (stream_context)
+				signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+			for (j = 0; j < parallel_count; j++)
+			{
+				ccv_nnc_tensor_t* const dest = tensor_gradients[dest_d + j * to_parameter_size];
+				if (!dest)
+				{
+					streams[j] = 0;
+					continue;
+				}
+				const int stream_type = CCV_TENSOR_GET_MEMORY(dest->info.type) == CCV_TENSOR_GPU_MEMORY ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(dest->info.type);
+				int type = stream_type;
+				CCV_STREAM_SET_DEVICE_ID(type, device_id);
+				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
+				// Wait signal to finish.
+				if (stream_context)
+					ccv_nnc_stream_context_wait_signal(stream_0, signal);
+				inputs[0] = outputs[0] = dest;
+				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, 0);
+				if (stream_context)
+				{
+					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+					ccv_nnc_stream_context_wait_signal(stream_context, signal);
+				}
+				streams[j] = stream_0;
+			}
+			// If this should be blocking, blocking it.
+			if (!stream_context)
+				for (j = 0; j < parallel_count; j++)
+					if (streams[j])
+						ccv_nnc_stream_context_wait(streams[j]);
+		} else {
+			ccv_nnc_tensor_t* const dest = tensor_gradients[dest_d];
+			assert(dest);
+			inputs[0] = outputs[0] = dest;
+			ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_context);
 		}
 		// No need to mark this symbol as init'ed, it is already.
 	}

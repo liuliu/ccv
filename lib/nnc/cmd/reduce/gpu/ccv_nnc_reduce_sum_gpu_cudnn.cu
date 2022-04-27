@@ -56,7 +56,7 @@ static int _ccv_nnc_reduce_sum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		};
 		ccv_nnc_tensor_view_alignment(tvs, 2);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &gtv);
-		cudnnAddTensor(cudnn, &one, g.descriptor, g.data.u8, &zero, a.descriptor, a.data.u8);
+		CUDNN_ENFORCE(cudnnAddTensor(cudnn, &one, g.descriptor, g.data.u8, &zero, a.descriptor, a.data.u8));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);

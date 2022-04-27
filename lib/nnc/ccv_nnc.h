@@ -3510,11 +3510,15 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
  * @param cmd The command to apply on the parameters.
  * @param hint The hint supplied to the cmd.
  * @param flags The flags supplied to the cmd.
+ * @param aux_ins Additional inputs supplied to the cmd.
+ * @param aux_in_size The size of additional inputs supplied to the cmd.
+ * @param aux_outs Additional outputs supplied to the cmd.
+ * @param aux_out_size The size of additional outputs supplied to the cmd.
  * @param stream_context The stream context to be associated with.
  * @param from_model The other composed model to have parameters zipped.
  * @param from_parameters The parameters to be read.
  */
-void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
+void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
 /**
  * Process parameters such as clipping. parameters = parameters.map { cmd(parameter) }
  * @param model The composed model to have parameters mapped.
@@ -3522,9 +3526,27 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
  * @param cmd The command to apply on the parameters.
  * @param hint The hint supplied to the cmd.
  * @param flags The flags supplied to the cmd.
+ * @param aux_ins Additional inputs supplied to the cmd.
+ * @param aux_in_size The size of additional inputs supplied to the cmd.
+ * @param aux_outs Additional outputs supplied to the cmd.
+ * @param aux_out_size The size of additional outputs supplied to the cmd.
  * @param stream_context The stream context to be associated with.
  */
-void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Process parameter gradients such as normalization. parameters.grad = parameters.apply { cmd(parameter.grad) }
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param cmd The command to apply on the parameters.
+ * @param hint The hint supplied to the cmd.
+ * @param flags The flags supplied to the cmd.
+ * @param aux_ins Additional inputs supplied to the cmd.
+ * @param aux_in_size The size of additional inputs supplied to the cmd.
+ * @param aux_outs Additional outputs supplied to the cmd.
+ * @param aux_out_size The size of additional outputs supplied to the cmd.
+ * @param stream_context The stream context to be associated with.
+ */
+void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
@@ -3569,6 +3591,16 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
  * @defgroup level_5_model_add_ons Model Add-ons
  * @{
  */
+
+/**
+ * Process parameter gradients with normalization. Exactly the same as PyTorch's clip_by_norm_
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param norm_type Currently only support 2.
+ * @param max_norm The max value for norm.
+ * @param stream_context The stream context to be associated with.
+ */
+void ccv_cnnp_model_parameter_gradients_clip_by_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */

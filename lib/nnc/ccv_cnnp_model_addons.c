@@ -4,6 +4,12 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 
+// MARK - Add-on Functions
+
+void ccv_cnnp_model_parameter_gradients_clip_by_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context)
+{
+}
+
 // MARK - Core Layers
 
 static void _ccv_cnnp_sum_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)

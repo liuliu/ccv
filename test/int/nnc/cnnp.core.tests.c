@@ -102,7 +102,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and copy parameter to a new mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], o_final, 1e-5, "should match the previous output");
 	}
-	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0);
+	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];
@@ -213,7 +213,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and copy parameter to a new mod
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], o_final, 1e-5, "should match the previous output");
 	}
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, stream_context);
+	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, 0, 0, stream_context);
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];
@@ -324,7 +324,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and merge parameters with a mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], o_final, 1e-5, "should match the previous output");
 	}
-	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0);
+	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];
@@ -336,7 +336,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and merge parameters with a mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], 64, 1e-5, "should match the output when x is 1");
 	}
-	ccv_cnnp_model_parameters_zip_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_ADD_FORWARD(0.6, 0.4), ccv_nnc_no_hint, 0, 0, final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
+	ccv_cnnp_model_parameters_zip_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_ADD_FORWARD(0.6, 0.4), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0, final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];
@@ -434,7 +434,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and merge parameters with a mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], o_final, 1e-5, "should match the previous output");
 	}
-	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0);
+	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];
@@ -447,7 +447,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and merge parameters with a mod
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], 64, 1e-5, "should match the output when x is 1");
 	}
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_cnnp_model_parameters_zip_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_ADD_FORWARD(0.6, 0.4), ccv_nnc_no_hint, 0, stream_context, final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
+	ccv_cnnp_model_parameters_zip_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_ADD_FORWARD(0.6, 0.4), ccv_nnc_no_hint, 0, 0, 0, 0, 0, stream_context, final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	for (i = 0; i < device_count; i++)
 	{
 		inputs[i * 2] = a_tensor[i];

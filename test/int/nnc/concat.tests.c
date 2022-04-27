@@ -35,7 +35,7 @@ TEST_CASE("concatenate several tensors together")
 	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 1), 0);
 	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
 	ccv_cnnp_model_evaluate(full, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
-	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(full, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0);
+	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(full, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	ccv_cnnp_model_evaluate(full, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c), TENSOR_LIST(hc), 0);
 	REQUIRE_EQ_WITH_TOLERANCE(hc->data.f32[0], -0.5 + 0.3 + 2, 1e-5, "should be equal");
@@ -80,9 +80,9 @@ TEST_CASE("concatenate several tensors together and make sure they are simplifie
 	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 1), 0);
 	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
 	ccv_cnnp_model_evaluate(full, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
-	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(x_dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0.5), ccv_nnc_no_hint, 0, 0);
-	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(y_dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(-0.5), ccv_nnc_no_hint, 0, 0);
-	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0);
+	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(x_dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0.5), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
+	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(y_dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(-0.5), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
+	ccv_cnnp_model_parameters_map(full, ccv_cnnp_model_parameters(dense, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	ccv_cnnp_model_evaluate(full, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c), TENSOR_LIST(hc), 0);
 	REQUIRE_EQ_WITH_TOLERANCE(hc->data.f32[0], -0.5 * 0.5 + (0.3 + 2) * -0.5 * 2, 1e-5, "should be equal");
