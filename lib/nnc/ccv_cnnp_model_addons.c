@@ -6,8 +6,158 @@
 
 // MARK - Add-on Functions
 
+static int _ccv_cnnp_model_clip_by_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[0]->info.type);
+	ccv_nnc_tensor_t* const old_norm2 = outputs[1 + device_id * 2];
+	ccv_nnc_tensor_t* const norm2 = outputs[1 + device_id * 2 + 1];
+	ccv_nnc_cmd_exec(CMD_REDUCE_NORM2_FORWARD(), hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(norm2), stream_context);
+	ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), hint, flags, TENSOR_LIST(old_norm2, norm2), TENSOR_LIST(old_norm2), stream_context);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static ccv_nnc_cmd_vtab_t clip_by_norm_reduce_norm2_vtab = {
+	.exec = _ccv_cnnp_model_clip_by_norm_reduce_norm2
+};
+
+static int _ccv_cnnp_model_clip_by_norm_scatter_norm2(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[0]->info.type);
+	ccv_nnc_tensor_t* const norm2 = inputs[1 + device_id * 2];
+	ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), hint, flags, TENSOR_LIST(inputs[0], norm2), TENSOR_LIST(outputs[0]), stream_context);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static ccv_nnc_cmd_vtab_t clip_by_norm_scatter_norm2_vtab = {
+	.exec = _ccv_cnnp_model_clip_by_norm_scatter_norm2
+};
+
 void ccv_cnnp_model_parameter_gradients_clip_by_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context)
 {
+	assert(norm_type == 2);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	ccv_nnc_tensor_t* norm2[parallel_count * 2];
+	ccv_nnc_tensor_t* max_normt[parallel_count];
+	const int stream_type = model->compiled_data->stream_type;
+	int i;
+	if (stream_type == CCV_STREAM_CONTEXT_GPU)
+	{
+		for (i = 0; i < parallel_count; i++)
+		{
+			ccv_nnc_tensor_param_t info = {
+				.type = CCV_TENSOR_GPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.datatype = CCV_32F,
+				.dim = {1},
+			};
+			CCV_TENSOR_SET_DEVICE_ID(info.type, i);
+			norm2[i * 2] = ccv_nnc_tensor_new(ccv_nnc_xpu_alloc(&compiled_data->xpu_alloc, i, stream_context, ccv_nnc_tensor_data_size(info)), info, 0);
+			norm2[i * 2 + 1] = ccv_nnc_tensor_new(ccv_nnc_xpu_alloc(&compiled_data->xpu_alloc, i, stream_context, ccv_nnc_tensor_data_size(info)), info, 0);
+			max_normt[i] = ccv_nnc_tensor_new(ccv_nnc_xpu_alloc(&compiled_data->xpu_alloc, i, stream_context, ccv_nnc_tensor_data_size(info)), info, 0);
+		}
+	} else {
+		for (i = 0; i < parallel_count; i++)
+		{
+			ccv_nnc_tensor_param_t info = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.datatype = CCV_32F,
+				.dim = {1},
+			};
+			norm2[i * 2] = ccv_nnc_tensor_new(0, info, 0);
+			norm2[i * 2 + 1] = ccv_nnc_tensor_new(0, info, 0);
+			max_normt[i] = ccv_nnc_tensor_new(0, info, 0);
+		}
+	}
+	// zero out old norm2.
+	if (parallel_count > 1)
+	{
+		ccv_nnc_stream_context_t* streams[parallel_count];
+		ccv_nnc_stream_signal_t* signal;
+		if (stream_context)
+			signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+		for (i = 0; i < parallel_count; i++)
+		{
+			const int stream_type = CCV_TENSOR_GET_MEMORY(norm2[i * 2]->info.type) == CCV_TENSOR_GPU_MEMORY ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+			const int device_id = CCV_TENSOR_GET_DEVICE_ID(norm2[i * 2]->info.type);
+			int type = stream_type;
+			CCV_STREAM_SET_DEVICE_ID(type, device_id);
+			ccv_nnc_stream_context_t* const stream_0 = ccv_cnnp_compiled_data_get_stream(compiled_data, type);
+			// Wait signal to finish.
+			if (stream_context)
+				ccv_nnc_stream_context_wait_signal(stream_0, signal);
+			ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(norm2[i * 2]), stream_0);
+			if (stream_context)
+			{
+				ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+				ccv_nnc_stream_context_wait_signal(stream_context, signal);
+			}
+			streams[i] = stream_0;
+		}
+		// If this should be blocking, blocking it.
+		if (!stream_context)
+			for (i = 0; i < parallel_count; i++)
+				if (streams[i])
+					ccv_nnc_stream_context_wait(streams[i]);
+	} else {
+		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(norm2[0]), stream_context);
+	}
+	// Gather norm2.
+	ccv_nnc_cmd_t reduce_cmd = {
+		.cmd = CCV_NNC_CUSTOM_FORWARD,
+		.isa = &clip_by_norm_reduce_norm2_vtab,
+	};
+	ccv_cnnp_model_parameter_gradients_map(model, parameters, reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, norm2, parallel_count * 2, stream_context);
+	// Now compute max(max_norm / norm2, 1.0).
+	if (parallel_count > 1)
+	{
+		ccv_nnc_stream_context_t* streams[parallel_count];
+		ccv_nnc_stream_signal_t* signal;
+		if (stream_context)
+			signal = ccv_nnc_stream_context_emit_signal_new(stream_context);
+		for (i = 0; i < parallel_count; i++)
+		{
+			const int stream_type = CCV_TENSOR_GET_MEMORY(norm2[i * 2]->info.type) == CCV_TENSOR_GPU_MEMORY ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
+			const int device_id = CCV_TENSOR_GET_DEVICE_ID(norm2[i * 2]->info.type);
+			int type = stream_type;
+			CCV_STREAM_SET_DEVICE_ID(type, device_id);
+			ccv_nnc_stream_context_t* const stream_0 = ccv_cnnp_compiled_data_get_stream(compiled_data, type);
+			// Wait signal to finish.
+			if (stream_context)
+				ccv_nnc_stream_context_wait_signal(stream_0, signal);
+			ccv_nnc_cmd_exec(CMD_SET_FORWARD(max_norm), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(max_normt[i]), stream_0);
+			ccv_nnc_cmd_exec(CMD_EWDIV_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(max_normt[i], norm2[i * 2]), TENSOR_LIST(norm2[i * 2]), stream_0);
+			ccv_nnc_cmd_exec(CMD_CLAMP_FORWARD(NAN, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[i * 2]), TENSOR_LIST(norm2[i * 2]), stream_0);
+			if (stream_context)
+			{
+				ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
+				ccv_nnc_stream_context_wait_signal(stream_context, signal);
+			}
+			streams[i] = stream_0;
+		}
+		// If this should be blocking, blocking it.
+		if (!stream_context)
+			for (i = 0; i < parallel_count; i++)
+				if (streams[i])
+					ccv_nnc_stream_context_wait(streams[i]);
+	} else {
+		ccv_nnc_cmd_exec(CMD_SET_FORWARD(max_norm), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(max_normt[0]), stream_context);
+		ccv_nnc_cmd_exec(CMD_EWDIV_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(max_normt[0], norm2[0]), TENSOR_LIST(norm2[0]), stream_context);
+		ccv_nnc_cmd_exec(CMD_CLAMP_FORWARD(NAN, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[0]), TENSOR_LIST(norm2[0]), stream_context);
+	}
+	ccv_nnc_cmd_t scatter_cmd = {
+		.cmd = CCV_NNC_CUSTOM_FORWARD,
+		.isa = &clip_by_norm_scatter_norm2_vtab,
+	};
+	ccv_cnnp_model_parameter_gradients_map(model, parameters, scatter_cmd, ccv_nnc_no_hint, 0, norm2, parallel_count * 2, 0, 0, stream_context);
+	for (i = 0; i < parallel_count; i++)
+	{
+		ccv_nnc_tensor_free(norm2[i * 2]);
+		ccv_nnc_tensor_free(norm2[i * 2 + 1]);
+		ccv_nnc_tensor_free(max_normt[i]);
+	}
 }
 
 // MARK - Core Layers

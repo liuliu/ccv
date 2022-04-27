@@ -147,6 +147,14 @@ static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_sym
 	++add_to_array_context->sequence->it;
 }
 
+static void _ccv_cnnp_compiled_data_init(ccv_cnnp_compiled_data_t* const compiled_data, const int output_size)
+{
+	compiled_data->f = compiled_data->fits + output_size;
+	compiled_data->xpu_alloc.mp_hdr = -1;
+	compiled_data->xpu_alloc.freed = kh_init(dy_str);
+	compiled_data->xpu_alloc.allocd = kh_init(dy_alloc);
+}
+
 static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t loss)
 {
 	assert(model->graph);
@@ -212,7 +220,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		model->outputs, output_size,
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	ccv_cnnp_compiled_data_t* compiled_data = model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (output_size * 2 - 1));
-	compiled_data->f = compiled_data->fits + output_size;
+	_ccv_cnnp_compiled_data_init(compiled_data, output_size);
 	const int evaluate_to_size = compiled_data->evaluate.to_size = ccv_nnc_symbolic_graph_destination_size(model->graph);
 	assert(evaluate_to_size > 0);
 	compiled_data->evaluate.tos = ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * evaluate_to_size);
@@ -1983,7 +1991,7 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_free(from_parameter_indices);
 }
 
-static ccv_nnc_stream_context_t* _ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type)
+ccv_nnc_stream_context_t* ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type)
 {
 	if (!compiled_data->stream_map)
 		compiled_data->stream_map = kh_init(stream_map);
@@ -2058,7 +2066,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(src->info.type);
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
-				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
+				ccv_nnc_stream_context_t* const stream_0 = ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
 				// Wait signal to finish.
 				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0, signal);
@@ -2140,12 +2148,12 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(dest->info.type);
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
-				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
+				ccv_nnc_stream_context_t* const stream_0 = ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
 				// Wait signal to finish.
 				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0, signal);
 				inputs[0] = outputs[0] = dest;
-				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, 0);
+				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_0);
 				if (stream_context)
 				{
 					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
@@ -2220,12 +2228,12 @@ void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(dest->info.type);
 				int type = stream_type;
 				CCV_STREAM_SET_DEVICE_ID(type, device_id);
-				ccv_nnc_stream_context_t* const stream_0 = _ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
+				ccv_nnc_stream_context_t* const stream_0 = ccv_cnnp_compiled_data_get_stream(to_compiled_data, type);
 				// Wait signal to finish.
 				if (stream_context)
 					ccv_nnc_stream_context_wait_signal(stream_0, signal);
 				inputs[0] = outputs[0] = dest;
-				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, 0);
+				ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_0);
 				if (stream_context)
 				{
 					ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_emit_signal_new(stream_0);
@@ -2434,6 +2442,7 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	_ccv_cnnp_compiled_data_gradient_free(compiled_data);
 	_ccv_cnnp_compiled_data_backward_free(compiled_data);
 	_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
+	ccv_nnc_xpu_alloc_destroy(&compiled_data->xpu_alloc);
 	ccfree(compiled_data);
 }
 

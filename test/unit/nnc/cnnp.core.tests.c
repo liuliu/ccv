@@ -712,6 +712,81 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 	ccv_cnnp_model_free(final);
 }
 
+static int _ccv_cnnp_model_clip_by_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_nnc_tensor_t* const old_norm2 = outputs[1];
+	ccv_nnc_tensor_t* const norm2 = outputs[2];
+	ccv_nnc_cmd_exec(CMD_REDUCE_NORM2_FORWARD(), hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(norm2), stream_context);
+	ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), hint, flags, TENSOR_LIST(old_norm2, norm2), TENSOR_LIST(old_norm2), stream_context);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static ccv_nnc_cmd_vtab_t clip_by_norm_reduce_norm2_vtab = {
+	.exec = _ccv_cnnp_model_clip_by_norm_reduce_norm2
+};
+
+TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4 and clip grad to max_norm = 0.5")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* ingrad = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* outgrad0 = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* outgrad1 = ccv_nnc_tensor_new(0, f, 0);
+	ingrad->data.f32[0] = 1;
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 10;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+	ccv_cnnp_model_parameter_gradients_clip_by_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
+	ccv_nnc_tensor_t* old_norm2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* norm2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(old_norm2), 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(norm2), 0);
+	ccv_cnnp_model_apply_gradients(final, 0);
+	ccv_nnc_cmd_t reduce_cmd = {
+		.cmd = CCV_NNC_CUSTOM_FORWARD,
+		.isa = &clip_by_norm_reduce_norm2_vtab,
+	};
+	ccv_cnnp_model_parameter_gradients_map(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(old_norm2, norm2), 0);
+	REQUIRE(norm2->data.f32[0] < 0.5 + 1e-5, "norm2 should be smaller than max_norm");
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+	ccv_cnnp_model_parameter_gradients_clip_by_norm(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), 2, 0.5, 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(old_norm2), 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(norm2), 0);
+	ccv_cnnp_model_parameter_gradients_map(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(old_norm2, norm2), 0);
+	REQUIRE(norm2->data.f32[0] < 0.5 + 1e-5, "norm2 should be smaller than max_norm");
+	ccv_cnnp_model_apply_gradients(final, 0);
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(ingrad);
+	ccv_nnc_tensor_free(outgrad0);
+	ccv_nnc_tensor_free(outgrad1);
+	ccv_cnnp_model_free(final);
+	ccv_nnc_tensor_free(old_norm2);
+	ccv_nnc_tensor_free(norm2);
+}
+
 TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4 and copy parameter to a new model entirely")
 {
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);

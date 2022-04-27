@@ -12,6 +12,7 @@
 
 #include "ccv_nnc.h"
 #include "_ccv_nnc_stream.h"
+#include "_ccv_nnc_xpu_alloc.h"
 #include "3rdparty/khash/khash.h"
 
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
@@ -75,6 +76,7 @@ typedef struct {
 	int outgrad_size;
 	uint64_t disable_outgrad;
 	ccv_nnc_symbolic_graph_compile_param_t compile_params;
+	ccv_nnc_xpu_alloc_t xpu_alloc;
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
@@ -301,5 +303,6 @@ static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* con
 }
 
 void ccv_cnnp_model_tensors_init(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
+ccv_nnc_stream_context_t* ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type);
 
 #endif
