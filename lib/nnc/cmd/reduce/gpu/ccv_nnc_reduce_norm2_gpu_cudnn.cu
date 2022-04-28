@@ -21,30 +21,19 @@ static int _ccv_nnc_reduce_norm2_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	};
 	ccv_nnc_tensor_view_alignment(tvs, 2);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &btv);
-	const int nd = ccv_nnc_tensor_nd(atv.info.dim);
-	int i, flag = 0;
-	for (i = 0; i < nd && !flag; i++)
-		if (atv.info.dim[i] != btv.info.dim[i])
-			flag = 1;
-	// If a matches b on dimension, simply copy.
-	static const float one = 1, zero = 0;
-	if (!flag)
+	cudnnReduceTensorDescriptor_t reduce_norm2 = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
+	cudnnSetReduceTensorDescriptor(reduce_norm2, CUDNN_REDUCE_TENSOR_NORM2, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
+	void* workspace = 0;
+	size_t workspace_size = 0;
+	CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_norm2, a.descriptor, b.descriptor, &workspace_size));
+	if (workspace_size)
 	{
-		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
-	} else {
-		cudnnReduceTensorDescriptor_t reduce_norm2 = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
-		cudnnSetReduceTensorDescriptor(reduce_norm2, CUDNN_REDUCE_TENSOR_NORM2, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
-		void* workspace = 0;
-		size_t workspace_size = 0;
-		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_norm2, a.descriptor, b.descriptor, &workspace_size));
-		if (workspace_size)
-		{
-			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
-			assert(workspace);
-		}
-		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_norm2, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
-		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_norm2);
+		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+		assert(workspace);
 	}
+	static const float one = 1, zero = 0;
+	CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_norm2, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
+	ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_norm2);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	return CCV_NNC_EXEC_SUCCESS;
