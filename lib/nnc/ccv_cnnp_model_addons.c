@@ -11,7 +11,13 @@ static int _ccv_cnnp_model_clip_grad_norm_reduce_norm2(const ccv_nnc_cmd_t cmd, 
 	const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[0]->info.type);
 	ccv_nnc_tensor_t* const old_norm2 = outputs[1 + device_id * 2];
 	ccv_nnc_tensor_t* const norm2 = outputs[1 + device_id * 2 + 1];
-	ccv_nnc_cmd_exec(CMD_REDUCE_NORM2_FORWARD(), hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(norm2), stream_context);
+	const int tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
+	if (tensor_count == 1)
+		ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), hint, flags, TENSOR_LIST(inputs[0], inputs[0]), TENSOR_LIST(norm2), stream_context);
+	else {
+		ccv_nnc_cmd_exec(CMD_REDUCE_NORM2_FORWARD(), hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(norm2), stream_context);
+		ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), hint, flags, TENSOR_LIST(norm2, norm2), TENSOR_LIST(norm2), stream_context);
+	}
 	ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), hint, flags, TENSOR_LIST(old_norm2, norm2), TENSOR_LIST(old_norm2), stream_context);
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -127,6 +133,7 @@ void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, con
 			// Wait signal to finish.
 			if (stream_context)
 				ccv_nnc_stream_context_wait_signal(stream_0, signal);
+			ccv_nnc_cmd_exec(CMD_EWSQRT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[i * 2]), TENSOR_LIST(norm2[i * 2]), stream_0);
 			ccv_nnc_cmd_exec(CMD_SET_FORWARD(max_norm), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(max_normt[i]), stream_0);
 			ccv_nnc_cmd_exec(CMD_EWDIV_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(max_normt[i], norm2[i * 2]), TENSOR_LIST(norm2[i * 2]), stream_0);
 			ccv_nnc_cmd_exec(CMD_CLAMP_FORWARD(NAN, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[i * 2]), TENSOR_LIST(norm2[i * 2]), stream_0);
@@ -143,6 +150,7 @@ void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, con
 				if (streams[i])
 					ccv_nnc_stream_context_wait(streams[i]);
 	} else {
+		ccv_nnc_cmd_exec(CMD_EWSQRT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[0]), TENSOR_LIST(norm2[0]), stream_context);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(max_norm), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(max_normt[0]), stream_context);
 		ccv_nnc_cmd_exec(CMD_EWDIV_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(max_normt[0], norm2[0]), TENSOR_LIST(norm2[0]), stream_context);
 		ccv_nnc_cmd_exec(CMD_CLAMP_FORWARD(NAN, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(norm2[0]), TENSOR_LIST(norm2[0]), stream_context);
