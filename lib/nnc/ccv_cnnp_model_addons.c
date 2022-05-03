@@ -1759,7 +1759,7 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_max_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
-	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	const ccv_cnnp_model_reduce_max_t* const self = (const ccv_cnnp_model_reduce_max_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1799,8 +1799,63 @@ ccv_cnnp_model_t* ccv_cnnp_reduce_max(const int* const axis, const int axis_coun
 
 static ccv_cnnp_model_t* _ccv_cnnp_reduce_max_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
+	const ccv_cnnp_model_reduce_max_t* const self = (const ccv_cnnp_model_reduce_max_t*)super;
 	return ccv_cnnp_reduce_max(self->axis, self->count, self->super.name);
+}
+
+// MARK - Reduce Norm2 Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis[CCV_NNC_MAX_DIM_ALLOC];
+	int count;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_reduce_norm2_t;
+
+static void _ccv_cnnp_reduce_norm2_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_reduce_norm2_t* const self = (const ccv_cnnp_model_reduce_norm2_t*)super;
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t reduce_norm2 = CMD_REDUCE_NORM2_FORWARD();
+	int i;
+	for (i = 0; i < self->count; i++)
+		reduce_norm2.info.reduce.axis[i] = self->axis[i];
+	reduce_norm2.info.reduce.count = self->count;
+	ccv_nnc_hint_tensor_auto(reduce_norm2, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, reduce_norm2, inputs, input_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_norm2_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_reduce_norm2_isa = {
+	.build = _ccv_cnnp_reduce_norm2_build,
+	.copy = _ccv_cnnp_reduce_norm2_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_reduce_norm2(const int* const axis, const int axis_count, const char* const name)
+{
+	ccv_cnnp_model_reduce_norm2_t* const model_reduce_norm2 = (ccv_cnnp_model_reduce_norm2_t*)cccalloc(1, sizeof(ccv_cnnp_model_reduce_norm2_t));
+	model_reduce_norm2->super.isa = &ccv_cnnp_reduce_norm2_isa;
+	model_reduce_norm2->super.input_size = 1;
+	model_reduce_norm2->super.outputs = &model_reduce_norm2->output;
+	model_reduce_norm2->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_reduce_norm2->super, name);
+	assert(axis_count <= CCV_NNC_MAX_DIM_ALLOC);
+	int i;
+	for (i = 0; i < axis_count; i++)
+		model_reduce_norm2->axis[i] = axis[i];
+	model_reduce_norm2->count = axis_count;
+	return (ccv_cnnp_model_t*)model_reduce_norm2;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_reduce_norm2_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_reduce_norm2_t* const self = (const ccv_cnnp_model_reduce_norm2_t*)super;
+	return ccv_cnnp_reduce_norm2(self->axis, self->count, self->super.name);
 }
 
 // MARK - Min Layer
