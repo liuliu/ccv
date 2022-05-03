@@ -3486,10 +3486,17 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
  * in the tensor you provided. The given tensor should match the dimension of the parameter and should
  * already be allocated. It doesn't matter whether the given tensor is on CPU or GPU.
  * @param model The composed model.
- * @param parameter The parameter that is used to specify which parameter to override.
+ * @param parameter The parameter that is used to specify which parameter to copy from.
  * @param tensor The tensor that receives value.
  */
 void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor);
+/**
+ * Get the ccv_nnc_tensor_param_t for a particular parameter of a model.
+ * @param model The composed model.
+ * @param parameter The parameter that is used to specify which parameter to retrieve ccv_nnc_tensor_param_t.
+ * @return The ccv_nnc_tensor_param_t structure that specifies a tensor shape.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_cnnp_model_parameter_tensor_params(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter);
 /**
  * Set parameters from another model. This will override whatever values in these parameters. The
  * given parameters from another model should match the dimension of the parameter. It doesn't matter

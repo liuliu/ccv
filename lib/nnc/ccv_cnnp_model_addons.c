@@ -378,12 +378,13 @@ static void _ccv_cnnp_batch_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	assert(output_size == 1);
 	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const int nd = ccv_nnc_tensor_nd(params.dim);
 	ccv_nnc_tensor_param_t bias_params = params;
 	memset(bias_params.dim, 0, sizeof(bias_params.dim));
 	// If the accuracy is not enough, bump it to 32-bit floating point.
 	if (bias_params.datatype != CCV_32F && bias_params.datatype != CCV_64F)
 		bias_params.datatype = CCV_32F;
-	bias_params.dim[0] = ccv_nnc_tensor_get_c(params);
+	bias_params.dim[0] = nd > 1 ? ccv_nnc_tensor_get_c(params) : params.dim[0];
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, params, 0);
 	// Both scale and bias are shared between if this model is reused.
 	if (!self->scale.graph)

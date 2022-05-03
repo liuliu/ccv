@@ -876,6 +876,9 @@ TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4 and merge parameters wi
 	ccv_cnnp_model_parameters_zip_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_ADD_FORWARD(0.6, 0.4), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0, final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	ccv_cnnp_model_evaluate(final2, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_new(0, a, 0);
+	const ccv_nnc_tensor_param_t params = ccv_cnnp_model_parameter_tensor_params(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
+	REQUIRE_EQ(1, params.dim[0], "should match parameter shape");
+	REQUIRE_EQ(0, params.dim[1], "should match parameter shape");
 	ccv_cnnp_model_parameter_copy(final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS), x_tensor);
 	const float x_final = x_tensor->data.f32[0] * 0.4 + 1 * 0.6;
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], (x_final * 2 + 1 + 1 - 10) * (x_final * 2 + 1 + 1 - 10), 1e-5, "should match the previous output");
