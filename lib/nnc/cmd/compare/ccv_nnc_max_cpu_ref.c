@@ -123,8 +123,8 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					ha->data.f32[x] = g->data.f32[x];
 					hb->data.f32[x] = 0;
 				} else if (a->data.f32[x] < b->data.f32[x]) {
-					ha->data.f32[x] = 0;
 					hb->data.f32[x] = g->data.f32[x];
+					ha->data.f32[x] = 0;
 				} else
 					ha->data.f32[x] = hb->data.f32[x] = g->data.f32[x];
 			return CCV_NNC_EXEC_SUCCESS;
@@ -154,8 +154,8 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							hap[x] = gp[x];
 							hbp[x] = 0;
 						} else if (ap[x] < bp[x]) {
-							hap[x] = 0;
 							hbp[x] = gp[x];
+							hap[x] = 0;
 						} else
 							hap[x] = hbp[x] = gp[x];
 					gp += ginc[2] * ginc[3];
@@ -184,8 +184,8 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							hap[x] = gp[x];
 							hbp[x] = 0;
 						} else if (ap[x] < bp[x]) {
-							hap[x] = 0;
 							hbp[x] = gp[x];
+							hap[x] = 0;
 						} else
 							hap[x] = hbp[x] = gp[x];
 					gp += ginc[3];

@@ -57,8 +57,8 @@ __global__ void _ccv_nnc_max_kernel_back(const size_t count, const NUM1* const g
 			ha[i] = (NUM3)g[i];
 			hb[i] = 0;
 		} else if (a[i] < b[i]) {
-			ha[i] = 0;
 			hb[i] = (NUM3)g[i];
+			ha[i] = 0;
 		} else
 			ha[i] = hb[i] = (NUM3)g[i];
 	}
