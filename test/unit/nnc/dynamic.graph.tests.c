@@ -23,6 +23,18 @@ TEST_CASE("dynamic graph to compute log(19)")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph to compute reciprocal")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 19;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWDIV_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(0, a), TENSOR_VARIABLE_LIST(b), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, b)->data.f32[0], 1.0 / 19, 1e-5, "1.0 / 19 result should be equal.");
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("dynamic graph with alias")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();

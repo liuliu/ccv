@@ -207,12 +207,21 @@ static int _ccv_nnc_ewdiv_back_bitmask(const int input_size, const int output_si
 	return 0;
 }
 
+static void _ccv_nnc_ewdiv_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	assert(output_size >= 1);
+	assert(input_size >= 2);
+	int i;
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[1];
+}
+
 REGISTER_COMMAND(CCV_NNC_EWDIV_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_ewdiv_forw_bitmask;
-	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->tensor_auto = _ccv_nnc_ewdiv_tensor_auto_forw;
 	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
