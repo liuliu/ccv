@@ -39,13 +39,11 @@ CCV_WARN_UNUSED(int) ccv_nnc_stream_context_type(const ccv_nnc_stream_context_t*
 	return stream_context->type;
 }
 
-#ifndef HAVE_CUDA
 static __thread ccv_nnc_stream_cpu_t ccv_nnc_per_thread_stream_cpu = {
 	.super = {
 		.type = CCV_STREAM_CONTEXT_CPU,
 	},
 };
-#endif
 
 void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
@@ -244,22 +242,11 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	ccfree(stream_context);
 }
 
-static ccv_nnc_stream_cpu_t* _ccv_nnc_default_stream_cpu()
-{
-	static __thread ccv_nnc_stream_cpu_t ccv_nnc_per_thread_cpu_stream_context = {
-		.super = {
-			.type = CCV_STREAM_CONTEXT_CPU | CCV_COMPUTE_DEVICE_ANY,
-			.reuse_destructor_hook = -1,
-		},
-	};
-	return &ccv_nnc_per_thread_cpu_stream_context;
-}
-
 void ccv_nnc_stream_context_set_seed(ccv_nnc_stream_context_t* const stream_context, uint32_t seed)
 {
 	if (!stream_context)
 	{
-		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		ccv_nnc_stream_cpu_t* const stream_cpu = &ccv_nnc_per_thread_stream_cpu;
 		if (!stream_cpu->super.sfmt)
 			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
 		sfmt_init_gen_rand(stream_cpu->super.sfmt, seed);
@@ -274,7 +261,7 @@ uint32_t ccv_nnc_stream_context_genrand_uint32(ccv_nnc_stream_context_t* const s
 {
 	if (!stream_context)
 	{
-		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		ccv_nnc_stream_cpu_t* const stream_cpu = &ccv_nnc_per_thread_stream_cpu;
 		if (!stream_cpu->super.sfmt)
 		{
 			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
@@ -295,7 +282,7 @@ uint64_t ccv_nnc_stream_context_genrand_uint64(ccv_nnc_stream_context_t* const s
 {
 	if (!stream_context)
 	{
-		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		ccv_nnc_stream_cpu_t* const stream_cpu = &ccv_nnc_per_thread_stream_cpu;
 		if (!stream_cpu->super.sfmt)
 		{
 			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
