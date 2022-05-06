@@ -217,7 +217,6 @@ static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat()
 	static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
 		.super = {
 			.type = CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_ANY,
-			.reuse_destructor_hook = -1,
 		},
 	};
 	return &ccv_nnc_per_thread_gpu_stream_context;
