@@ -180,7 +180,6 @@ typedef struct {
 		size_t workspace_size;
 		void* workspace;
 	} cpu;
-	unsigned long long seed;
 	union {
 		ccv_nnc_stream_context_device_local_t _inline_gpu;
 		struct {
@@ -218,6 +217,7 @@ static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat()
 	static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
 		.super = {
 			.type = CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_ANY,
+			.reuse_destructor_hook = -1,
 		},
 	};
 	return &ccv_nnc_per_thread_gpu_stream_context;
@@ -680,18 +680,17 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	size_t state_size;
 	cudnnDropoutGetStatesSize(cudnn, &state_size);
+	const uint64_t seed = ccv_nnc_stream_context_genrand_uint64((ccv_nnc_stream_context_t*)stream_compat);
 	if (device_local->rngs)
 	{
 #if CUDNN_VERSION >= 7100
-		cudnnRestoreDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
+		cudnnRestoreDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, seed);
 #else
-		++stream_compat->seed;
-		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
+		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, seed);
 #endif
 	} else {
 		CUDA_ENFORCE(cudaMalloc(&device_local->rngs, state_size));
-		stream_compat->seed = (unsigned long long)stream_compat;
-		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
+		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, seed);
 	}
 	return desc;
 }

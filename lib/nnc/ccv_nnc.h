@@ -796,6 +796,23 @@ void ccv_nnc_stream_context_remove_destructor_hook(ccv_nnc_stream_context_t* con
  * @param stream_context The stream context to be destroyed.
  */
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Set random seed for stream context.
+ * @param stream_context The stream context to set the seed. 0 means use the default stream context.
+ */
+void ccv_nnc_stream_context_set_seed(ccv_nnc_stream_context_t* const stream_context, uint32_t seed);
+/**
+ * Generate uint32_t random number for stream context.
+ * These are usually used as seed for other high-performance random number generators.
+ * @param stream_context The stream context associated with random number generation.
+ */
+uint32_t ccv_nnc_stream_context_genrand_uint32(ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Generate uint64_t random number for stream context.
+ * These are usually used as seed for other high-performance random number generators.
+ * @param stream_context The stream context associated with random number generation.
+ */
+uint64_t ccv_nnc_stream_context_genrand_uint64(ccv_nnc_stream_context_t* const stream_context);
 
 /**
  * Opaque pointer to the signal object.

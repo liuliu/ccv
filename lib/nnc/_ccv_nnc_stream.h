@@ -12,6 +12,7 @@
 
 #include "ccv_nnc.h"
 #include "co.h"
+#include "3rdparty/sfmt/SFMT.h"
 #include "3rdparty/khash/khash.h"
 
 struct ccv_nnc_stream_signal_s {
@@ -38,7 +39,8 @@ struct ccv_nnc_stream_context_s {
 	ccv_array_t* destructor_hooks;
 	int reuse_destructor_hook;
 	ccv_nnc_stream_signal_t* event;
-	ccv_nnc_stream_signal_t* checkpoint;
+	// For random number generator.
+	sfmt_t* sfmt;
 };
 
 // Return the scheduler from a stream (if not created, create one).

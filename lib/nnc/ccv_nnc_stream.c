@@ -27,9 +27,6 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)cccalloc(1, sizeof(ccv_nnc_stream_cpu_t));
 	stream_cpu->super.type = type;
 	stream_cpu->super.reuse_destructor_hook = -1;
-	stream_cpu->super.destructor_hooks = 0;
-	stream_cpu->workspace_size = 0;
-	stream_cpu->workspace = 0;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_init_stream_context((ccv_nnc_stream_context_t*)stream_cpu);
@@ -242,7 +239,77 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	}
 	if (stream_context->event)
 		ccv_nnc_stream_signal_free(stream_context->event);
+	if (stream_context->sfmt)
+		ccfree(stream_context->sfmt);
 	ccfree(stream_context);
+}
+
+static ccv_nnc_stream_cpu_t* _ccv_nnc_default_stream_cpu()
+{
+	static __thread ccv_nnc_stream_cpu_t ccv_nnc_per_thread_cpu_stream_context = {
+		.super = {
+			.type = CCV_STREAM_CONTEXT_CPU | CCV_COMPUTE_DEVICE_ANY,
+			.reuse_destructor_hook = -1,
+		},
+	};
+	return &ccv_nnc_per_thread_cpu_stream_context;
+}
+
+void ccv_nnc_stream_context_set_seed(ccv_nnc_stream_context_t* const stream_context, uint32_t seed)
+{
+	if (!stream_context)
+	{
+		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		if (!stream_cpu->super.sfmt)
+			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
+		sfmt_init_gen_rand(stream_cpu->super.sfmt, seed);
+		return;
+	}
+	if (!stream_context->sfmt)
+		stream_context->sfmt = ccmalloc(sizeof(sfmt_t));
+	sfmt_init_gen_rand(stream_context->sfmt, seed);
+}
+
+uint32_t ccv_nnc_stream_context_genrand_uint32(ccv_nnc_stream_context_t* const stream_context)
+{
+	if (!stream_context)
+	{
+		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		if (!stream_cpu->super.sfmt)
+		{
+			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
+			sfmt_init_gen_rand(stream_cpu->super.sfmt, (uint32_t)(uintptr_t)stream_cpu);
+		}
+		return sfmt_genrand_uint32(stream_cpu->super.sfmt);
+	}
+	if (!stream_context->sfmt)
+	{
+		stream_context->sfmt = ccmalloc(sizeof(sfmt_t));
+		// Init with seed from thread-local context.
+		sfmt_init_gen_rand(stream_context->sfmt, ccv_nnc_stream_context_genrand_uint32(0));
+	}
+	return sfmt_genrand_uint32(stream_context->sfmt);
+}
+
+uint64_t ccv_nnc_stream_context_genrand_uint64(ccv_nnc_stream_context_t* const stream_context)
+{
+	if (!stream_context)
+	{
+		ccv_nnc_stream_cpu_t* const stream_cpu = _ccv_nnc_default_stream_cpu();
+		if (!stream_cpu->super.sfmt)
+		{
+			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
+			sfmt_init_gen_rand(stream_cpu->super.sfmt, (uint32_t)(uintptr_t)stream_cpu);
+		}
+		return sfmt_genrand_uint64(stream_cpu->super.sfmt);
+	}
+	if (!stream_context->sfmt)
+	{
+		stream_context->sfmt = ccmalloc(sizeof(sfmt_t));
+		// Init with seed from thread-local context.
+		sfmt_init_gen_rand(stream_context->sfmt, ccv_nnc_stream_context_genrand_uint32(0));
+	}
+	return sfmt_genrand_uint64(stream_context->sfmt);
 }
 
 void ccv_nnc_stream_context_set_neighbor_discovery(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_stream_context_neighbor_discovery_f discovery, void* const context)

@@ -20,7 +20,7 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	int i;
 	float* const ap = a->data.f32;
 	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, (uint32_t)(uintptr_t)ap); // I need to fix this for higher quality seed.
+	dsfmt_init_gen_rand(&dsfmt, ccv_nnc_stream_context_genrand_uint32(stream_context));
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	for (i = 0; i < count; i++)
