@@ -807,12 +807,6 @@ void ccv_nnc_stream_context_set_seed(ccv_nnc_stream_context_t* const stream_cont
  * @param stream_context The stream context associated with random number generation.
  */
 uint32_t ccv_nnc_stream_context_genrand_uint32(ccv_nnc_stream_context_t* const stream_context);
-/**
- * Generate uint64_t random number for stream context.
- * These are usually used as seed for other high-performance random number generators.
- * @param stream_context The stream context associated with random number generation.
- */
-uint64_t ccv_nnc_stream_context_genrand_uint64(ccv_nnc_stream_context_t* const stream_context);
 
 /**
  * Opaque pointer to the signal object.

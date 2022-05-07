@@ -679,7 +679,7 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	size_t state_size;
 	cudnnDropoutGetStatesSize(cudnn, &state_size);
-	const uint64_t seed = ccv_nnc_stream_context_genrand_uint64((ccv_nnc_stream_context_t*)stream_compat);
+	const uint64_t seed = ccv_nnc_stream_context_genrand_uint32((ccv_nnc_stream_context_t*)stream_compat);
 	if (device_local->rngs)
 	{
 #if CUDNN_VERSION >= 7100

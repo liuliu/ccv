@@ -278,27 +278,6 @@ uint32_t ccv_nnc_stream_context_genrand_uint32(ccv_nnc_stream_context_t* const s
 	return sfmt_genrand_uint32(stream_context->sfmt);
 }
 
-uint64_t ccv_nnc_stream_context_genrand_uint64(ccv_nnc_stream_context_t* const stream_context)
-{
-	if (!stream_context)
-	{
-		ccv_nnc_stream_cpu_t* const stream_cpu = &ccv_nnc_per_thread_stream_cpu;
-		if (!stream_cpu->super.sfmt)
-		{
-			stream_cpu->super.sfmt = ccmalloc(sizeof(sfmt_t));
-			sfmt_init_gen_rand(stream_cpu->super.sfmt, (uint32_t)(uintptr_t)stream_cpu);
-		}
-		return sfmt_genrand_uint64(stream_cpu->super.sfmt);
-	}
-	if (!stream_context->sfmt)
-	{
-		stream_context->sfmt = ccmalloc(sizeof(sfmt_t));
-		// Init with seed from thread-local context.
-		sfmt_init_gen_rand(stream_context->sfmt, ccv_nnc_stream_context_genrand_uint32(0));
-	}
-	return sfmt_genrand_uint64(stream_context->sfmt);
-}
-
 void ccv_nnc_stream_context_set_neighbor_discovery(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_stream_context_neighbor_discovery_f discovery, void* const context)
 {
 	stream_context->neighbor_discovery = discovery;

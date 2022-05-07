@@ -9,7 +9,7 @@ extern "C" {
 #include <curand_kernel.h>
 
 template<typename NUM>
-__global__ void _ccv_nnc_random_normal_kernel_x4(const int count, const unsigned long long seed, const float std, const float mean, NUM* const a)
+__global__ void _ccv_nnc_random_normal_kernel_x4(const int count, const uint32_t seed, const float std, const float mean, NUM* const a)
 {
 	const int id = blockIdx.x * blockDim.x + threadIdx.x;
 	curandStatePhilox4_32_10_t state;
@@ -24,7 +24,7 @@ __global__ void _ccv_nnc_random_normal_kernel_x4(const int count, const unsigned
 }
 
 template<typename NUM>
-__global__ void _ccv_nnc_random_normal_kernel(const int count, const unsigned long long seed, const float std, const float mean, NUM* const a)
+__global__ void _ccv_nnc_random_normal_kernel(const int count, const uint32_t seed, const float std, const float mean, NUM* const a)
 {
 	const int id = blockIdx.x * blockDim.x + threadIdx.x;
 	curandStatePhilox4_32_10_t state;
@@ -41,7 +41,7 @@ static int _ccv_nnc_random_normal(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	ccv_nnc_tensor_t* const a = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(a));
 	const int count = ccv_nnc_tensor_count(a->info);
-	const uint64_t seed = ccv_nnc_stream_context_genrand_uint64(stream_context);
+	const uint32_t seed = ccv_nnc_stream_context_genrand_uint32(stream_context);
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
