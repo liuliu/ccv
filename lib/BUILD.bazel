@@ -332,6 +332,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
+		":SFMT",
 		"@local_config_ccv//config:cuda_deps"
 	]
 )
