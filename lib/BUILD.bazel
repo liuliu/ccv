@@ -54,7 +54,9 @@ cc_library(
 		"3rdparty/sfmt/SFMT-params.h",
 		"3rdparty/sfmt/SFMT-params19937.h"
 	],
-	copts = ccv_default_copts()
+	visibility = ["//visibility:public"],
+	copts = ccv_default_copts(),
+	tags = ["swift_module=C_sfmt"]
 )
 
 cc_library(
