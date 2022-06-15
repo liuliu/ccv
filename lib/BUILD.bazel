@@ -48,8 +48,6 @@ cc_library(
 	],
 	hdrs = [
 		"3rdparty/sfmt/SFMT.h",
-		"3rdparty/sfmt/SFMT-alti.h",
-		"3rdparty/sfmt/SFMT-sse2.h",
 		"3rdparty/sfmt/SFMT-common.h",
 		"3rdparty/sfmt/SFMT-params.h",
 		"3rdparty/sfmt/SFMT-params19937.h"
