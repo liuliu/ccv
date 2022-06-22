@@ -123,7 +123,7 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		// Set them to 1.
 		for (i = 0; i < output_size; i++)
 			if (outputs[i])
-				_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[i], 1);
+				_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[i], 1);
 	} else {
 		// Copy over the gradient (If they are not pointing to the same tensor already).
 		for (i = 0; i < output_size; i++)

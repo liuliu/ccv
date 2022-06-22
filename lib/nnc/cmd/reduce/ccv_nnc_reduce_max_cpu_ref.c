@@ -33,7 +33,7 @@ static int _ccv_nnc_reduce_max_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int x;
-	_ccv_nnc_tensor_set_cpu_ref(b, -FLT_MAX);
+	_ccv_nnc_tensor_set_cpu_ref_f32(b, -FLT_MAX);
 	float* ap = a->data.f32;
 	float* const bp = b->data.f32;
 	// Non-optimal case, need to do skip if needed.

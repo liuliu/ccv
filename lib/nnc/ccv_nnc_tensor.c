@@ -307,22 +307,45 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 	if (CCV_GET_DATA_TYPE(a->type) == CCV_32S)
 		return memcmp(a->data.ptr, b->data.ptr, sizeof(int) * c) == 0 ? 0 : -1;
 	// Only support 32F at this point.
-	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F || CCV_GET_DATA_TYPE(a->type) == CCV_64F);
 	// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
 	// http://floating-point-gui.de/errors/comparison/
-	static const float epsi = FLT_EPSILON;
-	static const int32_t ulps = 128; // so that for 1 and 1.000015 will be treated as the same.
-	for (i = 0; i < c; i++)
+	if (CCV_GET_DATA_TYPE(a->type) == CCV_32F)
 	{
-		// Although this is float point, I use integer as a way to compare.
-		int32_t i32a = a->data.i32[i];
-		if (i32a < 0)
-			i32a = 0x80000000 - i32a;
-		int32_t i32b = b->data.i32[i];
-		if (i32b < 0)
-			i32b = 0x80000000 - i32b;
-		if (abs(i32a - i32b) > ulps && fabsf(a->data.f32[i] - b->data.f32[i]) > epsi)
-			return -1;
+		static const float epsi = FLT_EPSILON;
+		static const int32_t ulps = 128; // so that for 1 and 1.000015 will be treated as the same.
+		for (i = 0; i < c; i++)
+		{
+			// Although this is float point, I use integer as a way to compare.
+			int32_t i32a = a->data.i32[i];
+			if (i32a < 0)
+				i32a = 0x80000000 - i32a;
+			int32_t i32b = b->data.i32[i];
+			if (i32b < 0)
+				i32b = 0x80000000 - i32b;
+			if (abs(i32a - i32b) > ulps && fabsf(a->data.f32[i] - b->data.f32[i]) > epsi)
+				return -1;
+		}
+	} else if (CCV_GET_DATA_TYPE(a->type) == CCV_64F) {
+		typedef union {
+			double f64;
+			int64_t i64;
+		} Float64;
+		static const double epsi = DBL_EPSILON;
+		static const int64_t ulps = 128; // so that for 1 and 1.000015 will be treated as the same.
+		for (i = 0; i < c; i++)
+		{
+			// Although this is float point, I use integer as a way to compare.
+			Float64 f64a, f64b;
+			f64a.f64 = a->data.f64[i];
+			f64b.f64 = b->data.f64[i];
+			if (f64a.i64 < 0)
+				f64a.i64 = 0x8000000000000000 - f64a.i64;
+			if (f64b.i64 < 0)
+				f64b.i64 = 0x8000000000000000 - f64b.i64;
+			if (llabs(f64a.i64 - f64b.i64) > ulps && fabs(a->data.f64[i] - b->data.f64[i]) > epsi)
+				return -1;
+		}
 	}
 	return 0;
 }

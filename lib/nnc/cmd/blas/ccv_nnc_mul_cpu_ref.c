@@ -424,7 +424,7 @@ static int _ccv_nnc_scalar_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	if (inputs[0])
 		_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], 0, (ccv_nnc_tensor_view_t*)outputs[0]);
 	else
-		_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
+		_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

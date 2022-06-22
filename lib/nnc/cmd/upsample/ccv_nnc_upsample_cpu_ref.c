@@ -170,7 +170,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int xd, yd, cd;
-	_ccv_nnc_tensor_set_cpu_ref(a, 0);
+	_ccv_nnc_tensor_set_cpu_ref_f32(a, 0);
 	float* ap = a->data.f32;
 	const float* bp = b->data.f32;
 	assert(a->info.format == b->info.format);

@@ -202,9 +202,9 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	if (inputs[0] == 0)
 	{
 		if (outputs[0])
-			_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
+			_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
 		if (output_size > 1 && outputs[1])
-			_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[1], cmd.info.blas.a[1]);
+			_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[1], cmd.info.blas.a[1]);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	int gdim[CCV_NNC_MAX_DIM_ALLOC];

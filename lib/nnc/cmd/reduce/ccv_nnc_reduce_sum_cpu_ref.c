@@ -70,7 +70,7 @@ static int _ccv_nnc_reduce_sum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	if (inputs[0] == 0)
 	{
-		_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[0], 1);
+		_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[0], 1);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[0];
