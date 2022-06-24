@@ -22,12 +22,12 @@ static int _ccv_nnc_max_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	assert(input_size == 2);
 	const ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	const ccv_nnc_tensor_t* const b = inputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(b->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
@@ -85,21 +85,21 @@ static int _ccv_nnc_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(input_size >= 3);
 	assert(output_size >= 2);
 	const ccv_nnc_tensor_t* const a = inputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	const ccv_nnc_tensor_t* const b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const size_t count = ccv_nnc_tensor_count(a->info);
 	assert(ccv_nnc_tensor_count(b->info) == count);
 	ccv_nnc_tensor_t* const ha = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(ha));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(ha));
 	assert(ccv_nnc_tensor_count(ha->info) == count);
 	ccv_nnc_tensor_t* const hb = outputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(hb));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(hb));
 	assert(ccv_nnc_tensor_count(hb->info) == count);
 	if (inputs[0])
 	{
 		const ccv_nnc_tensor_t* const g = inputs[0]; // gradient
-		assert(!CCV_IS_TENSOR_VIEW(g));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 		assert(ccv_nnc_tensor_count(g->info) == count);
 		assert(a->info.datatype == b->info.datatype);
 		assert(ha->info.datatype == hb->info.datatype);

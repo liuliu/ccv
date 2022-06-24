@@ -27,10 +27,10 @@ static int _ccv_nnc_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	assert(input_size == 1);
 	ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const b = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const int axis = cmd.info.reduce.axis[0];
 	assert(cmd.info.reduce.count == 1);
 	assert(axis >= 0);

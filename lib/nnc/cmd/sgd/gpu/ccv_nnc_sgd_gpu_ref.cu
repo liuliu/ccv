@@ -48,11 +48,11 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(inputs[1]->info.datatype == inputs[2]->info.datatype &&
 		inputs[2]->info.datatype == outputs[0]->info.datatype &&
 		outputs[0]->info.datatype == outputs[1]->info.datatype);
-	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
-	assert(!CCV_IS_TENSOR_VIEW(inputs[1]));
-	assert(!CCV_IS_TENSOR_VIEW(inputs[2]));
-	assert(!CCV_IS_TENSOR_VIEW(outputs[0]));
-	assert(!CCV_IS_TENSOR_VIEW(outputs[1]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[0]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[0]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[1]));
 	const ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const m = (ccv_nnc_tensor_view_t*)inputs[2];

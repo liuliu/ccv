@@ -55,7 +55,7 @@ static int _ccv_nnc_reduce_norm2_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	ccv_nnc_tensor_view_t* const htv = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const atv = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_t* const b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const int tensor_count = ccv_nnc_tensor_count(b->info);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, htv);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);

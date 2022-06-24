@@ -291,8 +291,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, variable_to->info, 0);
 		assert(variable_to->tensor_view->data.u8);
 	}
-	int no_ofs = 1;
 	int i;
+	int no_ofs = 1;
 	for (i = 0; no_ofs && i < CCV_NNC_MAX_DIM_ALLOC; i++)
 		no_ofs = (tensor_variable->ofs[i] == 0);
 	int no_inc = 1;
@@ -301,6 +301,23 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	if (!no_inc)
 		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
 	assert(ccv_nnc_tensor_count(tensor_variable->info) <= ccv_nnc_tensor_count(variable_to->info));
+	if (no_ofs && !no_inc)
+	{
+		// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
+		const int nd = ccv_nnc_tensor_nd(tensor_variable->info.dim);
+		int first_none_one_dim_idx = -1;
+		for (i = 0; first_none_one_dim_idx < 0 && i < nd; i++)
+			if (tensor_variable->info.dim[i] > 1)
+				first_none_one_dim_idx = i;
+		// Check if from 0 to last_none_one_dim_idx, it is either full or 1, and ofs is either something (1) or nothing (full).
+		if (first_none_one_dim_idx >= 0)
+		{
+			no_inc = 1;
+			assert(tensor_variable->ofs[first_none_one_dim_idx] + tensor_variable->info.dim[first_none_one_dim_idx] <= ccv_max(tensor_variable->inc[first_none_one_dim_idx], tensor_variable->info.dim[first_none_one_dim_idx]));
+			if (first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC)
+				no_inc = (memcmp(tensor_variable->inc + first_none_one_dim_idx + 1, tensor_variable->info.dim + first_none_one_dim_idx + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - first_none_one_dim_idx - 1)) == 0);
+		}
+	}
 	if (no_ofs && no_inc)
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
 	else

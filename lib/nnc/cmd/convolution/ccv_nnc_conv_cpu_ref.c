@@ -15,7 +15,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_t* w = inputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(w));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(w));
 	const ccv_nnc_tensor_t* bias = input_size > 2 ? inputs[2] : 0;
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
@@ -93,7 +93,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_t* w = outputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(w));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(w));
 	ccv_nnc_tensor_t* bias = output_size > 2 ? outputs[2] : 0;
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
@@ -167,7 +167,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		// reset it to 0.
 		ccv_nnc_tensor_zero(h);
 		w = inputs[2];
-		assert(!CCV_IS_TENSOR_VIEW(w));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(w));
 		int k, gidx;
 		for (gidx = 0; gidx < groups; gidx++)
 			for (k = gidx * group_size; k < (gidx + 1) * group_size; k++)

@@ -39,7 +39,7 @@ static int _ccv_nnc_random_normal(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 {
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const a = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	const int count = ccv_nnc_tensor_count(a->info);
 	const uint32_t seed = ccv_nnc_stream_context_genrand_uint32(stream_context);
 	const float l = cmd.info.blas.a[0];

@@ -17,9 +17,9 @@ static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const size_t tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
 	for (i = 0; i < output_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(inputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[i]));
 		assert(ccv_nnc_tensor_count(inputs[i]->info) == tensor_count);
-		assert(!CCV_IS_TENSOR_VIEW(outputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[i]));
 		assert(ccv_nnc_tensor_count(outputs[i]->info) == tensor_count);
 		assert(CCV_TENSOR_GET_DEVICE(inputs[i]->info.type) == CCV_TENSOR_GET_DEVICE(outputs[i]->info.type));
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);
@@ -87,11 +87,11 @@ static int _ccv_nnc_broadcast_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	assert(input_size == 1);
 	assert(output_size >= 1);
 	int i, device_count = 0;
-	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[0]));
 	const size_t tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
 	for (i = 0; i < output_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(outputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[i]));
 		assert(ccv_nnc_tensor_count(outputs[i]->info) == tensor_count);
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type);
 		device_count = ccv_max(device_id + 1, device_count);
@@ -121,11 +121,11 @@ static int _ccv_nnc_reduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	assert(input_size >= 1);
 	assert(output_size >= 1);
 	int i, device_count = 0;
-	assert(!CCV_IS_TENSOR_VIEW(outputs[0]));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[0]));
 	const size_t tensor_count = ccv_nnc_tensor_count(outputs[0]->info);
 	for (i = 0; i < input_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(inputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[i]));
 		assert(ccv_nnc_tensor_count(inputs[i]->info) == tensor_count);
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);
 		device_count = ccv_max(device_id + 1, device_count);

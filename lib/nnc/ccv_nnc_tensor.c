@@ -190,6 +190,24 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	uint8_t* const p = tensor->data.u8;
 	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, tv->inc, ofs);
+	// Check if a tensor view is contiguous.
+	const int nd = ccv_nnc_tensor_nd(dim);
+	int first_none_one_dim_idx = -1;
+	int i;
+	for (i = 0; first_none_one_dim_idx < 0 && i < nd; i++)
+		if (dim[i] > 1)
+			first_none_one_dim_idx = i;
+	// Check if from 0 to first_none_one_dim_idx, it is 1.
+	if (first_none_one_dim_idx >= 0)
+	{
+		int no_inc = 1;
+		assert(ofs[first_none_one_dim_idx] + dim[first_none_one_dim_idx] <= inc[first_none_one_dim_idx]);
+		if (first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC)
+			no_inc = (memcmp(inc + first_none_one_dim_idx + 1, dim + first_none_one_dim_idx + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - first_none_one_dim_idx - 1)) == 0);
+		tv->contiguous = no_inc;
+	} else { // If it is all 1, it is contiguous.
+		tv->contiguous = 1;
+	}
 	tv->data.u8 = p + off;
 }
 
@@ -234,7 +252,7 @@ void ccv_nnc_tensor_zero(void* const tensor)
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
 	const size_t data_size = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
-	if (!CCV_IS_TENSOR_VIEW(tv))
+	if (CCV_IS_TENSOR_CONTIGUOUS(tv))
 	{
 		memset(tv->data.u8, 0, data_size * ccv_nnc_tensor_count(tv->info));
 		return;

@@ -326,7 +326,7 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	// Assuming these are not tensor_view_t.
 	for (i = 0; i < output_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(outputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[i]));
 		vars_mem[program->outputs[i]] = outputs[i]->data.f32;
 	}
 	for (i = 0; i < var_count; i++)
@@ -352,7 +352,7 @@ void ccv_nnc_micro_combine_interpret(ccv_nnc_micro_combine_t* const combine, con
 	}
 	for (i = 0; i < input_size; i++)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(inputs[i]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[i]));
 		vars_mem[program->inputs[i]] = inputs[i]->data.f32;
 	}
 	ccv_nnc_micro_function_t* const functions = program->functions;

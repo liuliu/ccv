@@ -7,10 +7,10 @@
 
 int _ccv_nnc_conv_forw_gemm_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
-	assert(!CCV_IS_TENSOR_VIEW(a));
-	assert(!CCV_IS_TENSOR_VIEW(w));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(w));
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
 	const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;

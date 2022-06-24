@@ -14,10 +14,10 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const int axis_count = ccv_nnc_tensor_nd(a->info.dim);
 	const int batch_size = axis_count < 2 ? 1 : a->info.dim[0];
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
@@ -47,11 +47,11 @@ static int _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(input_size == 3);
 	assert(output_size == 1);
 	const ccv_nnc_tensor_t* g = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(g));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 	const ccv_nnc_tensor_t* b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	ccv_nnc_tensor_t* h = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(h));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 	const int axis_count = ccv_nnc_tensor_nd(g->info.dim);
 	const int batch_size = axis_count < 2 ? 1 : g->info.dim[0];
 	const int count = ccv_nnc_tensor_count(g->info) / batch_size;

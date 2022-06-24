@@ -992,7 +992,7 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 		ccv_nnc_stream_context_get_filter_descriptor(stream_context),
 		tensor->data,
 	};
-	assert(!CCV_IS_TENSOR_VIEW(tensor));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(tensor));
 	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 2);
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};

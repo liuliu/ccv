@@ -101,12 +101,14 @@ typedef struct {
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 	/* tensor view and tensor shares the same data structure besides the following. */
+	int contiguous; // If we have other flags later, we can make this a generic flag.
 	off_t off;
 	int inc[CCV_NNC_MAX_DIM_ALLOC]; /**< "increment" or, length */
 } ccv_nnc_tensor_view_t;
 
 #define CCV_IS_TENSOR_VIEW(x) ((*(int*)(x)) & CCV_TENSOR_VIEW)
 #define CCV_IS_TENSOR_MULTIVIEW(x) ((*(int*)(x)) & CCV_TENSOR_MULTIVIEW)
+#define CCV_IS_TENSOR_CONTIGUOUS(x) (!CCV_IS_TENSOR_VIEW(x) || (((ccv_nnc_tensor_view_t*)x)->contiguous == 1))
 
 #if CCV_NNC_TENSOR_TFB
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (((x) & 0xFFF) > 0) // has channel components

@@ -742,41 +742,41 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			else if (a->info.datatype == CCV_64F)
 				_ccv_nnc_tensor_transfer_cpu_ref_f64(a, b);
 		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_float_to_half_precision(a->data.f32, (uint16_t*)b->data.f16, tensor_count);
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_half_precision_to_float((uint16_t*)a->data.f16, b->data.f32, tensor_count);
 		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_32F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			int i;
 			for (i = 0; i < tensor_count; i++)
 				b->data.f32[i] = (float)a->data.f64[i];
 		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_64F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			for (i = 0; i < tensor_count; i++)
 				b->data.f64[i] = (double)a->data.f32[i];
 		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_16F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_double_to_half_precision(a->data.f64, (uint16_t*)b->data.f16, tensor_count);
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_64F) {
-			assert(!CCV_IS_TENSOR_VIEW(a));
-			assert(!CCV_IS_TENSOR_VIEW(b));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_half_precision_to_double((uint16_t*)a->data.f16, b->data.f64, tensor_count);

@@ -48,6 +48,8 @@ TEST_CASE("dynamic graph with alias")
 	ccv_nnc_tensor_t* const b1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
 	b1->data.f32[0] = 20;
 	b1->data.f32[1] = 21;
+	REQUIRE(CCV_IS_TENSOR_VIEW(ccv_nnc_tensor_from_variable(graph, a0)), "Complex vector is a tensor view");
+	REQUIRE(!CCV_IS_TENSOR_VIEW(ccv_nnc_tensor_from_variable(graph, a1)), "Simple vector is not a tensor view");
 	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[0], 11, "should be b0[1]");
 	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a1)->data.f32[0], 10, "should be b0[0]");
 	REQUIRE(!CCV_IS_TENSOR_VIEW(ccv_nnc_tensor_from_variable(graph, a1)), "no need to be a tensor view");

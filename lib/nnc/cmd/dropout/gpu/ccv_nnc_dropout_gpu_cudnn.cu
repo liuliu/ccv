@@ -31,14 +31,14 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(input_size == 1);
 	assert(output_size == 2);
 	ccv_nnc_tensor_t* const mask = outputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(mask));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(mask));
 	const float p = cmd.info.dropout.p;
 	if (cmd.info.dropout.entirety)
 	{
 		const ccv_nnc_tensor_t* const a = inputs[0];
 		ccv_nnc_tensor_t* const b = outputs[0];
-		assert(!CCV_IS_TENSOR_VIEW(a));
-		assert(!CCV_IS_TENSOR_VIEW(b));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 		_ccv_nnc_drop_entirety_select_kernel<<<1, 1, 0, stream>>>(a->data.i32, p, mask->data.i32);
 		assert(a->info.datatype == b->info.datatype);
@@ -69,13 +69,13 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(input_size == 5);
 	assert(output_size >= 1);
 	ccv_nnc_tensor_t* const mask = inputs[4];
-	assert(!CCV_IS_TENSOR_VIEW(mask));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(mask));
 	if (cmd.info.dropout.entirety)
 	{
 		const ccv_nnc_tensor_t* const g = inputs[0];
 		ccv_nnc_tensor_t* const h = outputs[0];
-		assert(!CCV_IS_TENSOR_VIEW(g));
-		assert(!CCV_IS_TENSOR_VIEW(h));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 		assert(g->info.datatype == h->info.datatype);
 		const int count = ccv_nnc_tensor_count(g->info);

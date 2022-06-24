@@ -171,7 +171,7 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		// Cannot have the parameter be a partial tensor view for model evaluation.
 		ccv_nnc_tensor_t* const tensor = inputs[i] ? ccv_nnc_tensor_from_variable(dynamic_graph, inputs[i], stream_context) : 0;
 		if (tensor)
-			{ assert(!CCV_IS_TENSOR_VIEW(tensor)); }
+			{ assert(CCV_IS_TENSOR_CONTIGUOUS(tensor)); }
 	}
 	if (dynamic_graph->no_grad)
 	{

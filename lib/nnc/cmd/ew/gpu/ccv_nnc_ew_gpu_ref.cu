@@ -44,10 +44,10 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	assert(input_size == 2);
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const b = inputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(b->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
@@ -55,7 +55,7 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (a)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 		assert(a->info.datatype == b->info.datatype);
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 			{ assert(a->info.dim[i] == b->info.dim[i]); }
@@ -95,15 +95,15 @@ __global__ void _ccv_nnc_ewnegmuldiv_kernel(const size_t count, const NUM1* cons
 static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_nnc_tensor_t* const g = inputs[0]; // gradient
-	assert(!CCV_IS_TENSOR_VIEW(g));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 	const size_t count = ccv_nnc_tensor_count(g->info);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (outputs[0])
 	{
 		const ccv_nnc_tensor_t* const b = inputs[2];
-		assert(!CCV_IS_TENSOR_VIEW(b));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		ccv_nnc_tensor_t* const h = outputs[0];
-		assert(!CCV_IS_TENSOR_VIEW(h));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 		assert(ccv_nnc_tensor_count(h->info) == count);
 		assert(b->info.datatype == h->info.datatype);
 		if (b->info.datatype == CCV_32F && g->info.datatype == CCV_32F)
@@ -120,11 +120,11 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	if (output_size >= 2 && outputs[1])
 	{
 		const ccv_nnc_tensor_t* const b = inputs[2];
-		assert(!CCV_IS_TENSOR_VIEW(b));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		const ccv_nnc_tensor_t* const c = inputs[3];
-		assert(!CCV_IS_TENSOR_VIEW(c));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 		ccv_nnc_tensor_t* const h = outputs[1];
-		assert(!CCV_IS_TENSOR_VIEW(h));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 		assert(ccv_nnc_tensor_count(h->info) == count);
 		assert(b->info.datatype == h->info.datatype);
 		assert(c->info.datatype == g->info.datatype);
@@ -172,10 +172,10 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	assert(input_size >= 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(a->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -214,9 +214,9 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	const ccv_nnc_tensor_t* const b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	ccv_nnc_tensor_t* const h = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(h));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 	assert(b->info.datatype == h->info.datatype);
 	if (inputs[0] == 0)
 	{
@@ -234,7 +234,7 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		}
 	} else {
 		const ccv_nnc_tensor_t* const g = inputs[0]; // gradient
-		assert(!CCV_IS_TENSOR_VIEW(g));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 		const size_t count = ccv_nnc_tensor_count(g->info);
 		assert(ccv_nnc_tensor_count(h->info) == count);
 		if (b->info.datatype == CCV_32F && g->info.datatype == CCV_32F)
@@ -281,10 +281,10 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	assert(input_size >= 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(a->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -307,10 +307,10 @@ static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const b = inputs[1];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(b->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
@@ -318,7 +318,7 @@ static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (a)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 		assert(a->info.datatype == b->info.datatype);
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 			{ assert(a->info.dim[i] == b->info.dim[i]); }
@@ -377,10 +377,10 @@ static int _ccv_nnc_ewsqrt_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	assert(input_size >= 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(a->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -403,10 +403,10 @@ static int _ccv_nnc_ewsqrt_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(b->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
@@ -414,7 +414,7 @@ static int _ccv_nnc_ewsqrt_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (a)
 	{
-		assert(!CCV_IS_TENSOR_VIEW(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 		assert(a->info.datatype == b->info.datatype);
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 			{ assert(a->info.dim[i] == b->info.dim[i]); }
@@ -489,10 +489,10 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const b = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const size_t count = ccv_nnc_tensor_count(a->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -593,10 +593,10 @@ static int _ccv_nnc_clamp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const ccv_nnc_tensor_t* const g = inputs[0];
 	assert(!g || !CCV_IS_TENSOR_VIEW(g));
 	const ccv_nnc_tensor_t* const b = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const h = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(h));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 	const size_t count = ccv_nnc_tensor_count(b->info);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)

@@ -152,8 +152,8 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
-		assert(!CCV_IS_TENSOR_VIEW(a));
-		assert(!CCV_IS_TENSOR_VIEW(b));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 		assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
 		const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
@@ -286,8 +286,8 @@ static int _ccv_nnc_lssc_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
-		assert(!CCV_IS_TENSOR_VIEW(a));
-		assert(!CCV_IS_TENSOR_VIEW(b));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 		assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
 		const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;

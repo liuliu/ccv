@@ -84,7 +84,7 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		const int axis_count = ccv_nnc_tensor_nd(inputs[0]->info.dim);
 		const int batch_size = axis_count < 2 ? 1 : inputs[0]->info.dim[0];
 		const int count = ccv_nnc_tensor_count(inputs[0]->info) / batch_size;
-		assert(!CCV_IS_TENSOR_VIEW(outputs[0]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[0]));
 		// Be explicit the c tensor size.
 		ccv_nnc_tensor_param_t c_info = outputs[0]->info;
 		c_info.dim[0] = batch_size;
@@ -232,11 +232,11 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 	assert(input_size >= 6);
 	assert(output_size >= 1);
 	const ccv_nnc_tensor_t* b = inputs[3];
-	assert(!CCV_IS_TENSOR_VIEW(b));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	const ccv_nnc_tensor_t* d = inputs[5];
-	assert(!CCV_IS_TENSOR_VIEW(d));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(d));
 	ccv_nnc_tensor_t* h = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(h));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
 	const int axis_count = ccv_nnc_tensor_nd(d->info.dim);
 	const int batch_size = axis_count < 2 ? 1 : d->info.dim[0];
 	const int bcount = ccv_nnc_tensor_count(d->info);
@@ -312,7 +312,7 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 	{
 		cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 		static const float one = 1, zero = 0;
-		assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[0]));
 		ccv_nnc_tensor_param_t g_info = inputs[0]->info;
 		g_info.dim[0] = batch_size;
 		g_info.dim[1] = 1;
