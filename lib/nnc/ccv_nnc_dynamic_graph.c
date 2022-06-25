@@ -208,6 +208,7 @@ ccv_nnc_tensor_param_t ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* c
 
 ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info)
 {
+	assert(!ccv_nnc_is_tensor_auto(tensor_variable->info));
 	assert(!tensor_variable->alias_index_ref);
 	ccv_nnc_tensor_variable_t variable_alias = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
 	variable_alias->type = tensor_variable->type;
@@ -301,23 +302,9 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	if (!no_inc)
 		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
 	assert(ccv_nnc_tensor_count(tensor_variable->info) <= ccv_nnc_tensor_count(variable_to->info));
+	// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
 	if (no_ofs && !no_inc)
-	{
-		// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
-		const int nd = ccv_nnc_tensor_nd(tensor_variable->info.dim);
-		int first_none_one_dim_idx = -1;
-		for (i = 0; first_none_one_dim_idx < 0 && i < nd; i++)
-			if (tensor_variable->info.dim[i] > 1)
-				first_none_one_dim_idx = i;
-		// Check if from 0 to last_none_one_dim_idx, it is either full or 1, and ofs is either something (1) or nothing (full).
-		if (first_none_one_dim_idx >= 0)
-		{
-			no_inc = 1;
-			assert(tensor_variable->ofs[first_none_one_dim_idx] + tensor_variable->info.dim[first_none_one_dim_idx] <= ccv_max(tensor_variable->inc[first_none_one_dim_idx], tensor_variable->info.dim[first_none_one_dim_idx]));
-			if (first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC)
-				no_inc = (memcmp(tensor_variable->inc + first_none_one_dim_idx + 1, tensor_variable->info.dim + first_none_one_dim_idx + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - first_none_one_dim_idx - 1)) == 0);
-		}
-	}
+		no_inc = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->inc, tensor_variable->ofs);
 	if (no_ofs && no_inc)
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
 	else
