@@ -2492,11 +2492,14 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_
 /** @endcond */
 
 /**
- * Create a new tensor variable that is an alias of a given tensor variable.
+ * Create a new tensor variable that is an alias of a given tensor variable. You can alias any tensor
+ * variable that itself not an alias. You can also alias an alias, with some conditions: The tensor
+ * variable itself can be alias, but it needs to be contiguous as well. For example, a vector is
+ * contiguous. If both conditions satisfied, you can alias an alias.
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable we are going to alias from.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param inc The line size of each dimension. If all 0, it matches the dimension of the tensor_variable.
  * @param info The tensor parameters for the new alias.
  * @return New tensor variable that is an alias.
  */

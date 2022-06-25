@@ -215,20 +215,16 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	if (tensor_variable->alias_index_ref)
 	{
 		variable_alias->alias_index_ref = tensor_variable->alias_index_ref;
-		const int alias_index = tensor_variable->alias_index_ref - 1;
-		assert(alias_index >= 0);
-		ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_index);
-		// Both tensor variable and the original need to be fully specified if I am doing alias an alias.
+		// The tensor variable need to be fully specified if I am doing alias an alias.
 		assert(!ccv_nnc_is_tensor_auto(tensor_variable->info));
-		assert(!ccv_nnc_is_tensor_auto(variable_to->info));
 		int i;
 		int no_inc = 1;
 		for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
 			no_inc = (tensor_variable->inc[i] == 0);
 		// It has to satisfy the condition that the tensor variable itself is contiguous.
-		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? variable_to->info.dim : tensor_variable->inc, tensor_variable->ofs));
+		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->ofs));
 		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
-		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? variable_to->info.dim : tensor_variable->inc, tensor_variable->ofs);
+		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->ofs);
 		variable_alias->alias_off = tensor_variable->alias_off + off;
 	} else {
 		variable_alias->alias_index_ref = tensor_variable->index + 1;

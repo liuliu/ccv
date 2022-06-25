@@ -62,6 +62,45 @@ TEST_CASE("dynamic graph with alias")
 	ccv_nnc_tensor_free(b1);
 }
 
+TEST_CASE("dynamic graph alias an alias")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t const a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 3));
+	ccv_nnc_tensor_variable_t const a0 = ccv_nnc_tensor_variable_alias_new(graph, a, DIM_ALLOC(1, 0), DIM_ALLOC(2, 3), CPU_TENSOR_NHWC(32F, 1, 3));
+	ccv_nnc_tensor_variable_t const a1 = ccv_nnc_tensor_variable_alias_new(graph, a0, DIM_ALLOC(1), DIM_ALLOC(3), CPU_TENSOR_NHWC(32F, 2));
+	ccv_nnc_tensor_t* const b0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_variable_set(graph, a, b0);
+	b0->data.f32[0] = 10;
+	b0->data.f32[1] = 11;
+	b0->data.f32[2] = 12;
+	b0->data.f32[3] = 13;
+	b0->data.f32[4] = 14;
+	b0->data.f32[5] = 15;
+	ccv_nnc_tensor_t* const b1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	b1->data.f32[0] = 20;
+	b1->data.f32[1] = 21;
+	b1->data.f32[2] = 22;
+	b1->data.f32[3] = 23;
+	b1->data.f32[4] = 24;
+	b1->data.f32[5] = 25;
+	REQUIRE(CCV_IS_TENSOR_VIEW(ccv_nnc_tensor_from_variable(graph, a0)), "Complex vector is a tensor view");
+	REQUIRE(CCV_IS_TENSOR_VIEW(ccv_nnc_tensor_from_variable(graph, a1)), "Complex vector is a tensor view");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[0], 13, "should be b0[1, 0]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[1], 14, "should be b0[1, 1]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[2], 15, "should be b0[1, 2]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a1)->data.f32[0], 14, "should be b0[1, 1]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a1)->data.f32[1], 15, "should be b0[1, 2]");
+	ccv_nnc_tensor_variable_set(graph, a, b1);
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[0], 23, "should be b1[1, 0]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[1], 24, "should be b1[1, 1]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a0)->data.f32[2], 25, "should be b1[1, 2]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a1)->data.f32[0], 24, "should be b1[1, 1]");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, a1)->data.f32[1], 25, "should be b1[1, 2]");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_tensor_free(b0);
+	ccv_nnc_tensor_free(b1);
+}
+
 TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) where x = 19")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
