@@ -158,6 +158,7 @@ void ccv_nnc_tensor_variable_destructor_hook(ccv_nnc_dynamic_graph_t* const grap
 inline static void _ccv_nnc_tensor_variable_init(ccv_nnc_dynamic_graph_t* const graph, ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_param_t info)
 {
 	tensor_variable->alias_index_ref = 0;
+	tensor_variable->alias_off = 0;
 	tensor_variable->destructor_hook.func = 0;
 	tensor_variable->destructor_hook.context = 0;
 	tensor_variable->info = info;
@@ -208,11 +209,31 @@ ccv_nnc_tensor_param_t ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* c
 
 ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info)
 {
-	assert(!ccv_nnc_is_tensor_auto(tensor_variable->info));
-	assert(!tensor_variable->alias_index_ref);
 	ccv_nnc_tensor_variable_t variable_alias = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
 	variable_alias->type = tensor_variable->type;
-	variable_alias->alias_index_ref = tensor_variable->index + 1;
+	// If the tensor variable is an alias itself, we point directly to its original.
+	if (tensor_variable->alias_index_ref)
+	{
+		variable_alias->alias_index_ref = tensor_variable->alias_index_ref;
+		const int alias_index = tensor_variable->alias_index_ref - 1;
+		assert(alias_index >= 0);
+		ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_index);
+		// Both tensor variable and the original need to be fully specified if I am doing alias an alias.
+		assert(!ccv_nnc_is_tensor_auto(tensor_variable->info));
+		assert(!ccv_nnc_is_tensor_auto(variable_to->info));
+		int i;
+		int no_inc = 1;
+		for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+			no_inc = (tensor_variable->inc[i] == 0);
+		// It has to satisfy the condition that the tensor variable itself is contiguous.
+		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? variable_to->info.dim : tensor_variable->inc, tensor_variable->ofs));
+		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
+		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? variable_to->info.dim : tensor_variable->inc, tensor_variable->ofs);
+		variable_alias->alias_off = tensor_variable->alias_off + off;
+	} else {
+		variable_alias->alias_index_ref = tensor_variable->index + 1;
+		variable_alias->alias_off = 0;
+	}
 	variable_alias->info = info;
 	variable_alias->symbol = NO_TENSOR_SYMBOL;
 	variable_alias->destructor_hook.func = 0;
@@ -253,13 +274,13 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
 				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
 				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
-				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tv->off;
+				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tv->off + tensor_variable->alias_off;
 			} else {
 				ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
 				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
 				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
-				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8;
+				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tensor_variable->alias_off;
 			}
 		}
 		return (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(tensor_variable->tensor_view);
@@ -301,7 +322,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		no_inc = (tensor_variable->inc[i] == 0);
 	if (!no_inc)
 		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
-	assert(ccv_nnc_tensor_count(tensor_variable->info) <= ccv_nnc_tensor_count(variable_to->info));
+	assert(CCV_GET_DATA_TYPE_SIZE(tensor_variable->info.datatype) * ccv_nnc_tensor_count(tensor_variable->info) + tensor_variable->alias_off <= CCV_GET_DATA_TYPE_SIZE(variable_to->info.datatype) * ccv_nnc_tensor_count(variable_to->info));
 	// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
 	if (no_ofs && !no_inc)
 		no_inc = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->inc, tensor_variable->ofs);
@@ -309,6 +330,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
 	else
 		tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info, tensor_variable->ofs, no_inc ? tensor_variable->info.dim : tensor_variable->inc);
+	if  (tensor_variable->alias_off)
+		tensor_variable->tensor_view->data.u8 += tensor_variable->alias_off;
 	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 }
 

@@ -28,6 +28,7 @@ struct ccv_nnc_tensor_variable_s {
 	int type;
 	int index;
 	int alias_index_ref; // The index back into the original tensor variable. 0 means no alias.
+	off_t alias_off; // If it is an alias, what's the off on the tensor before ofs applied.
 	struct {
 		ccv_nnc_tensor_variable_destructor_f func;
 		void* context;

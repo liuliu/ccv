@@ -58,7 +58,7 @@ enum {
 	CCV_C4 = 0x004,
 };
 
-static const int _ccv_get_data_type_size[] = {
+static const ssize_t _ccv_get_data_type_size[] = {
 	-1, 1, 4,
 	-1, 4,
 	-1, -1, -1, 8,
