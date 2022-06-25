@@ -19,8 +19,8 @@ git_repository(
 
 http_archive(
 	name = "sqlite3",
-	sha256 = "bebb039b748441e3d25d71d11f7a4a33f5df11f318ec18fa7f343d2083755e2c",
-	urls = ["https://www.sqlite.org/2022/sqlite-amalgamation-3380500.zip"],
+	sha256 = "35109dd6e4f062f4d76b48bd7614eec35abae9d2da70351c7ef936876b064b5f",
+	urls = ["https://www.sqlite.org/2022/sqlite-amalgamation-3390000.zip"],
 	build_file = "sqlite3.BUILD"
 )
 
