@@ -9,6 +9,7 @@
 ccv_nnc_graph_t* ccv_nnc_graph_new(const ccv_nnc_graph_new_param_t params)
 {
 	ccv_nnc_graph_t* graph = (ccv_nnc_graph_t*)cccalloc(1, sizeof(ccv_nnc_graph_t));
+	graph->allocator = params.allocator;
 	graph->exec_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_info_t), 5, 0);
 	return graph;
 }
