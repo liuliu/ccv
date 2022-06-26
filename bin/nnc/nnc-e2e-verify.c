@@ -16,7 +16,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 {
 	int i;
 	// We only create the graph compute to the last fc layer.
-	ccv_nnc_graph_t* vgg = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* vgg = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_graph_exec_t previous_exec;
 	for (i = 0; i < convnet->count; i++)
 	{
