@@ -24,26 +24,9 @@ static void _ccv_nnc_dynamic_compile_free(void* const ptr, void* const arg)
 	ccv_nnc_xpu_free(xpu_alloc, ptr);
 }
 
-static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_compile_stream_context_new(const int type, void* const arg)
-{
-	ccv_nnc_dy_xpu_alloc_t* const xpu_alloc  = (ccv_nnc_dy_xpu_alloc_t*)arg;
-	return ccv_nnc_xpu_stream_context_new(xpu_alloc->xpu_alloc, xpu_alloc->stream, type);
-}
-
-static void _ccv_nnc_dynamic_compile_stream_context_free(ccv_nnc_stream_context_t* stream, void* const arg)
-{
-	ccv_nnc_xpu_alloc_t* const xpu_alloc = (ccv_nnc_xpu_alloc_t*)arg;
-	ccv_nnc_xpu_stream_context_free(xpu_alloc, stream);
-}
-
 const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa = {
 	.alloc = _ccv_nnc_dynamic_compile_alloc,
 	.free = _ccv_nnc_dynamic_compile_free
-};
-
-const ccv_nnc_graph_allocator_vtab_t ccv_nnc_dy_graph_isa = {
-	.stream_context_new = _ccv_nnc_dynamic_compile_stream_context_new,
-	.stream_context_free = _ccv_nnc_dynamic_compile_stream_context_free
 };
 
 void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t* const f_variables, const int f_variable_size, const ccv_nnc_tensor_variable_t* const df_optionals, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -350,18 +333,11 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		.stream = stream_context
 	};
 	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
-		.tensor_allocator = {
+		.allocator = {
 			.isa = &ccv_nnc_dy_allocator_isa,
 			.context = {
 				.alloc = &xpu_alloc,
 				.free = &dynamic_graph->xpu_alloc,
-			}
-		},
-		.graph_allocator = {
-			.isa = &ccv_nnc_dy_graph_isa,
-			.context = {
-				.stream_context_new = &xpu_alloc,
-				.stream_context_free = &dynamic_graph->xpu_alloc,
 			}
 		}
 	};

@@ -269,7 +269,6 @@ static inline int ccv_nnc_tensor_variable_contains_value(ccv_nnc_tensor_variable
 void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_graph_exec_symbol_t* const graph_execs);
 
 extern const ccv_nnc_symbolic_graph_compile_allocator_vtab_t ccv_nnc_dy_allocator_isa;
-extern const ccv_nnc_graph_allocator_vtab_t ccv_nnc_dy_graph_isa;
 
 typedef struct {
 	ccv_nnc_graph_t* graph;

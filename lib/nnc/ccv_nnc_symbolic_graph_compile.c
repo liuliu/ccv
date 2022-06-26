@@ -2932,7 +2932,7 @@ static ccv_array_t* _ccv_nnc_dup_breakpoints_with_p_node_inputs(ccv_nnc_symbolic
 }
 
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
-static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_allocator_t allocator, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const p_exec_symbol_info, const int p_exec_symbol_info_size)
+static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const p_exec_symbol_info, const int p_exec_symbol_info_size)
 {
 	assert(source_size > 0);
 	assert(destination_size > 0);
@@ -2986,9 +2986,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	int unroll_count = 0;
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
-	prep->graph = ccv_nnc_graph_new((ccv_nnc_graph_new_param_t){
-		.allocator = allocator
-	}); // Just allocate the graph right now.
+	prep->graph = ccv_nnc_graph_new(); // Just allocate the graph right now.
 	prep->flags = 0;
 	// Cannot handle dup a node that is a graph as well.
 	if (p_exec_symbol_info)
@@ -3013,7 +3011,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			assert(symbolic_graph->sub_graphs);
 			ccv_nnc_symbolic_graph_t* const sub_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[p] - 1);
 			ccv_array_t* const dup_breakpoints = _ccv_nnc_dup_breakpoints_with_p_node_inputs(sub_graph, node);
-			ccv_nnc_symbolic_graph_prep_t* const sub_prep = _ccv_nnc_symbolic_graph_prep_new(sub_graph, allocator, tensor_binds, tensor_bind_size, 0, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum);
+			ccv_nnc_symbolic_graph_prep_t* const sub_prep = _ccv_nnc_symbolic_graph_prep_new(sub_graph, tensor_binds, tensor_bind_size, 0, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum);
 			sub_prep->dup_breakpoints = dup_breakpoints;
 			sub_prep->p = prep;
 			sub_preps[CCV_NNC_GRAPH_REF(node)[p] - 1] = sub_prep;
@@ -3501,7 +3499,7 @@ static void _ccv_nnc_graph_exec_arena_topsort(ccv_nnc_graph_t* const graph, ccv_
 	ccfree(exec_cvt);
 }
 
-static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_allocator_t allocator, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena)
+static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	int i, j, k;
 	ccv_nnc_graph_t* const graph = graph_prep->graph;
@@ -3546,7 +3544,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				ccv_nnc_graph_t* const sub_graph = sub_prep->graph;
 				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph);
 				const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
-				ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, allocator, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
+				ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
 				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size);
 				for (i = 0; i < node->p_while.input_size; i++)
 					max_inputs[i] = _ccv_nnc_tensor_from_graph_prep(sub_prep, node->p_while.inputs[i]);
@@ -3576,9 +3574,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				if (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO)
 				{
 					// Add another graph for data transfer.
-					ccv_nnc_graph_t* sub_graph = ccv_nnc_graph_new((ccv_nnc_graph_new_param_t){
-						.allocator = allocator
-					});
+					ccv_nnc_graph_t* sub_graph = ccv_nnc_graph_new();
 					for (i = 0; i < node->output_size; i++)
 						max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensors[node->outputs[i]] : 0;
 					ccv_nnc_graph_exec_t io = ccv_nnc_graph_exec_new(sub_graph, ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, max_inputs, ccv_min(node->input_size, node->output_size), max_outputs, ccv_min(node->input_size, node->output_size));
@@ -3595,7 +3591,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 						continue;
 					ccv_nnc_graph_t* const sub_graph = graph_prep->sub_preps[graph_ref]->graph;
 					const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
-					ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, allocator, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
+					ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
 					ccv_nnc_graph_set_case_of(graph, graph_execs[idx], sub_graph, i + offset);
 					_ccv_nnc_graph_exec_arena_topsort(sub_graph, sub_arena);
 				}
@@ -3840,9 +3836,9 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 		assert(tensor_binds[i].tensor);
 		assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor));
 	}
-	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, compile_params.graph_allocator, tensor_binds, tensor_bind_size, outputs, output_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
+	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, outputs, output_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	_ccv_nnc_symbolic_graph_prep_while_count_tensor(graph_prep);
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, compile_params.tensor_allocator, 0, tensor_binds, tensor_bind_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, compile_params.allocator, 0, tensor_binds, tensor_bind_size);
 	_ccv_nnc_tensor_arena_fixup_pair_ref_and_tape_var(tensor_arena, graph_prep, tensor_arena);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
@@ -3850,7 +3846,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	// Now tensor allocation is done, if there are any dup_breakpoints, I need to clean it up.
 	_ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(graph_prep);
 	*graph_ref = graph_prep->graph;
-	ccv_nnc_graph_exec_arena_t* graph_exec_arena = _ccv_nnc_graph_exec_arena_new(symbolic_graph, compile_params.graph_allocator, sources, source_size, destinations, destination_size, graph_prep, tensor_arena);
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = _ccv_nnc_graph_exec_arena_new(symbolic_graph, sources, source_size, destinations, destination_size, graph_prep, tensor_arena);
 	_ccv_nnc_graph_exec_arena_topsort(graph_prep->graph, graph_exec_arena);
 	_ccv_nnc_graph_exec_arena_fixup_pair_ref(graph_exec_arena, graph_prep, graph_exec_arena);
 	*graph_exec_arena_ref = graph_exec_arena;

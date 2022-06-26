@@ -6,10 +6,9 @@
 
 // MARK - Level-2 API
 
-ccv_nnc_graph_t* ccv_nnc_graph_new(const ccv_nnc_graph_new_param_t params)
+ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 {
 	ccv_nnc_graph_t* graph = (ccv_nnc_graph_t*)cccalloc(1, sizeof(ccv_nnc_graph_t));
-	graph->allocator = params.allocator;
 	graph->exec_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_info_t), 5, 0);
 	return graph;
 }
@@ -1147,7 +1146,7 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 			ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
 			int type = stream_type;
 			CCV_STREAM_SET_DEVICE_ID(type, data->device_id);
-			graph->streams[i] = graph->allocator.isa ? graph->allocator.isa->stream_context_new(type, graph->allocator.context.stream_context_new) : ccv_nnc_stream_context_new(type);
+			graph->streams[i] = ccv_nnc_stream_context_new(type);
 		}
 		graph->signal_size = signal_size;
 		graph->signals = (ccv_nnc_stream_signal_t**)cccalloc(signal_size, sizeof(ccv_nnc_stream_signal_t*));
@@ -1960,9 +1959,9 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	{
 		// If the graph has parent graph, the default stream is allocated by the parent graph, we need to skip.
 		if (!graph->p)
-			graph->allocator.isa ? graph->allocator.isa->stream_context_free(graph->streams[0], graph->allocator.context.stream_context_free) : ccv_nnc_stream_context_free(graph->streams[0]);
+			ccv_nnc_stream_context_free(graph->streams[0]);
 		for (i = 1; i < graph->stream_size; i++)
-			graph->allocator.isa ? graph->allocator.isa->stream_context_free(graph->streams[i], graph->allocator.context.stream_context_free) : ccv_nnc_stream_context_free(graph->streams[i]);
+			ccv_nnc_stream_context_free(graph->streams[i]);
 		ccfree(graph->streams);
 	}
 	if (graph->block_stream_tasks)

@@ -21,11 +21,11 @@ static int while_5(ccv_nnc_tensor_t* const* const inputs, const int input_size, 
 
 TEST_CASE("graph for a while loop to compute 0.34 * 1.11 ^ 5")
 {
-	ccv_nnc_graph_t* graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
+	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
-	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, CMD_NOOP(), ccv_nnc_no_hint, 0, 0, 0, 0);
 	ccv_nnc_graph_exec_t prod0 = ccv_nnc_graph_exec_new(while_graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, TENSOR_LIST(y, z), TENSOR_LIST(z));
 	ccv_nnc_graph_exec_concat(while_graph, noop, prod0);
@@ -51,8 +51,8 @@ TEST_CASE("graph for a while loop to compute 0.34 * 1.11 ^ 5")
 
 TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5")
 {
-	ccv_nnc_graph_t* graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
-	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
+	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
 	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, CMD_NOOP(), ccv_nnc_no_hint, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -91,8 +91,8 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 
 TEST_CASE("while graph add and re-add reuse tensor allocations for 0.47 * 5.5 ^ 5")
 {
-	ccv_nnc_graph_t* graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
-	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
+	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
 	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, CMD_NOOP(), ccv_nnc_no_hint, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
