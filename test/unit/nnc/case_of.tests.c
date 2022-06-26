@@ -33,16 +33,16 @@ static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, 
 
 TEST_CASE("graph for a piece-wise linear function")
 {
-	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x), 0, 0);
 	ccv_nnc_graph_set_case_of_expr(graph, case_of, piecewise_case_of, 0, 0);
-	ccv_nnc_graph_t* graph_0 = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* graph_0 = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_graph_exec_t set_0 = ccv_nnc_graph_exec_new(graph_0, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(x));
 	ccv_nnc_graph_set_sources(graph_0, GRAPH_EXEC_LIST(set_0));
 	ccv_nnc_graph_set_destinations(graph_0, GRAPH_EXEC_LIST(set_0));
 	ccv_nnc_graph_set_case_of(graph, case_of, graph_0, 0);
-	ccv_nnc_graph_t* graph_1 = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* graph_1 = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_tensor_t* p1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	p1->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* s1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -53,7 +53,7 @@ TEST_CASE("graph for a piece-wise linear function")
 	ccv_nnc_graph_set_sources(graph_1, GRAPH_EXEC_LIST(prod_1));
 	ccv_nnc_graph_set_destinations(graph_1, GRAPH_EXEC_LIST(sum_1));
 	ccv_nnc_graph_set_case_of(graph, case_of, graph_1, 1);
-	ccv_nnc_graph_t* graph_2 = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* graph_2 = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_graph_exec_t set_2 = ccv_nnc_graph_exec_new(graph_2, CMD_SET_FORWARD(1.5), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(x));
 	ccv_nnc_graph_set_sources(graph_2, GRAPH_EXEC_LIST(set_2));
 	ccv_nnc_graph_set_destinations(graph_2, GRAPH_EXEC_LIST(set_2));

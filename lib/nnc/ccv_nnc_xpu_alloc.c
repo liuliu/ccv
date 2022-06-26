@@ -25,11 +25,8 @@ static void _ccv_nnc_xpu_metadata_free(dy_alloc_metadata_t* node, void* arg)
 	} while (node);
 }
 
-static void _ccv_nnc_xpu_alloc_drain(khash_t(dy_dev)* const dev, const ccv_nnc_stream_context_t* const stream)
+static void _ccv_nnc_xpu_alloc_drain(khash_t(dy_dev)* const dev)
 {
-	// Wait until the stream is free, and then do the free.
-	if (stream)
-		ccv_nnc_stream_context_wait(stream);
 	khiter_t k;
 	for (k = kh_begin(dev); k != kh_end(dev); ++k)
 	{
@@ -41,6 +38,24 @@ static void _ccv_nnc_xpu_alloc_drain(khash_t(dy_dev)* const dev, const ccv_nnc_s
 	}
 }
 
+static void _ccv_nnc_xpu_stream_context_drain(khash_t(dy_str_free)* const str_free)
+{
+	khiter_t k;
+	for (k = kh_begin(str_free); k != kh_end(str_free); ++k)
+	{
+		if (!kh_exist(str_free, k))
+			continue;
+		dy_stream_free_list_t* item = kh_val(str_free, k);
+		while (item)
+		{
+			ccv_nnc_stream_context_free(item->stream);
+			item = item->next;
+			ccfree(item);
+		}
+		kh_del(dy_str_free, str_free, k);
+	}
+}
+
 static void _ccv_nnc_xpu_stream_destructor_hook(const ccv_nnc_stream_context_t* const stream, void* const context)
 {
 	ccv_nnc_xpu_alloc_t* const xpu_alloc = (ccv_nnc_xpu_alloc_t*)context;
@@ -49,7 +64,12 @@ static void _ccv_nnc_xpu_stream_destructor_hook(const ccv_nnc_stream_context_t* 
 	khiter_t i = kh_get(dy_str, freed, str);
 	assert(i != kh_end(freed));
 	khash_t(dy_dev)* const dev = kh_val(freed, i).dev;
-	_ccv_nnc_xpu_alloc_drain(dev, stream);
+	khash_t(dy_str_free)* const str_free = kh_val(freed, i).str_free;
+	// Wait until the stream is free, and then do the free.
+	if (stream)
+		ccv_nnc_stream_context_wait(stream);
+	_ccv_nnc_xpu_alloc_drain(dev);
+	_ccv_nnc_xpu_stream_context_drain(str_free);
 	kh_destroy(dy_dev, dev);
 	kh_del(dy_str, freed, i);
 }
@@ -90,8 +110,8 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 	} else {
 		// Otherwise, create it.
 		kh_val(freed, i).dev = kh_init(dy_dev);
+		kh_val(freed, i).str_free = kh_init(dy_str_free);
 		kh_val(freed, i).hook_id = stream ? ccv_nnc_stream_context_add_destructor_hook(stream, _ccv_nnc_xpu_stream_destructor_hook, xpu_alloc) : -1;
-
 	}
 	if (!node)
 	{
@@ -118,6 +138,46 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 	assert(ret > 0);
 	kh_val(allocd, i) = node;
 	return node->ptr;
+}
+
+ccv_nnc_stream_context_t* ccv_nnc_xpu_stream_context_new(ccv_nnc_xpu_alloc_t* const xpu_alloc, ccv_nnc_stream_context_t* const stream, const int type)
+{
+	khash_t(dy_str)* const freed = xpu_alloc->freed;
+	const int64_t str = (int64_t)(intptr_t)stream;
+	int ret;
+	khiter_t i = kh_put(dy_str, freed, str, &ret);
+	assert(ret >= 0);
+	ccv_nnc_stream_context_t* new_stream = 0;
+	if (ret == 0)
+	{
+		// If we can find stream related allocations, try to
+		// find the suitable ones.
+		khash_t(dy_str_free)* const str_free = kh_val(freed, i).str_free;
+		assert(str_free);
+		khiter_t j = kh_get(dy_str_free, str_free, type);
+		if (j != kh_end(str_free))
+		{
+			dy_stream_free_list_t* item = kh_val(str_free, j);
+			new_stream = item->stream;
+			if (item->next) // Remove from free list.
+				kh_val(str_free, j) = item->next;
+			else
+				kh_del(dy_str_free, str_free, j);
+			ccfree(item);
+		}
+	} else {
+		// Otherwise, create it. Create this now because we know stream is valid at this point.
+		kh_val(freed, i).dev = kh_init(dy_dev);
+		kh_val(freed, i).str_free = kh_init(dy_str_free);
+		kh_val(freed, i).hook_id = stream ? ccv_nnc_stream_context_add_destructor_hook(stream, _ccv_nnc_xpu_stream_destructor_hook, xpu_alloc) : -1;
+	}
+	if (!new_stream)
+		new_stream = ccv_nnc_stream_context_new(type);
+	const int64_t new_str = (int64_t)(intptr_t)new_stream;
+	khash_t(dy_str_alloc)* const str_alloc = xpu_alloc->str_alloc;
+	i = kh_put(dy_str_alloc, str_alloc, new_str, &ret);
+	kh_val(str_alloc, i) = str;
+	return new_stream;
 }
 
 void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
@@ -154,6 +214,41 @@ void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
 	}
 }
 
+void ccv_nnc_xpu_stream_context_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, ccv_nnc_stream_context_t* const stream)
+{
+	khash_t(dy_str_alloc)* const str_alloc = xpu_alloc->str_alloc;
+	khiter_t i = kh_get(dy_str_alloc, str_alloc, (int64_t)(intptr_t)stream);
+	assert(i != kh_end(str_alloc));
+	const int64_t str = kh_val(str_alloc, i);
+	kh_del(dy_str_alloc, str_alloc, i);
+	khash_t(dy_str)* const freed = xpu_alloc->freed;
+	i = kh_get(dy_str, freed, str);
+	// If cannot find associated stream, that means this allocation associated
+	// stream has been freed. I have to do free this stream now.
+	if (i == kh_end(freed))
+	{
+		ccv_nnc_stream_context_free(stream);
+		return;
+	}
+	khash_t(dy_str_free)* const str_free = kh_val(freed, i).str_free;
+	assert(str_free);
+	int ret;
+	khiter_t j = kh_put(dy_str_free, str_free, stream->type, &ret);
+	if (ret == 0)
+	{
+		dy_stream_free_list_t* const item = ccmalloc(sizeof(dy_stream_free_list_t));
+		item->stream = stream;
+		dy_stream_free_list_t* const prev_item = kh_val(str_free, j);
+		item->next = prev_item;
+		kh_val(str_free, j) = item;
+	} else {
+		dy_stream_free_list_t* const item = ccmalloc(sizeof(dy_stream_free_list_t));
+		item->stream = stream;
+		item->next = 0;
+		kh_val(str_free, j) = item;
+	}
+}
+
 void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 {
 	khash_t(dy_alloc)* const allocd = xpu_alloc->allocd;
@@ -171,8 +266,13 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 		if (!kh_exist(freed, k))
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
+		khash_t(dy_str_free)* const str_free = kh_val(freed, k).str_free;
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
-		_ccv_nnc_xpu_alloc_drain(dev, stream);
+		// Wait until the stream is free, and then do the free.
+		if (stream)
+			ccv_nnc_stream_context_wait(stream);
+		_ccv_nnc_xpu_alloc_drain(dev);
+		_ccv_nnc_xpu_stream_context_drain(str_free);
 		if (stream)
 		{
 			const int hook_id = kh_val(freed, k).hook_id;
@@ -194,8 +294,13 @@ void ccv_nnc_xpu_gc(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 		if (!kh_exist(freed, k))
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
+		khash_t(dy_str_free)* const str_free = kh_val(freed, k).str_free;
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
-		_ccv_nnc_xpu_alloc_drain(dev, stream);
+		// Wait until the stream is free, and then do the free.
+		if (stream)
+			ccv_nnc_stream_context_wait(stream);
+		_ccv_nnc_xpu_alloc_drain(dev);
+		_ccv_nnc_xpu_stream_context_drain(str_free);
 	}
 }
 #else
@@ -204,8 +309,18 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 	return 0;
 }
 
+ccv_nnc_stream_context_t* ccv_nnc_xpu_stream_context_new(ccv_nnc_xpu_alloc_t* const xpu_alloc, ccv_nnc_stream_context_t* const stream, const int type)
+{
+	return ccv_nnc_stream_context_new(type);
+}
+
 void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
 {
+}
+
+void ccv_nnc_xpu_stream_context_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, ccv_nnc_stream_context_t* const stream)
+{
+	ccv_nnc_stream_context_free(stream);
 }
 
 void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)

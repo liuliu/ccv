@@ -19,7 +19,7 @@ static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, 
 
 TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 {
-	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* x0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -27,7 +27,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	z->type |= CCV_TAPE_ALLOC;
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
-	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
 	ccv_nnc_tensor_multiview_t xx;
 	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
@@ -46,7 +46,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor_for_while_count(while_graph);
 	ccv_nnc_graph_set_while_expr(while_graph, while_4, 0, TENSOR_LIST(&count_tensor), GRAPH_EXEC_LIST(noop));
-	ccv_nnc_graph_t* while_back_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* while_back_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	while_back_graph->pair = while_graph;
 	ccv_nnc_graph_exec_t back_loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_BACKWARD, while_back_graph);
 	ccv_nnc_tensor_t* dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);

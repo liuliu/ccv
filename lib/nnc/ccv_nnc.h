@@ -925,13 +925,33 @@ typedef struct {
 
 #define CCV_NO_GRAPH_EXEC(exec) ((exec).graph == 0)
 
+typedef struct {
+	ccv_nnc_stream_context_t* (*stream_context_new)(const int type, void* const arg);
+	void (*stream_context_free)(ccv_nnc_stream_context_t* stream, void* const arg);
+} ccv_nnc_graph_allocator_vtab_t;
+
+typedef struct {
+	const ccv_nnc_graph_allocator_vtab_t* isa;
+	struct {
+		void* stream_context_new;
+		void* stream_context_free;
+	} context;
+} ccv_nnc_graph_allocator_t;
+
+typedef struct {
+	ccv_nnc_graph_allocator_t allocator;
+} ccv_nnc_graph_new_param_t;
+
+#define CCV_NNC_GRAPH_DEFAULT_PARAMS ((ccv_nnc_graph_new_param_t){})
+
 /**
  * Create an empty graph.
  * Note that all graph mutation methods are not thread-safe.
  * You should only operate the graph in serial fashion.
+ * @param params The graph allocator can be provided through this parameter.
  * @return An opaque ccv_nnc_graph_t pointer.
  */
-CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(void);
+CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(const ccv_nnc_graph_new_param_t params);
 /**
  * Create a node with specific command execution, as well as its inputs & outputs.
  * Underlying, the graph maintains the backing object for the node, and all you get is
@@ -1419,7 +1439,8 @@ typedef struct {
 } ccv_nnc_symbolic_graph_compile_allocator_t;
 
 typedef struct {
-	ccv_nnc_symbolic_graph_compile_allocator_t allocator;
+	ccv_nnc_symbolic_graph_compile_allocator_t tensor_allocator;
+	ccv_nnc_graph_allocator_t graph_allocator;
 } ccv_nnc_symbolic_graph_compile_param_t;
 
 /**

@@ -42,7 +42,7 @@ TEST_CASE("new tape from a graph")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_t while_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, while_symbol);
 	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_from_while_exec(graph, while_exec);
-	ccv_nnc_graph_t* sub_while_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* sub_while_graph = ccv_nnc_graph_new(CCV_NNC_GRAPH_DEFAULT_PARAMS);
 	ccv_nnc_graph_exec_t sub_while_exec = ccv_nnc_graph_while(while_graph, CCV_NNC_GRAPH_FORWARD, sub_while_graph);
 	ccv_nnc_graph_exec_t noop_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, noop);
 	ccv_nnc_graph_exec_concat(while_graph, noop_exec, sub_while_exec);

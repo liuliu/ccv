@@ -177,11 +177,18 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		.stream = stream_context
 	};
 	ccv_nnc_symbolic_graph_compile_param_t compile_params = {
-		.allocator = {
+		.tensor_allocator = {
 			.isa = &ccv_nnc_dy_allocator_isa,
 			.context = {
 				.alloc = &xpu_alloc,
 				.free = &dynamic_graph->xpu_alloc,
+			}
+		},
+		.graph_allocator = {
+			.isa = &ccv_nnc_dy_graph_isa,
+			.context = {
+				.stream_context_new = &xpu_alloc,
+				.stream_context_free = &dynamic_graph->xpu_alloc,
 			}
 		}
 	};

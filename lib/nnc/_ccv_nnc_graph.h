@@ -119,6 +119,7 @@ struct ccv_nnc_graph_s {
 	int stream_size;
 	int signal_size;
 	int buffer_size;
+	ccv_nnc_graph_allocator_t allocator; // The allocator for stream context.
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	// These are int types.
