@@ -2,6 +2,159 @@
 extern "C" {
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/_ccv_nnc_stream.h>
+#include "3rdparty/khash/khash.h"
+}
+
+void cutrigmp(void);
+
+#ifdef HAVE_CUDNN
+struct cudnn_free_list_s {
+	cudnnHandle_t cudnn; // Can be reused cudnn handle.
+	struct cudnn_free_list_s* next;
+};
+KHASH_MAP_INIT_INT(cudnn_free, struct cudnn_free_list_s*);
+static pthread_mutex_t g_cudnn_mutex = PTHREAD_MUTEX_INITIALIZER;
+static khash_t(cudnn_free)* g_cudnn = 0;
+
+cudnnHandle_t cudnn_get(const int type)
+{
+	pthread_mutex_lock(&g_cudnn_mutex);
+	if (!g_cudnn)
+		g_cudnn = kh_init(cudnn_free);
+	khiter_t i = kh_get(cudnn_free, g_cudnn, type);
+	cudnnHandle_t cudnn;
+	if (i != kh_end(g_cudnn))
+	{
+		struct cudnn_free_list_s* item = kh_val(g_cudnn, i);
+		cudnn = item->cudnn;
+		if (item->next)
+			kh_val(g_cudnn, i) = item->next;
+		else
+			kh_del(cudnn_free, g_cudnn, i);
+		pthread_mutex_unlock(&g_cudnn_mutex);
+		ccfree(item);
+	} else {
+		pthread_mutex_unlock(&g_cudnn_mutex);
+		cudnnCreate(&cudnn);
+		if (!cudnn)
+		{
+			cutrigmp(); // Trigger memory pressure. And then do it again.
+			CUDNN_ENFORCE(cudnnCreate(&cudnn));
+		}
+	}
+	return cudnn;
+}
+
+void cudnn_save(const int type, cudnnHandle_t cudnn)
+{
+	pthread_mutex_lock(&g_cudnn_mutex);
+	int ret;
+	khiter_t i = kh_put(cudnn_free, g_cudnn, type, &ret);
+	struct cudnn_free_list_s* const item = (struct cudnn_free_list_s*)ccmalloc(sizeof(struct cudnn_free_list_s));
+	item->cudnn = cudnn;
+	item->next = ret == 0 ? kh_val(g_cudnn, i) : 0;
+	kh_val(g_cudnn, i) = item;
+	pthread_mutex_unlock(&g_cudnn_mutex);
+}
+
+void cudnn_pressure(const int device_id)
+{
+	pthread_mutex_lock(&g_cudnn_mutex);
+	khiter_t k;
+	for (k = kh_begin(g_cudnn); k != kh_end(g_cudnn); ++k)
+	{
+		if (!kh_exist(g_cudnn, k))
+			continue;
+		const int type = kh_key(g_cudnn, k);
+		const int this_device_id = CCV_TENSOR_GET_DEVICE_ID(type);
+		if (this_device_id != device_id) // Only free for a particular device.
+			continue;
+		struct cudnn_free_list_s* item = kh_val(g_cudnn, k);
+		while (item)
+		{
+			CUDNN_ENFORCE(cudnnDestroy(item->cudnn));
+			struct cudnn_free_list_s* next = item->next;
+			ccfree(item);
+			item = next;
+		}
+		kh_del(cudnn_free, g_cudnn, k);
+	}
+	pthread_mutex_unlock(&g_cudnn_mutex);
+}
+#endif
+
+struct cublas_free_list_s {
+	cublasHandle_t cublas; // Can be reused cublas handle.
+	struct cublas_free_list_s* next;
+};
+KHASH_MAP_INIT_INT(cublas_free, struct cublas_free_list_s*);
+static pthread_mutex_t g_cublas_mutex = PTHREAD_MUTEX_INITIALIZER;
+static khash_t(cublas_free)* g_cublas = 0;
+
+cublasHandle_t cublas_get(const int type)
+{
+	pthread_mutex_lock(&g_cublas_mutex);
+	if (!g_cublas)
+		g_cublas = kh_init(cublas_free);
+	khiter_t i = kh_get(cublas_free, g_cublas, type);
+	cublasHandle_t cublas;
+	if (i != kh_end(g_cublas))
+	{
+		struct cublas_free_list_s* item = kh_val(g_cublas, i);
+		cublas = item->cublas;
+		if (item->next)
+			kh_val(g_cublas, i) = item->next;
+		else
+			kh_del(cublas_free, g_cublas, i);
+		pthread_mutex_unlock(&g_cublas_mutex);
+		ccfree(item);
+	} else {
+		pthread_mutex_unlock(&g_cublas_mutex);
+		cublasCreate(&cublas);
+		if (!cublas)
+		{
+			cutrigmp(); // Trigger memory pressure. And then do it again.
+			CUBLAS_ENFORCE(cublasCreate(&cublas));
+		}
+	}
+	return cublas;
+}
+
+void cublas_save(const int type, cublasHandle_t cublas)
+{
+	pthread_mutex_lock(&g_cublas_mutex);
+	int ret;
+	khiter_t i = kh_put(cublas_free, g_cublas, type, &ret);
+	struct cublas_free_list_s* const item = (struct cublas_free_list_s*)ccmalloc(sizeof(struct cublas_free_list_s));
+	item->cublas = cublas;
+	item->next = ret == 0 ? kh_val(g_cublas, i) : 0;
+	kh_val(g_cublas, i) = item;
+	pthread_mutex_unlock(&g_cublas_mutex);
+}
+
+void cublas_pressure(const int device_id)
+{
+	pthread_mutex_lock(&g_cublas_mutex);
+	khiter_t k;
+	for (k = kh_begin(g_cublas); k != kh_end(g_cublas); ++k)
+	{
+		if (!kh_exist(g_cublas, k))
+			continue;
+		const int type = kh_key(g_cublas, k);
+		const int this_device_id = CCV_TENSOR_GET_DEVICE_ID(type);
+		if (this_device_id != device_id) // Only free for a particular device.
+			continue;
+		struct cublas_free_list_s* item = kh_val(g_cublas, k);
+		while (item)
+		{
+			CUBLAS_ENFORCE(cublasDestroy(item->cublas));
+			struct cublas_free_list_s* next = item->next;
+			ccfree(item);
+			item = next;
+		}
+		kh_del(cublas_free, g_cublas, k);
+	}
+	pthread_mutex_unlock(&g_cublas_mutex);
 }
 
 typedef struct {
@@ -72,6 +225,10 @@ void cutrigmp(void)
 	pthread_mutex_unlock(&g_mp_mutex);
 	// Set back the device id.
 	CUDA_ENFORCE(cudaSetDevice(device_id));
+#ifdef HAVE_CUDNN
+	cudnn_pressure(device_id);
+#endif
+	cublas_pressure(device_id);
 }
 
 void* cumalloc(int device, size_t size)
@@ -443,7 +600,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].workspace));
 				CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_heap_gpus[i].stream));
 				if (stream_compat->_heap_gpus[i].cublas)
-					CUBLAS_ENFORCE(cublasDestroy(stream_compat->_heap_gpus[i].cublas));
+					cublas_save(stream_compat->super.type, stream_compat->_heap_gpus[i].cublas);
 				if (stream_compat->_heap_gpus[i].ones_16.data)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_16.data));
 				if (stream_compat->_heap_gpus[i].ones_32.data)
@@ -452,7 +609,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_64.data));
 #ifdef HAVE_CUDNN
 				if (stream_compat->_heap_gpus[i].cudnn)
-					CUDNN_ENFORCE(cudnnDestroy(stream_compat->_heap_gpus[i].cudnn));
+					cudnn_save(stream_compat->super.type, stream_compat->_heap_gpus[i].cudnn);
 				if (stream_compat->_heap_gpus[i].rngs)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].rngs));
 #endif
@@ -465,7 +622,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 		}
 		CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_inline_gpu.stream));
 		if (stream_compat->_inline_gpu.cublas)
-			CUBLAS_ENFORCE(cublasDestroy(stream_compat->_inline_gpu.cublas));
+			cublas_save(stream_compat->super.type, stream_compat->_inline_gpu.cublas);
 		if (stream_compat->_inline_gpu.ones_16.data)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_16.data));
 		if (stream_compat->_inline_gpu.ones_32.data)
@@ -474,7 +631,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_64.data));
 #ifdef HAVE_CUDNN
 		if (stream_compat->_inline_gpu.cudnn)
-			CUDNN_ENFORCE(cudnnDestroy(stream_compat->_inline_gpu.cudnn));
+			cudnn_save(stream_compat->super.type, stream_compat->_inline_gpu.cudnn);
 		if (stream_compat->_inline_gpu.rngs)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.rngs));
 #endif
@@ -524,12 +681,7 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	if (!device_local->cublas)
 	{
-		cublasCreate(&device_local->cublas);
-		if (!device_local->cublas)
-		{
-			cutrigmp(); // Trigger memory pressure. And then do it again.
-			CUBLAS_ENFORCE(cublasCreate(&device_local->cublas));
-		}
+		device_local->cublas = cublas_get(stream_compat->super.type);
 		CUBLAS_ENFORCE(cublasSetStream(device_local->cublas, device_local->stream));
 	}
 	return device_local->cublas;
@@ -643,12 +795,7 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* c
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	if (!device_local->cudnn)
 	{
-		cudnnCreate(&device_local->cudnn);
-		if (!device_local->cudnn)
-		{
-			cutrigmp(); // Trigger memory pressure. And then do it again.
-			CUDNN_ENFORCE(cudnnCreate(&device_local->cudnn));
-		}
+		device_local->cudnn = cudnn_get(stream_compat->super.type);
 		CUDNN_ENFORCE(cudnnSetStream(device_local->cudnn, device_local->stream));
 	}
 	return device_local->cudnn;
