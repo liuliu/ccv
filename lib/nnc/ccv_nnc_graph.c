@@ -471,25 +471,18 @@ int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	ccv_nnc_graph_exec_info_t* src_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, source.d);
 	if (!src_info->outgoings)
 		return -1;
-	int i, j = -1;
+	int i;
 	// Check if this is already connected, if so, skip.
 	for (i = 0; i < src_info->outgoings->rnum; i++)
 		if (*(int*)ccv_array_get(src_info->outgoings, i) == destination.d)
 		{
-			j = i;
-			break;
+			if (i < src_info->outgoings->rnum - 1)
+				*(int*)ccv_array_get(src_info->outgoings, i) = *(int*)ccv_array_get(src_info->outgoings, src_info->outgoings->rnum - 1);
+			--src_info->outgoings->rnum;
+			graph->topsorted = 0;
+			return 0;
 		}
-	if (j < 0)
-		return -1;
-	if (j < src_info->outgoings->rnum - 1)
-		*(int*)ccv_array_get(src_info->outgoings, j) = *(int*)ccv_array_get(src_info->outgoings, src_info->outgoings->rnum - 1);
-	--src_info->outgoings->rnum;
-	ccv_nnc_graph_exec_info_t* dest_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, destination.d);
-	if (dest_info->outgoings)
-		for (i = 0; i < dest_info->outgoings->rnum; i++)
-			ccv_array_add_unique_int(src_info->outgoings, *(int*)ccv_array_get(dest_info->outgoings, i));
-	graph->topsorted = 0;
-	return 0;
+	return -1;
 }
 
 int ccv_nnc_graph_exec_count(const ccv_nnc_graph_t* const graph)

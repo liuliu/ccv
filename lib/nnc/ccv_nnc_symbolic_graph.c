@@ -1147,8 +1147,7 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	ccv_nnc_graph_exec_symbol_info_t* src_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, source.d);
 	if (!src_symbol_info->outgoings)
 		return -1;
-	ccv_nnc_graph_exec_symbol_info_t* const dest_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, destination.d);
-	int i, j;
+	int i;
 	// Check if this is already disjoined, if so, skip.
 	for (i = 0; i < src_symbol_info->outgoings->rnum; i++)
 		if (*(int*)ccv_array_get(src_symbol_info->outgoings, i) == destination.d)
@@ -1156,9 +1155,6 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 			if (i < src_symbol_info->outgoings->rnum - 1)
 				*(int*)ccv_array_get(src_symbol_info->outgoings, i) = *(int*)ccv_array_get(src_symbol_info->outgoings, src_symbol_info->outgoings->rnum - 1);
 			--src_symbol_info->outgoings->rnum;
-			if (dest_symbol_info->outgoings)
-				for (j = 0; j < dest_symbol_info->outgoings->rnum; j++)
-					ccv_array_add_unique_int(src_symbol_info->outgoings, *(int*)ccv_array_get(dest_symbol_info->outgoings, j));
 			return 0;
 		}
 	return -1;

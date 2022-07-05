@@ -1159,18 +1159,28 @@ void ccv_nnc_tensor_variable_detach(ccv_nnc_dynamic_graph_t* const graph, const 
 				int flag = 0; // Whether we find a symbol that connects source and destination but not the current one we detach. If found, we cannot break the tie between s_symbol and d_symbol.
 				for (x = 0; !flag && x < output_size; x++)
 				{
-					const ccv_nnc_tensor_symbol_t x_symbol = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
+					ccv_nnc_tensor_symbol_t x_symbol = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
 						.d = outputs[x],
 						.graph = graph->tape
 					});
+					if (x_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
+					{
+						x_symbol.d = outputs[x];
+						x_symbol.graph = graph->tape;
+					}
 					if (x_symbol.d == tensor_variable->symbol.d || x_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
 						continue;
 					for (y = 0; !flag && y < input_size; y++)
 					{
-						const ccv_nnc_tensor_symbol_t y_symbol = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
+						ccv_nnc_tensor_symbol_t y_symbol = ccv_nnc_tensor_symbol_alias_to(graph->tape, (ccv_nnc_tensor_symbol_t){
 							.d = inputs[y],
 							.graph = graph->tape
 						});
+						if (y_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
+						{
+							y_symbol.d = inputs[y];
+							y_symbol.graph = graph->tape;
+						}
 						if (y_symbol.d == tensor_variable->symbol.d || y_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
 							continue;
 						flag = (x_symbol.d == y_symbol.d);

@@ -294,6 +294,13 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 			};
 			const ccv_nnc_tensor_symbol_t compressed = ccv_nnc_tensor_symbol_new(graph, compressed_params, 0);
 			const ccv_nnc_graph_exec_symbol_t compress_node = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMPRESSION_LSSC_FORWARD(), TENSOR_SYMBOL_LIST(original), TENSOR_SYMBOL_LIST(compressed), 0);
+			ccv_nnc_graph_exec_symbol_disjoin(graph, (ccv_nnc_graph_exec_symbol_t){
+				.graph = graph,
+				.d = compress_info[i].compress.source,
+			}, (ccv_nnc_graph_exec_symbol_t){
+				.graph = graph,
+				.d = compress_info[i].compress.destination
+			});
 			ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
 				.graph = graph,
 				.d = compress_info[i].compress.source,
@@ -302,27 +309,20 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 				.graph = graph,
 				.d = compress_info[i].compress.destination
 			});
-			ccv_nnc_graph_exec_symbol_disjoin(graph, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = compress_info[i].compress.source,
-			}, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = compress_info[i].compress.destination
-			});
 			const ccv_nnc_tensor_symbol_t decompressed = ccv_nnc_tensor_symbol_new(graph, compress_info[i].info, 0);
 			const ccv_nnc_graph_exec_symbol_t decompress_node = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMPRESSION_LSSC_BACKWARD(), TENSOR_SYMBOL_LIST(compressed), TENSOR_SYMBOL_LIST(decompressed), 0);
+			ccv_nnc_graph_exec_symbol_disjoin(graph, (ccv_nnc_graph_exec_symbol_t){
+				.graph = graph,
+				.d = compress_info[i].decompress.source,
+			}, (ccv_nnc_graph_exec_symbol_t){
+				.graph = graph,
+				.d = compress_info[i].decompress.destination
+			});
 			ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
 				.graph = graph,
 				.d = compress_info[i].decompress.source,
 			}, decompress_node);
 			ccv_nnc_graph_exec_symbol_concat(graph, decompress_node, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = compress_info[i].decompress.destination
-			});
-			ccv_nnc_graph_exec_symbol_disjoin(graph, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = compress_info[i].decompress.source,
-			}, (ccv_nnc_graph_exec_symbol_t){
 				.graph = graph,
 				.d = compress_info[i].decompress.destination
 			});
