@@ -893,4 +893,139 @@ TEST_CASE("query whether a tensor variable depends on another")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("compute f(x) = 0.5 * log(x), detach log(x) means 0.5 * y should be freed")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], log(10), 1e-5, "should match the result");
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], 0.5 * log(10), 1e-5, "should match the result");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 2, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 3, "nothing should be freed");
+	uint64_t bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 1, "before detach, it should have effect");
+	ccv_nnc_tensor_variable_detach(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 1, "0.5 * y should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 3, "nothing should be freed");
+	bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 0, "after detach, it should have no effect");
+	ccv_nnc_tensor_variable_free(graph, x);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 1, "x and y should be freed");
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_tensor_variable_free(graph, z);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("compute f(x) = 0.5 * log(x), detach log(x) after freeing x means all computations on the graph should be freed")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], log(10), 1e-5, "should match the result");
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SCALAR_MUL_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y), TENSOR_VARIABLE_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], 0.5 * log(10), 1e-5, "should match the result");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 2, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 3, "nothing should be freed");
+	// free x first before detaching y.
+	ccv_nnc_tensor_variable_free(graph, x);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 1, "log(x) should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 2, "only x should be freed");
+	ccv_nnc_tensor_variable_detach(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 1, "x and y should be freed");
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_tensor_variable_free(graph, z);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("compute f(x) = a * log(x), detach log(x) means nothing changed")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 5;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], log(10), 1e-5, "should match the result");
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a, y), TENSOR_VARIABLE_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], 5 * log(10), 1e-5, "should match the result");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 2, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 4, "nothing should be freed");
+	uint64_t bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 1, "before detach, it should have effect");
+	ccv_nnc_tensor_variable_detach(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 2, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 4, "nothing should be freed");
+	bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 0, "after detach, it should have no effect");
+	ccv_nnc_tensor_variable_free(graph, a);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 1, "a * y should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 3, "a should be freed");
+	ccv_nnc_tensor_variable_free(graph, x);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 1, "x and y should be freed");
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_tensor_variable_free(graph, z);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("compute f(x) = exp(x) * log(x), detach log(x) means nothing changed")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWEXP_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(a), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, a)->data.f32[0], exp(10), 1e-2, "should match the result");
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], log(10), 1e-5, "should match the result");
+	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a, y), TENSOR_VARIABLE_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, z)->data.f32[0], exp(10) * log(10), 1e-2, "should match the result");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 3, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 4, "nothing should be freed");
+	uint64_t bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 1, "before detach, it should have effect");
+	ccv_nnc_tensor_variable_detach(graph, y);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 3, "nothing should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 4, "nothing should be freed");
+	bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 1, "after detach, it should have still effect (through exp(x))");
+	ccv_nnc_tensor_variable_detach(graph, a);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 2, "a * y should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 4, "nothing should be freed");
+	bitmask = 0;
+	ccv_nnc_dynamic_graph_has_effect_to_tensor_variables(graph, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(z), &bitmask);
+	REQUIRE(bitmask == 0, "after a freed, it should have no effect");
+	ccv_nnc_tensor_variable_free(graph, a);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 3, "a should be freed");
+	ccv_nnc_tensor_variable_free(graph, x);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_GRAPH_EXEC), 0, "everything should be freed");
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 1, "x and y should be freed");
+	ccv_nnc_tensor_variable_free(graph, y);
+	ccv_nnc_tensor_variable_free(graph, z);
+	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "everything should be freed");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"

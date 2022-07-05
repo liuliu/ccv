@@ -2542,6 +2542,21 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_variable_is_constant(const ccv_nnc_dynamic_g
  */
 void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor);
 /**
+ * Detach the tensor variable from current graph. It acts as if computed between
+ * ``ccv_nnc_dynamic_graph_set_no_grad``. Thus, there are a few requirements for this:
+ * 1. It cannot be an alias when detach. You have to detach the original, not the alias.
+ * 2. When detach a variable, it could impact correctness when computing gradients. This cut off backprop, acting as if the
+ *    detached variable is a constant (it will be marked as is).
+ * After this call, the tensor variable will be marked as constant and you can query that through ``ccv_nnc_tensor_variable_is_constant``.
+ * Why this method rather than making this variable as constant to begin with? First, an constant
+ * cannot be the output. Second, you may not wrap your computation between no grad, or not all inputs
+ * are constants, resulting a tensor variable that is on a graph. This method is helpful to rescue from
+ * that situation.
+ * @param graph The dynamic graph.
+ * @param tensor_variable The tensor variable to be detached.
+ */
+void ccv_nnc_tensor_variable_detach(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+/**
  * A destructor function to be called when a tensor variable will be freed in the sense that no
  * backward computation need it no more.
  * Thus, we pass in tensor rather than tensor variable for the destructor.
