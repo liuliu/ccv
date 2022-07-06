@@ -23,7 +23,7 @@ TEST_CASE("min forward")
 	ccv_nnc_tensor_t* ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	for (i = 0; i < 1000; i++)
@@ -54,7 +54,7 @@ TEST_CASE("max forward")
 	ccv_nnc_tensor_t* ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	for (i = 0; i < 1000; i++)
@@ -91,7 +91,7 @@ TEST_CASE("min backward")
 	ccv_nnc_tensor_t* dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -136,7 +136,7 @@ TEST_CASE("max backward")
 	ccv_nnc_tensor_t* dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)

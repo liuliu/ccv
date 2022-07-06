@@ -1489,7 +1489,7 @@ TEST_CASE("ewdiv forward with reciprocal")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 0.01;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1516,7 +1516,7 @@ TEST_CASE("ewdiv forward")
 	ccv_nnc_tensor_t* ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 0.01;
 	for (i = 0; i < 1000; i++)
@@ -1552,7 +1552,7 @@ TEST_CASE("ewdiv backward with output 1")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 0.01;
 	for (i = 0; i < 1000; i++)
@@ -1633,7 +1633,7 @@ TEST_CASE("exp forward")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1663,7 +1663,7 @@ TEST_CASE("ewexp backward")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -1696,7 +1696,7 @@ TEST_CASE("ewlog forward")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 + 0.0001;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1726,7 +1726,7 @@ TEST_CASE("ewlog backward")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -1759,7 +1759,7 @@ TEST_CASE("ewsqrt forward")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 + 0.0001;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1789,7 +1789,7 @@ TEST_CASE("ewsqrt backward")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -1822,7 +1822,7 @@ TEST_CASE("clamp forward")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1852,7 +1852,7 @@ TEST_CASE("clamp backward")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -1885,7 +1885,7 @@ TEST_CASE("clamp forward with only max")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1915,7 +1915,7 @@ TEST_CASE("clamp backward with only max")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
@@ -1948,7 +1948,7 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
@@ -1978,7 +1978,7 @@ TEST_CASE("clamp backward with only min")
 	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
-	int i = 0;
+	int i;
 	for (i = 0; i < 1000; i++)
 		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10;
 	for (i = 0; i < 1000; i++)
