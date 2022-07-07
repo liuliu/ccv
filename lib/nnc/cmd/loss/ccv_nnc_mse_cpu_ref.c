@@ -31,19 +31,33 @@ static int _ccv_nnc_mse_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	assert(ccv_nnc_tensor_count(c->info) == batch_size);
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const float inv_mean = 1.0 / (float)count;
 	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
 	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
 	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
-	parallel_for(i, batch_size) {
-		int j;
-		const float* const ap = a->data.f32 + i * astep;
-		const float* const bp = b->data.f32 + i * bstep;
-		float cp = 0;
-		for (j = 0; j < count; j++)
-			cp += (bp[j] - ap[j]) * (bp[j] - ap[j]);
-		c->data.f32[i * cstep] = cp * inv_mean;
-	} parallel_endfor
+	if (cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN)
+	{
+		const float inv_mean = 1.0 / (float)count;
+		parallel_for(i, batch_size) {
+			int j;
+			const float* const ap = a->data.f32 + i * astep;
+			const float* const bp = b->data.f32 + i * bstep;
+			float cp = 0;
+			for (j = 0; j < count; j++)
+				cp += (bp[j] - ap[j]) * (bp[j] - ap[j]);
+			c->data.f32[i * cstep] = cp * inv_mean;
+		} parallel_endfor
+	} else {
+		assert(cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_SUM);
+		parallel_for(i, batch_size) {
+			int j;
+			const float* const ap = a->data.f32 + i * astep;
+			const float* const bp = b->data.f32 + i * bstep;
+			float cp = 0;
+			for (j = 0; j < count; j++)
+				cp += (bp[j] - ap[j]) * (bp[j] - ap[j]);
+			c->data.f32[i * cstep] = cp;
+		} parallel_endfor
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -77,7 +91,8 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const float inv_mean_2 = 2.0 / (float)count;
+	const float inv_mean_2 = cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN ? 2.0 / (float)count : 2.0;
+	assert(cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN || cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_SUM);
 	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
 	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
 	const int hastep = hainc[CCV_NNC_MAX_DIM + 1];

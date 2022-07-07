@@ -58,6 +58,11 @@ enum {
 	CCV_NNC_EXEC_OOM       = -3, /**< Out of memory error. */
 };
 
+enum {
+	CCV_NNC_MSE_REDUCE_MEAN = 0, /**< Reduce with mean when computing MSE loss. */
+	CCV_NNC_MSE_REDUCE_SUM = 1, /**< Reduce with sum when computing MSE loss. */
+};
+
 /**
  * Parameters for command.
  */
@@ -146,6 +151,9 @@ typedef struct {
 		struct {
 			float beta; /**< [smooth_l1.beta] The beta on the smooth L1 loss (or Huber loss) */
 		} smooth_l1;
+		struct {
+			int reduce_op; /**< [mse.reduce_op] Whether reduce with mean or with sum */
+		} mse;
 		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */

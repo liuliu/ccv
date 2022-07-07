@@ -113,9 +113,9 @@
 #define CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
 #define CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(...) CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_SEL(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_2, CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_F, CMD_CATEGORICAL_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
 // CCV_NNC_MSE_FORWARD
-#define CMD_MSE_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_MSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_MSE_FORWARD(_reduce_op) ccv_nnc_cmd(CCV_NNC_MSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.mse={.reduce_op=_reduce_op}}), 0)
 // CCV_NNC_MSE_BACKWARD
-#define CMD_MSE_BACKWARD(_b) ccv_nnc_cmd(CCV_NNC_MSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_MSE_BACKWARD(_reduce_op) ccv_nnc_cmd(CCV_NNC_MSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.mse={.reduce_op=_reduce_op}}), 0)
 // CCV_NNC_SMOOTH_L1_FORWARD
 #define CMD_SMOOTH_L1_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
 // CCV_NNC_SMOOTH_L1_BACKWARD
