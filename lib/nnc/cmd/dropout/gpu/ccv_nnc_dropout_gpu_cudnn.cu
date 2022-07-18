@@ -10,10 +10,10 @@ extern "C" {
 
 #ifdef HAVE_CUDNN
 
-__global__ void _ccv_nnc_drop_entirety_select_kernel(const int* const seed, const float p, int* const mask)
+__global__ void _ccv_nnc_drop_entirety_select_kernel(const uint32_t seed, const float p, int* const mask)
 {
 	curandStatePhilox4_32_10_t state;
-	curand_init(seed[0], 0, 0, &state);
+	curand_init(seed, 0, 0, &state);
 	const float r = curand_uniform(&state); // This is from 0 to 1 open close.
 	mask[0] = (r <= p);
 }
@@ -33,6 +33,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	ccv_nnc_tensor_t* const mask = outputs[1];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(mask));
 	const float p = cmd.info.dropout.p;
+	const uint32_t seed = ccv_nnc_stream_context_genrand_uint32(stream_context);
 	if (cmd.info.dropout.entirety)
 	{
 		const ccv_nnc_tensor_t* const a = inputs[0];
@@ -40,7 +41,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-		_ccv_nnc_drop_entirety_select_kernel<<<1, 1, 0, stream>>>(a->data.i32, p, mask->data.i32);
+		_ccv_nnc_drop_entirety_select_kernel<<<1, 1, 0, stream>>>(seed, p, mask->data.i32);
 		assert(a->info.datatype == b->info.datatype);
 		const int count = ccv_nnc_tensor_count(a->info);
 		assert(count == ccv_nnc_tensor_count(b->info));

@@ -32,7 +32,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const int tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
 	uint8_t* const maskdata = outputs[1]->data.u8;
 	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, (uint32_t)a->data.i32[0]);
+	dsfmt_init_gen_rand(&dsfmt, ccv_nnc_stream_context_genrand_uint32(stream_context));
 	int x;
 	if (cmd.info.dropout.entirety)
 	{

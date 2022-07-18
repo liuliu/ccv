@@ -378,7 +378,7 @@ int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe
 	if (random_jitter.seed)
 		sfmt_init_gen_rand(&random_jitter_context->sfmt, (uint32_t)random_jitter.seed);
 	else
-		sfmt_init_gen_rand(&random_jitter_context->sfmt, (uint32_t)(uintptr_t)dataframe);
+		sfmt_init_gen_rand(&random_jitter_context->sfmt, ccv_nnc_stream_context_genrand_uint32(0));
 	random_jitter_context->datatype = datatype;
 	random_jitter_context->random_jitter = random_jitter;
 	int i;
