@@ -28,7 +28,7 @@ TEST_CASE("dropout 40% of a 20x50 matrix")
 		else {
 			REQUIRE_EQ_WITH_TOLERANCE(a->data.f32[i] / 0.6, b->data.f32[i], 1e-5, "should be scaled up by 1 / 0.6");
 		}
-	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 2 * 1e-2, "should be within 2%% of error");
+	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 5 * 1e-2, "should be within 2%% of error");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);
@@ -54,7 +54,7 @@ TEST_CASE("dropout gradient for 40% of a 20x30 matrix")
 	for (i = 0; i < 20 * 50; i++)
 		if (h->data.f32[i] == 0)
 			++zero_count;
-	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 2 * 1e-2, "should be within 2%% of error");
+	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 5 * 1e-2, "should be within 2%% of error");
 	ccv_nnc_tensor_t* const ht = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 50), 0);
 	ccv_nnc_tensor_zero(ht);
 	for (i = 0; i < 20 * 50; i++)
