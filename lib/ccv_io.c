@@ -133,10 +133,12 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 }
 
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
+
 typedef struct {
 	char* buffer;
-	fpos_t pos;
+	off_t pos;
 	size_t size;
+	size_t written;
 } ccv_io_mem_t;
 
 static int readfn(void* context, char* buf, int size)
@@ -149,10 +151,10 @@ static int readfn(void* context, char* buf, int size)
 	return size;
 }
 
-static fpos_t seekfn(void* context, fpos_t off, int whence)
+static off_t seekfn(void* context, off_t off, int whence)
 {
 	ccv_io_mem_t* mem = (ccv_io_mem_t*)context;
-	fpos_t pos;
+	off_t pos;
 	switch (whence)
 	{
 		case SEEK_SET:
@@ -169,6 +171,17 @@ static fpos_t seekfn(void* context, fpos_t off, int whence)
 		return -1;
 	mem->pos = pos;
 	return pos;
+}
+
+static int writefn(void* context, const char* buf, int size)
+{
+	ccv_io_mem_t* mem = (ccv_io_mem_t*)context;
+	if (size + mem->pos > mem->size)
+		return -1;
+	memcpy(mem->buffer + mem->pos, buf, size);
+	mem->pos += size;
+	mem->written = ccv_max(mem->pos, mem->written);
+	return size;
 }
 #endif
 
@@ -192,6 +205,7 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 #else
 		ccv_io_mem_t mem = {
 			.size = rows,
+			.written = 0,
 			.pos = 0,
 			.buffer = (char*)in,
 		};
@@ -209,20 +223,40 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 	return CCV_IO_UNKNOWN;
 }
 
-int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
+int ccv_write(ccv_dense_matrix_t* mat, char* const out, size_t* const len, int type, void* conf)
 {
 	FILE* fd = 0;
+#if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
+	ccv_io_mem_t mem = {
+		.size = *(size_t*)len,
+		.pos = 0,
+		.buffer = (char*)out,
+		.written = 0,
+	};
+#endif
 	if (type & CCV_IO_ANY_FILE)
 	{
 		fd = fopen(out, "wb");
 		if (!fd)
 			return CCV_IO_ERROR;
+	} else if ((type & CCV_IO_ANY_STREAM) && type != CCV_IO_PLAIN_STREAM) {
+		assert(len);
+		assert((type & 0xFF) != CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L || defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
+		// this is only supported by glibc
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
+		fd = fmemopen((void*)out, *len, "wb");
+#else
+		fd = funopen(&mem, 0, writefn, seekfn, 0);
+#endif
+#endif
 	}
+	int err = 0;
 	switch (type)
 	{
 		case CCV_IO_JPEG_FILE:
 #ifdef HAVE_LIBJPEG
-			_ccv_write_jpeg_fd(mat, fd, conf);
+			err = _ccv_write_jpeg_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
 #else
@@ -231,7 +265,7 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 			break;
 		case CCV_IO_PNG_FILE:
 #ifdef HAVE_LIBPNG
-			_ccv_write_png_fd(mat, fd, conf);
+			err = _ccv_write_png_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
 #else
@@ -243,8 +277,34 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 			if (len != 0)
 				*len = 0;
 			break;
+		case CCV_IO_JPEG_STREAM:
+#ifdef HAVE_LIBJPEG
+			err = _ccv_write_jpeg_fd(mat, fd, conf);
+#else
+			assert(0 && "ccv_write requires libjpeg support for JPEG format");
+#endif
+			break;
+		case CCV_IO_PNG_STREAM:
+#ifdef HAVE_LIBPNG
+			err = _ccv_write_png_fd(mat, fd, conf);
+#else
+			assert(0 && "ccv_write requires libpng support for PNG format");
+#endif
+			break;
+		case CCV_IO_PLAIN_STREAM:
+			err = _ccv_write_plain_stream(mat, out, *len);
+			*len = 20 + mat->step * mat->rows;
+			break;
 	}
-	if (type & CCV_IO_ANY_FILE)
+	if ((type & CCV_IO_ANY_STREAM) && type != CCV_IO_PLAIN_STREAM)
+	{
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
+		*len = (size_t)ftell(fd);
+#else
+		*len = mem.written;
+#endif
+	}
+	if (fd)
 		fclose(fd);
-	return CCV_IO_FINAL;
+	return err != 0 ? CCV_IO_ERROR : CCV_IO_FINAL;
 }

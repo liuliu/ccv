@@ -588,7 +588,7 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
  * @param type CCV_IO_PNG_FILE, save to PNG format. CCV_IO_JPEG_FILE, save to JPEG format.
  * @param conf configuration.
  */
-int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf);
+int ccv_write(ccv_dense_matrix_t* mat, char* out, size_t* len, int type, void* conf);
 /** @} */
 
 /**

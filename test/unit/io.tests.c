@@ -372,4 +372,160 @@ TEST_CASE("read PNG from memory")
 	ccv_matrix_free(x);
 }
 
+TEST_CASE("write JPEG to memory")
+{
+	char sanitized_test_case_name[1024] = "/tmp/";
+	strncpy(sanitized_test_case_name + 5, __case_name__, 1024 - 5);
+	int i;
+	for (i = 10; i < 1024 && sanitized_test_case_name[i]; i++)
+		// If not A-Za-z0-9, replace with _
+		if (!((sanitized_test_case_name[i] >= 'A' && sanitized_test_case_name[i] <= 'Z') ||
+			 (sanitized_test_case_name[i] >= 'a' && sanitized_test_case_name[i] <= 'z') ||
+			 (sanitized_test_case_name[i] >= '0' && sanitized_test_case_name[i] <= '9')))
+			sanitized_test_case_name[i] = '_';
+	assert(i < 1024);
+	sanitized_test_case_name[i] = '.';
+	sanitized_test_case_name[i + 1] = 'j';
+	sanitized_test_case_name[i + 2] = 'p';
+	sanitized_test_case_name[i + 3] = 'g';
+	sanitized_test_case_name[i + 4] = 0;
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(x->rows * x->cols * 2);
+	size_t len = x->rows * x->cols * 2;
+	ccv_write(x, data, &len, CCV_IO_JPEG_STREAM, 0);
+	ccv_write(x, sanitized_test_case_name, 0, CCV_IO_JPEG_FILE, 0);
+	assert(len < x->rows * x->cols * 2);
+	ccv_dense_matrix_t* y = 0;
+	ccv_read(data, &y, CCV_IO_ANY_STREAM, len);
+	ccfree(data);
+	ccv_dense_matrix_t* z = 0;
+	ccv_read(sanitized_test_case_name, &z, CCV_IO_ANY_FILE, 0);
+	FILE* fd = fopen(sanitized_test_case_name, "rb");
+	fseek(fd, 0L, SEEK_END);
+	size_t fsz = ftell(fd);
+	fclose(fd);
+	REQUIRE_EQ(fsz, len, "size of both memory and file should be the same");
+	REQUIRE_MATRIX_EQ(y, z, "write nature.png to JPEG in file system and memory should be the same");
+	ccv_matrix_free(z);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("write JPEG to memory fail at small memory allocation")
+{
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(100);
+	size_t len = 100;
+	int error = ccv_write(x, data, &len, CCV_IO_JPEG_STREAM, 0);
+	REQUIRE_EQ(error, CCV_IO_ERROR, "fail at write the file");
+	ccfree(data);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("write PNG to memory")
+{
+	char sanitized_test_case_name[1024] = "/tmp/";
+	strncpy(sanitized_test_case_name + 5, __case_name__, 1024 - 5);
+	int i;
+	for (i = 10; i < 1024 && sanitized_test_case_name[i]; i++)
+		// If not A-Za-z0-9, replace with _
+		if (!((sanitized_test_case_name[i] >= 'A' && sanitized_test_case_name[i] <= 'Z') ||
+			 (sanitized_test_case_name[i] >= 'a' && sanitized_test_case_name[i] <= 'z') ||
+			 (sanitized_test_case_name[i] >= '0' && sanitized_test_case_name[i] <= '9')))
+			sanitized_test_case_name[i] = '_';
+	assert(i < 1024);
+	sanitized_test_case_name[i] = '.';
+	sanitized_test_case_name[i + 1] = 'p';
+	sanitized_test_case_name[i + 2] = 'n';
+	sanitized_test_case_name[i + 3] = 'g';
+	sanitized_test_case_name[i + 4] = 0;
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(x->rows * x->cols * 2);
+	size_t len = x->rows * x->cols * 2;
+	ccv_write(x, data, &len, CCV_IO_PNG_STREAM, 0);
+	ccv_write(x, sanitized_test_case_name, 0, CCV_IO_PNG_FILE, 0);
+	assert(len < x->rows * x->cols * 2);
+	ccv_dense_matrix_t* y = 0;
+	ccv_read(data, &y, CCV_IO_ANY_STREAM, len);
+	ccfree(data);
+	ccv_dense_matrix_t* z = 0;
+	ccv_read(sanitized_test_case_name, &z, CCV_IO_ANY_FILE, 0);
+	FILE* fd = fopen(sanitized_test_case_name, "rb");
+	fseek(fd, 0L, SEEK_END);
+	size_t fsz = ftell(fd);
+	fclose(fd);
+	REQUIRE_EQ(fsz, len, "size of both memory and file should be the same");
+	REQUIRE_MATRIX_EQ(y, z, "write nature.png to PNG in file system and memory should be the same");
+	ccv_matrix_free(z);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("write PNG to memory fail at small memory allocation")
+{
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(100);
+	size_t len = 100;
+	int error = ccv_write(x, data, &len, CCV_IO_PNG_STREAM, 0);
+	REQUIRE_EQ(error, CCV_IO_ERROR, "fail at write the file");
+	ccfree(data);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("write binary to memory")
+{
+	char sanitized_test_case_name[1024] = "/tmp/";
+	strncpy(sanitized_test_case_name + 5, __case_name__, 1024 - 5);
+	int i;
+	for (i = 10; i < 1024 && sanitized_test_case_name[i]; i++)
+		// If not A-Za-z0-9, replace with _
+		if (!((sanitized_test_case_name[i] >= 'A' && sanitized_test_case_name[i] <= 'Z') ||
+			 (sanitized_test_case_name[i] >= 'a' && sanitized_test_case_name[i] <= 'z') ||
+			 (sanitized_test_case_name[i] >= '0' && sanitized_test_case_name[i] <= '9')))
+			sanitized_test_case_name[i] = '_';
+	assert(i < 1024);
+	sanitized_test_case_name[i] = '.';
+	sanitized_test_case_name[i + 1] = 'b';
+	sanitized_test_case_name[i + 2] = 'i';
+	sanitized_test_case_name[i + 3] = 'n';
+	sanitized_test_case_name[i + 4] = 0;
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(x->rows * x->cols * 4);
+	size_t len = x->rows * x->cols * 4;
+	ccv_write(x, data, &len, CCV_IO_PLAIN_STREAM, 0);
+	ccv_write(x, sanitized_test_case_name, 0, CCV_IO_BINARY_FILE, 0);
+	assert(len < x->rows * x->cols * 4);
+	ccv_dense_matrix_t* y = 0;
+	ccv_read(data, &y, CCV_IO_ANY_STREAM, len);
+	ccfree(data);
+	ccv_dense_matrix_t* z = 0;
+	ccv_read(sanitized_test_case_name, &z, CCV_IO_ANY_FILE, 0);
+	FILE* fd = fopen(sanitized_test_case_name, "rb");
+	fseek(fd, 0L, SEEK_END);
+	size_t fsz = ftell(fd);
+	fclose(fd);
+	REQUIRE_EQ(fsz, len, "size of both memory and file should be the same");
+	REQUIRE_MATRIX_EQ(y, z, "write nature.png to binary in file system and memory should be the same");
+	ccv_matrix_free(z);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("write binary to memory fail at small memory allocation")
+{
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	char* data = (char*)ccmalloc(100);
+	size_t len = 100;
+	int error = ccv_write(x, data, &len, CCV_IO_PLAIN_STREAM, 0);
+	REQUIRE_EQ(error, CCV_IO_ERROR, "fail at write the file");
+	ccfree(data);
+	ccv_matrix_free(x);
+}
+
 #include "case_main.h"

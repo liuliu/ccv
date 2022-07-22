@@ -49,14 +49,14 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	png_destroy_read_struct(&png_ptr, &info_ptr, 0);
 }
 
-static void _ccv_write_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static int _ccv_write_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
 	png_infop info_ptr = png_create_info_struct(png_ptr);
 	if (setjmp(png_jmpbuf(png_ptr)))
 	{
 		png_destroy_write_struct(&png_ptr, &info_ptr);
-		return;
+		return -1;
 	}
 	png_init_io(png_ptr, fd);
 	int compression_level = 0;
@@ -82,4 +82,5 @@ static void _ccv_write_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 	png_write_image(png_ptr, row_vectors);
 	png_write_end(png_ptr, info_ptr);
 	png_destroy_write_struct(&png_ptr, &info_ptr);
+	return 0;
 }

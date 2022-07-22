@@ -306,7 +306,7 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	jpeg_destroy_decompress(&cinfo);
 }
 
-static void _ccv_write_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static int _ccv_write_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	struct jpeg_compress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;
@@ -317,7 +317,7 @@ static void _ccv_write_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 	if (setjmp(jerr.setjmp_buffer))
 	{
 		jpeg_destroy_compress(&cinfo);
-		return;
+		return -1;
 	}
 	cinfo.image_width = mat->cols;
 	cinfo.image_height = mat->rows;
@@ -338,4 +338,5 @@ static void _ccv_write_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 	}
 	jpeg_finish_compress(&cinfo);
 	jpeg_destroy_compress(&cinfo);
+	return 0;
 }

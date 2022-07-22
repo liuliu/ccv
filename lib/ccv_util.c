@@ -1185,10 +1185,8 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 			{ \
 				for (j = 0; j < da->cols * ch; j++) \
 				{ \
-					if (llabs(_for_get(b_ptr, j) - _for_get(a_ptr, j)) > 1) { \
-						printf("%d %d\n", (int)_for_get(b_ptr, j), (int)_for_get(a_ptr, j)); \
+					if (llabs(_for_get(b_ptr, j) - _for_get(a_ptr, j)) > 1) \
 						return -1; \
-					} \
 				} \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
