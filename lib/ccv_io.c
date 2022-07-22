@@ -138,7 +138,6 @@ typedef struct {
 	char* buffer;
 	off_t pos;
 	size_t size;
-	size_t written;
 } ccv_io_mem_t;
 
 static int readfn(void* context, char* buf, int size)
@@ -180,7 +179,6 @@ static int writefn(void* context, const char* buf, int size)
 		return -1;
 	memcpy(mem->buffer + mem->pos, buf, size);
 	mem->pos += size;
-	mem->written = ccv_max(mem->pos, mem->written);
 	return size;
 }
 #endif
@@ -205,7 +203,6 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 #else
 		ccv_io_mem_t mem = {
 			.size = rows,
-			.written = 0,
 			.pos = 0,
 			.buffer = (char*)in,
 		};
@@ -227,12 +224,7 @@ int ccv_write(ccv_dense_matrix_t* mat, char* const out, size_t* const len, int t
 {
 	FILE* fd = 0;
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
-	ccv_io_mem_t mem = {
-		.size = *(size_t*)len,
-		.pos = 0,
-		.buffer = (char*)out,
-		.written = 0,
-	};
+	ccv_io_mem_t mem = {0};
 #endif
 	if (type & CCV_IO_ANY_FILE)
 	{
@@ -247,6 +239,8 @@ int ccv_write(ccv_dense_matrix_t* mat, char* const out, size_t* const len, int t
 #if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
 		fd = fmemopen((void*)out, *len, "wb");
 #else
+		mem.size = *len;
+		mem.buffer = out;
 		fd = funopen(&mem, 0, writefn, seekfn, 0);
 #endif
 #endif
@@ -297,13 +291,7 @@ int ccv_write(ccv_dense_matrix_t* mat, char* const out, size_t* const len, int t
 			break;
 	}
 	if ((type & CCV_IO_ANY_STREAM) && type != CCV_IO_PLAIN_STREAM)
-	{
-#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
 		*len = (size_t)ftell(fd);
-#else
-		*len = mem.written;
-#endif
-	}
 	if (fd)
 		fclose(fd);
 	return err != 0 ? CCV_IO_ERROR : CCV_IO_FINAL;
