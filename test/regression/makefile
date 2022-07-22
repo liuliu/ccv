@@ -5,6 +5,10 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = defects.l0.1.tests
 
+ifeq ($(shell uname 2>/dev/null || echo Unknown),Darwin)
+	LDFLAGS += -Wl,-U,___test_case_setup,-U,___test_case_teardown
+endif
+
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))

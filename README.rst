@@ -41,8 +41,10 @@ ccv source code is distributed under BSD 3-clause License.
 
 ccv's data models and documentations are distributed under Creative Commons Attribution 4.0 International License.
 
-.. |Build Status on GitHub| image:: https://github.com/liuliu/ccv/actions/workflows/unit-tests.yaml/badge.svg?branch=unstable
-   :target: https://github.com/liuliu/ccv/actions/workflows/unit-tests.yaml?query=branch%3Aunstable
+.. |Build Status on GitHub Ubuntu| image:: https://github.com/liuliu/ccv/actions/workflows/ubuntu-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/ubuntu-unit-tests.yaml?query=branch%3Aunstable
+.. |Build Status on GitHub macOS| image:: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml?query=branch%3Aunstable
 .. |Build Status on Linux| image:: http://ci.libccv.org/png?builder=linux-x64-runtests
    :target: http://ci.libccv.org/builders/linux-x64-runtests
 .. |Build Status on Raspberry Pi 4| image:: http://ci.libccv.org/png?builder=rpi-arm-runtests

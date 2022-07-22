@@ -5,6 +5,10 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = algebra.tests util.tests numeric.tests basic.tests image_processing.tests memory.tests io.tests transform.tests convnet.tests 3rdparty.tests output.tests
 
+ifeq ($(shell uname 2>/dev/null || echo Unknown),Darwin)
+	LDFLAGS += -Wl,-U,___test_case_setup,-U,___test_case_teardown
+endif
+
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))

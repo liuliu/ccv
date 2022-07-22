@@ -1,0 +1,17 @@
+name: unit-tests
+on: [push]
+jobs:
+  build:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install libjpeg and libpng
+        run: |
+          brew install libjpeg libpng
+      - run: |
+          cd lib && ./configure && cd ..
+          make -C lib lib
+          make -C bin
+          make -C site source
+          make -C test
+          make -C test test
