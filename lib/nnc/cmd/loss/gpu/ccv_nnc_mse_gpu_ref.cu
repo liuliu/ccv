@@ -194,8 +194,10 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const int hastep = hainc[CCV_NNC_MAX_DIM + 1];
 	const int hbstep = hbinc[CCV_NNC_MAX_DIM + 1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	assert(a->info.datatype == ha->info.datatype);
-	assert(b->info.datatype == hb->info.datatype);
+	if (ha)
+		{ assert(a->info.datatype == ha->info.datatype); }
+	if (hb)
+		{ assert(b->info.datatype == hb->info.datatype); }
 	const int datatype = a->info.datatype;
 	if (g)
 	{
