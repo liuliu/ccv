@@ -209,7 +209,8 @@ cc_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":ccv_memory",
-		":ccv_headers"
+		":ccv_headers",
+		":kissfft"
 	]
 )
 
