@@ -61,7 +61,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				for (i = 0; i < count; i++)
 				{
 					a_min = ccv_min(a_min, ap[i]);
-					a_max = ccv_min(a_max, ap[i]);
+					a_max = ccv_max(a_max, ap[i]);
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
 					if (isnan(ap[i]))
@@ -91,7 +91,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				for (i = 0; i < count; i++)
 				{
 					a_min = ccv_min(a_min, ap[i]);
-					a_max = ccv_min(a_max, ap[i]);
+					a_max = ccv_max(a_max, ap[i]);
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
 					// Range from 1e-12 to 1e20, with 1.1 ratio. We reserve 0, count - 2 for -inf and inf, count - 1 for nan.
@@ -120,7 +120,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				for (i = 0; i < count; i++)
 				{
 					a_min = ccv_min(a_min, ap[i]);
-					a_max = ccv_min(a_max, ap[i]);
+					a_max = ccv_max(a_max, ap[i]);
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
 					if (isnan(ap[i]))
@@ -192,7 +192,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 						for (i = 0; i < tvdim_1; i++)
 						{
 							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_min(a_max, tvp[i]);
+							a_max = ccv_max(a_max, tvp[i]);
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
 							if (isnan(tvp[i]))
@@ -239,7 +239,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 						for (i = 0; i < tvdim_1; i++)
 						{
 							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_min(a_max, tvp[i]);
+							a_max = ccv_max(a_max, tvp[i]);
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
 							// Range from 1e-12 to 1e20, with 1.1 ratio. We reserve 0, count - 2 for -inf and inf, count - 1 for nan.
@@ -287,7 +287,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 						for (i = 0; i < tvdim_1; i++)
 						{
 							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_min(a_max, tvp[i]);
+							a_max = ccv_max(a_max, tvp[i]);
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
 							if (isnan(tvp[i]))
