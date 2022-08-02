@@ -84,6 +84,16 @@
 #define CMD_MAX_FORWARD() ccv_nnc_cmd(CCV_NNC_MAX_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
 // CCV_NNC_MAX_BACKWARD
 #define CMD_MAX_BACKWARD() ccv_nnc_cmd(CCV_NNC_MAX_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_HISTOGRAM_FORWARD
+#define CMD_HISTOGRAM_EVEN(_bins, _min, _max) ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_EVEN,.bins=_bins,.min=_min,.max=_max}}), 0)
+// CCV_NNC_HISTOGRAM_FORWARD
+#define CMD_HISTOGRAM_LOG_X_0() ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_LOGARITHMIC,.min=1e-12,.max=1e20,.rate=1.1}}), 0)
+#define CMD_HISTOGRAM_LOG_X_F(...) ("This should not be used, you should have either 0 parameter or 3 parameters for CMD_HISTOGRAM_LOG")
+#define CMD_HISTOGRAM_LOG_X_2(_min, _max, _rate) ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_LOGARITHMIC,.min=_min,.max=_max,.rate=_rate}}), 0)
+#define CMD_HISTOGRAM_LOG_X_SEL(_0, _1, _2, _3, _FX, ...) _FX
+#define CMD_HISTOGRAM_LOG(...) CMD_HISTOGRAM_LOG_X_SEL(CMD_HISTOGRAM_LOG_X_F, ##__VA_ARGS__, CMD_HISTOGRAM_LOG_X_3, CMD_HISTOGRAM_LOG_X_F, CMD_HISTOGRAM_LOG_X_F, CMD_HISTOGRAM_LOG_X_0)(__VA_ARGS__)
+// CCV_NNC_HISTOGRAM_FORWARD
+#define CMD_HISTOGRAM_BINS() ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_BINS}}), 0)
 // CCV_NNC_SOFTMAX_FORWARD
 #define CMD_SOFTMAX_FORWARD() ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SOFTMAX_BACKWARD

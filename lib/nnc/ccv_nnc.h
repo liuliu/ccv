@@ -63,6 +63,12 @@ enum {
 	CCV_NNC_MSE_REDUCE_SUM = 1, /**< Reduce with sum when computing MSE loss. */
 };
 
+enum {
+	CCV_NNC_HISTOGRAM_EVEN = 0, /**< The bins are evenly distributed from min to max. */
+	CCV_NNC_HISTOGRAM_LOGARITHMIC = 1, /**< The bins are distributed follow exponentially curve, growing from min to max with ratio. */
+	CCV_NNC_HISTOGRAM_BINS = 2, /**< The bins range will be supplied, such as [0, 2, 3, 10]. For result, [-inf, 0, 2, 3, 10, inf] implied. */
+};
+
 /**
  * Parameters for command.
  */
@@ -176,6 +182,13 @@ typedef struct {
 		struct {
 			float iou_threshold; /**< [nms.iou_threshold] Threshold between 0 to 1 for IoU threshold. */
 		} nms;
+		struct {
+			int type; /**< [histogram.type] The type, can be even, logarithmic, or bins. */
+			int bins; /**< [histogram.bins] The number of bins, only applied to even. */
+			float min; /**< [histogram.min] The minimal number, for even or logarithmic. */
+			float max; /**< [histogram.min] The maximal number, for even or logarithmic. */
+			float rate; /**< [histogram.ratio] The rate from min to max, only applied to logarithmic. */
+		} histogram;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
