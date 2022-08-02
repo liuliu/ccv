@@ -64,7 +64,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					a_max = ccv_min(a_max, ap[i]);
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
-					if (isnanf(ap[i]))
+					if (isnan(ap[i]))
 						++bp[bins + 2];
 					else if (ap[i] < min)
 						++bp[0];
@@ -95,7 +95,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
 					// Range from 1e-12 to 1e20, with 1.1 ratio. We reserve 0, count - 2 for -inf and inf, count - 1 for nan.
-					if (isnanf(ap[i]))
+					if (isnan(ap[i]))
 						++bp[upper_range * 2 + 1];
 					else if (ap[i] >= max)
 						++bp[upper_range * 2];
@@ -123,7 +123,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					a_max = ccv_min(a_max, ap[i]);
 					a_sum += ap[i];
 					a_sum_of_squares += ap[i] * ap[i];
-					if (isnanf(ap[i]))
+					if (isnan(ap[i]))
 						++bp[upper_range + 1];
 					else {
 						const int idx = _upper_bound(ap[i], upper_range, h->data.f32);
@@ -195,7 +195,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 							a_max = ccv_min(a_max, tvp[i]);
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
-							if (isnanf(tvp[i]))
+							if (isnan(tvp[i]))
 								++bp[bins + 2];
 							else if (tvp[i] < min)
 								++bp[0];
@@ -243,7 +243,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
 							// Range from 1e-12 to 1e20, with 1.1 ratio. We reserve 0, count - 2 for -inf and inf, count - 1 for nan.
-							if (isnanf(tvp[i]))
+							if (isnan(tvp[i]))
 								++bp[upper_range * 2 + 1];
 							else if (tvp[i] >= max)
 								++bp[upper_range * 2];
@@ -290,7 +290,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 							a_max = ccv_min(a_max, tvp[i]);
 							a_sum += tvp[i];
 							a_sum_of_squares += tvp[i] * tvp[i];
-							if (isnanf(tvp[i]))
+							if (isnan(tvp[i]))
 								++bp[upper_range + 1];
 							else {
 								const int idx = _upper_bound(tvp[i], upper_range, h->data.f32);
