@@ -1541,6 +1541,7 @@ void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t*
 /**
  * The format callback function. Note that these are all integer ids. They can be filled to
  * ccv_nnc_graph_exec_symbol_t.d or ccv_nnc_tensor_symbol_t.d.
+ * @param graph The symbolic graph.
  * @param node The id for the node. It is unique in the graph.
  * @param name The name for the node. It is either NULL or \0 terminated string.
  * @param cmd The associated command for this node.
@@ -1555,7 +1556,7 @@ void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t*
  * @param output_size The number of the output tensor symbols.
  * @param context The context passed through ccv_nnc_symbolic_graph_format.
  */
-typedef void(*ccv_nnc_symbolic_graph_format_f)(const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context);
+typedef void(*ccv_nnc_symbolic_graph_format_f)(const ccv_nnc_symbolic_graph_t* const graph, const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context);
 /**
  * Provide a hook for upper level to do custom formatting of a given symbolic graph. You can
  * implement logic to format the graph into protobuf, or json, or doing persistence. However, this

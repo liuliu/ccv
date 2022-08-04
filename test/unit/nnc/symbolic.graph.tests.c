@@ -168,7 +168,7 @@ typedef struct {
 	int convolution_outgoings;
 } format_stats_t;
 
-static void _format_fn(const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context)
+static void _format_fn(const ccv_nnc_symbolic_graph_t* const graph, const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context)
 {
 	format_stats_t* const stats = (format_stats_t*)context;
 	++stats->called;

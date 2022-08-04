@@ -1856,7 +1856,7 @@ void ccv_nnc_symbolic_graph_format(const ccv_nnc_symbolic_graph_t* const graph, 
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
 			continue;
-		format_fn(idx, node->name, node->cmd, node->flags, incoming_edges + incoming_offsets[idx], incoming_counts[idx], node->outgoings ? (int*)ccv_array_get(node->outgoings, 0) : 0, node->outgoings ? node->outgoings->rnum : 0, node->inputs, node->input_size, node->outputs, node->output_size, context);
+		format_fn(graph, idx, node->name, node->cmd, node->flags, incoming_edges + incoming_offsets[idx], incoming_counts[idx], node->outgoings ? (int*)ccv_array_get(node->outgoings, 0) : 0, node->outgoings ? node->outgoings->rnum : 0, node->inputs, node->input_size, node->outputs, node->output_size, context);
 	} ccv_nnc_graph_visit_endfor
 	ccv_nnc_graph_visit_free(visit);
 	ccfree(incoming_counts);
