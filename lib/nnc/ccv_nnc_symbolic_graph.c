@@ -1805,6 +1805,63 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 	ccfree(node_id);
 }
 
+void ccv_nnc_symbolic_graph_format(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context)
+{
+	assert((sources && source_size) || (!sources && !source_size));
+	const ccv_nnc_graph_exec_symbol_t* const graph_sources = sources ? sources : (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->sources, 0);
+	const int graph_source_size = source_size ? source_size : graph->sources->rnum;
+	assert((destinations && destination_size) || (!destinations && !destination_size));
+	const ccv_nnc_graph_exec_symbol_t* const graph_destinations = destinations ? destinations : (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->destinations, 0);
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0);
+	const int graph_destination_size = destination_size ? destination_size : graph->destinations->rnum;
+	ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, exec_symbol_info, graph->exec_symbol_info->rnum, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0);
+	int outgoing_edge_count = 0;
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node) {
+		outgoing_edge_count += node->outgoings ? node->outgoings->rnum : 0;
+	} ccv_nnc_graph_visit_endfor
+	int* const incoming_counts = (int*)ccmalloc(sizeof(int) * (graph->exec_symbol_info->rnum * 2 + outgoing_edge_count));
+	memset(incoming_counts, 0, sizeof(int) * graph->exec_symbol_info->rnum);
+	int i;
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node) {
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
+			continue;
+		if (node->outgoings && node->outgoings->rnum) {
+			for (i = 0; i < node->outgoings->rnum; i++)
+				++incoming_counts[*(int*)ccv_array_get(node->outgoings, i)];
+		}
+	} ccv_nnc_graph_visit_endfor
+	int* const incoming_offsets = incoming_counts + graph->exec_symbol_info->rnum;
+	int incoming_edge_count = 0;
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
+			continue;
+		incoming_offsets[idx] = incoming_edge_count;
+		incoming_edge_count += incoming_counts[idx];
+	} ccv_nnc_graph_visit_endfor
+	assert(incoming_edge_count <= outgoing_edge_count);
+	memset(incoming_counts, 0, sizeof(int) * graph->exec_symbol_info->rnum);
+	int* const incoming_edges = incoming_offsets + graph->exec_symbol_info->rnum;
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
+			continue;
+		if (node->outgoings && node->outgoings->rnum) {
+			for (i = 0; i < node->outgoings->rnum; i++)
+			{
+				const int d = *(int*)ccv_array_get(node->outgoings, i);
+				incoming_edges[incoming_offsets[d] + incoming_counts[d]] = idx;
+				++incoming_counts[d];
+			}
+		}
+	} ccv_nnc_graph_visit_endfor
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
+			continue;
+		format_fn(idx, node->name, node->cmd, node->flags, incoming_edges + incoming_offsets[idx], incoming_counts[idx], node->outgoings ? (int*)ccv_array_get(node->outgoings, 0) : 0, node->outgoings ? node->outgoings->rnum : 0, node->inputs, node->input_size, node->outputs, node->output_size, context);
+	} ccv_nnc_graph_visit_endfor
+	ccv_nnc_graph_visit_free(visit);
+	ccfree(incoming_counts);
+}
+
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 {
 	int i;

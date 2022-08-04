@@ -1309,3 +1309,8 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
 {
 	ccv_nnc_symbolic_graph_dot(graph->tape, flags, out);
 }
+
+void ccv_nnc_dynamic_graph_format(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context)
+{
+	ccv_nnc_symbolic_graph_format(graph->tape, 0, 0, 0, 0, format_fn, context);
+}

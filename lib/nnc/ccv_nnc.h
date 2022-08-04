@@ -820,6 +820,7 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 /**
  * Set random seed for stream context.
  * @param stream_context The stream context to set the seed. 0 means use the default stream context.
+ * @param seed The seed for the stream context.
  */
 void ccv_nnc_stream_context_set_seed(ccv_nnc_stream_context_t* const stream_context, uint32_t seed);
 /**
@@ -1536,6 +1537,40 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
  * @param tensor_bind_size_ref The pointer to store the size of the binding array.
  */
 void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t** const graph_ref, ccv_nnc_tensor_bind_t** const tensor_binds_ref, int* const tensor_bind_size_ref);
+
+/**
+ * The format callback function. Note that these are all integer ids. They can be filled to
+ * ccv_nnc_graph_exec_symbol_t.d or ccv_nnc_tensor_symbol_t.d.
+ * @param node The id for the node. It is unique in the graph.
+ * @param name The name for the node. It is either NULL or \0 terminated string.
+ * @param cmd The associated command for this node.
+ * @param flags The flag that help to identify if it is a sub-graph, which type it is (P_WHILE or CASE_OF)
+ * @param incomings The incoming nodes for execution.
+ * @param incoming_size The number of incoming nodes for execution.
+ * @param outgoings The outgoing nodes for execution.
+ * @param outgoing_size The number of outgoing nodes for execution.
+ * @param inputs The input tensor symbols.
+ * @param input_size The number of the input tensor symbols.
+ * @param outputs The output tensor symbols.
+ * @param output_size The number of the output tensor symbols.
+ * @param context The context passed through ccv_nnc_symbolic_graph_format.
+ */
+typedef void(*ccv_nnc_symbolic_graph_format_f)(const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context);
+/**
+ * Provide a hook for upper level to do custom formatting of a given symbolic graph. You can
+ * implement logic to format the graph into protobuf, or json, or doing persistence. However, this
+ * is not the method for you to visit the graph, and do mutations on it. This function doesn't
+ * recurse into sub-graphs. You need to inspect each node to know if these are sub-graphs and
+ * handle accordingly.
+ * @param graph The symbolic graph.
+ * @param sources The sources for the graph.
+ * @param source_size The size of the sources array. 0 to use default sources.
+ * @param destinations The destinations for the graph.
+ * @param destination_size The size of the destinations array. 0 to use default destinations.
+ * @param format_fn The format callback to be called on every node.
+ * @param context The context that will be passed to the callback.
+ */
+void ccv_nnc_symbolic_graph_format(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context);
 
 /** @} */
 
@@ -2716,6 +2751,17 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  * @return How many gradient computations we kept.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_dynamic_graph_bookkeeping_count(const ccv_nnc_dynamic_graph_t* const graph, const int type);
+/**
+ * Provide a hook for upper level to do custom formatting of a given dynamic graph for whatever
+ * inside. You can implement logic to format the graph into protobuf, or json. However, this
+ * is not the method for you to visit the graph, and do mutations on it. If ops are not needed for
+ * gradient computation, likely these are not kept on the dynamic graph at all. You probably will
+ * get an empty graph. What's still available can be checked with the ccv_nnc_dynamic_graph_bookkeeping_count.
+ * @param graph The dynamic graph.
+ * @param format_fn The format callback to be called on every node.
+ * @param context The context that will be passed to the callback.
+ */
+void ccv_nnc_dynamic_graph_format(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context);
 
 /** @} */
 
@@ -3384,6 +3430,14 @@ void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_pa
  * @param out_size The size of output file stream array.
  */
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE** const outs, const int out_size);
+/**
+ * Provide a hook for upper level to do custom formatting of a given model. You can implement logic
+ * to format the model into protobuf, or json. This is only useful after model is compiled.
+ * @param model The composed model.
+ * @param format_fn The format callback to be called on every node.
+ * @param context The context that will be passed to the callback.
+ */
+void ccv_cnnp_model_format(const ccv_cnnp_model_t* const model, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context);
 /**
  * Fit a model to a given input / output. This is a combination of running ccv_cnnp_model_evaluate /
  * ccv_cnnp_model_backward / ccv_cnnp_model_apply_gradients. The difference is that when calling

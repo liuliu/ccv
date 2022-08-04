@@ -158,4 +158,64 @@ TEST_CASE("query connectivity from one exec symbol to another")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+typedef struct {
+	int called;
+	int softmax_called;
+	int convolution_called;
+	int softmax_incomings;
+	int softmax_outgoings;
+	int convolution_incomings;
+	int convolution_outgoings;
+} format_stats_t;
+
+static void _format_fn(const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context)
+{
+	format_stats_t* const stats = (format_stats_t*)context;
+	++stats->called;
+	if (cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD)
+	{
+		++stats->convolution_called;
+		stats->convolution_incomings = incoming_size;
+		stats->convolution_outgoings = outgoing_size;
+	} else if (cmd.cmd == CCV_NNC_SOFTMAX_FORWARD) {
+		++stats->softmax_called;
+		stats->softmax_incomings = incoming_size;
+		stats->softmax_outgoings = outgoing_size;
+	}
+}
+
+TEST_CASE("build a simple symbolic graph and check its format")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 31, 21, 2), "a");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 31, 21, 4), "b");
+	ccv_nnc_cmd_t forw_cmd = CMD_CONVOLUTION_FORWARD(1, 4, 5, 3, 2);
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 4, 5, 3, 2), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 4), "bias");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, forw_cmd, TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "forw");
+	ccv_nnc_tensor_symbol_t m = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 31, 21, 4), "m");
+	ccv_nnc_cmd_t softmax_cmd = CMD_SOFTMAX_FORWARD();
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, softmax_cmd, TENSOR_SYMBOL_LIST(b), TENSOR_SYMBOL_LIST(m), "softmax");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	format_stats_t stats = {
+		.called = 0,
+		.softmax_called = 0,
+		.convolution_called = 0,
+		.softmax_incomings = 0,
+		.softmax_outgoings = 0,
+		.convolution_incomings = 0,
+		.convolution_outgoings = 0,
+	};
+	ccv_nnc_symbolic_graph_format(symbolic_graph, 0, 0, 0, 0, _format_fn, &stats);
+	REQUIRE(stats.called == 2, "called twice");
+	REQUIRE(stats.convolution_called == 1, "called convolution");
+	REQUIRE(stats.softmax_called == 1, "called softmax");
+	REQUIRE(stats.convolution_incomings == 0, "convolution has no incomings");
+	REQUIRE(stats.convolution_outgoings == 1, "convolution has 1 outgoing");
+	REQUIRE(stats.softmax_incomings == 1, "softmax has 1 incoming");
+	REQUIRE(stats.softmax_outgoings == 0, "softmax has no outgoings");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 #include "case_main.h"

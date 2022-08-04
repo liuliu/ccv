@@ -2402,6 +2402,12 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
 		ccv_nnc_graph_dot(model->compiled_data->apply_gradients.graph, flags, outs[3]);
 }
 
+void ccv_cnnp_model_format(const ccv_cnnp_model_t* const model, const ccv_nnc_symbolic_graph_format_f format_fn, void* const context)
+{
+	if (model->graph)
+		ccv_nnc_symbolic_graph_format(model->graph, 0, 0, 0, 0, format_fn, context);
+}
+
 static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data)
 {
 	int i;
