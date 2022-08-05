@@ -1,7 +1,7 @@
 Build Status
 ------------
 
--  GitHub Action: |Build Status on GitHub|
+-  GitHub Action: |Build Status on GitHub Ubuntu| |Build Status on GitHub macOS|
 -  Linux x64: |Build Status on Linux|
 -  Raspberry Pi 4: |Build Status on Raspberry Pi 4|
 -  Jetson Nano: |Build Status on Jetson Nano|
