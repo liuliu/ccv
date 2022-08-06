@@ -1603,6 +1603,13 @@ int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_n
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
 /**
+ * Get the name for a tensor symbol.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @return The tensor name if available. Otherwise 0. The memory is managed by the graph.
+ */
+CCV_WARN_UNUSED(const char*) ccv_nnc_tensor_symbol_name(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
+/**
  * Set the tensor symbol alias parameters.
  * @param graph The symbolic graph.
  * @param tensor The tensor symbol reference.
@@ -1647,6 +1654,13 @@ void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const 
  * @return The wrapped command.
  */
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
+/**
+ * Return the command on this exec symbol.
+ * @param graph The symbolic graph.
+ * @param exec The execution node symbol reference.
+ * @return The name for the exec symbol if available. The memory is managed by the graph.
+ */
+CCV_WARN_UNUSED(const char*) ccv_nnc_graph_exec_symbol_name(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
 /**
  * Set the inputs / outputs for a exec symbol.
  * @param graph The symbolic graph.
