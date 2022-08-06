@@ -1,4 +1,4 @@
-name: unit-tests
+name: macos-unit-tests
 on: [push]
 jobs:
   build:
