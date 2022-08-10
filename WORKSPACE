@@ -13,8 +13,8 @@ git_repository(
 git_repository(
 	name = "build_bazel_rules_cuda",
 	remote = "https://github.com/liuliu/rules_cuda.git",
-	commit = "d27ed9b54c3fa1639c20a72550258594f449cbff",
-	shallow_since = "1618438243 -0400"
+	commit = "734c6864efc811e5e0bc203213c505dee56491ce",
+	shallow_since = "1660159117 -0400"
 )
 
 http_archive(
