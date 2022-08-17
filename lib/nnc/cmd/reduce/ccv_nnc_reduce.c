@@ -12,14 +12,14 @@ static void _ccv_nnc_reduce_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, cons
 		outputs[0].dim[cmd.reduce.axis[i]] = 1; // Reduce the dimension to 1.
 }
 
-static int _ccv_nnc_reduce_sum_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_sum_or_mean_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_reduce_sum_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_sum_or_mean_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Output the propagated error.
 	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
@@ -30,14 +30,14 @@ static int _ccv_nnc_reduce_sum_back_bitmask(const int input_size, const int outp
 REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu)
 {
-	registry->bitmask = _ccv_nnc_reduce_sum_forw_bitmask;
+	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu)
 {
-	registry->bitmask = _ccv_nnc_reduce_sum_back_bitmask;
+	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
 
@@ -45,6 +45,25 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 #define CMD_REDUCE_SUM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_SUM_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_SUM_BACKWARD)
 #define CMD_REDUCE_SUM_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_SUM_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+
+REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_reduce_mean_cpu_ref.c, gpu/ccv_nnc_reduce_mean_gpu_cudnn.cu)
+{
+	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
+}
+
+REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_reduce_mean_cpu_ref.c, gpu/ccv_nnc_reduce_mean_gpu_cudnn.cu)
+{
+	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MEAN_FORWARD)
+#define CMD_REDUCE_MEAN_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MEAN_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MEAN_BACKWARD)
+#define CMD_REDUCE_MEAN_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MEAN_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
 static int _ccv_nnc_reduce_max_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
