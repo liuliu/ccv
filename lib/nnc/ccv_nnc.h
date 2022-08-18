@@ -4003,6 +4003,14 @@ ccv_cnnp_model_t* ccv_cnnp_upsample(const float width_scale, const float height_
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_sum(const int* const axis, const int axis_count, const char* const name);
 /**
+ * A mean value reducer model.
+ * @param axis The axis to be reduced.
+ * @param axis_count The size of the axis array.
+ * @param name The unique name of the model.
+ * @return A sum value reducer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_mean(const int* const axis, const int axis_count, const char* const name);
+/**
  * A max value reducer model.
  * @param axis The axis to be reduced.
  * @param axis_count The size of the axis array.
