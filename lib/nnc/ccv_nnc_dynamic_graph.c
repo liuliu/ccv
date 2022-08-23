@@ -522,6 +522,7 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				// If this is enforce output, make sure the tensor view is taken by the output.
 				if (enforce_idx >= 0)
 				{
+					outputs[i]->destructor_hook = old_var->destructor_hook;
 					outputs[i]->tensor_view = old_var->tensor_view; // Make sure the tensor view is taken over by the output.
 					old_var->tensor_view = 0;
 				}

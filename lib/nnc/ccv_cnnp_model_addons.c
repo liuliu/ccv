@@ -160,6 +160,13 @@ void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, con
 		.isa = &clip_grad_norm_scatter_norm2_vtab,
 	};
 	ccv_cnnp_model_parameter_gradients_map(model, parameters, scatter_cmd, ccv_nnc_no_hint, 0, norm2, parallel_count * 2, 0, 0, stream_context);
+	if (stream_type == CCV_STREAM_CONTEXT_GPU)
+		for (i = 0; i < parallel_count; i++)
+		{
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2]->data.ptr);
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2 + 1]->data.ptr);
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, max_normt[i]->data.ptr);
+		}
 	for (i = 0; i < parallel_count; i++)
 	{
 		ccv_nnc_tensor_free(norm2[i * 2]);
