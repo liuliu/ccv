@@ -21,19 +21,29 @@ static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	};
 	ccv_nnc_tensor_view_alignment(tvs, 2);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &btv);
-	cudnnReduceTensorDescriptor_t reduce_sum = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
-	cudnnSetReduceTensorDescriptor(reduce_sum, CUDNN_REDUCE_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
-	void* workspace = 0;
-	size_t workspace_size = 0;
-	CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, a.descriptor, b.descriptor, &workspace_size));
-	if (workspace_size)
-	{
-		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
-		assert(workspace);
-	}
+	int can_reduce = 0;
+	int i;
+	for (i = 0; !can_reduce && i < cmd.info.reduce.count; i++)
+		can_reduce = (inputs[0]->info.dim[cmd.info.reduce.axis[i]] > 1);
 	static const float one = 1, zero = 0;
-	CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
-	ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_sum);
+	if (can_reduce)
+	{
+		cudnnReduceTensorDescriptor_t reduce_sum = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
+		cudnnSetReduceTensorDescriptor(reduce_sum, CUDNN_REDUCE_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
+		void* workspace = 0;
+		size_t workspace_size = 0;
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, a.descriptor, b.descriptor, &workspace_size));
+		if (workspace_size)
+		{
+			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+			assert(workspace);
+		}
+		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
+		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_sum);
+	} else if (a.data.u8 != b.data.u8) {
+		// Don't need to reduce, just transfer to b, if the pointer doesn't match.
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8,  &zero, b.descriptor, b.data.u8));
+	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	return CCV_NNC_EXEC_SUCCESS;
