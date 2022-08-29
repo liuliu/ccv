@@ -482,6 +482,14 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 		const int ad = autograd_tensor_symbols->rnum - 1;
 		if (tensor_ref->alias_registry) // Only push this when it has an alias registry (otherwise it already conflict with everyone).
 			ccv_array_push(tensor_ref->alias_registry, &ad);
+		if (tensor_ref->x >= exec_symbol_info_size && idx >= 0)
+		{
+			ccv_nnc_sum_or_set_graph_exec_symbol_t* const sum_or_set_exec = (ccv_nnc_sum_or_set_graph_exec_symbol_t*)ccv_array_get(sum_or_set_execs, tensor_ref->x - exec_symbol_info_size);
+			// This may be summed, thus, we need to create a connection between this and the sum.
+			if (!sum_or_set_exec->outgoings)
+				sum_or_set_exec->outgoings = ccv_array_new(sizeof(int), 1, 0);
+			ccv_array_push(sum_or_set_exec->outgoings, &idx);
+		}
 		// The newly inserted tensor symbol.
 		return ad;
 	}
@@ -645,7 +653,7 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 			for (i = 0; i < node->outgoings->rnum; i++)
 			{
 				int d = *(int*)ccv_array_get(node->outgoings, i);
-				if (backward_info[d].outgoings == 0)
+				if (!backward_info[d].outgoings)
 					backward_info[d].outgoings = ccv_array_new(sizeof(int32_t), 1, 0);
 				ccv_array_push(backward_info[d].outgoings, &idx);
 			}

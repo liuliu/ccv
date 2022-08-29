@@ -295,4 +295,66 @@ TEST_CASE("autograd with sliced tensors for convolution that are over-subscribed
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+typedef struct {
+	int dobsx;
+	int dactx;
+	int has_sum_act;
+	int has_sum_obs;
+} autograd_count_t;
+
+static void _autograd_count(const ccv_nnc_symbolic_graph_t* const graph, const int node, const char* const name, const ccv_nnc_cmd_t cmd, const int flags, const int* const incomings, const int incoming_size, const int* const outgoings, const int outgoing_size, const int* const inputs, const int input_size, const int* const outputs, const int output_size, void* const context)
+{
+	// Only check sum.
+	if (cmd.cmd != CCV_NNC_EWSUM_FORWARD)
+		return;
+	autograd_count_t* const count = (autograd_count_t*)context;
+	int i;
+	for (i = 0; i < outgoing_size; i++)
+	{
+		if (outgoings[i] == count->dobsx)
+			count->has_sum_obs = 1;
+		if (outgoings[i] == count->dactx)
+			count->has_sum_act = 1;
+	}
+}
+
+TEST_CASE("autograd with concatenated tensors to check dependencies done correctly (similar to observation / action concatenation for critics)")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t obs = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 64, 4), "obs");
+	ccv_nnc_tensor_symbol_t act = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 64, 1), "act");
+	ccv_nnc_tensor_symbol_t obs_act = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 64, 5), "obs_act");
+	ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 5, 1), "w1");
+	ccv_nnc_tensor_symbol_t v1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 64, 1), "v1");
+	ccv_nnc_tensor_symbol_t w2 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 5, 1), "w2");
+	ccv_nnc_tensor_symbol_t v2 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 64, 1), "v2");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 64;
+	inc[1] = 5;
+	ccv_nnc_tensor_symbol_t obs0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, obs_act, ofs, inc, CPU_TENSOR_NHWC(32F, 64, 4), "obs0");
+	ofs[1] = 4;
+	ccv_nnc_tensor_symbol_t act0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, obs_act, ofs, inc, CPU_TENSOR_NHWC(32F, 64, 1), "act0");
+	ccv_nnc_graph_exec_symbol_t obst = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_FORMAT_TRANSFORM_FORWARD(), TENSOR_SYMBOL_LIST(obs), TENSOR_SYMBOL_LIST(obs0), "obst");
+	ccv_nnc_graph_exec_symbol_t actt = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_FORMAT_TRANSFORM_FORWARD(), TENSOR_SYMBOL_LIST(act), TENSOR_SYMBOL_LIST(act0), "actt");
+	ccv_nnc_graph_exec_symbol_t gemm1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(obs_act, w1), TENSOR_SYMBOL_LIST(v1), "gemm1");
+	ccv_nnc_graph_exec_symbol_t gemm2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(obs_act, w2), TENSOR_SYMBOL_LIST(v2), "gemm2");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(obst, actt, gemm1, gemm2), 0);
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, TENSOR_SYMBOL_LIST(v1, v2), TENSOR_SYMBOL_LIST(w1, w2, obs, act), GRAPH_EXEC_SYMBOL_LIST(obst, actt), GRAPH_EXEC_SYMBOL_LIST(gemm1, gemm2));
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_symbol_t dobs = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, obs);
+	ccv_nnc_graph_exec_symbol_t dobsx = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dobs);
+	ccv_nnc_tensor_symbol_t dact = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, act);
+	ccv_nnc_graph_exec_symbol_t dactx = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dact);
+	autograd_count_t count = {
+		.dobsx = dobsx.d,
+		.dactx = dactx.d,
+		.has_sum_act = 0,
+		.has_sum_obs = 0,
+	};
+	ccv_nnc_symbolic_graph_format(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(obst, actt), GRAPH_EXEC_SYMBOL_LIST(dobsx, dactx), _autograd_count, &count);
+	REQUIRE(count.has_sum_act && count.has_sum_obs, "both act and obs should be after a sum operation");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 #include "case_main.h"

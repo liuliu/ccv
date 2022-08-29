@@ -1,3 +1,18 @@
+2022-08-28
+----------
+There are always edge cases need extra care even if the core is pretty stable. The latest case is the fact that for models, I optimize too aggressively and when we change outgrad from some to none and back, while minimizer changes, we could end up with a case where the saved_aux reset to 0. This is undesirable for Adam optimizers or other stateful optimizers. An example would be:
+
+ 1. Evaluate a model with inputs;
+ 2. Evaluate a model with inputs with different batch size, but these inputs marked as constants (thus, outgrad is disabled);
+ 3. Set minimizer to Adam;
+ 4. Evaluate a model with inputs as variables (thus, outgrad re-enabled);
+ 5. Set minimizer back to noop.
+
+When repeat above step, on step 1, it absorbs with new input batch size, all is good. On step 2, because inputs marked as constants, we need to re-init the grad. Because grad is re-init'ed, previous optimization when noop to Adam, saved aux won't change, but because the re-init'ed, noop won't have the same saved aux size as Adam. Therefore, on step 4, we will end up with saved aux reset because we think these saved aux are new.
+
+I haven't figured out a fix yet. But it is likely going to make gradient init more stateful.
+
+
 2021-04-14
 ----------
 Even the core part of NNC has been stablizing for close to one and half years now, and no serious bugs discovered for close to a year, you can never say it is rock-solid. It simply means that high-frequency bugs are squashed, and low-frequency / more frustrating bugs are now need to be fixed. Thus, frequency-wise, I probably only encounter a bug couple of months, and can be easily worked-around. So far, I am determined to fix these rather than introduce workarounds. Once workaround introduced, the code will be much harder to document and reason about. It is a trade-off that I am under no pressure to make.
