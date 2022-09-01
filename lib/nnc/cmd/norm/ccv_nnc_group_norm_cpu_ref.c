@@ -80,13 +80,13 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	}
 	for (i[0] = 0; i[0] < rdim[0]; i[0]++)
 	{
-		float* const meanp0 = meanp + i[0] * saved_inv_std_inc[1] * saved_inv_std_inc[2] * saved_inv_std_inc[3];
+		float* const meanp0 = meanp + i[0] * saved_mean_inc[1] * saved_mean_inc[2] * saved_mean_inc[3];
 		for (i[1] = 0; i[1] < rdim[1]; i[1]++)
 		{
-			float* const meanp1 = meanp0 + i[1] * saved_inv_std_inc[2] * saved_inv_std_inc[3];
+			float* const meanp1 = meanp0 + i[1] * saved_mean_inc[2] * saved_mean_inc[3];
 			for (i[2] = 0; i[2] < rdim[2]; i[2]++)
 			{
-				float* const meanp2 = meanp1 + i[2] * saved_inv_std_inc[3];
+				float* const meanp2 = meanp1 + i[2] * saved_mean_inc[3];
 				for (x = 0; x < rdim[3]; x++)
 					meanp2[x] = meanp2[x] * inv_n;
 			}
@@ -169,7 +169,7 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				float* const biasp2 = biasp1 + (bias_dim[2] < adim[2] ? i[2] * bias_dim[2] / adim[2] : i[2]) * bias_inc[3];
 				if (rdim[3] < adim[3])
 					for (x = 0; x < adim[3]; x++)
-						bp[x] = (ap[x] - meanp2[x * rdim[3] / adim[3]]) * varp2[0] * scalep2[x * sdim[3] / adim[3]] + biasp2[x * bias_dim[3] / adim[3]];
+						bp[x] = (ap[x] - meanp2[x * rdim[3] / adim[3]]) * varp2[x * rdim[3] / adim[3]] * scalep2[x * sdim[3] / adim[3]] + biasp2[x * bias_dim[3] / adim[3]];
 				else
 					for (x = 0; x < adim[3]; x++)
 						bp[x] = (ap[x] - meanp2[x]) * varp2[x] * scalep2[x * sdim[3] / adim[3]] + biasp2[x * bias_dim[3] / adim[3]];
@@ -369,16 +369,16 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	gssp = gss;
 	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 	{
-		const float* const gssrp0 = rdim[0] < gdim[0] ? gssrp : gssrp + i[0] * rdim[1] * rdim[2] * rdim[3];
-		const float* const ahgssrp0 = rdim[0] < gdim[0] ? ahgssrp : ahgssrp + i[0] * rdim[1] * rdim[2] * rdim[3];
+		const float* const gssrp0 = gssrp + (rdim[0] < gdim[0] ? i[0] * rdim[0] / gdim[0] : i[0]) * rdim[1] * rdim[2] * rdim[3];
+		const float* const ahgssrp0 = ahgssrp + (rdim[0] < gdim[0] ? i[0] * rdim[0] / gdim[0] : i[0]) * rdim[1] * rdim[2] * rdim[3];
 		for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 		{
-			const float* const gssrp1 = rdim[1] < gdim[1] ? gssrp0 : gssrp0 + i[1] * rdim[2] * rdim[3];
-			const float* const ahgssrp1 = rdim[1] < gdim[1] ? ahgssrp0 : ahgssrp0 + i[1] * rdim[2] * rdim[3];
+			const float* const gssrp1 = gssrp0 + (rdim[1] < gdim[1] ? i[1] * rdim[1] / gdim[1] : i[1]) * rdim[2] * rdim[3];
+			const float* const ahgssrp1 = ahgssrp0 + (rdim[1] < gdim[1] ? i[1] * rdim[1] / gdim[1] : i[1]) * rdim[2] * rdim[3];
 			for (i[2] = 0; i[2] < gdim[2]; i[2]++)
 			{
-				const float* const gssrp2 = rdim[2] < gdim[2] ? gssrp1 : gssrp1 + i[2] * rdim[3];
-				const float* const ahgssrp2 = rdim[2] < gdim[2] ? ahgssrp1 : ahgssrp1 + i[2] * rdim[3];
+				const float* const gssrp2 = gssrp1 + (rdim[2] < gdim[2] ? i[2] * rdim[2] / gdim[2] : i[2]) * rdim[3];
+				const float* const ahgssrp2 = ahgssrp1 + (rdim[2] < gdim[2] ? i[2] * rdim[2] / gdim[2] : i[2]) * rdim[3];
 				if (rdim[3] < gdim[3])
 					for (x = 0; x < gdim[3]; x++)
 						hp[x] = gssp[x] - inv_n * (gssrp2[x * rdim[3] / gdim[3]] + ahp[x] * ahgssrp2[x * rdim[3] / gdim[3]]);

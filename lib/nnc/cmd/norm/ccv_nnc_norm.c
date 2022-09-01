@@ -191,7 +191,7 @@ static void _ccv_nnc_group_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, 
 	for (i = 1; i < output_size; i++)
 	{
 		outputs[i] = inputs[0];
-		outputs[i].dim[cmd.gnorm.axis] = inputs[0].dim[cmd.gnorm.axis] / cmd.gnorm.groups; // Reduce to num_channels / num_groups.
+		outputs[i].dim[cmd.gnorm.axis] = cmd.gnorm.groups; // Reduce to num_groups.
 	}
 }
 
@@ -204,19 +204,19 @@ static void _ccv_nnc_group_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, 
 	for (i = 1; i < output_size; i++)
 	{
 		outputs[i] = inputs[0];
-		outputs[i].dim[cmd.gnorm.axis] = inputs[0].dim[cmd.gnorm.axis] / cmd.gnorm.groups; // Reduce the dimension to num_channels / num_groups.
+		outputs[i].dim[cmd.gnorm.axis] = cmd.gnorm.groups; // Reduce the dimension to num_groups.
 	}
 }
 
 REGISTER_COMMAND(CCV_NNC_GROUP_NORM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_group_norm_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_group_norm_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_GROUP_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_group_norm_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_group_norm_tensor_auto_back;
