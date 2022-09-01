@@ -112,6 +112,11 @@ typedef struct {
 			float epsilon; /**< [lnorm.epsilon] The epsilon for standard derivation. */
 		} lnorm;
 		struct {
+			int axis; /**< [gnorm.axis] The axis selected to be grouped. */
+			int groups; /**< [gnorm.group] The number of groups that separates channels. */
+			float epsilon; /**< [gnorm.epsilon] The epsilon for standard derivation. */
+		} gnorm;
+		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [sgd.rate] The learning rate. */
 			float scale; /**< [sgd.scale] The scale to be applied to the gradient before doing any minimization. */
