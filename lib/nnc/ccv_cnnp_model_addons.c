@@ -1351,6 +1351,101 @@ static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.name);
 }
 
+// MARK - Group Norm Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t bias;
+	ccv_nnc_tensor_symbol_t scale;
+	ccv_nnc_cmd_param_t params;
+} ccv_cnnp_model_group_norm_t;
+
+static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t bias_params = params;
+	// If the accuracy is not enough, bump it to 32-bit floating point.
+	if (bias_params.datatype != CCV_32F && bias_params.datatype != CCV_64F)
+		bias_params.datatype = CCV_32F;
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	int i;
+	for (i = 0; i < nd; i++)
+		bias_params.dim[i] = params.dim[i];
+	ccv_nnc_tensor_set_n(&bias_params, 1);
+	// Both scale and bias are shared between if this model is reused.
+	if (!self->scale.graph)
+		self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
+	if (!self->bias.graph)
+		self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+	const ccv_nnc_cmd_t group_norm = ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, self->params, 0);
+	ccv_nnc_tensor_param_t output_params[3];
+	ccv_nnc_hint_tensor_auto(group_norm, (ccv_nnc_tensor_param_t []){
+			params,
+			bias_params,
+			bias_params,
+		}, 3, ccv_nnc_no_hint, output_params, 3);
+	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
+	const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, output_params[1], "saved_mean");
+	const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, output_params[2], "saved_inv_std");
+	ccv_nnc_graph_exec_symbol_new(graph, group_norm, TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "group_norm");
+	outputs[0] = output;
+}
+
+static void _ccv_cnnp_group_norm_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
+	if (self->bias.graph)
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
+	if (self->scale.graph)
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
+}
+
+static void _ccv_cnnp_group_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+{
+	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
+	if (self->bias.graph)
+		add_to_array(parameters, self->bias);
+	if (self->scale.graph)
+		add_to_array(parameters, self->scale);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_group_norm_isa = {
+	.build = _ccv_cnnp_group_norm_build,
+	.init_states = _ccv_cnnp_group_norm_init_states,
+	.add_to_parameter = _ccv_cnnp_group_norm_add_to_parameter,
+	.copy = _ccv_cnnp_group_norm_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_group_norm(const int axis, const int groups, const float epsilon, const char* const name)
+{
+	ccv_cnnp_model_group_norm_t* const model_group_norm = (ccv_cnnp_model_group_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_group_norm_t));
+	model_group_norm->super.isa = &ccv_cnnp_group_norm_isa;
+	model_group_norm->super.input_size = 1;
+	model_group_norm->super.outputs = &model_group_norm->output;
+	model_group_norm->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_group_norm->super, name);
+	model_group_norm->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_group_norm->scale.graph = 0;
+	model_group_norm->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_group_norm->bias.graph = 0;
+	model_group_norm->params.gnorm.axis = axis;
+	model_group_norm->params.gnorm.groups = groups;
+	model_group_norm->params.gnorm.epsilon = epsilon;
+	return (ccv_cnnp_model_t*)model_group_norm;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_group_norm_t* const self = (const ccv_cnnp_model_group_norm_t*)super;
+	return ccv_cnnp_group_norm(self->params.gnorm.axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->super.name);
+}
+
 // MARK - Batched Matrix Mul Layer
 
 typedef struct {

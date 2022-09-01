@@ -3922,6 +3922,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
 /**
+ * A group norm model.
+ * @param axis The axis are the feature axis to compute norm.
+ * @param groups How many groups per axis channel.
+ * @param epsilon The epsilon in layer norm parameter.
+ * @param name The unique name of the model.
+ * @return A group norm model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int axis, const int groups, const float epsilon, const char* const name);
+/**
  * Add two input tensors together. Different from sum because this support broadcasting.
  * @param p The weight for the first input.
  * @param q The weight for the second input.
