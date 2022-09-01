@@ -1374,8 +1374,8 @@ static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	const int nd = ccv_nnc_tensor_nd(params.dim);
 	int i;
 	for (i = 0; i < nd; i++)
-		bias_params.dim[i] = params.dim[i];
-	ccv_nnc_tensor_set_n(&bias_params, 1);
+		bias_params.dim[i] = 1;
+	ccv_nnc_tensor_set_c(&bias_params, nd, ccv_nnc_tensor_get_c(params));
 	// Both scale and bias are shared between if this model is reused.
 	if (!self->scale.graph)
 		self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
