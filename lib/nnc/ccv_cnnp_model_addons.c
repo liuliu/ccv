@@ -442,10 +442,10 @@ static void _ccv_cnnp_batch_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 static void _ccv_cnnp_batch_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
-	if (self->bias.graph)
-		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
 		add_to_array(parameters, self->scale);
+	if (self->bias.graph)
+		add_to_array(parameters, self->bias);
 }
 
 static void _ccv_cnnp_batch_norm_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -1361,10 +1361,10 @@ static void _ccv_cnnp_layer_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 static void _ccv_cnnp_layer_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
-	if (self->bias.graph)
-		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
 		add_to_array(parameters, self->scale);
+	if (self->bias.graph)
+		add_to_array(parameters, self->bias);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -1456,10 +1456,10 @@ static void _ccv_cnnp_group_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 static void _ccv_cnnp_group_norm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
 {
 	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
-	if (self->bias.graph)
-		add_to_array(parameters, self->bias);
 	if (self->scale.graph)
 		add_to_array(parameters, self->scale);
+	if (self->bias.graph)
+		add_to_array(parameters, self->bias);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context);
