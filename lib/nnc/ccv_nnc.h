@@ -3880,6 +3880,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const char* const name);
 /**
+ * A GELU activation layer model.
+ * @param tanh Whether enable fast approximate GELU.
+ * @return A GELU activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gelu(const int tanh, const char* const name);
+/**
  * A softmax activation layer model.
  * @return A softmax activation layer model.
  */
