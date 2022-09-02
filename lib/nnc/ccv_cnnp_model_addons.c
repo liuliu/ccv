@@ -1049,9 +1049,10 @@ ccv_cnnp_model_t* ccv_cnnp_gelu(const int tanh, const char* const name)
 	return (ccv_cnnp_model_t*)model_gelu;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_gelu_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_gelu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_gelu(self->tanh, self->name);
+	ccv_cnnp_model_gelu_t* const self = (ccv_cnnp_model_gelu_t*)super;
+	return ccv_cnnp_gelu(self->tanh, self->super.name);
 }
 
 // MARK - Softmax Layer
