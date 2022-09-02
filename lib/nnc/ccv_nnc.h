@@ -166,6 +166,9 @@ typedef struct {
 			int reduce_op; /**< [mse.reduce_op] Whether reduce with mean or with sum */
 		} mse;
 		struct {
+			int tanh; /**< [gelu.tanh] Use tanh approximation */
+		} gelu;
+		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;

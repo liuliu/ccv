@@ -60,6 +60,10 @@
 #define CMD_AVERAGE_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_AVERAGE_POOL_BACKWARD
 #define CMD_AVERAGE_POOL_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
+// CCV_NNC_GELU_FORWARD
+#define CMD_GELU_FORWARD(_tanh) ccv_nnc_cmd(CCV_NNC_GELU_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gelu={.tanh=_tanh}}, 0)
+// CCV_NNC_GELU_BACKWARD
+#define CMD_GELU_BACKWARD(_tanh) ccv_nnc_cmd(CCV_NNC_GELU_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gelu={.tanh=_tanh}}, 0)
 // CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=1}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD_X_F(...) ("This should not be used, you should have either 0 parameter or 1 parameters for CMD_SIGMOID_BINARY_CROSSENTROPY_FORWARD")
