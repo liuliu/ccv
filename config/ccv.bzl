@@ -22,12 +22,6 @@ def _ccv_setting_impl(repository_ctx):
     if repository_ctx.attr.have_pthread:
         defines.append("HAVE_PTHREAD")
         linkopts.append("-lpthread")
-    if repository_ctx.attr.have_liblinear:
-        defines.append("HAVE_LIBLINEAR")
-        linkopts.append("-llinear")
-    if repository_ctx.attr.have_tesseract:
-        defines.append("HAVE_TESSERACT")
-        linkopts.append("-ltesseract")
     if repository_ctx.attr.have_accelerate_framework:
         defines.append("HAVE_ACCELERATE_FRAMEWORK")
         linkopts += ["-framework", "Accelerate"]
@@ -70,8 +64,6 @@ ccv_setting = repository_rule(
         "have_libjpeg": attr.bool(),
         "have_fftw3": attr.bool(),
         "have_pthread": attr.bool(),
-        "have_liblinear": attr.bool(),
-        "have_tesseract": attr.bool(),
         "have_accelerate_framework": attr.bool(),
         "have_gsl": attr.bool(),
         "have_cudnn": attr.bool(),
