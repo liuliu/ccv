@@ -1424,7 +1424,7 @@ static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	int i;
 	for (i = 0; i < nd; i++)
 		bias_params.dim[i] = 1;
-	ccv_nnc_tensor_set_c(&bias_params, nd, ccv_nnc_tensor_get_c(params));
+	bias_params.dim[self->params.gnorm.group_axis] = params.dim[self->params.gnorm.group_axis];
 	// Both scale and bias are shared between if this model is reused.
 	if (!self->scale.graph)
 		self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
@@ -1471,7 +1471,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_group_norm_isa = {
 	.copy = _ccv_cnnp_group_norm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_group_norm(const int axis, const int groups, const float epsilon, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name)
 {
 	ccv_cnnp_model_group_norm_t* const model_group_norm = (ccv_cnnp_model_group_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_group_norm_t));
 	model_group_norm->super.isa = &ccv_cnnp_group_norm_isa;
@@ -1483,16 +1483,18 @@ ccv_cnnp_model_t* ccv_cnnp_group_norm(const int axis, const int groups, const fl
 	model_group_norm->scale.graph = 0;
 	model_group_norm->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_group_norm->bias.graph = 0;
-	model_group_norm->params.gnorm.axis = axis;
+	model_group_norm->params.gnorm.group_axis = group_axis;
 	model_group_norm->params.gnorm.groups = groups;
 	model_group_norm->params.gnorm.epsilon = epsilon;
+	model_group_norm->params.gnorm.reduce_count = axis_count;
+	memcpy(model_group_norm->params.gnorm.reduce_axis, reduce_axis, sizeof(model_group_norm->params.gnorm.reduce_axis));
 	return (ccv_cnnp_model_t*)model_group_norm;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_group_norm_t* const self = (const ccv_cnnp_model_group_norm_t*)super;
-	return ccv_cnnp_group_norm(self->params.gnorm.axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->super.name);
+	return ccv_cnnp_group_norm(self->params.gnorm.group_axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->params.gnorm.reduce_axis, self->params.gnorm.reduce_count, self->super.name);
 }
 
 // MARK - Batched Matrix Mul Layer

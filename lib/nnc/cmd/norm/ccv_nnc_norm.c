@@ -187,11 +187,13 @@ static void _ccv_nnc_group_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, 
 	outputs[0] = inputs[0];
 	if (output_size == 1)
 		return;
-	int i;
+	int i, j;
 	for (i = 1; i < output_size; i++)
 	{
 		outputs[i] = inputs[0];
-		outputs[i].dim[cmd.gnorm.axis] = cmd.gnorm.groups; // Reduce to num_groups.
+		outputs[i].dim[cmd.gnorm.group_axis] = cmd.gnorm.groups; // Reduce to num_groups.
+		for (j = 0; j < cmd.gnorm.reduce_count; j++)
+			outputs[i].dim[cmd.gnorm.reduce_axis[j]] = 1;
 	}
 }
 
@@ -200,11 +202,13 @@ static void _ccv_nnc_group_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, 
 	assert(input_size == 9);
 	assert(output_size == 1 || output_size == 3);
 	outputs[0] = inputs[0];
-	int i;
+	int i, j;
 	for (i = 1; i < output_size; i++)
 	{
 		outputs[i] = inputs[0];
-		outputs[i].dim[cmd.gnorm.axis] = cmd.gnorm.groups; // Reduce the dimension to num_groups.
+		outputs[i].dim[cmd.gnorm.group_axis] = cmd.gnorm.groups; // Reduce the dimension to num_groups.
+		for (j = 0; j < cmd.gnorm.reduce_count; j++)
+			outputs[i].dim[cmd.gnorm.reduce_axis[j]] = 1;
 	}
 }
 

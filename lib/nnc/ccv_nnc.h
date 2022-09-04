@@ -112,7 +112,9 @@ typedef struct {
 			float epsilon; /**< [lnorm.epsilon] The epsilon for standard derivation. */
 		} lnorm;
 		struct {
-			int axis; /**< [gnorm.axis] The axis selected to be grouped. */
+			int group_axis; /**< [gnorm.group_axis] The axis selected to be grouped. */
+			int reduce_axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [gnorm.reduce_axis[]] The other axis selected to compute mean / variance. */
+			int reduce_count; /**< [gnorm.reduce_count] The number of other axis selected. */
 			int groups; /**< [gnorm.group] The number of groups that separates channels. */
 			float epsilon; /**< [gnorm.epsilon] The epsilon for standard derivation. */
 		} gnorm;
@@ -3938,7 +3940,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, cons
  * @param name The unique name of the model.
  * @return A group norm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int axis, const int groups, const float epsilon, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
 /**
  * Add two input tensors together. Different from sum because this support broadcasting.
  * @param p The weight for the first input.
