@@ -19,9 +19,13 @@ __global__ void _ccv_nnc_inv_std_kernel(const int count, const float epsilon, co
 
 static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int axis, const int dim1, const int dim2)
 {
-	assert(CCV_IS_TENSOR_CONTIGUOUS(tv));
 	if (CCV_IS_TENSOR_VIEW(tv))
 	{
+		// Only work for contiguous tensors (no skipping).
+		int i;
+		for (i = axis + 1; i < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[i] > 0; i++)
+			{ assert(tv->info.dim[i] == tv->inc[i]); }
+		assert(tv->inc[i] % dim2 == 0); // Otherwise I cannot break it down.
 		if (CCV_NNC_MAX_DIM_ALLOC - axis - 2 > 0)
 		{
 			// Need to handle ofs and inc.
@@ -30,7 +34,7 @@ static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int
 		}
 		tv->info.dim[axis] = dim1;
 		tv->info.dim[axis + 1] = dim2;
-		tv->inc[axis] = dim1;
+		tv->inc[axis] = tv->inc[axis] / dim2; // This all worked out because we can still skip that much.
 		tv->inc[axis + 1] = dim2;
 	} else {
 		// Non tensor view, straightforward.

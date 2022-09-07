@@ -118,11 +118,12 @@ static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DI
 	if (first_none_one_dim_idx < 0)
 		return 1;
 	// Check if from 0 to first_none_one_dim_idx, it is 1.
-	int no_inc = 1;
 	assert(ofs[first_none_one_dim_idx] + dim[first_none_one_dim_idx] <= inc[first_none_one_dim_idx]);
-	if (first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC)
-		no_inc = (memcmp(inc + first_none_one_dim_idx + 1, dim + first_none_one_dim_idx + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - first_none_one_dim_idx - 1)) == 0);
-	return no_inc;
+	assert(first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC);
+	for (i = first_none_one_dim_idx + 1; i < nd; i++)
+		if (inc[i] != dim[i])
+			return 0;
+	return 1;
 }
 
 static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
