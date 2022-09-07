@@ -49,21 +49,21 @@ static int _ccv_nnc_upsample_back_bitmask(const int input_size, const int output
 	return 0;
 }
 
-REGISTER_COMMAND(CCV_NNC_UPSAMPLE_BILINEAR_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+REGISTER_COMMAND(CCV_NNC_UPSAMPLE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_upsample_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_upsample_tensor_auto_forw;
 }
 
-REGISTER_COMMAND(CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+REGISTER_COMMAND(CCV_NNC_UPSAMPLE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_upsample_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
 
-//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_UPSAMPLE_BILINEAR_FORWARD)
-#define CMD_UPSAMPLE_BILINEAR_FORWARD(_width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BILINEAR_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
-//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD)
-#define CMD_UPSAMPLE_BILINEAR_BACKWARD(_width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_UPSAMPLE_FORWARD)
+#define CMD_UPSAMPLE_FORWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_UPSAMPLE_BACKWARD)
+#define CMD_UPSAMPLE_BACKWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)

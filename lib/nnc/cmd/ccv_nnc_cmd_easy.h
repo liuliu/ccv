@@ -160,10 +160,10 @@
 #define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 // CCV_NNC_SCALAR_MUL_BACKWARD
 #define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
-// CCV_NNC_UPSAMPLE_BILINEAR_FORWARD
-#define CMD_UPSAMPLE_BILINEAR_FORWARD(_width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BILINEAR_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
-// CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD
-#define CMD_UPSAMPLE_BILINEAR_BACKWARD(_width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BILINEAR_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+// CCV_NNC_UPSAMPLE_FORWARD
+#define CMD_UPSAMPLE_FORWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+// CCV_NNC_UPSAMPLE_BACKWARD
+#define CMD_UPSAMPLE_BACKWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
 // CCV_NNC_COMM_ALLREDUCE_FORWARD
 #define CMD_COMM_ALLREDUCE_FORWARD() ccv_nnc_cmd(CCV_NNC_COMM_ALLREDUCE_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMM_ALLREDUCE_BACKWARD

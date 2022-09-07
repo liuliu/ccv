@@ -69,6 +69,11 @@ enum {
 	CCV_NNC_HISTOGRAM_BINS = 2, /**< The bins range will be supplied, such as [0, 2, 3, 10]. For result, [-inf, 0, 2, 3, 10, inf] implied. */
 };
 
+enum {
+	CCV_NNC_UPSAMPLE_NEAREST = 0, /**< Using nearest value. */
+	CCV_NNC_UPSAMPLE_BILINEAR = 1, /**< Using bilinear interpolation. */
+};
+
 /**
  * Parameters for command.
  */
@@ -182,6 +187,7 @@ typedef struct {
 			int entirety; /**< [dropout.entirety] Drop the whole layer with the given probability. */
 		} dropout;
 		struct {
+			int type; /**< [upsample.type] 0 - nearest, 1 - bilinear. */
 			float width_scale; /**< [upsample.width_scale] scale for width parameter. It is between 1 and 2 at the moment. */
 			float height_scale; /**< [upsample.height_scale] scale for height parameter. It is between 1 and 2 at the moment. */
 		} upsample;
@@ -4013,12 +4019,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const char* const name)
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const char* const name);
 /**
  * A upsample model.
+ * @param type The type of upsample, whether nearest or bilinear.
  * @param width_scale The scale of the width of the input.
  * @param height_scale The scale of the height of the input.
  * @param name The unique name of the model.
  * @return A upsample model.
  */
-ccv_cnnp_model_t* ccv_cnnp_upsample(const float width_scale, const float height_scale, const char* const name);
+ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, const float height_scale, const char* const name);
 /**
  * A sum value reducer model.
  * @param axis The axis to be reduced.
