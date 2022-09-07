@@ -115,7 +115,7 @@ static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_si
 	for (i = c_size - 2; i >= 0; i--)
 	{
 		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0), MODEL_IO_LIST(c[i]));
-		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(2, 2, 0), MODEL_IO_LIST(output));
+		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 0), MODEL_IO_LIST(output));
 		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(lateral, up));
 		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0), MODEL_IO_LIST(sum));
 		p[i] = output;
