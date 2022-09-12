@@ -671,7 +671,7 @@ size_t ccv_nnc_cublas_workspace_size_in_bytes(const ccv_nnc_tensor_t* const* con
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
 			max_tensor_count = ccv_max(max_tensor_count, ccv_nnc_tensor_count(outputs[i]->info));
-	return ccv_min(ccv_max((sizeof(float) * max_tensor_count + 255) / 256, 16 * 1024), CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES);
+	return ccv_min(ccv_max(((sizeof(float) * max_tensor_count + 255) / 256) * 256, 16 * 1024), CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES);
 #else
 	return 0;
 #endif
