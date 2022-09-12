@@ -651,11 +651,13 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 
 void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size)
 {
+#if CUDA_VERSION >= 11000
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
 	void* const workspace = ccv_nnc_stream_compat_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
 	cublasSetWorkspace(cublas, workspace, workspace_size);
+#endif
 }
 
 // A simple kernel to set all values to 1.

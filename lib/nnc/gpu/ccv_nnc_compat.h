@@ -86,6 +86,11 @@ CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_cont
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size);
+#if CUDA_VERSION >= 11000
+#define CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES (4 * 1024 * 1024)
+#else
+#define CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES (0)
+#endif
 
 #ifdef NDEBUG
 #define CUDA_ENFORCE(status) status
