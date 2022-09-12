@@ -287,7 +287,6 @@ typedef struct {
 
 static void _ccv_nnc_device_local_drain(const int device, void* context)
 {
-	cudaDeviceSynchronize();
 	ccv_nnc_stream_context_device_local_t* const device_local = (ccv_nnc_stream_context_device_local_t*)context;
 	if (device_local->workspace)
 	{
