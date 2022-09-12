@@ -660,6 +660,23 @@ void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const cc
 #endif
 }
 
+size_t ccv_nnc_cublas_workspace_size_in_bytes(const ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+#if CUDA_VERSION >= 11000
+	int i;
+	size_t max_tensor_count = 0;
+	for (i = 0; i < input_size; i++)
+		if (inputs[i])
+			max_tensor_count = ccv_max(max_tensor_count, ccv_nnc_tensor_count(inputs[i]->info));
+	for (i = 0; i < output_size; i++)
+		if (outputs[i])
+			max_tensor_count = ccv_max(max_tensor_count, ccv_nnc_tensor_count(outputs[i]->info));
+	return ccv_min(ccv_max((sizeof(float) * max_tensor_count + 255) / 256, 16 * 1024), CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES);
+#else
+	return 0;
+#endif
+}
+
 // A simple kernel to set all values to 1.
 template<typename NUM>
 __global__ static void _ones(NUM* x, int n)

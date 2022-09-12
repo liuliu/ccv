@@ -91,6 +91,7 @@ void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const cc
 #else
 #define CUBLAS_DEFAULT_WORKSPACE_SIZE_IN_BYTES (0)
 #endif
+CCV_WARN_UNUSED(size_t) ccv_nnc_cublas_workspace_size_in_bytes(const ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_tensor_t* const* const outputs, const int output_size);
 
 #ifdef NDEBUG
 #define CUDA_ENFORCE(status) status
