@@ -15,6 +15,7 @@ typedef struct {
 	int type;
 	int pin_mem; // This memory need to be pinned.
 	int ref; // Reference to another tensor block. Start with 1.
+	int alias_ref; // If reference to another tensor, and the other one is an alias. Start with 1.
 	int bypass_ref; // Copy over the bypass_ref from tensor symbol underneath. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
 	int unfoldable_except_ref; // Reference to a tensor block that can be the exception to unfoldable (as output). Start with 1.
@@ -999,6 +1000,45 @@ static int _ccv_nnc_tensor_flat_if_multiview(ccv_array_t* const tensor_metadata,
 	return new_pos;
 }
 
+static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int block_ref, ccv_nnc_tensor_t** const vt_tensors)
+{
+	const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+	// It referenced to is not an alias.
+	assert(vt_tensors[alias_ref]);
+	const int alias_pos = (int)(intptr_t)vt_tensors[alias_ref];
+	const ccv_nnc_tensor_t* alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_metadata, alias_pos);
+	assert(!CCV_IS_TENSOR_VIEW(alias_tensor_ptr));
+	// Will use that to determine whether insert reference or not.
+	const int is_multiview = CCV_IS_TENSOR_MULTIVIEW(alias_tensor_ptr);
+	while (CCV_IS_TENSOR_MULTIVIEW(alias_tensor_ptr))
+	{
+		const ccv_nnc_tensor_multiview_t* const mv = (const ccv_nnc_tensor_multiview_t*)alias_tensor_ptr;
+		alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[0]);
+	}
+	const ccv_nnc_tensor_t alias_tensor = *alias_tensor_ptr;
+	// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
+	int pos;
+	if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
+		memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+	{
+		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
+		ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
+		*tensor = ccv_nnc_tensor(alias_tensor.data.u8, tensor_symbol_info[block_ref].info, 0);
+	} else {
+		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+		ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
+		// Otherwise initialize a tensor view
+		*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
+		tensor_view->alias_ref = (uintptr_t)alias_pos;
+	}
+	vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+	if (is_multiview)
+	{
+		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, alias_pos);
+		ccv_nnc_tensor_synchronize_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)pos);
+	}
+}
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_compile_allocator_t allocator, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
@@ -1296,9 +1336,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		}
 	}
 	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
+	// Avoiding refs that actually is an alias.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
-		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref && !tensor_arena->vt_tensors[i])
+		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref && !tensor_arena->vt_tensors[i] && !tensor_blocks[i].alias_ref)
 		{
 			int ref = tensor_blocks[i].ref - 1;
 			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]) && tensor_blocks[ref].ref)
@@ -1376,40 +1417,33 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				// Assigning out the tensor aliases.
 				assert(tensor_symbol_info[block_ref].alias_ref);
 				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
-				// It referenced to is not an alias.
-				assert(tensor_arena->vt_tensors[alias_ref]);
-				const int alias_pos = (int)(intptr_t)tensor_arena->vt_tensors[alias_ref];
-				const ccv_nnc_tensor_t* alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, alias_pos);
-				assert(!CCV_IS_TENSOR_VIEW(alias_tensor_ptr));
-				// Will use that to determine whether insert reference or not.
-				const int is_multiview = CCV_IS_TENSOR_MULTIVIEW(alias_tensor_ptr);
-				while (CCV_IS_TENSOR_MULTIVIEW(alias_tensor_ptr))
-				{
-					const ccv_nnc_tensor_multiview_t* const mv = (const ccv_nnc_tensor_multiview_t*)alias_tensor_ptr;
-					alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[0]);
-				}
-				const ccv_nnc_tensor_t alias_tensor = *alias_tensor_ptr;
-				// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
-				int pos;
-				if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
-					memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-				{
-					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
-					ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-					*tensor = ccv_nnc_tensor(alias_tensor.data.u8, tensor_symbol_info[block_ref].info, 0);
-				} else {
-					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
-					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-					// Otherwise initialize a tensor view
-					*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
-					tensor_view->alias_ref = (uintptr_t)alias_pos;
-				}
-				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
-				if (is_multiview)
-				{
-					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, alias_pos);
-					ccv_nnc_tensor_synchronize_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)pos);
-				}
+				if (tensor_blocks[alias_ref].alias_ref) // If its reference itself has an alias. Skip for now. Do this next round.
+					continue;
+				_ccv_nnc_assign_vt_tensor_aliases(tensor_arena->tensor_metadata, tensor_symbol_info, block_ref, tensor_arena->vt_tensors);
+			}
+		}
+	// Now assigning out alias refs.
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
+		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].alias_ref && !tensor_arena->vt_tensors[i])
+		{
+			int ref = tensor_blocks[i].alias_ref - 1;
+			assert(tensor_arena->vt_tensors[ref]);
+			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[ref];
+		}
+	// Handle the rest of aliases.
+	for (i = 0; i < alloc_prep->block_size; i++)
+		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
+		{
+			const int block_ref = alloc_prep->blocks[i].block_ref;
+			if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
+			{
+				// Assigning out the tensor aliases.
+				assert(tensor_symbol_info[block_ref].alias_ref);
+				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+				if (!tensor_blocks[alias_ref].alias_ref) // If its reference itself has an alias. Skip for now. Do this next round.
+					continue;
+				_ccv_nnc_assign_vt_tensor_aliases(tensor_arena->tensor_metadata, tensor_symbol_info, block_ref, tensor_arena->vt_tensors);
 			}
 		}
 	// Replacing the tensor placeholder within sub arena's multi-view to the input tensor.
@@ -2223,12 +2257,13 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			int ref = node->inputs[x];
 			if (ref < 0)
 				continue;
+			const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref];
 			while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_blocks[ref].ref == 0);
-			const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref];
 			if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
 				tensor_blocks[ref].tail->rnum == 1)
+			{
 				for (y = 0; y < node->output_size; y++)
 					/* Only proceed if the input symbol is different from the output symbol, */
 					/* and the input symbol meets the output symbol exactly at the same spot. */
@@ -2239,10 +2274,17 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 					{
 						const int node_output_y = node->outputs[y];
 						const ccv_nnc_tensor_symbol_info_t y_symbol = tensor_symbol_info[node_output_y];
-						/* If dimension matches perfectly, then we can assign y_symbol to x. */
+						/* If dimension matches perfectly, then we can assign y_symbol to x.
+						 * If both of them are aliases, making sure their origin matches in size too. */
 						if (memcmp(x_symbol.info.dim, y_symbol.info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+						{
 							_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y);
+							// This refers to an alias itself, now mark it and will be processed later.
+							if (ref != node->inputs[x])
+								tensor_blocks[node_output_y].alias_ref = node->inputs[x] + 1;
+						}
 					}
+			}
 		}
 	} ccv_nnc_graph_visit_endfor
 	// Specifically handle the bypass. This need to be done after the first pass.
@@ -3113,7 +3155,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							CCV_SWAP(unref_p_ref_0, unref_p_ref_1, p_ref_t);
 						}
 						p_ref_0_is_in_or_out = 1; /* Now p_ref_0 surely is the output tensor. */
-						/* If the dimension matches, can fold. */
+						/* If the dimension matches, can fold. TODO: shoud the dimension matches perfectly here? */
 						if (memcmp(tensor_symbol_info[unref_p_ref_1].info.dim, tensor_symbol_info[unref_p_ref_0].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 						{
 							const int folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, unref_p_ref_1, unref_p_ref_0);
