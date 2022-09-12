@@ -25,12 +25,23 @@ static void _ccv_nnc_xpu_metadata_free(dy_alloc_metadata_t* node, void* arg)
 	} while (node);
 }
 
-static void _ccv_nnc_xpu_alloc_drain(khash_t(dy_dev)* const dev, const ccv_nnc_stream_context_t* const stream)
+static void _ccv_nnc_xpu_alloc_drain(const int device, khash_t(dy_dev)* const dev, const ccv_nnc_stream_context_t* const stream)
 {
 	// Wait until the stream is free, and then do the free.
 	if (stream)
 		ccv_nnc_stream_context_wait(stream);
 	khiter_t k;
+	if (device >= 0)
+	{
+		k = kh_get(dy_dev, dev, device);
+		if (k != kh_end(dev))
+		{
+			dy_alloc_tree_t* const tree = &kh_val(dev, k);
+			dy_alloc_tree_destroy(tree, _ccv_nnc_xpu_metadata_free, 0);
+			kh_del(dy_dev, dev, k);
+		}
+		return;
+	}
 	for (k = kh_begin(dev); k != kh_end(dev); ++k)
 	{
 		if (!kh_exist(dev, k))
@@ -49,7 +60,7 @@ static void _ccv_nnc_xpu_stream_destructor_hook(const ccv_nnc_stream_context_t* 
 	khiter_t i = kh_get(dy_str, freed, str);
 	assert(i != kh_end(freed));
 	khash_t(dy_dev)* const dev = kh_val(freed, i).dev;
-	_ccv_nnc_xpu_alloc_drain(dev, stream);
+	_ccv_nnc_xpu_alloc_drain(-1, dev, stream);
 	kh_destroy(dy_dev, dev);
 	kh_del(dy_str, freed, i);
 }
@@ -97,7 +108,7 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 	{
 		node = (dy_alloc_metadata_t*)ccmalloc(sizeof(dy_alloc_metadata_t));
 		if (xpu_alloc->mp_hdr < 0)
-			xpu_alloc->mp_hdr = curegmp((cump_f)ccv_nnc_xpu_gc, xpu_alloc);
+			xpu_alloc->mp_hdr = curegmp(device, (cump_f)ccv_nnc_xpu_gc, xpu_alloc);
 		node->ptr = cumalloc(device, size);
 		if (!node->ptr) // If cannot allocate, drain the pool first and then allocate.
 		{
@@ -172,7 +183,7 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
-		_ccv_nnc_xpu_alloc_drain(dev, stream);
+		_ccv_nnc_xpu_alloc_drain(-1, dev, stream);
 		if (stream)
 		{
 			const int hook_id = kh_val(freed, k).hook_id;
@@ -185,7 +196,7 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 		cuunregmp(xpu_alloc->mp_hdr);
 }
 
-void ccv_nnc_xpu_gc(ccv_nnc_xpu_alloc_t* const xpu_alloc)
+void ccv_nnc_xpu_gc(const int device, ccv_nnc_xpu_alloc_t* const xpu_alloc)
 {
 	khash_t(dy_str)* const freed = xpu_alloc->freed;
 	khiter_t k;
@@ -195,7 +206,7 @@ void ccv_nnc_xpu_gc(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 			continue;
 		khash_t(dy_dev)* const dev = kh_val(freed, k).dev;
 		ccv_nnc_stream_context_t* const stream = (ccv_nnc_stream_context_t*)(intptr_t)kh_key(freed, k);
-		_ccv_nnc_xpu_alloc_drain(dev, stream);
+		_ccv_nnc_xpu_alloc_drain(device, dev, stream);
 	}
 }
 #else
@@ -212,7 +223,7 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 {
 }
 
-void ccv_nnc_xpu_gc(ccv_nnc_xpu_alloc_t* const dynamic_graph)
+void ccv_nnc_xpu_gc(const int device, ccv_nnc_xpu_alloc_t* const dynamic_graph)
 {
 }
 #endif

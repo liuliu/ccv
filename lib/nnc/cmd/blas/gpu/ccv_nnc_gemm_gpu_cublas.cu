@@ -36,6 +36,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
+	ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, 4 * 1024 * 1024); // Default 4MiB workspace.
 	static const float one = 1;
 	static const float zero = 0;
 	const int transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
@@ -113,6 +114,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	static const float one = 1;
 	static const float zero = 0;
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
+	ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, 4 * 1024 * 1024); // Default 4MiB workspace.
 	int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
 	const static int no_transpose[2] = {};
 	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);

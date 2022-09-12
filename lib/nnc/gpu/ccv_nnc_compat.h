@@ -29,8 +29,8 @@ void* cuhostalloc(size_t size);
 void cuhostfree(void* ptr);
 int curegister(void* ptr, size_t size);
 void cuunregister(void* ptr);
-typedef void(*cump_f)(void* const context);
-int curegmp(cump_f func, void* const context); // register memory pressure handler
+typedef void(*cump_f)(int device_id, void* const context);
+int curegmp(int device_id, cump_f func, void* const context); // register memory pressure handler
 void cuunregmp(const int id); // un-register memory pressure handler.
 
 // Stream context
@@ -85,6 +85,7 @@ CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_compute_datatype(const int datatype
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size);
 
 #ifdef NDEBUG
 #define CUDA_ENFORCE(status) status

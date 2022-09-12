@@ -43,6 +43,6 @@ typedef struct {
 void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, ccv_nnc_stream_context_t* const stream, const size_t size);
 void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr);
 void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc);
-void ccv_nnc_xpu_gc(ccv_nnc_xpu_alloc_t* const xpu_alloc);
+void ccv_nnc_xpu_gc(const int device, ccv_nnc_xpu_alloc_t* const xpu_alloc);
 
 #endif

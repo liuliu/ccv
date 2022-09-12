@@ -94,7 +94,9 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(tensor_count ==  ccv_nnc_tensor_count(u->info));
 	if (b->info.datatype == CCV_16F)
 	{
-		float* const update = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (tensor_count * 2 + 2), CCV_TENSOR_GPU_MEMORY);
+		unsigned char* workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, 4 * 1024 * 1024 + sizeof(float) * (tensor_count * 2 + 2), CCV_TENSOR_GPU_MEMORY);
+		float* const update = (float*)(workspace + 4 * 1024 * 1024);
+		ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, 4 * 1024 * 1024); // Default 4MiB workspace.
 		float* const af = update + tensor_count;
 		if (g->info.datatype == CCV_16F)
 		{
@@ -115,7 +117,9 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		_ccv_nnc_rate_trust_ratio<<<1, 1, 0, stream>>>(rate, w_norm, update_norm, rate_trust_ratio);
 		_ccv_nnc_lamb_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate_trust_ratio, update, af, (__half*)b->data.f16);
 	} else if (b->info.datatype == CCV_32F) {
-		float* const update = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (tensor_count + 2), CCV_TENSOR_GPU_MEMORY);
+		unsigned char* workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, 4 * 1024 * 1024 + sizeof(float) * (tensor_count + 2), CCV_TENSOR_GPU_MEMORY);
+		float* const update = (float*)(workspace + 4 * 1024 * 1024);
+		ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, 4 * 1024 * 1024); // Default 4MiB workspace.
 		if (g->info.datatype == CCV_16F)
 		{
 			_ccv_nnc_adam_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, update, n->data.f32, u->data.f32);

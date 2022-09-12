@@ -83,81 +83,20 @@ void cudnn_pressure(const int device_id)
 }
 #endif
 
-struct cublas_free_list_s {
-	cublasHandle_t cublas; // Can be reused cublas handle.
-	struct cublas_free_list_s* next;
-};
-KHASH_MAP_INIT_INT(cublas_free, struct cublas_free_list_s*);
-static pthread_mutex_t g_cublas_mutex = PTHREAD_MUTEX_INITIALIZER;
-static khash_t(cublas_free)* g_cublas = 0;
-
 cublasHandle_t cublas_get(const int type)
 {
-	pthread_mutex_lock(&g_cublas_mutex);
-	if (!g_cublas)
-		g_cublas = kh_init(cublas_free);
-	khiter_t i = kh_get(cublas_free, g_cublas, type);
 	cublasHandle_t cublas;
-	if (i != kh_end(g_cublas))
+	cublasCreate(&cublas);
+	if (!cublas)
 	{
-		struct cublas_free_list_s* item = kh_val(g_cublas, i);
-		cublas = item->cublas;
-		if (item->next)
-			kh_val(g_cublas, i) = item->next;
-		else
-			kh_del(cublas_free, g_cublas, i);
-		pthread_mutex_unlock(&g_cublas_mutex);
-		ccfree(item);
-	} else {
-		pthread_mutex_unlock(&g_cublas_mutex);
-		cublasCreate(&cublas);
-		if (!cublas)
-		{
-			cutrigmp(); // Trigger memory pressure. And then do it again.
-			CUBLAS_ENFORCE(cublasCreate(&cublas));
-		}
+		cutrigmp(); // Trigger memory pressure. And then do it again.
+		CUBLAS_ENFORCE(cublasCreate(&cublas));
 	}
 	return cublas;
 }
 
-void cublas_save(const int type, cublasHandle_t cublas)
-{
-	pthread_mutex_lock(&g_cublas_mutex);
-	int ret;
-	khiter_t i = kh_put(cublas_free, g_cublas, type, &ret);
-	struct cublas_free_list_s* const item = (struct cublas_free_list_s*)ccmalloc(sizeof(struct cublas_free_list_s));
-	item->cublas = cublas;
-	item->next = ret == 0 ? kh_val(g_cublas, i) : 0;
-	kh_val(g_cublas, i) = item;
-	pthread_mutex_unlock(&g_cublas_mutex);
-}
-
-void cublas_pressure(const int device_id)
-{
-	pthread_mutex_lock(&g_cublas_mutex);
-	khiter_t k;
-	for (k = kh_begin(g_cublas); k != kh_end(g_cublas); ++k)
-	{
-		if (!kh_exist(g_cublas, k))
-			continue;
-		const int type = kh_key(g_cublas, k);
-		const int this_device_id = CCV_TENSOR_GET_DEVICE_ID(type);
-		if (this_device_id != device_id) // Only free for a particular device.
-			continue;
-		struct cublas_free_list_s* item = kh_val(g_cublas, k);
-		while (item)
-		{
-			CUBLAS_ENFORCE(cublasDestroy(item->cublas));
-			struct cublas_free_list_s* next = item->next;
-			ccfree(item);
-			item = next;
-		}
-		kh_del(cublas_free, g_cublas, k);
-	}
-	pthread_mutex_unlock(&g_cublas_mutex);
-}
-
 typedef struct {
+	int device_id;
 	cump_f func;
 	void* ctx;
 } cump_t;
@@ -166,7 +105,7 @@ static pthread_mutex_t g_mp_mutex = PTHREAD_MUTEX_INITIALIZER;
 static ccv_array_t* g_mp_h;
 static int g_mp_slot;
 
-int curegmp(cump_f func, void* const context)
+int curegmp(int device_id, cump_f func, void* const context)
 {
 	assert(func);
 	pthread_mutex_lock(&g_mp_mutex);
@@ -176,7 +115,7 @@ int curegmp(cump_f func, void* const context)
 		g_mp_slot = -1;
 	}
 	cump_t mp = {
-		func, context,
+		device_id, func, context,
 	};
 	int slot = g_mp_slot;
 	if (g_mp_slot >= 0)
@@ -219,8 +158,8 @@ void cutrigmp(void)
 	for (i = 0; i < g_mp_h->rnum; i++)
 	{
 		cump_t* const mp = (cump_t*)ccv_array_get(g_mp_h, i);
-		if (mp->func)
-			mp->func(mp->ctx);
+		if (mp->device_id == device_id && mp->func)
+			mp->func(device_id, mp->ctx);
 	}
 	pthread_mutex_unlock(&g_mp_mutex);
 	// Set back the device id.
@@ -228,7 +167,6 @@ void cutrigmp(void)
 #ifdef HAVE_CUDNN
 	cudnn_pressure(device_id);
 #endif
-	cublas_pressure(device_id);
 }
 
 void* cumalloc(int device, size_t size)
@@ -322,6 +260,7 @@ typedef struct {
 	cudnnHandle_t cudnn;
 	void* rngs; // user-allocated GPU memory that will hold random number generator states.
 #endif
+	int mp_hook; // Hook into memory pressure, if used.
 } ccv_nnc_stream_context_device_local_t;
 
 typedef struct {
@@ -345,6 +284,25 @@ typedef struct {
 		};
 	};
 } ccv_nnc_stream_context_compat_t;
+
+static void _ccv_nnc_device_local_drain(const int device, void* context)
+{
+	cudaDeviceSynchronize();
+	ccv_nnc_stream_context_device_local_t* const device_local = (ccv_nnc_stream_context_device_local_t*)context;
+	if (device_local->workspace)
+	{
+		cufree(device, device_local->workspace);
+		device_local->workspace_size = 0;
+		device_local->workspace = 0;
+	}
+#ifdef HAVE_CUDNN
+	if (device_local->cudnn)
+	{
+		CUDNN_ENFORCE(cudnnDestroy(device_local->cudnn));
+		device_local->cudnn = 0;
+	}
+#endif
+}
 
 static ccv_nnc_stream_context_device_local_t* _ccv_nnc_stream_compat_device_local(ccv_nnc_stream_context_compat_t* const stream_compat)
 {
@@ -467,7 +425,10 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		device_local->workspace_size = workspace_size;
 		if (device_local->workspace)
 			CUDA_ENFORCE(cudaFree(device_local->workspace));
+		device_local->workspace = 0;
 		device_local->workspace = cumalloc(device_id, workspace_size);
+		if (!device_local->mp_hook)
+			device_local->mp_hook = curegmp(device_id, _ccv_nnc_device_local_drain, device_local) + 1;
 		return device_local->workspace;
 	}
 	return 0;
@@ -599,8 +560,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 				if (stream_compat->_heap_gpus[i].workspace)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].workspace));
 				CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_heap_gpus[i].stream));
-				if (stream_compat->_heap_gpus[i].cublas)
-					cublas_save(stream_compat->super.type, stream_compat->_heap_gpus[i].cublas);
+				assert(!stream_compat->_heap_gpus[i].cublas);
 				if (stream_compat->_heap_gpus[i].ones_16.data)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_16.data));
 				if (stream_compat->_heap_gpus[i].ones_32.data)
@@ -613,6 +573,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 				if (stream_compat->_heap_gpus[i].rngs)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].rngs));
 #endif
+				if (stream_compat->_heap_gpus[i].mp_hook)
+					cuunregmp(stream_compat->_heap_gpus[i].mp_hook - 1);
 			}
 	} else {
 		CUDA_ENFORCE(cudaSetDevice(device));
@@ -621,8 +583,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.workspace));
 		}
 		CUDA_ENFORCE(cudaStreamDestroy(stream_compat->_inline_gpu.stream));
-		if (stream_compat->_inline_gpu.cublas)
-			cublas_save(stream_compat->super.type, stream_compat->_inline_gpu.cublas);
+		assert(!stream_compat->_inline_gpu.cublas);
 		if (stream_compat->_inline_gpu.ones_16.data)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_16.data));
 		if (stream_compat->_inline_gpu.ones_32.data)
@@ -635,6 +596,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 		if (stream_compat->_inline_gpu.rngs)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.rngs));
 #endif
+		if (stream_compat->_inline_gpu.mp_hook)
+			cuunregmp(stream_compat->_inline_gpu.mp_hook - 1);
 	}
 #ifdef HAVE_NCCL
 	if (stream_compat->super._inline_container[0])
@@ -676,15 +639,24 @@ cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* c
 cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	ccv_nnc_stream_context_compat_t* const default_stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const default_device_local = _ccv_nnc_stream_compat_device_local(default_stream_compat);
+	if (!stream_compat)
+		stream_compat = default_stream_compat;
+	if (!default_device_local->cublas)
+		default_device_local->cublas = cublas_get(default_stream_compat->super.type);
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	CUBLAS_ENFORCE(cublasSetStream(default_device_local->cublas, device_local->stream));
+	return default_device_local->cublas;
+}
+
+void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
-	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
-	if (!device_local->cublas)
-	{
-		device_local->cublas = cublas_get(stream_compat->super.type);
-		CUBLAS_ENFORCE(cublasSetStream(device_local->cublas, device_local->stream));
-	}
-	return device_local->cublas;
+	void* const workspace = ccv_nnc_stream_compat_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+	cublasSetWorkspace(cublas, workspace, workspace_size);
 }
 
 // A simple kernel to set all values to 1.
@@ -797,6 +769,12 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* c
 	{
 		device_local->cudnn = cudnn_get(stream_compat->super.type);
 		CUDNN_ENFORCE(cudnnSetStream(device_local->cudnn, device_local->stream));
+		if (!device_local->mp_hook)
+		{
+			int device_id;
+			CUDA_ENFORCE(cudaGetDevice(&device_id));
+			device_local->mp_hook = curegmp(device_id, _ccv_nnc_device_local_drain, device_local) + 1;
+		}
 	}
 	return device_local->cudnn;
 }
