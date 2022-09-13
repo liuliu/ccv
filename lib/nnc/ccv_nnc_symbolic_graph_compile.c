@@ -1039,6 +1039,20 @@ static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata
 	}
 }
 
+static void _ccv_nnc_recursively_assign_vt_tensor_aliases(const ccv_nnc_tensor_block_t* const tensor_blocks, ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int block_ref, ccv_nnc_tensor_t** const vt_tensors)
+{
+	assert(tensor_symbol_info[block_ref].alias_ref);
+	const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+	if (tensor_blocks[block_ref].alias_ref)
+	{
+		const int ref = tensor_blocks[block_ref].alias_ref - 1;
+		if (!vt_tensors[ref] && TENSOR_EXPECT_ALIAS(tensor_blocks[ref]))
+			_ccv_nnc_recursively_assign_vt_tensor_aliases(tensor_blocks, tensor_metadata, tensor_symbol_info, ref, vt_tensors);
+		vt_tensors[alias_ref] = vt_tensors[ref];
+	}
+	_ccv_nnc_assign_vt_tensor_aliases(tensor_metadata, tensor_symbol_info, block_ref, vt_tensors);
+}
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_compile_allocator_t allocator, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
@@ -1412,17 +1426,14 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
 		{
 			const int block_ref = alloc_prep->blocks[i].block_ref;
-			if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
+			if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]) && !tensor_arena->vt_tensors[block_ref])
 			{
 				// Assigning out the tensor aliases.
 				assert(tensor_symbol_info[block_ref].alias_ref);
-				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
-				if (tensor_blocks[alias_ref].alias_ref) // If its reference itself has an alias. Skip for now. Do this next round.
-					continue;
-				_ccv_nnc_assign_vt_tensor_aliases(tensor_arena->tensor_metadata, tensor_symbol_info, block_ref, tensor_arena->vt_tensors);
+				_ccv_nnc_recursively_assign_vt_tensor_aliases(tensor_blocks, tensor_arena->tensor_metadata, tensor_symbol_info, block_ref, tensor_arena->vt_tensors);
 			}
 		}
-	// Now assigning out alias refs.
+	// Now assigning out the rest of alias refs.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].alias_ref && !tensor_arena->vt_tensors[i])
@@ -1430,21 +1441,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			int ref = tensor_blocks[i].alias_ref - 1;
 			assert(tensor_arena->vt_tensors[ref]);
 			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[ref];
-		}
-	// Handle the rest of aliases.
-	for (i = 0; i < alloc_prep->block_size; i++)
-		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
-		{
-			const int block_ref = alloc_prep->blocks[i].block_ref;
-			if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
-			{
-				// Assigning out the tensor aliases.
-				assert(tensor_symbol_info[block_ref].alias_ref);
-				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
-				if (!tensor_blocks[alias_ref].alias_ref) // If its reference itself has an alias. Skip for now. Do this next round.
-					continue;
-				_ccv_nnc_assign_vt_tensor_aliases(tensor_arena->tensor_metadata, tensor_symbol_info, block_ref, tensor_arena->vt_tensors);
-			}
 		}
 	// Replacing the tensor placeholder within sub arena's multi-view to the input tensor.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)

@@ -16,7 +16,7 @@ static int _ccv_nnc_index_select_back_bitmask(const int input_size, const int ou
 	return 0;
 }
 
-static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+static void _ccv_nnc_index_select_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
@@ -28,7 +28,7 @@ REGISTER_COMMAND(CCV_NNC_INDEX_SELECT_FORWARD)(ccv_nnc_cmd_registry_t* const reg
 	FIND_BACKEND(ccv_nnc_index_select_cpu_ref.c, gpu/ccv_nnc_index_select_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_index_select_forw_bitmask;
-	registry->tensor_auto = _ccv_nnc_gemm_tensor_auto_forw;
+	registry->tensor_auto = _ccv_nnc_index_select_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_INDEX_SELECT_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
