@@ -1041,15 +1041,20 @@ static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata
 
 static void _ccv_nnc_recursively_assign_vt_tensor_aliases(const ccv_nnc_tensor_block_t* const tensor_blocks, ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int block_ref, ccv_nnc_tensor_t** const vt_tensors)
 {
-	assert(tensor_symbol_info[block_ref].alias_ref);
-	const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
-	if (tensor_blocks[block_ref].alias_ref)
+	// If this is an alias_ref and it hasn't been assigned, it must be an alias itself. Do this recursively.
+	if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[block_ref]) && tensor_blocks[block_ref].alias_ref && !vt_tensors[block_ref])
 	{
 		const int ref = tensor_blocks[block_ref].alias_ref - 1;
-		if (!vt_tensors[ref] && TENSOR_EXPECT_ALIAS(tensor_blocks[ref]))
+		if (!vt_tensors[ref])
 			_ccv_nnc_recursively_assign_vt_tensor_aliases(tensor_blocks, tensor_metadata, tensor_symbol_info, ref, vt_tensors);
-		vt_tensors[alias_ref] = vt_tensors[ref];
+		vt_tensors[block_ref] = vt_tensors[ref];
+		return;
 	}
+	assert(tensor_symbol_info[block_ref].alias_ref);
+	const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+	// If we don't have vt_tensors, this must be a ref with alias_ref (through folding). If that is the case, do this recursively until all aliases assigned.
+	if (!vt_tensors[alias_ref])
+		_ccv_nnc_recursively_assign_vt_tensor_aliases(tensor_blocks, tensor_metadata, tensor_symbol_info, alias_ref, vt_tensors);
 	_ccv_nnc_assign_vt_tensor_aliases(tensor_metadata, tensor_symbol_info, block_ref, vt_tensors);
 }
 
