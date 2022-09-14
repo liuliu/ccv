@@ -545,6 +545,11 @@ void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t wor
 		ccv_nnc_graph_autotune(compiled_data->graph, workspace_size, 0, TRAVERSE_FULL);
 }
 
+size_t ccv_cnnp_model_workspace_size(ccv_cnnp_model_t* const model)
+{
+	return model->workspace_size;
+}
+
 void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int parallel)
 {
 	if (parallel == 0)

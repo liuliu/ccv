@@ -3607,6 +3607,11 @@ void ccv_cnnp_model_set_compile_params(ccv_cnnp_model_t* const model, const ccv_
  */
 void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
 /**
+ * This method returns the current max workspace size.
+ * @param model The composed model.
+ */
+size_t ccv_cnnp_model_workspace_size(ccv_cnnp_model_t* const model);
+/**
  * Set a parameter that is specified by the parameter span. This will override whatever value in that
  * parameter. The given tensor should match the dimension of the parameter. It doesn't matter whether
  * the given tensor is on CPU or GPU, it will be copied over. This method is limited, it can only set
