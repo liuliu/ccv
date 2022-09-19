@@ -32,6 +32,7 @@ void cuunregister(void* ptr);
 typedef void(*cump_f)(int device_id, void* const context);
 int curegmp(int device_id, cump_f func, void* const context); // register memory pressure handler
 void cuunregmp(const int id); // un-register memory pressure handler.
+void cusetprofiler(int state);
 
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);
@@ -60,6 +61,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #include <cuda.h>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
+#include <cuda_profiler_api.h>
 #ifdef HAVE_CUDNN
 #include <cudnn.h>
 #if CUDNN_VERSION < 5000 // Doesn't support CUDNN with version lower than 5000 (major version 5).
@@ -73,7 +75,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #endif
 #endif
 
-#define CUDA_NUM_THREADS (512)
+#define CUDA_NUM_THREADS (1024)
 #define CUDA_1D_KERNEL_LOOP(i, n) \
 	for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); i += blockDim.x * gridDim.x)
 #define CUDA_GET_BLOCKS(n) ccv_min(((n) + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS, 4096)

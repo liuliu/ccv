@@ -744,6 +744,11 @@ CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const in
  * @return 1 if the input tensor is required to be used as the output tensor.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size);
+/**
+ * Set for a profiler to be on or off. Right now, this just proxy call on to cudaProfilerStart / cudaProfilerStop.
+ * @param state 1 is on, 0 is off.
+ */
+void ccv_nnc_set_profiler(int state);
 
 /** @} */
 

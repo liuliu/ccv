@@ -95,6 +95,14 @@ cublasHandle_t cublas_get(const int type)
 	return cublas;
 }
 
+void cusetprofiler(int state)
+{
+	if (state)
+		{ CUDA_ENFORCE(cudaProfilerStart()); }
+	else
+		{ CUDA_ENFORCE(cudaProfilerStop()); }
+}
+
 typedef struct {
 	int device_id;
 	cump_f func;

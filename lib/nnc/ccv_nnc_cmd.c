@@ -671,3 +671,10 @@ int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	return !!(cmd_registry.flags & flags);
 }
+
+void ccv_nnc_set_profiler(int state)
+{
+#ifdef HAVE_CUDA
+	cusetprofiler(state);
+#endif
+}
