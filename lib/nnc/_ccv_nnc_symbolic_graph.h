@@ -25,7 +25,7 @@ typedef struct {
 	int pair_ref; // Reference to its pair. Starts at 1.
 	int flags;
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
-	int inc[CCV_NNC_MAX_DIM_ALLOC];
+	int stride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_array_t* s_ref; // Reference to the tensor number in its sub graphs, Starts at 1.
 	char* name;
 	ccv_nnc_tensor_param_t info;

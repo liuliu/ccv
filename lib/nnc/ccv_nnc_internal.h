@@ -91,21 +91,17 @@ void ccv_nnc_hint_tensor_auto_backward_from_gradient_and_inputs(const ccv_nnc_cm
 int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int tensor_type, int* const device_ids, const int max_device_id_size);
 void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor);
 
-static inline off_t ccv_nnc_tensor_view_offset(const int datatype, const int inc[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
+static inline off_t ccv_nnc_tensor_view_offset(const int datatype, const int stride[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int i;
+	int nd = ccv_nnc_tensor_nd(stride);
 	off_t offset = 0;
-	size_t step = CCV_GET_DATA_TYPE_SIZE(datatype);
-	const int nd = ccv_nnc_tensor_nd(inc);
 	for (i = nd - 1; i >= 0; i--)
-	{
-		offset += ofs[i] * step;
-		step *= inc[i];
-	}
+		offset += ofs[i] * stride[i] * CCV_GET_DATA_TYPE_SIZE(datatype);
 	return offset;
 }
 
-static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
+static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {
 	// Check if a tensor view is contiguous.
 	const int nd = ccv_nnc_tensor_nd(dim);
@@ -118,11 +114,13 @@ static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DI
 	if (first_none_one_dim_idx < 0)
 		return 1;
 	// Check if from 0 to first_none_one_dim_idx, it is 1.
-	assert(ofs[first_none_one_dim_idx] + dim[first_none_one_dim_idx] <= inc[first_none_one_dim_idx]);
 	assert(first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC);
-	for (i = first_none_one_dim_idx + 1; i < nd; i++)
-		if (inc[i] != dim[i])
+	int cstride = 1;
+	for (i = nd - 1; i >= first_none_one_dim_idx + 1; i--)
+		if (stride[i] != cstride)
 			return 0;
+		else
+			cstride *= dim[i];
 	return 1;
 }
 

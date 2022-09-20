@@ -184,17 +184,17 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 	ccfree(tensor);
 }
 
-static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
-	memcpy(tv->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(tv->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	uint8_t* const p = tensor->data.u8;
-	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, inc, ofs);
-	tv->contiguous = ccv_nnc_tensor_view_is_contiguous(dim, inc, ofs);
+	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, stride, ofs);
+	tv->contiguous = ccv_nnc_tensor_view_is_contiguous(dim, stride, ofs);
 	tv->data.u8 = p + off;
 }
 
-ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
@@ -205,11 +205,11 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const ten
 	assert(params.type == tensor->info.type);
 	assert(params.datatype == tensor->info.datatype);
 	tv->info = params;
-	_ccv_nnc_tensor_view_set(tv, tensor, params.dim, ofs, inc);
+	_ccv_nnc_tensor_view_set(tv, tensor, params.dim, ofs, stride);
 	return tv;
 }
 
-ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	assert(params.type == tensor->info.type);
@@ -222,13 +222,83 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, 
 		.info = params,
 		.data_size = 0,
 	};
-	_ccv_nnc_tensor_view_set(&tv, tensor, params.dim, ofs, inc);
+	_ccv_nnc_tensor_view_set(&tv, tensor, params.dim, ofs, stride);
 	return tv;
 }
 
 void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view)
 {
 	ccfree(tensor_view);
+}
+
+void _ccv_nnc_tensor_set_zero(unsigned char* u8, const int nd, const int* const dim, const int* const stride, const size_t data_size)
+{
+	if (nd == 1)
+	{
+		if (stride[0] == 1)
+		{
+			memset(u8, 0, data_size * dim[0]);
+			return;
+		}
+		int i;
+		for (i = 0; i < dim[0]; i++)
+			memset(u8 + i * stride[0] * data_size, 0, data_size);
+	} else if (nd == 2) {
+		if (stride[1] == 1 && stride[0] == dim[1])
+		{
+			memset(u8, 0, data_size * dim[1] * dim[0]);
+			return;
+		}
+		int x, y;
+		for (y = 0; y < dim[0]; y++)
+		{
+			unsigned char* const u8y = u8 + y * stride[0] * data_size;
+			for (x = 0; x < dim[1]; x++)
+				memset(u8y + x * stride[1] * data_size, 0, data_size);
+		}
+	} else if (nd == 3) {
+		if (stride[2] == 1 && stride[1] == dim[2] && stride[0] == dim[1] * dim[2])
+		{
+			memset(u8, 0, data_size * dim[2] * dim[1] * dim[0]);
+			return;
+		}
+		int x, y, z;
+		for (z = 0; z < dim[0]; z++)
+		{
+			unsigned char* const u8z = u8 + z * stride[0] * data_size;
+			for (y = 0; y < dim[1]; y++)
+			{
+				unsigned char* const u8y = u8z + y * stride[1] * data_size;
+				for (x = 0; x < dim[2]; x++)
+					memset(u8y + x * stride[2] * data_size, 0, data_size);
+			}
+		}
+	} else if (nd == 4) {
+		if (stride[3] == 1 && stride[2] == dim[3] && stride[1] == dim[2] * dim[3] && stride[0] == dim[1] * dim[2] * dim[3])
+		{
+			memset(u8, 0, data_size * dim[3] * dim[2] * dim[1] * dim[0]);
+			return;
+		}
+		int x, y, z, s;
+		for (s = 0; s < dim[0]; s++)
+		{
+			unsigned char* const u8s = u8 + s * stride[0] * data_size;
+			for (z = 0; z < dim[1]; z++)
+			{
+				unsigned char* const u8z = u8s + z * stride[1] * data_size;
+				for (y = 0; y < dim[2]; y++)
+				{
+					unsigned char* const u8y = u8z + y * stride[2] * data_size;
+					for (x = 0; x < dim[3]; x++)
+						memset(u8y + x * stride[3] * data_size, 0, data_size);
+				}
+			}
+		}
+	} else {
+		int i;
+		for (i = 0; i < dim[0]; i++)
+			_ccv_nnc_tensor_set_zero(u8 + i * stride[0] * data_size, nd - 1, dim + 1, stride + 1, data_size);
+	}
 }
 
 void ccv_nnc_tensor_zero(void* const tensor)
@@ -242,48 +312,9 @@ void ccv_nnc_tensor_zero(void* const tensor)
 	}
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
 	assert(nd >= 1);
-	const int* const tvinc = tv->inc;
-	// reset it to 0.
-	int c, x, y;
-	int count = 1;
-	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
-	size_t mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
-	const size_t top_mod_inc = nd > 2 ? data_size * tvinc[nd - 3] * tvinc[nd - 2] * tvinc[nd - 1] : data_size;
-	if (nd > 2)
-		mod_inc[nd - 3] = top_mod_inc;
-	for (c = nd - 4; c >= 0; c--)
-	{
-		// Compute the mod.
-		mod[c] = c == nd - 4 ? tv->info.dim[c] : mod[c + 1] * tv->info.dim[c];
-		mod_inc[c] = mod_inc[c + 1] * tvinc[c];
-		count *= tv->info.dim[c];
-	}
-	for (c = 0; c < nd - 3; c++)
-		mod_inc[c] = mod_inc[c + 1] * (tvinc[c] - tv->info.dim[c]);
-	uint8_t* tvd = tv->data.u8;
-	const size_t tvinc_1 = data_size * tvinc[nd - 1];
-	const size_t tvinc_21 = tvinc_1 * (nd >= 2 ? tvinc[nd - 2] : 1);
-	const size_t tvdim_1 = data_size * tv->info.dim[nd - 1];
-	const int max_y = ccv_max(1, nd >= 3 ? tv->info.dim[nd - 3] : 1);
-	const int max_x = ccv_max(1, nd >= 2 ? tv->info.dim[nd - 2] : 1);
-	for (c = 0; c < count; c++)
-	{
-		for (y = 0; y < max_y; y++)
-		{
-			uint8_t* tvp = tvd + y * tvinc_21;
-			for (x = 0; x < max_x; x++)
-			{
-				memset(tvp, 0, tvdim_1);
-				tvp += tvinc_1;
-			}
-		}
-		tvd += top_mod_inc;
-		for (y = nd - 4; y >= 0; y--)
-			if ((c + 1) % mod[y] != 0)
-				break; // cannot be mod, break out.
-			else
-				tvd += mod_inc[y];
-	}
+	const int* const tvstride = tv->stride;
+	// Go through this recursively.
+	_ccv_nnc_tensor_set_zero(tv->data.u8, nd, tv->info.dim, tvstride, data_size);
 }
 
 int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b)

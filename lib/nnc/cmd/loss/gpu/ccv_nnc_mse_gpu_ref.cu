@@ -44,21 +44,21 @@ static int _ccv_nnc_mse_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int cinc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
-	ccv_nnc_tensor_view_get_inc(c, cinc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	ccv_nnc_tensor_view_get_stride(c, cstride);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	assert(ccv_nnc_tensor_count(c->info) == batch_size);
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
-	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
-	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
+	const int astep = astride[CCV_NNC_MAX_DIM];
+	const int bstep = bstride[CCV_NNC_MAX_DIM];
+	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cstride[CCV_NNC_MAX_DIM];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	assert(a->info.datatype == c->info.datatype);
 	if (cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN)
@@ -170,29 +170,29 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	ccv_nnc_tensor_view_t* const ha = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const hb = output_size >= 2 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int hainc[CCV_NNC_MAX_DIM_ALLOC];
-	int hbinc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int hastride[CCV_NNC_MAX_DIM_ALLOC];
+	int hbstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	if (ha)
 		{ assert(ccv_nnc_tensor_view_check_dim(ha, dim)); }
 	if (hb)
 		{ assert(ccv_nnc_tensor_view_check_dim(hb, dim)); }
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	if (ha)
-		ccv_nnc_tensor_view_get_inc(ha, hainc);
+		ccv_nnc_tensor_view_get_stride(ha, hastride);
 	if (hb)
-		ccv_nnc_tensor_view_get_inc(hb, hbinc);
+		ccv_nnc_tensor_view_get_stride(hb, hbstride);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
-	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
-	const int hastep = hainc[CCV_NNC_MAX_DIM + 1];
-	const int hbstep = hbinc[CCV_NNC_MAX_DIM + 1];
+	const int astep = astride[CCV_NNC_MAX_DIM];
+	const int bstep = bstride[CCV_NNC_MAX_DIM];
+	const int hastep = hastride[CCV_NNC_MAX_DIM];
+	const int hbstep = hbstride[CCV_NNC_MAX_DIM];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (ha)
 		{ assert(a->info.datatype == ha->info.datatype); }
@@ -201,10 +201,10 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const int datatype = a->info.datatype;
 	if (g)
 	{
-		int ginc[CCV_NNC_MAX_DIM_ALLOC];
-		ccv_nnc_tensor_view_get_inc(g, ginc);
+		int gstride[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_view_get_stride(g, gstride);
 		assert(ccv_nnc_tensor_count(g->info) == batch_size);
-		const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
+		const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : gstride[CCV_NNC_MAX_DIM];
 		assert(g->info.datatype == datatype);
 		if (cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN)
 		{

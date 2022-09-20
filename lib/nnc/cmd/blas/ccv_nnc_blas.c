@@ -43,8 +43,8 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
 	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
-	ccv_nnc_tensor_get_matrix_params(inputs[0], inputs[0].dim, cmd.blas.transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
-	ccv_nnc_tensor_get_matrix_params(inputs[1], inputs[1].dim, cmd.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(inputs[0], 0, inputs[0].dim, cmd.blas.transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(inputs[1], 0, inputs[1].dim, cmd.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;

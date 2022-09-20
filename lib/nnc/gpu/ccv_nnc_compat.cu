@@ -954,17 +954,19 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
 	const int axis_count = ccv_nnc_tensor_nd(tensor->info.dim);
-	const int* const inc = CCV_IS_TENSOR_VIEW(tensor) ? tensor->inc : tensor->info.dim;
 	int i;
 	for (i = axis_count; i < CCV_NNC_MAX_DIM + 2; i++)
 		dim[i] = stride[i] = 1;
 	dim[axis_count - 1] = tensor->info.dim[axis_count - 1];
 	stride[axis_count - 1] = 1;
 	for (i = axis_count - 2; i >= 0; i--)
-	{
 		dim[i] = tensor->info.dim[i];
-		stride[i] = stride[i + 1] * inc[i + 1];
-	}
+	if (CCV_IS_TENSOR_VIEW(tensor))
+		for (i = axis_count - 2; i >= 0; i--)
+			stride[i] = stride[i + 1] * dim[i + 1];
+	else
+		for (i = axis_count - 2; i >= 0; i--)
+			stride[i] = tensor->stride[i];
 	if (axis_count <= 4)
 	{
 		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
@@ -985,141 +987,279 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
 	const int axis_count = ccv_nnc_tensor_nd(tensor->info.dim);
-	const int* const inc = CCV_IS_TENSOR_VIEW(tensor) ? tensor->inc : tensor->info.dim;
 	int i;
-	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
+	if (CCV_IS_TENSOR_VIEW(tensor))
 	{
-		switch (axis_count)
+		const int* const inc = tensor->info.dim;
+		if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 		{
-			case 1:
-				dim[0] = dim[2] = dim[3] = 1;
-				dim[1] = tensor->info.dim[0];
-				stride[0] = inc[0];
-				stride[1] = 1;
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
-				break;
-			case 2:
-				dim[0] = tensor->info.dim[0];
-				dim[1] = tensor->info.dim[1];
-				dim[2] = dim[3] = 1;
-				stride[0] = inc[1];
-				stride[1] = 1;
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
-				break;
-			case CCV_NNC_MAX_DIM + 1:
-				dim[0] = 1;
-				dim[1] = tensor->info.dim[0];
-				stride[CCV_NNC_MAX_DIM + 1] = 1;
-				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
-				{
-					dim[i + 2] = tensor->info.dim[i + 1];
-					stride[i + 1] = stride[i + 2] * inc[i + 1];
-				}
-				stride[0] = stride[1] * inc[0];
-				break;
-			case CCV_NNC_MAX_DIM + 2:
-				stride[CCV_NNC_MAX_DIM + 1] = 1;
-				dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
-				for (i = CCV_NNC_MAX_DIM; i >= 0; i--)
-				{
-					dim[i] = tensor->info.dim[i];
-					stride[i] = stride[i + 1] * inc[i + 1];
-				}
-				break;
-			default:
-				assert(0);
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = inc[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[1];
+					dim[2] = dim[3] = 1;
+					stride[0] = inc[1];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 1] = stride[i + 2] * inc[i + 1];
+					}
+					stride[0] = stride[1] * inc[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					for (i = CCV_NNC_MAX_DIM; i >= 0; i--)
+					{
+						dim[i] = tensor->info.dim[i];
+						stride[i] = stride[i + 1] * inc[i + 1];
+					}
+					break;
+				default:
+					assert(0);
+			}
+		} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = inc[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[1];
+					dim[2] = dim[3] = 1;
+					stride[0] = inc[1];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM];
+					stride[1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i];
+						stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 1] : stride[i + 3] * inc[i + 1];
+					}
+					stride[0] = stride[2] * inc[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					stride[1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 2] : stride[i + 3] * inc[i + 2];
+					}
+					stride[0] = stride[2] * inc[1];
+					break;
+				default:
+					assert(0);
+			}
+		} else if (tensor->info.format == CCV_TENSOR_FORMAT_CHWN) {
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = inc[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[1];
+					dim[1] = tensor->info.dim[0];
+					dim[2] = dim[3] = 1;
+					stride[0] = 1;
+					stride[1] = inc[1];
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = inc[1];
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 1] = stride[i + 2] * inc[i + 1];
+					}
+					stride[0] = stride[1] * inc[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					dim[0] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					stride[0] = 1;
+					dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM];
+					stride[CCV_NNC_MAX_DIM + 1] = inc[CCV_NNC_MAX_DIM + 1];
+					for (i = CCV_NNC_MAX_DIM; i > 0; i--)
+					{
+						dim[i] = tensor->info.dim[i - 1];
+						stride[i] = stride[i + 1] * inc[i]; // inc[i] is actually the one before.
+					}
+					break;
+				default:
+					assert(0);
+			}
 		}
-	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
-		switch (axis_count)
+	} else {
+		const int* const tensor_stride = tensor->stride;
+		if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 		{
-			case 1:
-				dim[0] = dim[2] = dim[3] = 1;
-				dim[1] = tensor->info.dim[0];
-				stride[0] = inc[0];
-				stride[1] = 1;
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
-				break;
-			case 2:
-				dim[0] = tensor->info.dim[0];
-				dim[1] = tensor->info.dim[1];
-				dim[2] = dim[3] = 1;
-				stride[0] = inc[1];
-				stride[1] = 1;
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
-				break;
-			case CCV_NNC_MAX_DIM + 1:
-				dim[0] = 1;
-				dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM];
-				stride[1] = 1;
-				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
-				{
-					dim[i + 2] = tensor->info.dim[i];
-					stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 1] : stride[i + 3] * inc[i + 1];
-				}
-				stride[0] = stride[2] * inc[0];
-				break;
-			case CCV_NNC_MAX_DIM + 2:
-				dim[0] = tensor->info.dim[0];
-				dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
-				stride[1] = 1;
-				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
-				{
-					dim[i + 2] = tensor->info.dim[i + 1];
-					stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 2] : stride[i + 3] * inc[i + 2];
-				}
-				stride[0] = stride[2] * inc[1];
-				break;
-			default:
-				assert(0);
-		}
-	} else if (tensor->info.format == CCV_TENSOR_FORMAT_CHWN) {
-		switch (axis_count)
-		{
-			case 1:
-				dim[0] = dim[2] = dim[3] = 1;
-				dim[1] = tensor->info.dim[0];
-				stride[0] = inc[0];
-				stride[1] = 1;
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
-				break;
-			case 2:
-				dim[0] = tensor->info.dim[1];
-				dim[1] = tensor->info.dim[0];
-				dim[2] = dim[3] = 1;
-				stride[0] = 1;
-				stride[1] = inc[1];
-				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[1];
-				break;
-			case CCV_NNC_MAX_DIM + 1:
-				dim[0] = 1;
-				dim[1] = tensor->info.dim[0];
-				stride[CCV_NNC_MAX_DIM + 1] = 1;
-				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
-				{
-					dim[i + 2] = tensor->info.dim[i + 1];
-					stride[i + 1] = stride[i + 2] * inc[i + 1];
-				}
-				stride[0] = stride[1] * inc[0];
-				break;
-			case CCV_NNC_MAX_DIM + 2:
-				dim[0] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
-				stride[0] = 1;
-				dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM];
-				stride[CCV_NNC_MAX_DIM + 1] = inc[CCV_NNC_MAX_DIM + 1];
-				for (i = CCV_NNC_MAX_DIM; i > 0; i--)
-				{
-					dim[i] = tensor->info.dim[i - 1];
-					stride[i] = stride[i + 1] * inc[i]; // inc[i] is actually the one before.
-				}
-				break;
-			default:
-				assert(0);
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = tensor->info.dim[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[1];
+					dim[2] = dim[3] = 1;
+					stride[0] = tensor_stride[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 1] = tensor_stride[i];
+					}
+					stride[0] = tensor_stride[0] * tensor->info.dim[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					for (i = CCV_NNC_MAX_DIM; i >= 0; i--)
+					{
+						dim[i] = tensor->info.dim[i];
+						stride[i] = tensor_stride[i];
+					}
+					break;
+				default:
+					assert(0);
+			}
+		} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = tensor->info.dim[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[1];
+					dim[2] = dim[3] = 1;
+					stride[0] = tensor_stride[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM];
+					stride[1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i];
+						stride[i + 2] = tensor_stride[i];
+					}
+					stride[0] = tensor_stride[0] * tensor->info.dim[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					dim[0] = tensor->info.dim[0];
+					dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					stride[1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 2] = tensor_stride[i + 1];
+					}
+					stride[0] = tensor_stride[0];
+					break;
+				default:
+					assert(0);
+			}
+		} else if (tensor->info.format == CCV_TENSOR_FORMAT_CHWN) {
+			switch (axis_count)
+			{
+				case 1:
+					dim[0] = dim[2] = dim[3] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[0] = tensor->info.dim[0];
+					stride[1] = 1;
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case 2:
+					dim[0] = tensor->info.dim[1];
+					dim[1] = tensor->info.dim[0];
+					dim[2] = dim[3] = 1;
+					stride[0] = 1;
+					stride[1] = tensor_stride[0];
+					for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+						stride[i] = 1;
+					break;
+				case CCV_NNC_MAX_DIM + 1:
+					dim[0] = 1;
+					dim[1] = tensor->info.dim[0];
+					stride[CCV_NNC_MAX_DIM + 1] = 1;
+					for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+					{
+						dim[i + 2] = tensor->info.dim[i + 1];
+						stride[i + 1] = tensor_stride[i];
+					}
+					stride[0] = tensor_stride[0] * tensor->info.dim[0];
+					break;
+				case CCV_NNC_MAX_DIM + 2:
+					dim[0] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+					stride[0] = 1;
+					for (i = CCV_NNC_MAX_DIM + 1; i > 0; i--)
+					{
+						dim[i] = tensor->info.dim[i - 1];
+						stride[i] = tensor_stride[i - 1];
+					}
+					break;
+				default:
+					assert(0);
+			}
 		}
 	}
 	if (CCV_NNC_MAX_DIM == 2)

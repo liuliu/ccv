@@ -18,9 +18,9 @@ int _ccv_nnc_gemm_forw_cpu_sys(const int transpose_a[2], const int transpose_b[2
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
 	int b_batch_size, b_rows, b_cols, b_batch_inc, b_rows_inc, b_cols_inc;
 	const static int no_transpose[2] = {};
-	ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim, transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
-	ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim, transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
-	ccv_nnc_tensor_get_matrix_params(b->info, CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim, no_transpose, &b_batch_size, &b_rows, &b_cols, &b_batch_inc, &b_rows_inc, &b_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->stride : 0, a->info.dim, transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->stride : 0, w->info.dim, transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(b->info, CCV_IS_TENSOR_VIEW(b) ? b->stride : 0, b->info.dim, no_transpose, &b_batch_size, &b_rows, &b_cols, &b_batch_inc, &b_rows_inc, &b_cols_inc);
 	assert(a_batch_size == b_batch_size);
 	assert(a_batch_size == b_batch_size || a_batch_size == 1);
 	if (a_batch_size == 1 && b_batch_size > 1)
@@ -40,7 +40,7 @@ int _ccv_nnc_gemm_forw_cpu_sys(const int transpose_a[2], const int transpose_b[2
 		for (i = 0; i < b_rows; i++)
 			ones[i] = 1;
 		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
-		ccv_nnc_tensor_get_matrix_params(bias->info, CCV_IS_TENSOR_VIEW(bias) ? bias->inc : bias->info.dim, no_transpose, &bias_batch_size, &bias_rows, &bias_cols, &bias_batch_inc, &bias_rows_inc, &bias_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(bias->info, CCV_IS_TENSOR_VIEW(bias) ? bias->stride : 0, bias->info.dim, no_transpose, &bias_batch_size, &bias_rows, &bias_cols, &bias_batch_inc, &bias_rows_inc, &bias_cols_inc);
 		assert(bias_batch_size == b_batch_size || bias_batch_size == 1);
 		if (bias_batch_size == 1 && b_batch_size > 1)
 			bias_batch_inc = 0;
@@ -77,12 +77,12 @@ int _ccv_nnc_gemm_back_cpu_sys(const int transpose_a[2], const int transpose_b[2
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // It is a 2-d or 3-d array.
 	int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
 	const static int no_transpose[2] = {};
-	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->stride : 0, g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
 	int i;
 	if (bias)
 	{
 		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
-		ccv_nnc_tensor_get_matrix_params(bias->info, CCV_IS_TENSOR_VIEW(bias) ? bias->inc : bias->info.dim, no_transpose, &bias_batch_size, &bias_rows, &bias_cols, &bias_batch_inc, &bias_rows_inc, &bias_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(bias->info, CCV_IS_TENSOR_VIEW(bias) ? bias->stride : 0, bias->info.dim, no_transpose, &bias_batch_size, &bias_rows, &bias_cols, &bias_batch_inc, &bias_rows_inc, &bias_cols_inc);
 		assert(bias_cols == g_cols);
 		assert(bias_batch_size == 1 || bias_batch_size == g_batch_size);
 		if (bias_batch_size == 1 && g_batch_size > 1)
@@ -108,8 +108,8 @@ int _ccv_nnc_gemm_back_cpu_sys(const int transpose_a[2], const int transpose_b[2
 		const int is_transpose_w = ccv_nnc_is_matrix_transpose(dw->info, transpose_b);
 		int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 		int dw_batch_size, dw_rows, dw_cols, dw_batch_inc, dw_rows_inc, dw_cols_inc;
-		ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim, transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
-		ccv_nnc_tensor_get_matrix_params(dw->info, CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim, transpose_b, &dw_batch_size, &dw_rows, &dw_cols, &dw_batch_inc, &dw_rows_inc, &dw_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->stride : 0, a->info.dim, transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(dw->info, CCV_IS_TENSOR_VIEW(dw) ? dw->stride : 0, dw->info.dim, transpose_b, &dw_batch_size, &dw_rows, &dw_cols, &dw_batch_inc, &dw_rows_inc, &dw_cols_inc);
 		assert(a_rows == g_rows);
 		assert(a_cols == dw_rows);
 		assert(dw_cols == g_cols);
@@ -156,8 +156,8 @@ int _ccv_nnc_gemm_back_cpu_sys(const int transpose_a[2], const int transpose_b[2
 		const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, transpose_b);
 		int h_batch_size, h_rows, h_cols, h_batch_inc, h_rows_inc, h_cols_inc;
 		int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
-		ccv_nnc_tensor_get_matrix_params(h->info, CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim, transpose_a, &h_batch_size, &h_rows, &h_cols, &h_batch_inc, &h_rows_inc, &h_cols_inc);
-		ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim, transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(h->info, CCV_IS_TENSOR_VIEW(h) ? h->stride : 0, h->info.dim, transpose_a, &h_batch_size, &h_rows, &h_cols, &h_batch_inc, &h_rows_inc, &h_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->stride : 0, w->info.dim, transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
 		assert(h_rows == g_rows);
 		assert(h_cols == w_rows);
 		assert(w_cols == g_cols);

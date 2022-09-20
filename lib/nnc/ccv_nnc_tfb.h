@@ -103,7 +103,7 @@ typedef struct {
 	/* tensor view and tensor shares the same data structure besides the following. */
 	int contiguous; // If we have other flags later, we can make this a generic flag.
 	off_t off;
-	int inc[CCV_NNC_MAX_DIM_ALLOC]; /**< "increment" or, length */
+	int stride[CCV_NNC_MAX_DIM_ALLOC]; /**< "stride" or, length */
 } ccv_nnc_tensor_view_t;
 
 #define CCV_IS_TENSOR_VIEW(x) ((*(int*)(x)) & CCV_TENSOR_VIEW)

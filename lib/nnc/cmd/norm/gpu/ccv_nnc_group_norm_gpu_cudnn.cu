@@ -23,19 +23,23 @@ static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int
 	{
 		// Only work for contiguous tensors (no skipping).
 		int i;
-		for (i = axis + 1; i < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[i] > 0; i++)
-			{ assert(tv->info.dim[i] == tv->inc[i]); }
-		assert(tv->inc[i] % dim2 == 0); // Otherwise I cannot break it down.
+		const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+		int cstride = 1;
+		for (i = nd - 1; i >= axis + 1; i--)
+		{
+			assert(tv->stride[i] == cstride);
+			cstride *= tv->info.dim[i];
+		}
 		if (CCV_NNC_MAX_DIM_ALLOC - axis - 2 > 0)
 		{
-			// Need to handle ofs and inc.
+			// Need to handle ofs and stride.
 			memmove(tv->info.dim + axis + 2, tv->info.dim + axis + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - axis - 2));
-			memmove(tv->inc + axis + 2, tv->inc + axis + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - axis - 2));
+			memmove(tv->stride + axis + 2, tv->stride + axis + 1, sizeof(int) * (CCV_NNC_MAX_DIM_ALLOC - axis - 2));
 		}
 		tv->info.dim[axis] = dim1;
 		tv->info.dim[axis + 1] = dim2;
-		tv->inc[axis] = tv->inc[axis] / dim2; // This all worked out because we can still skip that much.
-		tv->inc[axis + 1] = dim2;
+		tv->stride[axis + 1] = tv->stride[axis];
+		tv->stride[axis] = tv->stride[axis] * dim2; // This all worked out because we can still skip that much.
 	} else {
 		// Non tensor view, straightforward.
 		if (CCV_NNC_MAX_DIM_ALLOC - axis - 2 > 0)

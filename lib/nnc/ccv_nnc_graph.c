@@ -1344,11 +1344,13 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* c
 		for (i = 0; i < depth; i++) // Print subscription to denote depth.
 			fputc('\'', out);
 		uintptr_t aptr = (uintptr_t)tensor->data.u8;
-		const int* ainc = is_tensor_view ? ((ccv_nnc_tensor_view_t*)(tensor))->inc : tensor->info.dim;
-		// For the last one, we don't extend to full ainc.
-		size_t ainc_size = (ccv_nnc_dimension_count(ainc) - ainc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+		size_t tensor_size;
+		if (is_tensor_view)
+			tensor_size = (size_t)((ccv_nnc_tensor_view_t*)(tensor))->stride[0] * tensor->info.dim[0] * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+		else
+			tensor_size = ccv_nnc_dimension_count(tensor->info.dim) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
 		// Print out the range as well.
-		fprintf(out, "|{%#010x|%#010x}|%d", (uint32_t)aptr, (uint32_t)(aptr + ainc_size - 1), tensor->info.dim[0]);
+		fprintf(out, "|{%#010x|%#010x}|%d", (uint32_t)aptr, (uint32_t)(aptr + tensor_size - 1), tensor->info.dim[0]);
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && tensor->info.dim[i]; i++)
 			fprintf(out, "x%d", tensor->info.dim[i]);
 		fputc('}', out);
@@ -1443,9 +1445,12 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 				tensor_dots[k].name = k;
 				tensor_dots[k].tensor_ref = (uintptr_t)tensor;
 				tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
-				const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
-				const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
-				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+				size_t tensor_size;
+				if (CCV_IS_TENSOR_VIEW(tensor))
+					tensor_size = (size_t)((ccv_nnc_tensor_view_t*)(tensor))->stride[0] * tensor->info.dim[0] * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				else
+					tensor_size = ccv_nnc_dimension_count(tensor->info.dim) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + tensor_size - 1;
 				++k;
 			}
 		}
@@ -1460,9 +1465,12 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 				tensor_dots[k].name = k;
 				tensor_dots[k].tensor_ref = (uintptr_t)tensor;
 				tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
-				const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
-				const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
-				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+				size_t tensor_size;
+				if (CCV_IS_TENSOR_VIEW(tensor))
+					tensor_size = (size_t)((ccv_nnc_tensor_view_t*)(tensor))->stride[0] * tensor->info.dim[0] * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				else
+					tensor_size = ccv_nnc_dimension_count(tensor->info.dim) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + tensor_size - 1;
 				++k;
 			}
 		}

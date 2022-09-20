@@ -26,41 +26,41 @@ static int _ccv_nnc_reduce_max_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
 	assert(ccv_nnc_tensor_view_check_broadcast_dim(b, adim));
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int x;
 	_ccv_nnc_tensor_set_cpu_ref_f32(b, -FLT_MAX);
-	float* ap = a->data.f32;
+	float* const ap = a->data.f32;
 	float* const bp = b->data.f32;
 	// Non-optimal case, need to do skip if needed.
 	for (i[0] = 0; i[0] < adim[0]; i[0]++)
 	{
-		float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+		float* const ap0 = ap + i[0] * astride[0];
+		float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * bstride[0];
 		for (i[1] = 0; i[1] < adim[1]; i[1]++)
 		{
-			float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+			float* ap1 = ap0 + i[1] * astride[1];
+			float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * bstride[1];
 			for (i[2] = 0; i[2] < adim[2]; i[2]++)
 			{
-				float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * binc[3];
+				float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * bstride[2];
 				if (bdim[3] == 1)
 				{
 					for (x = 0; x < adim[3]; x++)
-						if (ap[x] > bp2[0])
-							bp2[0] = ap[x];
+						if (ap1[x] > bp2[0])
+							bp2[0] = ap1[x];
 				} else {
 					for (x = 0; x < adim[3]; x++)
-						if (ap[x] > bp2[x])
-							bp2[x] = ap[x];
+						if (ap1[x] > bp2[x])
+							bp2[x] = ap1[x];
 				}
-				ap += ainc[3];
+				ap1 += astride[2];
 			}
-			ap += (ainc[2] - adim[2]) * ainc[3];
 		}
-		ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -82,47 +82,47 @@ static int _ccv_nnc_reduce_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		ccv_nnc_tensor_view_get_dim(b, bdim);
 		assert(ccv_nnc_tensor_view_check_broadcast_dim(b, hdim));
 		assert(ccv_nnc_tensor_view_check_dim(a, hdim));
-		int hinc[CCV_NNC_MAX_DIM_ALLOC];
-		int ainc[CCV_NNC_MAX_DIM_ALLOC];
-		int binc[CCV_NNC_MAX_DIM_ALLOC];
+		int hstride[CCV_NNC_MAX_DIM_ALLOC];
+		int astride[CCV_NNC_MAX_DIM_ALLOC];
+		int bstride[CCV_NNC_MAX_DIM_ALLOC];
 		assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-		ccv_nnc_tensor_view_get_inc(h, hinc);
-		ccv_nnc_tensor_view_get_inc(a, ainc);
-		ccv_nnc_tensor_view_get_inc(b, binc);
+		ccv_nnc_tensor_view_get_stride(h, hstride);
+		ccv_nnc_tensor_view_get_stride(a, astride);
+		ccv_nnc_tensor_view_get_stride(b, bstride);
 		int i[CCV_NNC_MAX_DIM + 2];
 		int x;
-		float* hp = h->data.f32;
-		float* ap = a->data.f32;
+		float* const hp = h->data.f32;
+		float* const ap = a->data.f32;
 		float* const bp = b->data.f32;
 		ccv_nnc_tensor_zero(h);
 		// Non-optimal case, need to do skip if needed.
 		for (i[0] = 0; i[0] < hdim[0]; i[0]++)
 		{
-			float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const hp0 = hp + i[0] * hstride[0];
+			float* const bp0 = bdim[0] == 1 ? bp : bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < hdim[1]; i[1]++)
 			{
-				float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* hp1 = hp0 + i[1] * hstride[1];
+				float* const bp1 = bdim[1] == 1 ? bp0 : bp0 + i[1] * bstride[1];
 				for (i[2] = 0; i[2] < hdim[2]; i[2]++)
 				{
-					float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * binc[3];
+					float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * bstride[2];
 					if (bdim[3] == 1)
 					{
 						for (x = 0; x < hdim[3]; x++)
-							if (ap[x] == bp2[0])
-								hp[x] = 1;
+							if (ap1[x] == bp2[0])
+								hp1[x] = 1;
 					} else {
 						for (x = 0; x < hdim[3]; x++)
-							if (ap[x] == bp2[x])
-								hp[x] = 1;
+							if (ap1[x] == bp2[x])
+								hp1[x] = 1;
 					}
-					hp += hinc[3];
-					ap += ainc[3];
+					hp1 += hstride[2];
+					ap1 += astride[2];
 				}
-				hp += (hinc[2] - hdim[2]) * hinc[3];
-				ap += (ainc[2] - hdim[2]) * ainc[3];
 			}
-			hp += (hinc[1] - hdim[1]) * hinc[2] * hinc[3];
-			ap += (ainc[1] - hdim[1]) * ainc[2] * ainc[3];
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
@@ -142,53 +142,53 @@ static int _ccv_nnc_reduce_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_view_check_broadcast_dim(g, hdim));
 	assert(ccv_nnc_tensor_view_check_dim(a, hdim));
 	assert(ccv_nnc_tensor_view_check_dim(b, gdim));
-	int hinc[CCV_NNC_MAX_DIM_ALLOC];
-	int ginc[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int hstride[CCV_NNC_MAX_DIM_ALLOC];
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(h, hinc);
-	ccv_nnc_tensor_view_get_inc(g, ginc);
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(h, hstride);
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int x;
-	float* hp = h->data.f32;
+	float* const hp = h->data.f32;
 	float* const gp = g->data.f32;
-	float* ap = a->data.f32;
+	float* const ap = a->data.f32;
 	float* const bp = b->data.f32;
 	ccv_nnc_tensor_zero(h);
 	// Non-optimal case, need to do skip if needed.
 	for (i[0] = 0; i[0] < hdim[0]; i[0]++)
 	{
-		float* const gp0 = gdim[0] == 1 ? gp : gp + i[0] * ginc[1] * ginc[2] * ginc[3];
-		float* const bp0 = gdim[0] == 1 ? bp : bp + i[0] * binc[1] * binc[2] * binc[3];
+		float* const ap0 = ap + i[0] * astride[0];
+		float* const hp0 = hp + i[0] * hstride[0];
+		float* const gp0 = gdim[0] == 1 ? gp : gp + i[0] * gstride[0];
+		float* const bp0 = gdim[0] == 1 ? bp : bp + i[0] * bstride[0];
 		for (i[1] = 0; i[1] < hdim[1]; i[1]++)
 		{
-			float* const gp1 = gdim[1] == 1 ? gp0 : gp0 + i[1] * ginc[2] * ginc[3];
-			float* const bp1 = gdim[1] == 1 ? bp0 : bp0 + i[1] * binc[2] * binc[3];
+			float* ap1 = ap0 + i[1] * astride[1];
+			float* hp1 = hp0 + i[1] * hstride[1];
+			float* const gp1 = gdim[1] == 1 ? gp0 : gp0 + i[1] * gstride[1];
+			float* const bp1 = gdim[1] == 1 ? bp0 : bp0 + i[1] * bstride[1];
 			for (i[2] = 0; i[2] < hdim[2]; i[2]++)
 			{
-				float* const gp2 = gdim[2] == 1 ? gp1 : gp1 + i[2] * ginc[3];
-				float* const bp2 = gdim[2] == 1 ? bp1 : bp1 + i[2] * binc[3];
+				float* const gp2 = gdim[2] == 1 ? gp1 : gp1 + i[2] * gstride[2];
+				float* const bp2 = gdim[2] == 1 ? bp1 : bp1 + i[2] * bstride[2];
 				if (gdim[3] == 1)
 				{
 					for (x = 0; x < hdim[3]; x++)
-						if (ap[x] == bp2[0])
-							hp[x] = gp2[0];
+						if (ap1[x] == bp2[0])
+							hp1[x] = gp2[0];
 				} else {
 					for (x = 0; x < hdim[3]; x++)
-						if (ap[x] == bp2[x])
-							hp[x] = gp2[x];
+						if (ap1[x] == bp2[x])
+							hp1[x] = gp2[x];
 				}
-				hp += hinc[3];
-				ap += ainc[3];
+				hp1 += hstride[2];
+				ap1 += astride[2];
 			}
-			hp += (hinc[2] - hdim[2]) * hinc[3];
-			ap += (ainc[2] - hdim[2]) * ainc[3];
 		}
-		hp += (hinc[1] - hdim[1]) * hinc[2] * hinc[3];
-		ap += (ainc[1] - hdim[1]) * ainc[2] * ainc[3];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

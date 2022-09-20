@@ -36,20 +36,20 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(ccv_nnc_tensor_view_check_dim(n, adim));
 	assert(ccv_nnc_tensor_view_check_dim(u, adim));
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	int ginc[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int minc[CCV_NNC_MAX_DIM_ALLOC];
-	int vinc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int ninc[CCV_NNC_MAX_DIM_ALLOC];
-	int uinc[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_inc(g, ginc);
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(m, minc);
-	ccv_nnc_tensor_view_get_inc(v, vinc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
-	ccv_nnc_tensor_view_get_inc(n, ninc);
-	ccv_nnc_tensor_view_get_inc(u, uinc);
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int mstride[CCV_NNC_MAX_DIM_ALLOC];
+	int vstride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int nstride[CCV_NNC_MAX_DIM_ALLOC];
+	int ustride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(m, mstride);
+	ccv_nnc_tensor_view_get_stride(v, vstride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	ccv_nnc_tensor_view_get_stride(n, nstride);
+	ccv_nnc_tensor_view_get_stride(u, ustride);
 	const float rate = cmd.info.rmsprop.rate;
 	const float decay = cmd.info.rmsprop.decay;
 	const float alpha = cmd.info.rmsprop.alpha;
@@ -57,50 +57,50 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const float epsilon = cmd.info.rmsprop.epsilon;
 	int i[CCV_NNC_MAX_DIM + 1];
 	int x;
-	float* gp = g->data.f32;
-	float* ap = a->data.f32;
-	float* mp = m->data.f32;
-	float* vp = v->data.f32;
-	float* bp = b->data.f32;
-	float* np = n->data.f32;
-	float* up = u->data.f32;
+	float* const gp = g->data.f32;
+	float* const ap = a->data.f32;
+	float* const mp = m->data.f32;
+	float* const vp = v->data.f32;
+	float* const bp = b->data.f32;
+	float* const np = n->data.f32;
+	float* const up = u->data.f32;
 	for (i[0] = 0; i[0] < adim[0]; i[0]++)
 	{
+		float* const gp0 = gp + i[0] * gstride[0];
+		float* const ap0 = ap + i[0] * astride[0];
+		float* const mp0 = mp + i[0] * mstride[0];
+		float* const vp0 = vp + i[0] * vstride[0];
+		float* const bp0 = bp + i[0] * bstride[0];
+		float* const np0 = np + i[0] * nstride[0];
+		float* const up0 = up + i[0] * ustride[0];
 		for (i[1] = 0; i[1] < adim[1]; i[1]++)
 		{
+			float* gp1 = gp0 + i[1] * gstride[1];
+			float* ap1 = ap0 + i[1] * astride[1];
+			float* mp1 = mp0 + i[1] * mstride[1];
+			float* vp1 = vp0 + i[1] * vstride[1];
+			float* bp1 = bp0 + i[1] * bstride[1];
+			float* np1 = np0 + i[1] * nstride[1];
+			float* up1 = up0 + i[1] * ustride[1];
 			for (i[2] = 0; i[2] < adim[2]; i[2]++)
 			{
 				for (x = 0; x < adim[3]; x++)
 				{
-					float grad = gp[x];
-					grad += decay * ap[x];
-					const float vel = up[x] = alpha * vp[x] + (1 - alpha) * grad * grad;
-					const float mom = np[x] = momentum * mp[x] + grad / (sqrtf(vel) + epsilon);
-					bp[x] = ap[x] - rate * mom;
+					float grad = gp1[x];
+					grad += decay * ap1[x];
+					const float vel = up1[x] = alpha * vp1[x] + (1 - alpha) * grad * grad;
+					const float mom = np1[x] = momentum * mp1[x] + grad / (sqrtf(vel) + epsilon);
+					bp1[x] = ap1[x] - rate * mom;
 				}
-				gp += ginc[3];
-				ap += ainc[3];
-				mp += minc[3];
-				vp += vinc[3];
-				bp += binc[3];
-				np += ninc[3];
-				up += uinc[3];
+				gp1 += gstride[2];
+				ap1 += astride[2];
+				mp1 += mstride[2];
+				vp1 += vstride[2];
+				bp1 += bstride[2];
+				np1 += nstride[2];
+				up1 += ustride[2];
 			}
-			gp += (ginc[2] - adim[2]) * ginc[3];
-			ap += (ainc[2] - adim[2]) * ainc[3];
-			mp += (minc[2] - adim[2]) * minc[3];
-			vp += (vinc[2] - adim[2]) * vinc[3];
-			bp += (binc[2] - adim[2]) * binc[3];
-			np += (ninc[2] - adim[2]) * ninc[3];
-			up += (uinc[2] - adim[2]) * uinc[3];
 		}
-		gp += (ginc[1] - adim[1]) * ginc[2] * ginc[3];
-		ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-		mp += (minc[1] - adim[1]) * minc[2] * minc[3];
-		vp += (vinc[1] - adim[1]) * vinc[2] * vinc[3];
-		bp += (binc[1] - adim[1]) * binc[2] * binc[3];
-		np += (ninc[1] - adim[1]) * ninc[2] * ninc[3];
-		up += (uinc[1] - adim[1]) * uinc[2] * uinc[3];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

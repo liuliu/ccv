@@ -23,10 +23,10 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd <= 2);
 	const int a_cols = a_nd < 2 ? 1 : a->info.dim[1];
-	const int a_cols_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd < 2 ? 1 : a->inc[1]) : a_cols;
+	const int a_cols_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd < 2 ? 1 : a->stride[0]) : a_cols;
 	const int a_rows = a->info.dim[0];
 	const int b_cols = b_nd < 2 ? 1 : b->info.dim[1];
-	const int b_cols_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd < 2 ? 1 : b->inc[1]) : b_cols;
+	const int b_cols_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd < 2 ? 1 : b->stride[0]) : b_cols;
 	const int b_rows = b->info.dim[0];
 	assert(b_rows == indices->info.dim[0]);
 	assert(a_cols == b_cols);
@@ -60,10 +60,10 @@ static int _ccv_nnc_index_select_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	if (output_size >= 2 && outputs[1])
 		ccv_nnc_tensor_zero(outputs[1]);
 	const int g_cols = g_nd < 2 ? 1 : g->info.dim[1];
-	const int g_cols_inc = CCV_IS_TENSOR_VIEW(g) ? (g_nd < 2 ? 1 : g->inc[1]) : g_cols;
+	const int g_cols_inc = CCV_IS_TENSOR_VIEW(g) ? (g_nd < 2 ? 1 : g->stride[0]) : g_cols;
 	const int g_rows = g->info.dim[0];
 	const int h_cols = h_nd < 2 ? 1 : h->info.dim[1];
-	const int h_cols_inc = CCV_IS_TENSOR_VIEW(h) ? (h_nd < 2 ? 1 : h->inc[1]) : h_cols;
+	const int h_cols_inc = CCV_IS_TENSOR_VIEW(h) ? (h_nd < 2 ? 1 : h->stride[0]) : h_cols;
 	const int h_rows = h->info.dim[0];
 	assert(g_rows == indices->info.dim[0]);
 	assert(g_cols == h_cols);

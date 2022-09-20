@@ -115,11 +115,11 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
 	assert(a->info.datatype == CCV_32F);
@@ -132,7 +132,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -140,7 +140,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const int hw = bdim[1] * bdim[2];
-		_ccv_nnc_upsample_nearest_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_nearest_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -159,11 +159,11 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
 	assert(a->info.datatype == CCV_32F);
@@ -176,7 +176,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_nearest_back_nchw<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, bdim[2], binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_nearest_back_nchw<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[2], astride[1], adim[3], astride[2], a->data.f32, bdim[2], bstride[1], bdim[3], bstride[2], b->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -184,7 +184,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const size_t tensor_count = ccv_nnc_tensor_count(b->info) / adim[3];
-		_ccv_nnc_upsample_nearest_back_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, bdim[1], binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_nearest_back_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bdim[1], bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -317,11 +317,11 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
 	assert(a->info.datatype == CCV_32F);
@@ -334,7 +334,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -342,7 +342,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const int hw = bdim[1] * bdim[2];
-		_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -361,11 +361,11 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
 	assert(a->info.datatype == CCV_32F);
@@ -378,7 +378,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_bilinear_back_nchw<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[2], ainc[2] * ainc[3], adim[3], ainc[3], a->data.f32, bdim[2], binc[2] * binc[3], bdim[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_bilinear_back_nchw<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[2], astride[1], adim[3], astride[2], a->data.f32, bdim[2], bstride[1], bdim[3], bstride[2], b->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -386,7 +386,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const size_t tensor_count = ccv_nnc_tensor_count(b->info) / adim[3];
-		_ccv_nnc_upsample_bilinear_back_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], ainc[1] * ainc[2] * ainc[3], adim[2], ainc[2] * ainc[3], ainc[3], a->data.f32, bdim[1], binc[1] * binc[2] * binc[3], bdim[2], binc[2] * binc[3], binc[3], b->data.f32);
+		_ccv_nnc_upsample_bilinear_back_nhwc<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rwidth, rheight, adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bdim[1], bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

@@ -41,8 +41,10 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int group_size = cmd.info.convolution.count / groups;
 	// Make sure the weights output dimension matches the network convolution kernels
 	assert(w->info.dim[0] == cmd.info.convolution.count);
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(!bias || bias->info.dim[0] == cmd.info.convolution.count);
 	const int channel_size = w->info.dim[CCV_NNC_MAX_DIM + 1];
 	parallel_for(k, cmd.info.convolution.count) {
@@ -67,19 +69,19 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
 				float p = biasval;
 				float* wpz = wpu + n[1] * channel_size;
-				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[CCV_NNC_MAX_DIM] + gidx * channel_size;
+				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
 					for (j[1] = 0; j[1] < m[1]; j[1]++)
 						for (c = 0; c < channel_size; c++)
-							p += wpz[j[1] * channel_size + c] * apz[j[1] * ainc[CCV_NNC_MAX_DIM] + c];
+							p += wpz[j[1] * channel_size + c] * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
 					wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-					apz += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM];
+					apz += astride[CCV_NNC_MAX_DIM - 1];
 				}
-				bp[i[1] * binc[CCV_NNC_MAX_DIM]] = p;
+				bp[i[1] * bstride[CCV_NNC_MAX_DIM]] = p;
 			}
-			bp += binc[CCV_NNC_MAX_DIM - 1] * binc[CCV_NNC_MAX_DIM];
-			ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
+			bp += bstride[CCV_NNC_MAX_DIM - 1];
+			ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 		}
 	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;
@@ -109,8 +111,10 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
 	assert(g_nd == CCV_NNC_MAX_DIM + 1 || g_nd == CCV_NNC_MAX_DIM + 2);
 	const int* gdim = (g_nd == CCV_NNC_MAX_DIM + 1) ? g->info.dim : g->info.dim + 1;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
 	const int groups = cmd.info.convolution.groups;
 	assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == adim[CCV_NNC_MAX_DIM]);
 	assert(cmd.info.convolution.count % groups == 0);
@@ -140,18 +144,18 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					continue;
 				biasval += v;
 				float* wpz = wpu + n[1] * channel_size;
-				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[CCV_NNC_MAX_DIM] + gidx * channel_size;
+				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
 					for (j[1] = 0; j[1] < m[1]; j[1]++)
 						for (c = 0; c < channel_size; c++)
-							wpz[j[1] * channel_size + c] += v * apz[j[1] * ainc[CCV_NNC_MAX_DIM] + c];
+							wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
 					wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-					apz += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM];
+					apz += astride[CCV_NNC_MAX_DIM - 1];
 				}
 			}
-			gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
-			ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
+			gp += gstride[CCV_NNC_MAX_DIM - 1];
+			ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 		}
 		if (bias)
 			bias->data.f32[k] = biasval;
@@ -162,8 +166,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(h);
 		const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
 		assert(h_nd == CCV_NNC_MAX_DIM + 1 || h_nd == CCV_NNC_MAX_DIM + 2);
-		const int* hdim = (h_nd == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
-		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == CCV_NNC_MAX_DIM + 1) ? h->inc : h->inc + 1) : hdim;
+		int hstride[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_view_get_stride(h, hstride);
 		// reset it to 0.
 		ccv_nnc_tensor_zero(h);
 		w = inputs[2];
@@ -189,22 +193,22 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 					{
 						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, h->info.dim, n, m);
-						const float v = gp[i[1] * ginc[CCV_NNC_MAX_DIM]];
+						const float v = gp[i[1] * gstride[CCV_NNC_MAX_DIM]];
 						if (v == 0) // shortcut if v is zero
 							continue;
 						float* wpz = wpu + n[1] * channel_size;
-						float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[CCV_NNC_MAX_DIM] + gidx * channel_size;
+						float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hstride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 						for (j[0] = 0; j[0] < m[0]; j[0]++)
 						{
 							for (j[1] = 0; j[1] < m[1]; j[1]++)
 								for (c = 0; c < channel_size; c++)
-									hpz[j[1] * hinc[CCV_NNC_MAX_DIM] + c] += v * wpz[j[1] * channel_size + c];
+									hpz[j[1] * hstride[CCV_NNC_MAX_DIM] + c] += v * wpz[j[1] * channel_size + c];
 							wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-							hpz += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM];
+							hpz += hstride[CCV_NNC_MAX_DIM - 1];
 						}
 					}
-					gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
-					hp += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
+					gp += gstride[CCV_NNC_MAX_DIM - 1];
+					hp += hstride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 				}
 			}
 	}

@@ -177,13 +177,12 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		assert(d < autograd_tensor_symbols->rnum);
 		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
 		assert(tensor_symbol_info[autograd->d].alias_ref);
-		const int* inc = tensor_symbol_info[autograd->d].inc;
+		const int* stride = tensor_symbol_info[autograd->d].stride;
 		// If this is just reshaped (i.e., dimension is the same, and inc covers the whole). We have fully assigned.
-		if (memcmp(inc, tensor_symbol_info[autograd->d].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0 &&
-			ccv_nnc_dimension_count(inc) == tensor_count)
+		if (ccv_nnc_is_tensor_stride_packed(stride, tensor_symbol_info[autograd->d].info.dim) && ccv_nnc_dimension_count(tensor_symbol_info[autograd->d].info.dim) == tensor_count)
 			return 1;
 		// Otherwise if inc doesn't match original dim, it is not covered.
-		if (memcmp(inc, tensor_dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
+		if (ccv_nnc_is_tensor_stride_packed(stride, tensor_dim) != 0)
 			return 0;
 	}
 	/* We need a solid cube (potentially hyper dimensional) to compute if there are overlaps.
@@ -396,11 +395,11 @@ static int _ccv_nnc_tensor_ref_version_find_alias(const ccv_nnc_tensor_ref_t* co
 		ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
 		// This must reference to an alias.
 		assert(tensor_symbol_info[autograd->d].alias_ref);
-		const int* inc = tensor_symbol_info[autograd->d].inc;
+		const int* stride = tensor_symbol_info[autograd->d].stride;
 		const int* ofs = tensor_symbol_info[autograd->d].ofs;
 		const int* dim = tensor_symbol_info[autograd->d].info.dim;
 		// If everything matches, this is the required alias.
-		if (memcmp(inc, alias->inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0 &&
+		if (memcmp(stride, alias->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0 &&
 			memcmp(ofs, alias->ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0 &&
 			memcmp(dim, alias->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 			return d;
@@ -422,10 +421,10 @@ static int _ccv_nnc_tensor_ref_version_has_this_alias_exclusively(const ccv_nnc_
 		ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
 		// This must reference to an alias.
 		assert(tensor_symbol_info[autograd->d].alias_ref);
-		const int* inc = tensor_symbol_info[autograd->d].inc;
+		const int* stride = tensor_symbol_info[autograd->d].stride;
 		const int* ofs = tensor_symbol_info[autograd->d].ofs;
 		const int* dim = tensor_symbol_info[autograd->d].info.dim;
-		if (memcmp(inc, alias->inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0 ||
+		if (memcmp(stride, alias->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0 ||
 			memcmp(ofs, alias->ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0 ||
 			memcmp(dim, alias->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
 			return 0;
@@ -1598,7 +1597,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			assert(symbol->flags == 0); // We don't set flags on alias.
 			// Due to our generation order, this must be after the original symbol is created.
 			ccv_nnc_autograd_tensor_symbol_t* ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, symbol->alias_ref - 1);
-			symbol->symbol = ccv_nnc_tensor_symbol_alias_new(graph, ref->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0);
+			symbol->symbol = ccv_nnc_tensor_symbol_alias_new(graph, ref->symbol, forw_symbol->ofs, forw_symbol->stride, forw_symbol->info, 0);
 		}
 	}
 	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
@@ -1914,7 +1913,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		if (!forw_symbol->alias_ref)
 			graph->backward.tensor_symbol_idx[d] = autograd_symbol->symbol.d;
 		else // We create new alias, and this cannot be referenced from exec_symbol_idx because its size limited to previous tensor symbol size.
-			graph->backward.tensor_symbol_idx[d] = ccv_nnc_tensor_symbol_alias_new(graph, autograd_symbol->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0).d;
+			graph->backward.tensor_symbol_idx[d] = ccv_nnc_tensor_symbol_alias_new(graph, autograd_symbol->symbol, forw_symbol->ofs, forw_symbol->stride, forw_symbol->info, 0).d;
 		const int dd = autograd_symbol->symbol.d;
 		const int x = tensor_ref->x;
 		if (tensor_ref->exec_registry && tensor_ref->exec_registry->rnum) // Create no-op node.

@@ -174,20 +174,17 @@ static int _ccv_nnc_nms_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	int i;
 	for (i = 0; i < a_nd; i++)
 		{ assert(a->info.dim[i] == b->info.dim[i]); }
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int* cinc = CCV_IS_TENSOR_VIEW(c) ? c->inc : c->info.dim;
 	const int n = a_nd >= 3 ? a->info.dim[0] : 1;
-	const int aninc = a_nd >= 3 ? ainc[1] * ainc[2] : 0;
-	const int bninc = b_nd >= 3 ? binc[1] * binc[2] : 0;
-	const int cninc = c_nd >= 2 ? cinc[1] : 0;
+	const int aninc = CCV_IS_TENSOR_VIEW(a) ? (a_nd >= 3 ? a->stride[0] : 0) : (a_nd >= 3 ? a->info.dim[1] * a->info.dim[2] : 0);
+	const int bninc = CCV_IS_TENSOR_VIEW(b) ? (b_nd >= 3 ? b->stride[0] : 0) : (b_nd >= 3 ? b->info.dim[1] * b->info.dim[2] : 0);
+	const int cninc = CCV_IS_TENSOR_VIEW(c) ? (c_nd >= 2 ? c->stride[0] : 0) : (c_nd >= 2 ? c->info.dim[1] : 0);
 	const int m = a_nd >= 3 ? a->info.dim[1] : a->info.dim[0];
 	if (c_nd == 1)
 		{ assert(m == c->info.dim[0]); }
 	else
 		{ assert(c_nd == 2 && n == c->info.dim[0] && m == c->info.dim[1]); }
 	const float iou_threshold = cmd.info.nms.iou_threshold;
-	assert((a_nd <= 1 ? 1 : a->info.dim[a_nd - 1]) == 5 && ainc[a_nd - 1] == 5 && ainc[a_nd - 1] == binc[b_nd - 1]);
+	assert((a_nd <= 1 ? 1 : a->info.dim[a_nd - 1]) == 5 && a->info.dim[a_nd - 1] == b->info.dim[b_nd - 1]);
 	size_t temp_storage_bytes = 0;
 	cub::DeviceRadixSort::SortPairsDescending(0, temp_storage_bytes, a->data.f32, b->data.f32, (float5*)b->data.f32, (float5*)b->data.i32, m, 0, sizeof(float) * 8, 0);
 	size_t aligned_temp_storage_bytes = ((temp_storage_bytes + 511) / 512) * 512;
@@ -262,19 +259,16 @@ static int _ccv_nnc_nms_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	int i;
 	for (i = 0; i < a_nd; i++)
 		{ assert(a->info.dim[i] == b->info.dim[i]); }
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int* cinc = CCV_IS_TENSOR_VIEW(c) ? c->inc : c->info.dim;
 	const int n = a_nd >= 3 ? a->info.dim[0] : 1;
-	const int aninc = a_nd >= 3 ? ainc[1] * ainc[2] : 0;
-	const int bninc = b_nd >= 3 ? binc[1] * binc[2] : 0;
-	const int cninc = c_nd >= 2 ? cinc[1] : 0;
+	const int aninc = CCV_IS_TENSOR_VIEW(a) ? (a_nd >= 3 ? a->stride[0] : 0) : (a_nd >= 3 ? a->info.dim[1] * a->info.dim[2] : 0);
+	const int bninc = CCV_IS_TENSOR_VIEW(b) ? (b_nd >= 3 ? b->stride[0] : 0) : (b_nd >= 3 ? b->info.dim[1] * b->info.dim[2] : 0);
+	const int cninc = CCV_IS_TENSOR_VIEW(c) ? (c_nd >= 2 ? c->stride[0] : 0) : (c_nd >= 2 ? c->info.dim[1] : 0);
 	const int m = a_nd >= 3 ? a->info.dim[1] : a->info.dim[0];
 	if (c_nd == 1)
 		{ assert(m == c->info.dim[0]); }
 	else
 		{ assert(c_nd == 2 && n == c->info.dim[0] && m == c->info.dim[1]); }
-	assert((a_nd <= 1 ? 1 : a->info.dim[a_nd - 1]) == 5 && ainc[a_nd - 1] == 5 && ainc[a_nd - 1] == binc[b_nd - 1]);
+	assert((a_nd <= 1 ? 1 : a->info.dim[a_nd - 1]) == 5 && a->info.dim[a_nd - 1] == b->info.dim[b_nd - 1]);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	for (i = 0; i < n; i++)
 	{

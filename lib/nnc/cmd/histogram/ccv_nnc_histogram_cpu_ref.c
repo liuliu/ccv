@@ -25,6 +25,360 @@ static int _upper_bound(const float v, const int size, const float* const bounds
 	return upper_bound;
 }
 
+void _ccv_nnc_tensor_histogram_even(float* ap, int* bp, const int nd, const int* const dim, const int* const stride, const float max, const float min, const int bins, const int range, float* a_max, float* a_min, double* a_sum, double* a_sum_of_squares)
+{
+	if (nd == 1)
+	{
+		int i;
+		for (i = 0; i < dim[0]; i++)
+		{
+			const float av = ap[i * stride[0]];
+			*a_min = ccv_min(*a_min, av);
+			*a_max = ccv_max(*a_max, av);
+			*a_sum += av;
+			*a_sum_of_squares += av * av;
+			if (isnan(av))
+				++bp[bins + 2];
+			else if (av < min)
+				++bp[0];
+			else if (av >= max)
+				++bp[bins + 1];
+			else {
+				int idx = (int)((av - min) * range) + 1;
+				idx = ccv_min(ccv_max(idx, 1), bins);
+				++bp[idx];
+			}
+		}
+	} else if (nd == 2) {
+		int x, y;
+		for (y = 0; y < dim[0]; y++)
+		{
+			float* const apy = ap + y * stride[0];
+			for (x = 0; x < dim[1]; x++)
+			{
+				const float av = apy[x * stride[1]];
+				*a_min = ccv_min(*a_min, av);
+				*a_max = ccv_max(*a_max, av);
+				*a_sum += av;
+				*a_sum_of_squares += av * av;
+				if (isnan(av))
+					++bp[bins + 2];
+				else if (av < min)
+					++bp[0];
+				else if (av >= max)
+					++bp[bins + 1];
+				else {
+					int idx = (int)((av - min) * range) + 1;
+					idx = ccv_min(ccv_max(idx, 1), bins);
+					++bp[idx];
+				}
+			}
+		}
+	} else if (nd == 3) {
+		int x, y, z;
+		for (z = 0; z < dim[0]; z++)
+		{
+			float* const apz = ap + z * stride[0];
+			for (y = 0; y < dim[1]; y++)
+			{
+				float* const apy = apz + y * stride[1];
+				for (x = 0; x < dim[2]; x++)
+				{
+					const float av = apy[x * stride[2]];
+					*a_min = ccv_min(*a_min, av);
+					*a_max = ccv_max(*a_max, av);
+					*a_sum += av;
+					*a_sum_of_squares += av * av;
+					if (isnan(av))
+						++bp[bins + 2];
+					else if (av < min)
+						++bp[0];
+					else if (av >= max)
+						++bp[bins + 1];
+					else {
+						int idx = (int)((av - min) * range) + 1;
+						idx = ccv_min(ccv_max(idx, 1), bins);
+						++bp[idx];
+					}
+				}
+			}
+		}
+	} else if (nd == 4) {
+		int x, y, z, s;
+		for (s = 0; s < dim[0]; s++)
+		{
+			float* const aps = ap + s * stride[0];
+			for (z = 0; z < dim[1]; z++)
+			{
+				float* const apz = aps + z * stride[1];
+				for (y = 0; y < dim[2]; y++)
+				{
+					float* const apy = apz + y * stride[2];
+					for (x = 0; x < dim[3]; x++)
+					{
+						const float av = apy[x * stride[3]];
+						*a_min = ccv_min(*a_min, av);
+						*a_max = ccv_max(*a_max, av);
+						*a_sum += av;
+						*a_sum_of_squares += av * av;
+						if (isnan(av))
+							++bp[bins + 2];
+						else if (av < min)
+							++bp[0];
+						else if (av >= max)
+							++bp[bins + 1];
+						else {
+							int idx = (int)((av - min) * range) + 1;
+							idx = ccv_min(ccv_max(idx, 1), bins);
+							++bp[idx];
+						}
+					}
+				}
+			}
+		}
+	} else {
+		int i;
+		for (i = 0; i < dim[0]; i++)
+			_ccv_nnc_tensor_histogram_even(ap + i * stride[0], bp, nd - 1, dim + 1, stride + 1, max, min, bins, range, a_max, a_min, a_sum, a_sum_of_squares);
+	}
+}
+
+void _ccv_nnc_tensor_histogram_logarithmic(float* ap, int* bp, const int nd, const int* const dim, const int* const stride, const float max, const float min, const int upper_range, const float min_inv, const float log_base, float* a_max, float* a_min, double* a_sum, double* a_sum_of_squares)
+{
+	if (nd == 1)
+	{
+		int i;
+		for (i = 0; i < dim[0]; i++)
+		{
+			const float av = ap[i * stride[0]];
+			*a_min = ccv_min(*a_min, av);
+			*a_max = ccv_max(*a_max, av);
+			*a_sum += av;
+			*a_sum_of_squares += av * av;
+			if (isnan(av))
+				++bp[upper_range * 2 + 1];
+			else if (av >= max)
+				++bp[upper_range * 2];
+			else if (av <= -max)
+				++bp[0];
+			else if (av <= -max)
+				++bp[0];
+			else if (av < min && av > -min)
+				++bp[upper_range];
+			else {
+				int idx = ceilf(logf(fabsf(av) * min_inv) * log_base);
+				idx = av > 0 ? idx + upper_range : upper_range - idx;
+				idx = ccv_min(ccv_max(idx, 0), upper_range * 2);
+				++bp[idx];
+			}
+		}
+	} else if (nd == 2) {
+		int x, y;
+		for (y = 0; y < dim[0]; y++)
+		{
+			float* const apy = ap + y * stride[0];
+			for (x = 0; x < dim[1]; x++)
+			{
+				const float av = apy[x * stride[1]];
+				*a_min = ccv_min(*a_min, av);
+				*a_max = ccv_max(*a_max, av);
+				*a_sum += av;
+				*a_sum_of_squares += av * av;
+				if (isnan(av))
+					++bp[upper_range * 2 + 1];
+				else if (av >= max)
+					++bp[upper_range * 2];
+				else if (av <= -max)
+					++bp[0];
+				else if (av <= -max)
+					++bp[0];
+				else if (av < min && av > -min)
+					++bp[upper_range];
+				else {
+					int idx = ceilf(logf(fabsf(av) * min_inv) * log_base);
+					idx = av > 0 ? idx + upper_range : upper_range - idx;
+					idx = ccv_min(ccv_max(idx, 0), upper_range * 2);
+					++bp[idx];
+				}
+			}
+		}
+	} else if (nd == 3) {
+		int x, y, z;
+		for (z = 0; z < dim[0]; z++)
+		{
+			float* const apz = ap + z * stride[0];
+			for (y = 0; y < dim[1]; y++)
+			{
+				float* const apy = apz + y * stride[1];
+				for (x = 0; x < dim[2]; x++)
+				{
+					const float av = apy[x * stride[2]];
+					*a_min = ccv_min(*a_min, av);
+					*a_max = ccv_max(*a_max, av);
+					*a_sum += av;
+					*a_sum_of_squares += av * av;
+					if (isnan(av))
+						++bp[upper_range * 2 + 1];
+					else if (av >= max)
+						++bp[upper_range * 2];
+					else if (av <= -max)
+						++bp[0];
+					else if (av <= -max)
+						++bp[0];
+					else if (av < min && av > -min)
+						++bp[upper_range];
+					else {
+						int idx = ceilf(logf(fabsf(av) * min_inv) * log_base);
+						idx = av > 0 ? idx + upper_range : upper_range - idx;
+						idx = ccv_min(ccv_max(idx, 0), upper_range * 2);
+						++bp[idx];
+					}
+				}
+			}
+		}
+	} else if (nd == 4) {
+		int x, y, z, s;
+		for (s = 0; s < dim[0]; s++)
+		{
+			float* const aps = ap + s * stride[0];
+			for (z = 0; z < dim[1]; z++)
+			{
+				float* const apz = aps + z * stride[1];
+				for (y = 0; y < dim[2]; y++)
+				{
+					float* const apy = apz + y * stride[2];
+					for (x = 0; x < dim[3]; x++)
+					{
+						const float av = apy[x * stride[3]];
+						*a_min = ccv_min(*a_min, av);
+						*a_max = ccv_max(*a_max, av);
+						*a_sum += av;
+						*a_sum_of_squares += av * av;
+						if (isnan(av))
+							++bp[upper_range * 2 + 1];
+						else if (av >= max)
+							++bp[upper_range * 2];
+						else if (av <= -max)
+							++bp[0];
+						else if (av <= -max)
+							++bp[0];
+						else if (av < min && av > -min)
+							++bp[upper_range];
+						else {
+							int idx = ceilf(logf(fabsf(av) * min_inv) * log_base);
+							idx = av > 0 ? idx + upper_range : upper_range - idx;
+							idx = ccv_min(ccv_max(idx, 0), upper_range * 2);
+							++bp[idx];
+						}
+					}
+				}
+			}
+		}
+	} else {
+		int i;
+		for (i = 0; i < dim[0]; i++)
+			_ccv_nnc_tensor_histogram_logarithmic(ap + i * stride[0], bp, nd - 1, dim + 1, stride + 1, max, min, upper_range, min_inv, log_base, a_max, a_min, a_sum, a_sum_of_squares);
+	}
+}
+
+void _ccv_nnc_tensor_histogram_bins(float* ap, float* hp, int* bp, const int nd, const int* const dim, const int* const stride, const int upper_range, float* a_max, float* a_min, double* a_sum, double* a_sum_of_squares)
+{
+	if (nd == 1)
+	{
+		int i;
+		for (i = 0; i < dim[0]; i++)
+		{
+			const float av = ap[i * stride[0]];
+			*a_min = ccv_min(*a_min, av);
+			*a_max = ccv_max(*a_max, av);
+			*a_sum += av;
+			*a_sum_of_squares += av * av;
+			if (isnan(av))
+				++bp[upper_range + 1];
+			else {
+				const int idx = _upper_bound(av, upper_range, hp);
+				++bp[idx];
+			}
+		}
+	} else if (nd == 2) {
+		int x, y;
+		for (y = 0; y < dim[0]; y++)
+		{
+			float* const apy = ap + y * stride[0];
+			for (x = 0; x < dim[1]; x++)
+			{
+				const float av = apy[x * stride[1]];
+				*a_min = ccv_min(*a_min, av);
+				*a_max = ccv_max(*a_max, av);
+				*a_sum += av;
+				*a_sum_of_squares += av * av;
+				if (isnan(av))
+					++bp[upper_range + 1];
+				else {
+					const int idx = _upper_bound(av, upper_range, hp);
+					++bp[idx];
+				}
+			}
+		}
+	} else if (nd == 3) {
+		int x, y, z;
+		for (z = 0; z < dim[0]; z++)
+		{
+			float* const apz = ap + z * stride[0];
+			for (y = 0; y < dim[1]; y++)
+			{
+				float* const apy = apz + y * stride[1];
+				for (x = 0; x < dim[2]; x++)
+				{
+					const float av = apy[x * stride[2]];
+					*a_min = ccv_min(*a_min, av);
+					*a_max = ccv_max(*a_max, av);
+					*a_sum += av;
+					*a_sum_of_squares += av * av;
+					if (isnan(av))
+						++bp[upper_range + 1];
+					else {
+						const int idx = _upper_bound(av, upper_range, hp);
+						++bp[idx];
+					}
+				}
+			}
+		}
+	} else if (nd == 4) {
+		int x, y, z, s;
+		for (s = 0; s < dim[0]; s++)
+		{
+			float* const aps = ap + s * stride[0];
+			for (z = 0; z < dim[1]; z++)
+			{
+				float* const apz = aps + z * stride[1];
+				for (y = 0; y < dim[2]; y++)
+				{
+					float* const apy = apz + y * stride[2];
+					for (x = 0; x < dim[3]; x++)
+					{
+						const float av = apy[x * stride[3]];
+						*a_min = ccv_min(*a_min, av);
+						*a_max = ccv_max(*a_max, av);
+						*a_sum += av;
+						*a_sum_of_squares += av * av;
+						if (isnan(av))
+							++bp[upper_range + 1];
+						else {
+							const int idx = _upper_bound(av, upper_range, hp);
+							++bp[idx];
+						}
+					}
+				}
+			}
+		}
+	} else {
+		int i;
+		for (i = 0; i < dim[0]; i++)
+			_ccv_nnc_tensor_histogram_bins(ap + i * stride[0], hp, bp, nd - 1, dim + 1, stride + 1, upper_range, a_max, a_min, a_sum, a_sum_of_squares);
+	}
+}
+
 static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 1);
@@ -148,30 +502,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	assert(CCV_IS_TENSOR_VIEW(tv));
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
 	assert(nd >= 1);
-	const int* const tvinc = tv->inc;
 	// reset it to 0.
-	int c, x, y, i;
-	int count = 1;
-	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
-	int mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
-	const int top_mod_inc = nd > 2 ? tvinc[nd - 3] * tvinc[nd - 2] * tvinc[nd - 1] : 1;
-	if (nd > 2)
-		mod_inc[nd - 3] = top_mod_inc;
-	for (c = nd - 4; c >= 0; c--)
-	{
-		// Compute the mod.
-		mod[c] = c == nd - 4 ? tv->info.dim[c] : mod[c + 1] * tv->info.dim[c];
-		mod_inc[c] = mod_inc[c + 1] * tvinc[c];
-		count *= tv->info.dim[c];
-	}
-	for (c = 0; c < nd - 3; c++)
-		mod_inc[c] = mod_inc[c + 1] * (tvinc[c] - tv->info.dim[c]);
-	float* tvd = tv->data.f32;
-	const int tvinc_1 = tvinc[nd - 1];
-	const int tvinc_21 = tvinc_1 * (nd >= 2 ? tvinc[nd - 2] : 1);
-	const int tvdim_1 = tv->info.dim[nd - 1];
-	const int max_y = ccv_max(1, nd >= 3 ? tv->info.dim[nd - 3] : 1);
-	const int max_x = ccv_max(1, nd >= 2 ? tv->info.dim[nd - 2] : 1);
 	switch (cmd.info.histogram.type)
 	{
 		case CCV_NNC_HISTOGRAM_EVEN:
@@ -182,41 +513,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			const float max = cmd.info.histogram.max;
 			assert(cmd.info.histogram.max > cmd.info.histogram.min);
 			const float range = bins / (max - min);
-			for (c = 0; c < count; c++)
-			{
-				for (y = 0; y < max_y; y++)
-				{
-					float* tvp = tvd + y * tvinc_21;
-					for (x = 0; x < max_x; x++)
-					{
-						for (i = 0; i < tvdim_1; i++)
-						{
-							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_max(a_max, tvp[i]);
-							a_sum += tvp[i];
-							a_sum_of_squares += tvp[i] * tvp[i];
-							if (isnan(tvp[i]))
-								++bp[bins + 2];
-							else if (tvp[i] < min)
-								++bp[0];
-							else if (tvp[i] >= max)
-								++bp[bins + 1];
-							else {
-								int idx = (int)((tvp[i] - min) * range) + 1;
-								idx = ccv_min(ccv_max(idx, 1), bins);
-								++bp[idx];
-							}
-						}
-						tvp += tvinc_1;
-					}
-				}
-				tvd += top_mod_inc;
-				for (y = nd - 4; y >= 0; y--)
-					if ((c + 1) % mod[y] != 0)
-						break; // cannot be mod, break out.
-					else
-						tvd += mod_inc[y];
-			}
+			_ccv_nnc_tensor_histogram_even(tv->data.f32, bp, nd, tv->info.dim, tv->stride, max, min, bins, range, &a_max, &a_min, &a_sum, &a_sum_of_squares);
 			break;
 		}
 		case CCV_NNC_HISTOGRAM_LOGARITHMIC:
@@ -229,47 +526,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			const float max = cmd.info.histogram.max;
 			const int upper_range = ceilf(logf(cmd.info.histogram.max / cmd.info.histogram.min) * log_base);
 			const float min_inv = 1.0 / cmd.info.histogram.min;
-			for (c = 0; c < count; c++)
-			{
-				for (y = 0; y < max_y; y++)
-				{
-					float* tvp = tvd + y * tvinc_21;
-					for (x = 0; x < max_x; x++)
-					{
-						for (i = 0; i < tvdim_1; i++)
-						{
-							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_max(a_max, tvp[i]);
-							a_sum += tvp[i];
-							a_sum_of_squares += tvp[i] * tvp[i];
-							// Range from 1e-12 to 1e20, with 1.1 ratio. We reserve 0, count - 2 for -inf and inf, count - 1 for nan.
-							if (isnan(tvp[i]))
-								++bp[upper_range * 2 + 1];
-							else if (tvp[i] >= max)
-								++bp[upper_range * 2];
-							else if (tvp[i] <= -max)
-								++bp[0];
-							else if (tvp[i] <= -max)
-								++bp[0];
-							else if (tvp[i] < min && tvp[i] > -min)
-								++bp[upper_range];
-							else {
-								int idx = ceilf(logf(fabsf(tvp[i]) * min_inv) * log_base);
-								idx = tvp[i] > 0 ? idx + upper_range : upper_range - idx;
-								idx = ccv_min(ccv_max(idx, 0), upper_range * 2);
-								++bp[idx];
-							}
-						}
-						tvp += tvinc_1;
-					}
-				}
-				tvd += top_mod_inc;
-				for (y = nd - 4; y >= 0; y--)
-					if ((c + 1) % mod[y] != 0)
-						break; // cannot be mod, break out.
-					else
-						tvd += mod_inc[y];
-			}
+			_ccv_nnc_tensor_histogram_logarithmic(tv->data.f32, bp, nd, tv->info.dim, tv->stride, max, min, upper_range, min_inv, log_base, &a_max, &a_min, &a_sum, &a_sum_of_squares);
 			break;
 		}
 		case CCV_NNC_HISTOGRAM_BINS:
@@ -277,36 +534,7 @@ static int _ccv_nnc_histogram_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			assert(h);
 			const int upper_range = ccv_nnc_tensor_count(h->info);
 			assert(ccv_nnc_tensor_count(b->info) == upper_range + 2);
-			for (c = 0; c < count; c++)
-			{
-				for (y = 0; y < max_y; y++)
-				{
-					float* tvp = tvd + y * tvinc_21;
-					for (x = 0; x < max_x; x++)
-					{
-						for (i = 0; i < tvdim_1; i++)
-						{
-							a_min = ccv_min(a_min, tvp[i]);
-							a_max = ccv_max(a_max, tvp[i]);
-							a_sum += tvp[i];
-							a_sum_of_squares += tvp[i] * tvp[i];
-							if (isnan(tvp[i]))
-								++bp[upper_range + 1];
-							else {
-								const int idx = _upper_bound(tvp[i], upper_range, h->data.f32);
-								++bp[idx];
-							}
-						}
-						tvp += tvinc_1;
-					}
-				}
-				tvd += top_mod_inc;
-				for (y = nd - 4; y >= 0; y--)
-					if ((c + 1) % mod[y] != 0)
-						break; // cannot be mod, break out.
-					else
-						tvd += mod_inc[y];
-			}
+			_ccv_nnc_tensor_histogram_bins(tv->data.f32, h->data.f32, bp, nd, tv->info.dim, tv->stride, upper_range, &a_max, &a_min, &a_sum, &a_sum_of_squares);
 			break;
 		}
 	}

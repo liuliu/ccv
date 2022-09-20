@@ -55,8 +55,10 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
 	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(w->info.dim[0] % 4 == 0);
 	float* x4w = 0;
 	ccmemalign((void **)&x4w, 16, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
@@ -97,14 +99,14 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 				__m128 v42 = _mm_setzero_ps(); \
 				__m128 v43 = _mm_setzero_ps(); \
 				const float* wpz = wpu + n[1] * w->info.dim[3] * 4; \
-				const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[2]; \
+				const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[2]; \
 				for (j[0] = 0; j[0] < m[0]; j[0]++) \
 				{ \
 					for (j[1] = 0; j[1] < m[1]; j[1]++) \
 					{ \
 						for (c = 0; c < adim[2] - 3; c += 4) \
 						{ \
-							__m128 apz4 = _mm_loadu_ps(apz + j[1] * ainc[2] + c); \
+							__m128 apz4 = _mm_loadu_ps(apz + j[1] * astride[2] + c); \
 							const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 							__m128 w40 = _mm_loadu_ps(wpzu); \
 							__m128 w41 = _mm_loadu_ps(wpzu + 4); \
@@ -122,13 +124,13 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 						tail_block /* insert executions for tail partition */ \
 					} \
 					wpz += w->info.dim[2] * w->info.dim[3] * 4; \
-					apz += ainc[1] * ainc[2]; \
+					apz += astride[1]; \
 				} \
 				__m128 v4 = _mm_add_ps(_mm_add_ps(v40, v41), _mm_add_ps(v42, v43)); \
-				_mm_stream_ps(bp + i[1] * binc[2], v4); \
+				_mm_stream_ps(bp + i[1] * bstride[2], v4); \
 			} \
-			bp += binc[1] * binc[2]; \
-			ap += ainc[1] * ainc[2] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0)); \
+			bp += bstride[1]; \
+			ap += astride[1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0)); \
 		} \
 	} parallel_endfor
 	if (w->info.dim[3] % 4 == 0)
@@ -136,9 +138,9 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 		main_for();
 	} else if (w->info.dim[3] % 4 == 3) { // unroll the last for-loops
 #define tail_block \
-		__m128 apz40 = _mm_load1_ps(apz + j[1] * ainc[2] + c); \
-		__m128 apz41 = _mm_load1_ps(apz + j[1] * ainc[2] + c + 1); \
-		__m128 apz42 = _mm_load1_ps(apz + j[1] * ainc[2] + c + 2); \
+		__m128 apz40 = _mm_load1_ps(apz + j[1] * astride[2] + c); \
+		__m128 apz41 = _mm_load1_ps(apz + j[1] * astride[2] + c + 1); \
+		__m128 apz42 = _mm_load1_ps(apz + j[1] * astride[2] + c + 2); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		__m128 w40 = _mm_loadu_ps(wpzu); \
 		__m128 w41 = _mm_loadu_ps(wpzu + 4); \
@@ -150,8 +152,8 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 #undef tail_block
 	} else if (w->info.dim[3] % 4 == 2) { // unroll the last for-loops
 #define tail_block \
-		__m128 apz40 = _mm_load1_ps(apz + j[1] * ainc[2] + c); \
-		__m128 apz41 = _mm_load1_ps(apz + j[1] * ainc[2] + c + 1); \
+		__m128 apz40 = _mm_load1_ps(apz + j[1] * astride[2] + c); \
+		__m128 apz41 = _mm_load1_ps(apz + j[1] * astride[2] + c + 1); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		__m128 w40 = _mm_loadu_ps(wpzu); \
 		__m128 w41 = _mm_loadu_ps(wpzu + 4); \
@@ -161,7 +163,7 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 #undef tail_block
 	} else {
 #define tail_block \
-		__m128 apz4 = _mm_load1_ps(apz + j[1] * ainc[2] + c); \
+		__m128 apz4 = _mm_load1_ps(apz + j[1] * astride[2] + c); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		__m128 w4 = _mm_loadu_ps(wpzu); \
 		v40 = _mm_add_ps(_mm_mul_ps(w4, apz4), v40);
@@ -213,8 +215,10 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
 	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(w->info.dim[0] % 4 == 0);
 	float* x4w = 0;
 	ccmemalign((void **)&x4w, 16, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
@@ -254,14 +258,14 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 				float32x4_t v42 = vmovq_n_f32(0); \
 				float32x4_t v43 = vmovq_n_f32(0); \
 				const float* wpz = wpu + n[1] * w->info.dim[3] * 4; \
-				const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[2]; \
+				const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[2]; \
 				for (j[0] = 0; j[0] < m[0]; j[0]++) \
 				{ \
 					for (j[1] = 0; j[1] < m[1]; j[1]++) \
 					{ \
 						for (c = 0; c < adim[2] - 3; c += 4) \
 						{ \
-							float32x2x2_t apz4 = vld2_f32(apz + j[1] * ainc[2] + c); \
+							float32x2x2_t apz4 = vld2_f32(apz + j[1] * astride[2] + c); \
 							const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 							float32x4_t apz40 = vdupq_lane_f32(apz4.val[0], 0); \
 							float32x4_t apz41 = vdupq_lane_f32(apz4.val[1], 0); \
@@ -279,14 +283,14 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 						tail_block /* insert executions for tail partition */ \
 					} \
 					wpz += w->info.dim[2] * w->info.dim[3] * 4; \
-					apz += ainc[1] * ainc[2]; \
+					apz += astride[1]; \
 				} \
 				v40 = vaddq_f32(v40, v41); \
 				v42 = vaddq_f32(v42, v43); \
-				vst1q_f32(bp + i[1] * binc[2], vaddq_f32(v40, v42)); \
+				vst1q_f32(bp + i[1] * bstride[2], vaddq_f32(v40, v42)); \
 			} \
-			bp += binc[1] * binc[2]; \
-			ap += ainc[1] * ainc[2] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0)); \
+			bp += bstride[1]; \
+			ap += astride[1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0)); \
 		} \
 	} parallel_endfor
 	if (w->info.dim[3] % 4 == 0)
@@ -294,11 +298,11 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 		main_for();
 	} else if (w->info.dim[3] % 4 == 3) { // unroll the last for-loops
 #define tail_block \
-		float32x2_t apz4 = vld1_f32(apz + j[1] * ainc[2] + c); \
+		float32x2_t apz4 = vld1_f32(apz + j[1] * astride[2] + c); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
 		float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
-		float32x4_t apz42 = vld1q_dup_f32(apz + j[1] * ainc[2] + c + 2); \
+		float32x4_t apz42 = vld1q_dup_f32(apz + j[1] * astride[2] + c + 2); \
 		float32x4_t w40 = vld1q_f32(wpzu); \
 		float32x4_t w41 = vld1q_f32(wpzu + 4); \
 		float32x4_t w42 = vld1q_f32(wpzu + 8); \
@@ -309,7 +313,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 #undef tail_block
 	} else if (w->info.dim[3] % 4 == 2) { // unroll the last for-loops
 #define tail_block \
-		float32x2_t apz4 = vld1_f32(apz + j[1] * ainc[2] + c); \
+		float32x2_t apz4 = vld1_f32(apz + j[1] * astride[2] + c); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
 		float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
@@ -321,7 +325,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 #undef tail_block
 	} else { // unroll the last for-loops
 #define tail_block \
-		float32x4_t apz4 = vld1q_dup_f32(apz + j[1] * ainc[2] + c); \
+		float32x4_t apz4 = vld1q_dup_f32(apz + j[1] * astride[2] + c); \
 		const float* const wpzu = wpz + (j[1] * w->info.dim[3] + c) * 4; \
 		float32x4_t w4 = vld1q_f32(wpzu); \
 		v40 = vmlaq_f32(v40, w4, apz4);

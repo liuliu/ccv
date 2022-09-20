@@ -26,15 +26,15 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int xd, yd, cd;
 	const float* ap = a->data.f32;
-	float* bp = b->data.f32;
+	float* const bp = b->data.f32;
 	assert(a->info.format == b->info.format);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
@@ -49,27 +49,27 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			const float* ap0 = ap + i[0] * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
 				int pysi0 = 0;
-				const float* ap0 = ap;
+				const float* ap1 = ap0;
+				float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[2] - 1);
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
-						ap0 += (ysi0 - pysi0) * ainc[3];
+						ap1 += (ysi0 - pysi0) * astride[2];
 						pysi0 = ysi0;
 					}
 					for (xd = 0; xd < bdim[3]; xd++)
-						bp[xd] = ap0[xcoeff[xd]];
-					bp += binc[3];
+						bp1[xd] = ap1[xcoeff[xd]];
+					bp1 += bstride[2];
 				}
-				ap += ainc[2] * ainc[3];
-				bp += (binc[2] - bdim[2]) * binc[3];
+				ap0 += astride[1];
 			}
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
 		}
 	} else {
 		// Any case, this is either NHWC or CHWN
@@ -87,25 +87,25 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		{
 			int pysi0 = 0;
 			const float* ap0 = ap;
+			float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[1] - 1);
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
-					ap0 += (ysi0 - pysi0) * ainc[2] * ainc[3];
+					ap0 += (ysi0 - pysi0) * astride[1];
 					pysi0 = ysi0;
 				}
+				float* bp1 = bp0 + yd * bstride[1];
 				for (xd = 0; xd < bdim[2]; xd++)
 				{
-					const float* const ap00 = ap0 + xcoeff[xd] * ainc[3];
+					const float* const ap00 = ap0 + xcoeff[xd] * astride[2];
 					for (cd = 0; cd < bdim[3]; cd++)
-						bp[cd] = ap00[cd];
-					bp += binc[3];
+						bp1[cd] = ap00[cd];
+					bp1 += bstride[2];
 				}
-				bp += (binc[2] - bdim[2]) * binc[3];
 			}
-			ap += ainc[1] * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
+			ap += astride[0];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -124,11 +124,11 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int xd, yd, cd;
 	_ccv_nnc_tensor_set_cpu_ref_f32(a, 0);
@@ -148,27 +148,27 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			float* ap0 = ap + i[0] * astride[0];
+			const float* bp0 = bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
 				int pysi0 = 0;
-				float* ap0 = ap;
+				float* ap1 = ap0;
+				const float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[2] - 1);
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
-						ap0 += (ysi0 - pysi0) * ainc[3];
+						ap1 += (ysi0 - pysi0) * astride[2];
 						pysi0 = ysi0;
 					}
 					for (xd = 0; xd < bdim[3]; xd++)
-						ap0[xcoeff[xd]] += bp[xd];
-					bp += binc[3];
+						ap1[xcoeff[xd]] += bp1[xd];
+					bp1 += bstride[2];
 				}
-				ap += ainc[2] * ainc[3];
-				bp += (binc[2] - bdim[2]) * binc[3];
+				ap0 += astride[1];
 			}
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
 		}
 	} else {
 		// Any case, this is either NHWC or CHWN
@@ -186,25 +186,25 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		{
 			int pysi0 = 0;
 			float* ap0 = ap;
+			const float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[1] - 1);
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
-					ap0 += (ysi0 - pysi0) * ainc[2] * ainc[3];
+					ap0 += (ysi0 - pysi0) * astride[1];
 					pysi0 = ysi0;
 				}
+				const float* bp1 = bp0 + yd * bstride[1];
 				for (xd = 0; xd < bdim[2]; xd++)
 				{
-					float* const ap00 = ap0 + xcoeff[xd] * ainc[3];
+					float* const ap00 = ap0 + xcoeff[xd] * astride[2];
 					for (cd = 0; cd < bdim[3]; cd++)
-						ap00[cd] += bp[cd];
-					bp += binc[3];
+						ap00[cd] += bp1[cd];
+					bp1 += bstride[2];
 				}
-				bp += (binc[2] - bdim[2]) * binc[3];
 			}
-			ap += ainc[1] * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
+			ap += astride[0];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -241,11 +241,11 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int xd, yd, cd;
 	const float* ap = a->data.f32;
@@ -265,10 +265,13 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			const float* ap0 = ap + i[0] * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
 				int pysi0 = 0;
-				const float* ap0 = ap;
+				const float* ap1 = ap0;
+				float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ycoeff[yd].si[0];
@@ -277,22 +280,19 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 					const float ysc1 = ycoeff[yd].sc[1];
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
-						ap0 += (ysi0 - pysi0) * ainc[3];
+						ap1 += (ysi0 - pysi0) * astride[2];
 						pysi0 = ysi0;
 					}
 					for (xd = 0; xd < bdim[3]; xd++)
 					{
 						const ccv_nnc_bi_coeffs_t cof = xcoeff[xd];
-						bp[xd] = ap0[cof.si[0]] * cof.sc[0] * ysc0 + ap0[cof.si[1]] * cof.sc[1] * ysc0 +
-							ap0[cof.si[0] + ainc[3] * ysi1] * cof.sc[0] * ysc1 + ap0[cof.si[1] + ainc[3] * ysi1] * cof.sc[1] * ysc1;
+						bp1[xd] = ap1[cof.si[0]] * cof.sc[0] * ysc0 + ap1[cof.si[1]] * cof.sc[1] * ysc0 +
+							ap1[cof.si[0] + astride[2] * ysi1] * cof.sc[0] * ysc1 + ap1[cof.si[1] + astride[2] * ysi1] * cof.sc[1] * ysc1;
 					}
-					bp += binc[3];
+					bp1 += bstride[2];
 				}
-				ap += ainc[2] * ainc[3];
-				bp += (binc[2] - bdim[2]) * binc[3];
+				ap0 += astride[1];
 			}
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
 		}
 	} else {
 		// Any case, this is either NHWC or CHWN
@@ -311,6 +311,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		{
 			int pysi0 = 0;
 			const float* ap0 = ap;
+			float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ycoeff[yd].si[0];
@@ -319,9 +320,10 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				const float ysc1 = ycoeff[yd].sc[1];
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
-					ap0 += (ysi0 - pysi0) * ainc[2] * ainc[3];
+					ap0 += (ysi0 - pysi0) * astride[1];
 					pysi0 = ysi0;
 				}
+				float* bp1 = bp0 + yd * bstride[1];
 				for (xd = 0; xd < bdim[2]; xd++)
 				{
 					const ccv_nnc_bi_coeffs_t cof = xcoeff[xd];
@@ -329,19 +331,17 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 					const float c01 = cof.sc[1] * ysc0;
 					const float c10 = cof.sc[0] * ysc1;
 					const float c11 = cof.sc[1] * ysc1;
-					const float* const ap00 = ap0 + cof.si[0] * ainc[3];
-					const float* const ap01 = ap0 + cof.si[1] * ainc[3];
-					const float* const ap10 = ap0 + (cof.si[0] + ysi1 * ainc[2]) * ainc[3];
-					const float* const ap11 = ap0 + (cof.si[1] + ysi1 * ainc[2]) * ainc[3];
+					const float* const ap00 = ap0 + cof.si[0] * astride[2];
+					const float* const ap01 = ap0 + cof.si[1] * astride[2];
+					const float* const ap10 = ap00 + ysi1 * astride[1];
+					const float* const ap11 = ap01 + ysi1 * astride[1];
 					for (cd = 0; cd < bdim[3]; cd++)
-						bp[cd] = ap00[cd] * c00 + ap01[cd] * c01 +
+						bp1[cd] = ap00[cd] * c00 + ap01[cd] * c01 +
 							ap10[cd] * c10 + ap11[cd] * c11;
-					bp += binc[3];
+					bp1 += bstride[2];
 				}
-				bp += (binc[2] - bdim[2]) * binc[3];
 			}
-			ap += ainc[1] * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
+			ap += astride[0];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -360,11 +360,11 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
 	int i[CCV_NNC_MAX_DIM + 2];
 	int xd, yd, cd;
 	_ccv_nnc_tensor_set_cpu_ref_f32(a, 0);
@@ -385,10 +385,13 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			float* ap0 = ap + i[0] * astride[0];
+			const float* const bp0 = bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
 				int pysi0 = 0;
-				float* ap0 = ap;
+				float* ap1 = ap0;
+				const float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ycoeff[yd].si[0];
@@ -397,24 +400,21 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 					const float ysc1 = ycoeff[yd].sc[1];
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
-						ap0 += (ysi0 - pysi0) * ainc[3];
+						ap1 += (ysi0 - pysi0) * astride[2];
 						pysi0 = ysi0;
 					}
 					for (xd = 0; xd < bdim[3]; xd++)
 					{
 						const ccv_nnc_bi_coeffs_t cof = xcoeff[xd];
-						ap0[cof.si[0]] += bp[xd] * ysc0 * cof.sc[0];
-						ap0[cof.si[1]] += bp[xd] * ysc0 * cof.sc[1];
-						ap0[cof.si[0] + ainc[3] * ysi1] += bp[xd] * ysc1 * cof.sc[0];
-						ap0[cof.si[1] + ainc[3] * ysi1] += bp[xd] * ysc1 * cof.sc[1];
+						ap1[cof.si[0]] += bp1[xd] * ysc0 * cof.sc[0];
+						ap1[cof.si[1]] += bp1[xd] * ysc0 * cof.sc[1];
+						ap1[cof.si[0] + astride[2] * ysi1] += bp1[xd] * ysc1 * cof.sc[0];
+						ap1[cof.si[1] + astride[2] * ysi1] += bp1[xd] * ysc1 * cof.sc[1];
 					}
-					bp += binc[3];
+					bp1 += bstride[2];
 				}
-				ap += ainc[2] * ainc[3];
-				bp += (binc[2] - bdim[2]) * binc[3];
+				ap0 += astride[1];
 			}
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
 		}
 	} else {
 		// Any case, this is either NHWC or CHWN
@@ -433,6 +433,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 		{
 			int pysi0 = 0;
 			float* ap0 = ap;
+			const float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ycoeff[yd].si[0];
@@ -441,9 +442,10 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				const float ysc1 = ycoeff[yd].sc[1];
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
-					ap0 += (ysi0 - pysi0) * ainc[2] * ainc[3];
+					ap0 += (ysi0 - pysi0) * astride[1];
 					pysi0 = ysi0;
 				}
+				const float* bp1 = bp0 + yd * bstride[1];
 				for (xd = 0; xd < bdim[2]; xd++)
 				{
 					const ccv_nnc_bi_coeffs_t cof = xcoeff[xd];
@@ -451,23 +453,21 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 					const float c01 = cof.sc[1] * ysc0;
 					const float c10 = cof.sc[0] * ysc1;
 					const float c11 = cof.sc[1] * ysc1;
-					float* const ap00 = ap0 + cof.si[0] * ainc[3];
-					float* const ap01 = ap0 + cof.si[1] * ainc[3];
-					float* const ap10 = ap0 + (cof.si[0] + ysi1 * ainc[2]) * ainc[3];
-					float* const ap11 = ap0 + (cof.si[1] + ysi1 * ainc[2]) * ainc[3];
+					float* const ap00 = ap0 + cof.si[0] * astride[2];
+					float* const ap01 = ap0 + cof.si[1] * astride[2];
+					float* const ap10 = ap00 + ysi1 * astride[1];
+					float* const ap11 = ap01 + ysi1 * astride[1];
 					for (cd = 0; cd < bdim[3]; cd++)
 					{
-						ap00[cd] += bp[cd] * c00;
-						ap01[cd] += bp[cd] * c01;
-						ap10[cd] += bp[cd] * c10;
-						ap11[cd] += bp[cd] * c11;
+						ap00[cd] += bp1[cd] * c00;
+						ap01[cd] += bp1[cd] * c01;
+						ap10[cd] += bp1[cd] * c10;
+						ap11[cd] += bp1[cd] * c11;
 					}
-					bp += binc[3];
+					bp1 += bstride[2];
 				}
-				bp += (binc[2] - bdim[2]) * binc[3];
 			}
-			ap += ainc[1] * ainc[2] * ainc[3];
-			bp += (binc[1] - bdim[1]) * binc[2] * binc[3];
+			ap += astride[0];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

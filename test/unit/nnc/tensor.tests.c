@@ -85,15 +85,15 @@ TEST_CASE("zero out a tensor view")
 						{
 							tvp[0][i[0]] = 0;
 						}
-						tvp[1] += b_tensor_view.inc[5];
+						tvp[1] += b_tensor_view.stride[4];
 					}
-					tvp[2] += b_tensor_view.inc[4] * b_tensor_view.inc[5];
+					tvp[2] += b_tensor_view.stride[3];
 				}
-				tvp[3] += b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
+				tvp[3] += b_tensor_view.stride[2];
 			}
-			tvp[4] += b_tensor_view.inc[2] * b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
+			tvp[4] += b_tensor_view.stride[1];
 		}
-		tvp[5] += b_tensor_view.inc[1] * b_tensor_view.inc[2] * b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
+		tvp[5] += b_tensor_view.stride[0];
 	}
 	REQUIRE_TENSOR_EQ(a_tensor, b_tensor, "zero'ed tensor view should be equal");
 	ccv_nnc_tensor_free(a_tensor);

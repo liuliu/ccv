@@ -42,21 +42,21 @@ static int _ccv_nnc_binary_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv_
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int cinc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
-	ccv_nnc_tensor_view_get_inc(c, cinc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	ccv_nnc_tensor_view_get_stride(c, cstride);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	assert(ccv_nnc_tensor_count(c->info) == batch_size);
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
-	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
-	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cinc[CCV_NNC_MAX_DIM + 1];
+	const int astep = astride[CCV_NNC_MAX_DIM];
+	const int bstep = bstride[CCV_NNC_MAX_DIM];
+	const int cstep = ccv_nnc_tensor_nd(c->info.dim) == 1 ? 1 : cstride[CCV_NNC_MAX_DIM];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	assert(a->info.datatype == c->info.datatype);
 	const float pos_weight = cmd.info.binary_crossentropy.pos_weight;
@@ -167,21 +167,21 @@ static int _ccv_nnc_binary_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_
 	const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int hinc[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int hstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	assert(ccv_nnc_tensor_view_check_dim(h, dim));
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
-	ccv_nnc_tensor_view_get_inc(h, hinc);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	ccv_nnc_tensor_view_get_stride(h, hstride);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
 	const int batch_size = dim[CCV_NNC_MAX_DIM];
 	const int count = dim[CCV_NNC_MAX_DIM + 1];
-	const int astep = ainc[CCV_NNC_MAX_DIM + 1];
-	const int bstep = binc[CCV_NNC_MAX_DIM + 1];
-	const int hstep = hinc[CCV_NNC_MAX_DIM + 1];
+	const int astep = astride[CCV_NNC_MAX_DIM];
+	const int bstep = bstride[CCV_NNC_MAX_DIM];
+	const int hstep = hstride[CCV_NNC_MAX_DIM];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	assert(a->info.datatype == h->info.datatype);
 	const int datatype = a->info.datatype;
@@ -190,10 +190,10 @@ static int _ccv_nnc_binary_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_
 	{
 		if (g)
 		{
-			int ginc[CCV_NNC_MAX_DIM_ALLOC];
-			ccv_nnc_tensor_view_get_inc(g, ginc);
+			int gstride[CCV_NNC_MAX_DIM_ALLOC];
+			ccv_nnc_tensor_view_get_stride(g, gstride);
 			assert(ccv_nnc_tensor_count(g->info) == batch_size);
-			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
+			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : gstride[CCV_NNC_MAX_DIM];
 			assert(g->info.datatype == datatype);
 			if (b->info.datatype == CCV_32F)
 			{
@@ -222,10 +222,10 @@ static int _ccv_nnc_binary_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_
 	} else {
 		if (g)
 		{
-			int ginc[CCV_NNC_MAX_DIM_ALLOC];
-			ccv_nnc_tensor_view_get_inc(g, ginc);
+			int gstride[CCV_NNC_MAX_DIM_ALLOC];
+			ccv_nnc_tensor_view_get_stride(g, gstride);
 			assert(ccv_nnc_tensor_count(g->info) == batch_size);
-			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : ginc[CCV_NNC_MAX_DIM + 1];
+			const int gstep = ccv_nnc_tensor_nd(g->info.dim) == 1 ? 1 : gstride[CCV_NNC_MAX_DIM];
 			assert(g->info.datatype == datatype);
 			if (b->info.datatype == CCV_32F)
 			{

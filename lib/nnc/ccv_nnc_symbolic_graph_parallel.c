@@ -204,7 +204,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_alias_new(graph, (ccv_nnc_tensor_symbol_t){
 					.d = dup_d,
 					.graph = graph,
-				}, tensor_symbol->ofs, tensor_symbol->inc, info, 0);
+				}, tensor_symbol->ofs, tensor_symbol->stride, info, 0);
 				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
 				dup_tensor_idx[d * (parallel_count - 1) + j] = new_symbol.d;
 			}

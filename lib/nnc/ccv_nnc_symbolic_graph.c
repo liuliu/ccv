@@ -200,7 +200,7 @@ void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_
 	return prev;
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	assert(tensor_symbol.graph == graph);
 	int d = tensor_symbol.d;
@@ -220,7 +220,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	// Alias comes in two shapes: the total tensor count is strictly smaller or equal to.
 	// If it is not auto, check dimensions.
 	if (!ccv_nnc_is_tensor_auto(info_d->info))
-		{ assert(ccv_nnc_dimension_count(inc) <= ccv_nnc_tensor_count(info_d->info)); }
+		{ assert((size_t)stride[0] * info.dim[0] <= ccv_nnc_tensor_count(info_d->info)); }
 	ccv_nnc_tensor_symbol_info_t alias_info = {
 		.alias_ref = d + 1,
 		.info = info,
@@ -235,7 +235,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 		alias_info.name[len] = 0;
 	}
 	memcpy(alias_info.ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	memcpy(alias_info.inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(alias_info.stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	if (graph->reuse.tensor >= 0)
 	{
 		const int reuse_tensor_d = graph->reuse.tensor;
@@ -249,7 +249,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	} else
 		ccv_array_push(graph->tensor_symbol_info, &alias_info);
 	if (graph->hooks.tensor_symbol_alias_new.func)
-		graph->hooks.tensor_symbol_alias_new.func(graph->hooks.tensor_symbol_alias_new.context, alias, tensor_symbol, ofs, inc, info, name);
+		graph->hooks.tensor_symbol_alias_new.func(graph->hooks.tensor_symbol_alias_new.context, alias, tensor_symbol, ofs, stride, info, name);
 	return alias;
 }
 
@@ -584,7 +584,7 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 	const ccv_nnc_tensor_symbol_t alias = ccv_nnc_tensor_symbol_alias_new(graph, (ccv_nnc_tensor_symbol_t){
 		.graph = graph,
 		.d = map_d
-	}, symbol_info->ofs, symbol_info->inc, symbol_info->info, symbol_info->name);
+	}, symbol_info->ofs, symbol_info->stride, symbol_info->info, symbol_info->name);
 	return alias.d;
 }
 
@@ -735,7 +735,7 @@ const char* ccv_nnc_tensor_symbol_name(const ccv_nnc_symbolic_graph_t* const gra
 	return symbol_info->name;
 }
 
-int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
+int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(graph == tensor.graph);
 	assert(tensor.d < graph->tensor_symbol_info->rnum);
@@ -743,13 +743,13 @@ int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const
 	if (!symbol_info->alias_ref)
 		return -1;
 	memcpy(symbol_info->ofs, ofs, sizeof(symbol_info->ofs));
-	memcpy(symbol_info->inc, inc, sizeof(symbol_info->inc));
+	memcpy(symbol_info->stride, stride, sizeof(symbol_info->stride));
 	// We don't need to propagate to assign_ref because alias cannot be loop carry-overs.
 	assert(!symbol_info->assign_ref);
 	return 0;
 }
 
-int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, int ofs[CCV_NNC_MAX_DIM_ALLOC], int inc[CCV_NNC_MAX_DIM_ALLOC])
+int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, int ofs[CCV_NNC_MAX_DIM_ALLOC], int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(graph == tensor.graph);
 	assert(tensor.d < graph->tensor_symbol_info->rnum);
@@ -757,7 +757,7 @@ int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const gra
 	if (!symbol_info->alias_ref)
 		return -1;
 	memcpy(ofs, symbol_info->ofs, sizeof(symbol_info->ofs));
-	memcpy(inc, symbol_info->inc, sizeof(symbol_info->inc));
+	memcpy(stride, symbol_info->stride, sizeof(symbol_info->stride));
 	return 0;
 }
 
@@ -1182,9 +1182,9 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const tensor_a, const ccv_nnc_tensor_symbol_info_t* const tensor_b)
 {
 	int i;
-	const int* inc = tensor_a->inc;
-	// Only can compare if the inc is the same, otherwise, we can only assume it overlaps.
-	if (memcmp(inc, tensor_b->inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
+	const int* stride = tensor_a->stride;
+	// Only can compare if the stride is the same, otherwise, we can only assume it overlaps.
+	if (memcmp(stride, tensor_b->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
 		return 1;
 	const int* ofs = tensor_a->ofs;
 	const int* dim = tensor_a->info.dim;
@@ -1928,7 +1928,7 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 				const int p_ref = tensor_symbol_info[i].p_ref - 1;
 				assert(p_ref < p_tensor_symbol_info_size);
 				tensor_symbol_info[i].info = p_tensor_symbol_info[p_ref].info;
-				// I don't need to copy over inc and ofs for alias.
+				// I don't need to copy over stride and ofs for alias.
 			}
 	int max_input_size = 0, max_output_size = 0;
 	// Materialize auto hints.
@@ -1988,7 +1988,7 @@ void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, c
 		if (d >= 0)
 		{
 			tensor_symbol_info[d].info = tensor_symbol_info[i].info;
-			memcpy(tensor_symbol_info[d].inc, tensor_symbol_info[i].inc, sizeof(tensor_symbol_info[i].inc));
+			memcpy(tensor_symbol_info[d].stride, tensor_symbol_info[i].stride, sizeof(tensor_symbol_info[i].stride));
 			memcpy(tensor_symbol_info[d].ofs, tensor_symbol_info[i].ofs, sizeof(tensor_symbol_info[i].ofs));
 		}
 	}
@@ -2006,7 +2006,7 @@ void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, c
 				{
 					tensor_symbol_info[d].info = tensor_symbol_info[i].info;
 					CCV_TENSOR_SET_DEVICE_ID(tensor_symbol_info[d].info.type, j + 1); // Set the device id.
-					memcpy(tensor_symbol_info[d].inc, tensor_symbol_info[i].inc, sizeof(tensor_symbol_info[i].inc));
+					memcpy(tensor_symbol_info[d].stride, tensor_symbol_info[i].stride, sizeof(tensor_symbol_info[i].stride));
 					memcpy(tensor_symbol_info[d].ofs, tensor_symbol_info[i].ofs, sizeof(tensor_symbol_info[i].ofs));
 				}
 			}

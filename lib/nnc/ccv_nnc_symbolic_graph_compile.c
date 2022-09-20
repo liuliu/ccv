@@ -1019,7 +1019,7 @@ static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata
 	// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
 	int pos;
 	if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
-		memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+		ccv_nnc_is_tensor_stride_packed(tensor_symbol_info[block_ref].stride, tensor_symbol_info[block_ref].info.dim))
 	{
 		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 		ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
@@ -1028,7 +1028,7 @@ static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata
 		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
 		ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
 		// Otherwise initialize a tensor view
-		*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
+		*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].stride);
 		tensor_view->alias_ref = (uintptr_t)alias_pos;
 	}
 	vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
@@ -1295,11 +1295,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				if (otv->off > 0) // If there is a off. This has to be the same dimensionality, or smaller at each dimension.
 					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
 						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->info.dim[j]); }
-				if (ccv_nnc_dimension_count(otv->inc) > 0)
-					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
-						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->inc[j]); }
-				else // if it doesn't have inc, it is OK to be just as a whole smaller or equal to the binded one.
-					{ assert(ccv_nnc_tensor_count(otv->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)); }
+				// It is OK to be just as a whole smaller or equal to the binded one.
+				assert(ccv_nnc_tensor_count(otv->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info));
 				memcpy(tv, otv, sizeof(ccv_nnc_tensor_view_t));
 				memcpy(tv->info.dim, tensor_symbol_info[d].info.dim, sizeof(tv->info.dim));
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
@@ -1338,11 +1335,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				if (otv->off > 0) // If there is a off. This has to be the same dimensionality, or smaller at each dimension.
 					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
 						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->info.dim[j]); }
-				if (ccv_nnc_dimension_count(otv->inc) > 0)
-					for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC; j++)
-						{ assert(tensor_symbol_info[d].info.dim[j] <= otv->inc[j]); }
-				else // if it doesn't have inc, it is OK to be just as a whole smaller or equal to the binded one.
-					{ assert(ccv_nnc_tensor_count(otv->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info)); }
+				// It is OK to be just as a whole smaller or equal to the binded one.
+				assert(ccv_nnc_tensor_count(otv->info) >= ccv_nnc_tensor_count(tensor_symbol_info[d].info));
 				memcpy(tv, otv, sizeof(ccv_nnc_tensor_view_t));
 				memcpy(tv->info.dim, tensor_symbol_info[d].info.dim, sizeof(tv->info.dim));
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
@@ -2403,7 +2397,7 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 				tensor_symbol.d = dup_tensor_block_ref[alias_ref * unroll_count];
 				tensor_symbol.graph = dup_graph;
 			}
-			ccv_nnc_tensor_symbol_t alias_symbol = ccv_nnc_tensor_symbol_alias_new(dup_graph, tensor_symbol, tensor_symbol_info[input].ofs, tensor_symbol_info[input].inc, tensor_symbol_info[input].info, 0);
+			ccv_nnc_tensor_symbol_t alias_symbol = ccv_nnc_tensor_symbol_alias_new(dup_graph, tensor_symbol, tensor_symbol_info[input].ofs, tensor_symbol_info[input].stride, tensor_symbol_info[input].info, 0);
 			if (tensor_symbol_info[input].pair_ref)
 				ccv_nnc_tensor_symbol_pair_with(dup_graph, alias_symbol, (ccv_nnc_tensor_symbol_t){
 					.d = tensor_symbol_info[input].pair_ref - 1,
@@ -3967,9 +3961,9 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 	if (CCV_IS_TENSOR_VIEW(tensor))
 	{
 		assert(((ccv_nnc_tensor_view_t*)tensor)->off == 0); // I cannot handle off > 0 at the moment, it is possible, but requires additional verifications.
-		assert((ccv_nnc_dimension_count(((ccv_nnc_tensor_view_t*)tensor)->inc) == 0 &&
+		assert((ccv_nnc_dimension_count(((ccv_nnc_tensor_view_t*)tensor)->stride) == 0 &&
 					ccv_nnc_tensor_count(tensor->info) >= ccv_nnc_tensor_count(tensor_arena->vt_tensors[symbol_d]->info)) ||
-				ccv_nnc_dimension_count(((ccv_nnc_tensor_view_t*)tensor)->inc) >= ccv_nnc_tensor_count(tensor_arena->vt_tensors[symbol_d]->info));
+				(size_t)((ccv_nnc_tensor_view_t*)tensor)->stride[0] * tensor->info.dim[0] >= ccv_nnc_tensor_count(tensor_arena->vt_tensors[symbol_d]->info));
 	} else
 		{ assert(ccv_nnc_tensor_count(tensor->info) >= ccv_nnc_tensor_count(tensor_arena->vt_tensors[symbol_d]->info)); }
 	if (CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[symbol.d]))
@@ -4065,7 +4059,7 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 			} else if (!tensor_arena->vt_alias_refs[i])
 				tensor->info = symbol_info->info;
 			else {
-				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->inc, symbol_info->ofs);
+				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->stride, symbol_info->ofs);
 				tensor->info = symbol_info->info;
 				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
 				tensor->data.u8 = tensor_arena->vt_tensors[alias_ref]->data.u8 + off;

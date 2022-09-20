@@ -74,16 +74,26 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
 		const int axis_count = ccv_nnc_tensor_nd(tensor->info.dim);
 		assert(ccv_nnc_tensor_nd(outputs[i]->info.dim) == axis_count);
-		const int* const inc = CCV_IS_TENSOR_VIEW(tensor) ? tensor->inc : tensor->info.dim;
 		int j;
-		for (j = axis_count; j < CCV_NNC_MAX_DIM + 2; j++)
-			dim[j] = stride[j] = 1;
-		dim[axis_count - 1] = tensor->info.dim[axis_count - 1];
-		stride[axis_count - 1] = 1;
-		for (j = axis_count - 2; j >= 0; j--)
+		if (CCV_IS_TENSOR_VIEW(tensor))
 		{
-			dim[j] = tensor->info.dim[j];
-			stride[j] = stride[j + 1] * inc[j + 1];
+			for (j = axis_count; j < CCV_NNC_MAX_DIM + 2; j++)
+				dim[j] = stride[j] = 1;
+			for (j = 0; j < axis_count; j++)
+			{
+				dim[j] = tensor->info.dim[j];
+				stride[j] = tensor->stride[j];
+			}
+		} else {
+			for (j = axis_count; j < CCV_NNC_MAX_DIM + 2; j++)
+				dim[j] = stride[j] = 1;
+			dim[axis_count - 1] = tensor->info.dim[axis_count - 1];
+			stride[axis_count - 1] = 1;
+			for (j = axis_count - 2; j >= 0; j--)
+			{
+				dim[j] = tensor->info.dim[j];
+				stride[j] = stride[j + 1] * tensor->info.dim[j + 1];
+			}
 		}
 		int k;
 		CCV_SWAP(dim[cmd.info.transpose.axis[0]], dim[cmd.info.transpose.axis[1]], k);

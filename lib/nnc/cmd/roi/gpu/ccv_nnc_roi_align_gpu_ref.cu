@@ -144,18 +144,21 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int c_nd = ccv_nnc_tensor_nd(c->info.dim);
 	assert(c_nd == CCV_NNC_MAX_DIM + 1 || c_nd == CCV_NNC_MAX_DIM + 2);
 	const int* cdim = (c_nd == CCV_NNC_MAX_DIM + 1) ? c->info.dim : c->info.dim + 1;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
-	const int* cinc = CCV_IS_TENSOR_VIEW(c) ? ((c_nd == CCV_NNC_MAX_DIM + 1) ?  c->inc : c->inc + 1) : cdim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(c, cstride);
 	const int a_n = ccv_nnc_tensor_get_n(a->info);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd == 1 || b_nd == 2);
 	const int b_n = b_nd == 1 ? 1 : b->info.dim[0];
 	const int c_n = ccv_nnc_tensor_get_n(c->info);
 	assert(c_n == ccv_max(a_n, b_n));
-	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ainc[0] * ainc[1] * ainc[2];
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int bninc = b_nd == 1 ? 0 : binc[1];
-	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cinc[0] * cinc[1] * cinc[2];
+	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : astride[0];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cstride[0];
 	assert(a->info.format == c->info.format);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
@@ -167,7 +170,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(cdim[0] == adim[0]);
 		const int ch = cdim[0];
 		const int nchw = c_n * pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_forw_nchw<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, ainc[1] * ainc[2], ainc[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cinc[1] * cinc[2], cinc[2], c->data.f32);
+		_ccv_nnc_roi_align_forw_nchw<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, astride[1], astride[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cstride[1], cstride[2], c->data.f32);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
 		const int h = adim[0];
@@ -177,7 +180,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(cdim[2] == adim[2]);
 		const int ch = cdim[2];
 		const int nchw = c_n * pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, ainc[1] * ainc[2], ainc[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cinc[1] * cinc[2], cinc[2], c->data.f32);
+		_ccv_nnc_roi_align_forw_nhwc<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, a_n, aninc, astride[1], astride[2], a->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, cninc, cstride[1], cstride[2], c->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -327,8 +330,10 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int o_nd = ccv_nnc_tensor_nd(o->info.dim);
 	assert(o_nd == CCV_NNC_MAX_DIM + 1 || o_nd == CCV_NNC_MAX_DIM + 2);
 	const int* odim = (o_nd == CCV_NNC_MAX_DIM + 1) ? o->info.dim : o->info.dim + 1;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
-	const int* oinc = CCV_IS_TENSOR_VIEW(o) ? ((o_nd == CCV_NNC_MAX_DIM + 1) ? o->inc : o->inc + 1) : odim;
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	int ostride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(o, ostride);
 	const ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[2];
 	const int o_n = ccv_nnc_tensor_get_n(o->info);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
@@ -336,10 +341,11 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int b_n = b_nd == 1 ? 1 : b->info.dim[0];
 	const int g_n = ccv_nnc_tensor_get_n(g->info);
 	assert(g_n == ccv_max(o_n, b_n));
-	const int oninc = o_nd == CCV_NNC_MAX_DIM + 1 ? 0 : oinc[0] * oinc[1] * oinc[2];
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int bninc = b_nd == 1 ? 0 : binc[1];
-	const int gninc = g_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ginc[0] * ginc[1] * ginc[2];
+	const int oninc = o_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ostride[0];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int gninc = g_nd == CCV_NNC_MAX_DIM + 1 ? 0 : gstride[0];
 	assert(g->info.format == o->info.format);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	const size_t o_tensor_count = ccv_nnc_tensor_count(o->info);
@@ -353,7 +359,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(gdim[0] == odim[0]);
 		const int ch = gdim[0];
 		const int nchw = g_n * pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_back_nchw<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, o_n, oninc, oinc[1] * oinc[2], oinc[2], o->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, gninc, ginc[1] * ginc[2], ginc[2], g->data.f32);
+		_ccv_nnc_roi_align_back_nchw<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, o_n, oninc, ostride[1], ostride[2], o->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, gninc, gstride[1], gstride[2], g->data.f32);
 	} else {
 		assert(o->info.format == CCV_TENSOR_FORMAT_NHWC);
 		const int h = odim[0];
@@ -363,7 +369,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(gdim[2] == odim[2]);
 		const int ch = gdim[2];
 		const int nchw = g_n * pool_h * pool_w * ch;
-		_ccv_nnc_roi_align_back_nhwc<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, o_n, oninc, oinc[1] * oinc[2], oinc[2], o->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, gninc, ginc[1] * ginc[2], ginc[2], g->data.f32);
+		_ccv_nnc_roi_align_back_nhwc<<<CUDA_GET_BLOCKS(nchw), CUDA_NUM_THREADS, 0, stream>>>(nchw, ch, w, h, o_n, oninc, ostride[1], ostride[2], o->data.f32, b_n, bninc, b->data.f32, pool_w, pool_h, gninc, gstride[1], gstride[2], g->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

@@ -118,20 +118,23 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	assert(cdim[2] == adim[2]);
 	const int ch = cdim[2];
 	const float* const ap = a->data.f32;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
 	const float* const bp = b->data.f32;
 	float* cp = c->data.f32;
-	const int* cinc = CCV_IS_TENSOR_VIEW(c) ? ((c_nd == CCV_NNC_MAX_DIM + 1) ?  c->inc : c->inc + 1) : cdim;
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(c, cstride);
 	const int a_n = ccv_nnc_tensor_get_n(a->info);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd == 1 || b_nd == 2);
 	const int b_n = b_nd == 1 ? 1 : b->info.dim[0];
 	const int c_n = ccv_nnc_tensor_get_n(c->info);
 	assert(c_n == ccv_max(a_n, b_n));
-	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ainc[0] * ainc[1] * ainc[2];
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int bninc = b_nd == 1 ? 0 : binc[1];
-	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cinc[0] * cinc[1] * cinc[2];
+	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : astride[0];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cstride[0];
 	ccv_nnc_tensor_zero(c);
 	int bin_h, bin_w;
 	roi_align_coeffs_t* y_coeffs;
@@ -161,7 +164,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				const int pj = j * bin_w;
 				const int bin_wz = bin_w_at_x[j];
 				const float inv = 1.0 / (bin_hz * bin_wz);
-				float* const cpz = cpn + j * cinc[CCV_NNC_MAX_DIM];
+				float* const cpz = cpn + j * cstride[CCV_NNC_MAX_DIM];
 				for (y = 0; y < bin_h; y++)
 				{
 					if (y_coeffs[pi + y].mute)
@@ -180,10 +183,10 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 						const float c01 = (1 - ry) * rx;
 						const float c10 = ry * (1 - rx);
 						const float c11 = ry * rx;
-						const float* const ap00 = apn + (iy0 * ainc[CCV_NNC_MAX_DIM - 1] + ix0) * ainc[CCV_NNC_MAX_DIM];
-						const float* const ap01 = apn + (iy0 * ainc[CCV_NNC_MAX_DIM - 1] + ix1) * ainc[CCV_NNC_MAX_DIM];
-						const float* const ap10 = apn + (iy1 * ainc[CCV_NNC_MAX_DIM - 1] + ix0) * ainc[CCV_NNC_MAX_DIM];
-						const float* const ap11 = apn + (iy1 * ainc[CCV_NNC_MAX_DIM - 1] + ix1) * ainc[CCV_NNC_MAX_DIM];
+						const float* const ap00 = apn + iy0 * astride[CCV_NNC_MAX_DIM - 1] + ix0 * astride[CCV_NNC_MAX_DIM];
+						const float* const ap01 = apn + iy0 * astride[CCV_NNC_MAX_DIM - 1] + ix1 * astride[CCV_NNC_MAX_DIM];
+						const float* const ap10 = apn + iy1 * astride[CCV_NNC_MAX_DIM - 1] + ix0 * astride[CCV_NNC_MAX_DIM];
+						const float* const ap11 = apn + iy1 * astride[CCV_NNC_MAX_DIM - 1] + ix1 * astride[CCV_NNC_MAX_DIM];
 						for (k = 0; k < ch; k++)
 							cpz[k] += ap00[k] * c00 + ap01[k] * c01 + ap10[k] * c10 + ap11[k] * c11;
 					}
@@ -191,7 +194,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				for (k = 0; k < ch; k++)
 					cpz[k] *= inv;
 			}
-			cpn += cinc[CCV_NNC_MAX_DIM - 1] * cinc[CCV_NNC_MAX_DIM];
+			cpn += cstride[CCV_NNC_MAX_DIM - 1];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -216,9 +219,11 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	assert(gdim[2] == odim[2]);
 	const int ch = gdim[2];
 	float* gp = g->data.f32;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
 	float* op = o->data.f32;
-	const int* oinc = CCV_IS_TENSOR_VIEW(o) ? ((o_nd == CCV_NNC_MAX_DIM + 1) ? o->inc : o->inc + 1) : odim;
+	int ostride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(o, ostride);
 	const ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[2];
 	const float* const bp = b->data.f32;
 	const int o_n = ccv_nnc_tensor_get_n(o->info);
@@ -227,10 +232,11 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int b_n = b_nd == 1 ? 1 : b->info.dim[0];
 	const int g_n = ccv_nnc_tensor_get_n(g->info);
 	assert(g_n == ccv_max(o_n, b_n));
-	const int oninc = o_nd == CCV_NNC_MAX_DIM + 1 ? 0 : oinc[0] * oinc[1] * oinc[2];
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	const int bninc = b_nd == 1 ? 0 : binc[1];
-	const int gninc = g_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ginc[0] * ginc[1] * ginc[2];
+	const int oninc = o_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ostride[0];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int gninc = g_nd == CCV_NNC_MAX_DIM + 1 ? 0 : gstride[0];
 	int bin_h, bin_w;
 	roi_align_coeffs_t* y_coeffs;
 	roi_align_coeffs_t* x_coeffs;
@@ -260,7 +266,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				const int pj = j * bin_w;
 				const int bin_wz = bin_w_at_x[j];
 				const float inv = 1.0 / (bin_hz * bin_wz);
-				const float* const gpz = gpn + j * ginc[CCV_NNC_MAX_DIM];
+				const float* const gpz = gpn + j * gstride[CCV_NNC_MAX_DIM];
 				for (y = 0; y < bin_h; y++)
 				{
 					if (y_coeffs[pi + y].mute)
@@ -279,10 +285,10 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 						const float c01 = (1 - ry) * rx;
 						const float c10 = ry * (1 - rx);
 						const float c11 = ry * rx;
-						float* const op00 = opn + (iy0 * oinc[CCV_NNC_MAX_DIM - 1] + ix0) * oinc[CCV_NNC_MAX_DIM];
-						float* const op01 = opn + (iy0 * oinc[CCV_NNC_MAX_DIM - 1] + ix1) * oinc[CCV_NNC_MAX_DIM];
-						float* const op10 = opn + (iy1 * oinc[CCV_NNC_MAX_DIM - 1] + ix0) * oinc[CCV_NNC_MAX_DIM];
-						float* const op11 = opn + (iy1 * oinc[CCV_NNC_MAX_DIM - 1] + ix1) * oinc[CCV_NNC_MAX_DIM];
+						float* const op00 = opn + iy0 * ostride[CCV_NNC_MAX_DIM - 1] + ix0 * ostride[CCV_NNC_MAX_DIM];
+						float* const op01 = opn + iy0 * ostride[CCV_NNC_MAX_DIM - 1] + ix1 * ostride[CCV_NNC_MAX_DIM];
+						float* const op10 = opn + iy1 * ostride[CCV_NNC_MAX_DIM - 1] + ix0 * ostride[CCV_NNC_MAX_DIM];
+						float* const op11 = opn + iy1 * ostride[CCV_NNC_MAX_DIM - 1] + ix1 * ostride[CCV_NNC_MAX_DIM];
 						for (k = 0; k < ch; k++)
 						{
 							op00[k] += gpz[k] * c00 * inv;
@@ -293,7 +299,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					}
 				}
 			}
-			gpn += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
+			gpn += gstride[CCV_NNC_MAX_DIM - 1];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

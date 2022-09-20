@@ -32,16 +32,16 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(ccv_nnc_tensor_view_check_dim(b, adim));
 	assert(ccv_nnc_tensor_view_check_dim(n, adim));
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	int ginc[CCV_NNC_MAX_DIM_ALLOC];
-	int ainc[CCV_NNC_MAX_DIM_ALLOC];
-	int minc[CCV_NNC_MAX_DIM_ALLOC];
-	int binc[CCV_NNC_MAX_DIM_ALLOC];
-	int ninc[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_inc(g, ginc);
-	ccv_nnc_tensor_view_get_inc(a, ainc);
-	ccv_nnc_tensor_view_get_inc(m, minc);
-	ccv_nnc_tensor_view_get_inc(b, binc);
-	ccv_nnc_tensor_view_get_inc(n, ninc);
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int mstride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int nstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(m, mstride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	ccv_nnc_tensor_view_get_stride(n, nstride);
 	const float rate = cmd.info.sgd.rate;
 	const float scale = cmd.info.sgd.scale;
 	const float decay = cmd.info.sgd.decay;
@@ -53,73 +53,73 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		{ assert(dampening == 0); }
 	int i[CCV_NNC_MAX_DIM + 1];
 	int x;
-	float* gp = g->data.f32;
-	float* ap = a->data.f32;
-	float* mp = m->data.f32;
-	float* bp = b->data.f32;
-	float* np = n->data.f32;
+	float* const gp = g->data.f32;
+	float* const ap = a->data.f32;
+	float* const mp = m->data.f32;
+	float* const bp = b->data.f32;
+	float* const np = n->data.f32;
 	if (nesterov)
 	{
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			float* const gp0 = gp + i[0] * gstride[0];
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const mp0 = mp + i[0] * mstride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			float* const np0 = np + i[0] * nstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
+				float* gp1 = gp0 + i[1] * gstride[1];
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* mp1 = mp0 + i[1] * mstride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				float* np1 = np0 + i[1] * nstride[1];
 				for (i[2] = 0; i[2] < adim[2]; i[2]++)
 				{
 					for (x = 0; x < adim[3]; x++)
 					{
-						float grad = scale * gp[x];
-						const float mom = np[x] = momentum * mp[x] + grad + decay * ap[x];
+						float grad = scale * gp1[x];
+						const float mom = np1[x] = momentum * mp1[x] + grad + decay * ap1[x];
 						grad += momentum * mom;
-						bp[x] = ap[x] - rate * grad;
+						bp1[x] = ap1[x] - rate * grad;
 					}
-					gp += ginc[3];
-					ap += ainc[3];
-					mp += minc[3];
-					bp += binc[3];
-					np += ninc[3];
+					gp1 += gstride[2];
+					ap1 += astride[2];
+					mp1 += mstride[2];
+					bp1 += bstride[2];
+					np1 += nstride[2];
 				}
-				gp += (ginc[2] - adim[2]) * ginc[3];
-				ap += (ainc[2] - adim[2]) * ainc[3];
-				mp += (minc[2] - adim[2]) * minc[3];
-				bp += (binc[2] - adim[2]) * binc[3];
-				np += (ninc[2] - adim[2]) * ninc[3];
 			}
-			gp += (ginc[1] - adim[1]) * ginc[2] * ginc[3];
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			mp += (minc[1] - adim[1]) * minc[2] * minc[3];
-			bp += (binc[1] - adim[1]) * binc[2] * binc[3];
-			np += (ninc[1] - adim[1]) * ninc[2] * ninc[3];
 		}
 	} else {
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
+			float* const gp0 = gp + i[0] * gstride[0];
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const mp0 = mp + i[0] * mstride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			float* const np0 = np + i[0] * nstride[0];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
+				float* gp1 = gp0 + i[1] * gstride[1];
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* mp1 = mp0 + i[1] * mstride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				float* np1 = np0 + i[1] * nstride[1];
 				for (i[2] = 0; i[2] < adim[2]; i[2]++)
 				{
 					for (x = 0; x < adim[3]; x++)
 					{
-						const float mom = np[x] = momentum * mp[x] + inv_dampening * (scale * gp[x] + decay * ap[x]);
-						bp[x] = ap[x] - rate * mom;
+						const float mom = np1[x] = momentum * mp1[x] + inv_dampening * (scale * gp1[x] + decay * ap1[x]);
+						bp1[x] = ap1[x] - rate * mom;
 					}
-					gp += ginc[3];
-					ap += ainc[3];
-					mp += minc[3];
-					bp += binc[3];
-					np += ninc[3];
+					gp1 += gstride[2];
+					ap1 += astride[2];
+					mp1 += mstride[2];
+					bp1 += bstride[2];
+					np1 += nstride[2];
 				}
-				gp += (ginc[2] - adim[2]) * ginc[3];
-				ap += (ainc[2] - adim[2]) * ainc[3];
-				mp += (minc[2] - adim[2]) * minc[3];
-				bp += (binc[2] - adim[2]) * binc[3];
-				np += (ninc[2] - adim[2]) * ninc[3];
 			}
-			gp += (ginc[1] - adim[1]) * ginc[2] * ginc[3];
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-			mp += (minc[1] - adim[1]) * minc[2] * minc[3];
-			bp += (binc[1] - adim[1]) * binc[2] * binc[3];
-			np += (ninc[1] - adim[1]) * ninc[2] * ninc[3];
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

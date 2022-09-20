@@ -539,19 +539,19 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
  * @param tensor The tensor that we want to view into.
  * @param params The tensor parameters for the tensor view.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The stride of each dimension.
  * @return The newly created tensor view.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Create a tensor view on stack.
  * @param tensor The tensor that we want to view into.
  * @param params The tensor parameters for the tensor view.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The line size of each dimension.
  * @return The tensor view struct.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Free a tensor view object.
  * @param tensor_view The tensor view to be freed.
@@ -1329,12 +1329,12 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(ccv_nnc_symbo
  * @param graph The symbolic graph.
  * @param tensor_symbol The tensor symbol we are going to reference to.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The stride of each dimension.
  * @param info The tensor parameters for the new alias.
  * @param name The name of the tensor symbol alias, it is optional.
  * @return A tensor symbol alias reference.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
 /**
  * Manually delete a tensor symbol off the symbolic graph.
  * @param graph The symbolic graph.
@@ -1635,19 +1635,19 @@ CCV_WARN_UNUSED(const char*) ccv_nnc_tensor_symbol_name(const ccv_nnc_symbolic_g
  * @param graph The symbolic graph.
  * @param tensor The tensor symbol reference.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The stride of each dimension.
  * @return non-zero if it is not a tensor alias.
  */
-int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+int ccv_nnc_tensor_symbol_alias_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Get the parameters for a tensor symbol.
  * @param graph The symbolic graph.
  * @param tensor The tensor symbol reference.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The stride of each dimension.
  * @return non-zero if it is not a tensor alias.
  */
-int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, int ofs[CCV_NNC_MAX_DIM_ALLOC], int inc[CCV_NNC_MAX_DIM_ALLOC]);
+int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, int ofs[CCV_NNC_MAX_DIM_ALLOC], int stride[CCV_NNC_MAX_DIM_ALLOC]);
 /**
  * Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
  * @param graph The symbolic graph.
@@ -1850,7 +1850,7 @@ void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_
 /**
  * Function prototype for tensor symbol alias creation callback.
  */
-typedef void(*ccv_nnc_tensor_symbol_alias_new_hook_f)(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
+typedef void(*ccv_nnc_tensor_symbol_alias_new_hook_f)(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
 /**
  * Hook into the call to ccv_nnc_tensor_symbol_alias_new, return previous provided context if call into this method.
  * @param graph The symbolic graph.
@@ -2591,11 +2591,11 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable we are going to alias from.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension. If all 0, it matches the dimension of the tensor_variable.
+ * @param stride The stride of each dimension. If all 0, it matches the dimension of the tensor_variable.
  * @param info The tensor parameters for the new alias.
  * @return New tensor variable that is an alias.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 /**
  * Get the parameters for a tensor variable.
  * @param graph The dynamic graph.
@@ -3928,11 +3928,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_
  * Reshape an input into a different dimension.
  * @param dim The new dimension for the input.
  * @param ofs The offset on each of the dimension.
- * @param inc The line size of each dimension.
+ * @param stride The line size of each dimension.
  * @param name The unique name of the model.
  * @return A reshape layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
 /**
  * Flatten an input tensor into a one dimensional array.
  * @param name The unique name of the model.
