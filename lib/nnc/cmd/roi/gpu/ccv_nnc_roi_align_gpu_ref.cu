@@ -157,7 +157,7 @@ static int _ccv_nnc_roi_align_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int aninc = a_nd == CCV_NNC_MAX_DIM + 1 ? 0 : astride[0];
 	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(b, bstride);
-	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int bninc = b_nd == 1 ? 0 : bstride[CCV_NNC_MAX_DIM + 2 - b_nd];
 	const int cninc = c_nd == CCV_NNC_MAX_DIM + 1 ? 0 : cstride[0];
 	assert(a->info.format == c->info.format);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
@@ -344,7 +344,7 @@ static int _ccv_nnc_roi_align_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int oninc = o_nd == CCV_NNC_MAX_DIM + 1 ? 0 : ostride[0];
 	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(b, bstride);
-	const int bninc = b_nd == 1 ? 0 : bstride[0];
+	const int bninc = b_nd == 1 ? 0 : bstride[CCV_NNC_MAX_DIM + 2 - b_nd];
 	const int gninc = g_nd == CCV_NNC_MAX_DIM + 1 ? 0 : gstride[0];
 	assert(g->info.format == o->info.format);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);

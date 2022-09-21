@@ -72,8 +72,8 @@ TEST_CASE("compile graph (a[1] + a[0]) * a where a is a binded tensor")
 {
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "a");
-	const ccv_nnc_tensor_symbol_t a0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, ccv_nnc_no_ofs, DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "a[0]");
-	const ccv_nnc_tensor_symbol_t a1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, DIM_ALLOC(1), DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "a[1]");
+	const ccv_nnc_tensor_symbol_t a0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, ccv_nnc_no_ofs, DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, 1), "a[0]");
+	const ccv_nnc_tensor_symbol_t a1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, a, DIM_ALLOC(1), DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, 1), "a[1]");
 	const ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a0, a1), TENSOR_SYMBOL_LIST(b), "sum");
 	const ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "c");

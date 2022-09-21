@@ -25,7 +25,7 @@ static int _upper_bound(const float v, const int size, const float* const bounds
 	return upper_bound;
 }
 
-void _ccv_nnc_tensor_histogram_even(float* ap, int* bp, const int nd, const int* const dim, const int* const stride, const float max, const float min, const int bins, const int range, float* a_max, float* a_min, double* a_sum, double* a_sum_of_squares)
+void _ccv_nnc_tensor_histogram_even(float* ap, int* bp, const int nd, const int* const dim, const int* const stride, const float max, const float min, const int bins, const float range, float* a_max, float* a_min, double* a_sum, double* a_sum_of_squares)
 {
 	if (nd == 1)
 	{

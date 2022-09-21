@@ -137,7 +137,7 @@ TEST_CASE("logarithmic histogram v.s. bins histogram on tensor view")
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	for (i = 0; i < 3000 * 2000; i++)
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2000 - 1000;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NCHW(32F, 30, 20, 20, 40), DIM_ALLOC(0, 10, 0, 20), DIM_ALLOC(30, 100, 20, 100));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NCHW(32F, 30, 20, 20, 40), DIM_ALLOC(0, 10, 0, 20), DIM_ALLOC(100 * 20 * 100, 20 * 100, 100, 1));
 	// All these skipped.
 	a->data.f32[0] = NAN;
 	a->data.f32[1] = -FLT_MAX;
@@ -198,7 +198,7 @@ TEST_CASE("even histogram v.s. bins histogram on tensor view")
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	for (i = 0; i < 3000 * 2000; i++)
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2000 - 1000;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NCHW(32F, 30, 20, 20, 40), DIM_ALLOC(0, 10, 0, 20), DIM_ALLOC(30, 100, 20, 100));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NCHW(32F, 30, 20, 20, 40), DIM_ALLOC(0, 10, 0, 20), DIM_ALLOC(100 * 20 * 100, 20 * 100, 100, 1));
 	a->data.f32[0] = NAN;
 	a->data.f32[1] = -FLT_MAX;
 	a->data.f32[2] = FLT_MAX;

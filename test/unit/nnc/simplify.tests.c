@@ -56,11 +56,11 @@ TEST_CASE("simplify graph with data transfer")
 	ccv_nnc_tensor_symbol_t a1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a1");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(a1), "sum1");
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "z");
-	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, z, DIM_ALLOC(0), DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "z1");
+	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, z, DIM_ALLOC(0), DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, 1), "z1");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(a1), TENSOR_SYMBOL_LIST(z1), "dt1");
 	ccv_nnc_tensor_symbol_t a2 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a2");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_BACKWARD(), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(a2), "dt2");
-	ccv_nnc_tensor_symbol_t z2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, z, DIM_ALLOC(1), DIM_ALLOC(2), CPU_TENSOR_NHWC(32F, 1), "z2");
+	ccv_nnc_tensor_symbol_t z2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, z, DIM_ALLOC(1), DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, 1), "z2");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(a2), TENSOR_SYMBOL_LIST(z2), "dt3");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_simplify(symbolic_graph,

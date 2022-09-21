@@ -38,8 +38,8 @@ TEST_CASE("min of two tensor views")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i - 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	ccv_nnc_cmd_exec(CMD_MIN_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(c), 0);
 	ccv_nnc_tensor_t* const bvt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)bv), TENSOR_LIST(bvt), 0);
@@ -126,8 +126,8 @@ TEST_CASE("min of two tensor views backward")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i < 3 ? i : i - 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	for (i = 0; i < 2 * 2 * 3; i++)
 		g->data.f32[i] = -1;
 	ccv_nnc_cmd_exec(CMD_MIN_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, (ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(ha, hb), 0);
@@ -161,8 +161,8 @@ TEST_CASE("min of two tensor views backward with null")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i < 3 ? i : i - 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	ccv_nnc_cmd_exec(CMD_MIN_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, (ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(ha, hb), 0);
 	for (i = 0; i < 2 * 2 * 3; i++)
 		hat->data.f32[i] = i < 3 ? 1 : 0;
@@ -233,8 +233,8 @@ TEST_CASE("max of two tensor views")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i + 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	ccv_nnc_cmd_exec(CMD_MAX_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(c), 0);
 	ccv_nnc_tensor_t* const bvt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)bv), TENSOR_LIST(bvt), 0);
@@ -321,8 +321,8 @@ TEST_CASE("max of two tensor views backward")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i < 3 ? i : i + 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	for (i = 0; i < 2 * 2 * 3; i++)
 		g->data.f32[i] = -1;
 	ccv_nnc_cmd_exec(CMD_MAX_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, (ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(ha, hb), 0);
@@ -356,8 +356,8 @@ TEST_CASE("max of two tensor views backward with null")
 		a->data.f32[i] = i;
 	for (i = 0; i < 4 * 4 * 3; i++)
 		b->data.f32[i] = i < 3 ? i : i + 1;
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4, 4, 3));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 2, 2, 3), DIM_ALLOC(), DIM_ALLOC(4 * 3, 3, 1));
 	ccv_nnc_cmd_exec(CMD_MAX_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, (ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)bv), TENSOR_LIST(ha, hb), 0);
 	for (i = 0; i < 2 * 2 * 3; i++)
 		hat->data.f32[i] = i < 3 ? 1 : 0;

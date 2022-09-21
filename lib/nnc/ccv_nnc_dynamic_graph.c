@@ -207,7 +207,7 @@ ccv_nnc_tensor_param_t ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* c
 	return tensor_variable->info;
 }
 
-ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info)
+ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info)
 {
 	ccv_nnc_tensor_variable_t variable_alias = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
 	variable_alias->type = tensor_variable->type;
@@ -220,11 +220,11 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 		int i;
 		int no_inc = 1;
 		for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
-			no_inc = (tensor_variable->inc[i] == 0);
+			no_inc = (tensor_variable->stride[i] == 0);
 		// It has to satisfy the condition that the tensor variable itself is contiguous.
-		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->ofs));
+		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? tensor_variable->info.dim : tensor_variable->stride, tensor_variable->ofs));
 		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
-		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->ofs);
+		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? tensor_variable->info.dim : tensor_variable->stride, tensor_variable->ofs);
 		variable_alias->alias_off = tensor_variable->alias_off + off;
 	} else {
 		variable_alias->alias_index_ref = tensor_variable->index + 1;
@@ -236,7 +236,7 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	variable_alias->destructor_hook.context = 0;
 	variable_alias->tensor_view = 0;
 	memcpy(variable_alias->ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	memcpy(variable_alias->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(variable_alias->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	if (graph->reuse_var >= 0)
 	{
 		const int reuse_var = graph->reuse_var;
@@ -313,19 +313,23 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	int no_ofs = 1;
 	for (i = 0; no_ofs && i < CCV_NNC_MAX_DIM_ALLOC; i++)
 		no_ofs = (tensor_variable->ofs[i] == 0);
-	int no_inc = 1;
-	for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		no_inc = (tensor_variable->inc[i] == 0);
-	if (!no_inc)
-		no_inc = (memcmp(tensor_variable->inc, tensor_variable->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0);
+	int no_stride = 1;
+	for (i = 0; no_stride && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		no_stride = (tensor_variable->stride[i] == 0);
+	int stride_is_packed = no_stride;
+	if (!no_stride) // We have stride, now if it is packed.
+		stride_is_packed = ccv_nnc_is_tensor_stride_packed(tensor_variable->stride, tensor_variable->info.dim);
 	assert(CCV_GET_DATA_TYPE_SIZE(tensor_variable->info.datatype) * ccv_nnc_tensor_count(tensor_variable->info) + tensor_variable->alias_off <= CCV_GET_DATA_TYPE_SIZE(variable_to->info.datatype) * ccv_nnc_tensor_count(variable_to->info));
 	// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
-	if (no_ofs && !no_inc)
-		no_inc = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->inc, tensor_variable->ofs);
-	if (no_ofs && no_inc)
+	if (no_ofs && !stride_is_packed)
+		stride_is_packed = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->stride, tensor_variable->ofs);
+	if (no_ofs && stride_is_packed)
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
-	else
-		tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info, tensor_variable->ofs, no_inc ? tensor_variable->info.dim : tensor_variable->inc);
+	else {
+		if (no_stride)
+			ccv_nnc_tensor_get_stride(tensor_variable->info.dim, tensor_variable->stride);
+		tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info, tensor_variable->ofs, tensor_variable->stride);
+	}
 	if  (tensor_variable->alias_off)
 		tensor_variable->tensor_view->data.u8 += tensor_variable->alias_off;
 	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
@@ -379,11 +383,13 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_tensor_symbol_from_variable(ccv_nnc_dyna
 	assert(alias_index >= 0);
 	ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, alias_index);
 	assert(!variable_to->alias_index_ref);
-	int no_inc = 1;
+	int no_stride = 1;
 	int i;
-	for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		no_inc = (tensor_variable->inc[i] == 0);
-	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->tape, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, no_inc ? tensor_variable->info.dim : tensor_variable->inc, tensor_variable->info, 0);
+	for (i = 0; no_stride && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		no_stride = (tensor_variable->stride[i] == 0);
+	if (no_stride)
+		ccv_nnc_tensor_get_stride(tensor_variable->info.dim, tensor_variable->stride);
+	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->tape, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, tensor_variable->stride, tensor_variable->info, 0);
 	_ccv_nnc_tensor_symbol_extra_new(graph, tensor_variable, symbol);
 	return symbol;
 }
@@ -395,7 +401,7 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_exchange_new(ccv_nnc_dynamic_g
 	ccv_nnc_tensor_variable_t new_variable;
 	// Need to handle alias.
 	if (x.alias_index_ref)
-		new_variable = ccv_nnc_tensor_variable_alias_new(graph, *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, x.alias_index_ref - 1), x.ofs, x.inc, x.info);
+		new_variable = ccv_nnc_tensor_variable_alias_new(graph, *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, x.alias_index_ref - 1), x.ofs, x.stride, x.info);
 	else
 		new_variable = ccv_nnc_tensor_variable_new(graph, x.info);
 	*tensor_variable = *new_variable;

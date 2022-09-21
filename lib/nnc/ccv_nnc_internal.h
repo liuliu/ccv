@@ -101,6 +101,20 @@ static inline off_t ccv_nnc_tensor_view_offset(const int datatype, const int str
 	return offset;
 }
 
+static inline void ccv_nnc_tensor_get_stride(const int dim[CCV_NNC_MAX_DIM_ALLOC], int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(dim);
+	if (nd < CCV_NNC_MAX_DIM_ALLOC)
+		stride[nd] = 0;
+	int cstride = 1;
+	for (x = nd - 1; x >= 0; x--)
+	{
+		stride[x] = cstride;
+		cstride *= dim[x];
+	}
+}
+
 static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {
 	// Check if a tensor view is contiguous.
@@ -116,11 +130,13 @@ static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DI
 	// Check if from 0 to first_none_one_dim_idx, it is 1.
 	assert(first_none_one_dim_idx < CCV_NNC_MAX_DIM_ALLOC);
 	int cstride = 1;
-	for (i = nd - 1; i >= first_none_one_dim_idx + 1; i--)
+	for (i = nd - 1; i >= first_none_one_dim_idx; i--)
+	{
 		if (stride[i] != cstride)
 			return 0;
 		else
 			cstride *= dim[i];
+	}
 	return 1;
 }
 

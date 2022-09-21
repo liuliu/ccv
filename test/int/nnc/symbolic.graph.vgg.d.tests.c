@@ -57,7 +57,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 			// If the input is not what I expected (array), reshape it.
 			if (input_info.dim[0] != ccv_nnc_tensor_count(input_info))
-				input_symbol = ccv_nnc_tensor_symbol_alias_new(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)).dim, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)), 0);
+				input_symbol = ccv_nnc_tensor_symbol_alias_new(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, DIM_ALLOC(1), CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)), 0);
 			exec_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol, w_symbol, bias_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else {
 			assert("unreachable");

@@ -37,7 +37,7 @@ struct ccv_nnc_tensor_variable_s {
 	ccv_nnc_tensor_symbol_t symbol;
 	ccv_nnc_tensor_view_t* tensor_view;
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
-	int inc[CCV_NNC_MAX_DIM_ALLOC];
+	int stride[CCV_NNC_MAX_DIM_ALLOC];
 };
 
 enum {
@@ -240,7 +240,7 @@ static inline void ccv_nnc_dynamic_graph_push_backward_tensor_symbol(void* conte
 	ccv_array_push(stack, &tape_symbol);
 }
 
-static inline void ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
+static inline void ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	ccv_array_t* const stack = (ccv_array_t*)context;
 	ccv_nnc_tape_symbol_t tape_symbol = {

@@ -38,7 +38,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
 		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
+		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(8, 1, 1, 1), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
 		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "label");
 		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8), "y5");
 		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "loss");
@@ -217,7 +217,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
 		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
+		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(8, 1, 1, 1), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
 		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "label");
 		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8), "y5");
 		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "loss");

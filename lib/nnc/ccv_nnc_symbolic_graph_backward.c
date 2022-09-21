@@ -182,7 +182,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		if (ccv_nnc_is_tensor_stride_packed(stride, tensor_symbol_info[autograd->d].info.dim) && ccv_nnc_dimension_count(tensor_symbol_info[autograd->d].info.dim) == tensor_count)
 			return 1;
 		// Otherwise if inc doesn't match original dim, it is not covered.
-		if (ccv_nnc_is_tensor_stride_packed(stride, tensor_dim) != 0)
+		if (!ccv_nnc_is_tensor_stride_packed(stride, tensor_dim))
 			return 0;
 	}
 	/* We need a solid cube (potentially hyper dimensional) to compute if there are overlaps.

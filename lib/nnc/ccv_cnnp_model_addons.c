@@ -240,11 +240,13 @@ static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	}
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+	ccv_nnc_tensor_get_stride(output_params.dim, stride);
 	ccv_nnc_tensor_symbol_t aliases[input_size];
 	for (i = 0; i < input_size; i++)
 	{
 		const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
-		aliases[i] = ccv_nnc_tensor_symbol_alias_new(graph, outputs[0], ofs, output_params.dim, input_params, 0);
+		aliases[i] = ccv_nnc_tensor_symbol_alias_new(graph, outputs[0], ofs, stride, input_params, 0);
 		ofs[axis] += input_params.dim[axis];
 	}
 	// Format transform is more flexible.
@@ -281,7 +283,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t output;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
-	int inc[CCV_NNC_MAX_DIM_ALLOC];
+	int stride[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_cnnp_model_reshape_t;
 
 static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -292,7 +294,7 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(ccv_nnc_dimension_count(self->dim) <= ccv_nnc_tensor_count(params));
 	memcpy(params.dim, self->dim, sizeof(params.dim));
-	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, self->inc, params, 0);
+	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, self->stride, params, 0);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -302,7 +304,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_reshape_isa = {
 	.copy = _ccv_cnnp_reshape_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
 {
 	ccv_cnnp_model_reshape_t* const model_reshape = (ccv_cnnp_model_reshape_t*)cccalloc(1, sizeof(ccv_cnnp_model_reshape_t));
 	model_reshape->super.isa = &ccv_cnnp_reshape_isa;
@@ -314,15 +316,18 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const i
 	memcpy(model_reshape->ofs, ofs, sizeof(model_reshape->ofs));
 	int i, flag = 0;
 	for (i = 0; !flag && i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		flag = (inc[i] != 0);
-	memcpy(model_reshape->inc, flag ? inc : dim, sizeof(model_reshape->inc));
+		flag = (stride[i] != 0);
+	if (flag)
+		memcpy(model_reshape->stride, stride, sizeof(model_reshape->stride));
+	else
+		ccv_nnc_tensor_get_stride(dim, model_reshape->stride);
 	return (ccv_cnnp_model_t*)model_reshape;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_reshape_t* const self = (const ccv_cnnp_model_reshape_t*)super;
-	return ccv_cnnp_reshape(self->dim, self->ofs, self->inc, self->super.name);
+	return ccv_cnnp_reshape(self->dim, self->ofs, self->stride, self->super.name);
 }
 
 typedef struct {
@@ -340,7 +345,9 @@ static void _ccv_cnnp_flatten_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	output_params.dim[0] = ccv_nnc_tensor_get_n(params);
 	assert(output_params.dim[0] > 0);
 	output_params.dim[1] = ccv_nnc_tensor_count(params) / output_params.dim[0];
-	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], DIM_ALLOC(), output_params.dim, output_params, 0);
+	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+	ccv_nnc_tensor_get_stride(output_params.dim, stride);
+	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], DIM_ALLOC(), stride, output_params, 0);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_flatten_copy(const ccv_cnnp_model_t* const self, void* const context);

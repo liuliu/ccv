@@ -3431,10 +3431,10 @@ TEST_CASE("compare transpose two tensor views")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TRANSPOSE_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5, 4), 0);
 	memset(ha->data.f32, 0, sizeof(float) * 7 * 6 * 5 * 4);
-	ccv_nnc_tensor_view_t ha_view = ccv_nnc_tensor_view(ha, CPU_TENSOR_NHWC(32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), ha->info.dim);
+	ccv_nnc_tensor_view_t ha_view = ccv_nnc_tensor_view(ha, CPU_TENSOR_NHWC(32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(6 * 5 * 4, 5 * 4, 4, 1));
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8, 7, 6, 5), 0);
 	memset(hb->data.f32, 0, sizeof(float) * 8 * 7 * 6 * 5);
-	ccv_nnc_tensor_view_t hb_view = ccv_nnc_tensor_view(hb, CPU_TENSOR_NHWC(32F, 4, 2, 2, 3), DIM_ALLOC(3, 2, 1, 0), hb->info.dim);
+	ccv_nnc_tensor_view_t hb_view = ccv_nnc_tensor_view(hb, CPU_TENSOR_NHWC(32F, 4, 2, 2, 3), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(7 * 6 * 5, 6 * 5, 5, 1));
 	int i, j, k, l;
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 3; j++)
@@ -3444,19 +3444,19 @@ TEST_CASE("compare transpose two tensor views")
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&ha_view), TENSOR_LIST((ccv_nnc_tensor_t*)&hb_view), 0);
 	ccv_nnc_tensor_t* hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5, 4), 0);
 	memset(hd->data.f32, 0, sizeof(float) * 7 * 6 * 5 * 4);
-	ccv_nnc_tensor_view_t hd_view = ccv_nnc_tensor_view(hd, CPU_TENSOR_NHWC(32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), hd->info.dim);
+	ccv_nnc_tensor_view_t hd_view = ccv_nnc_tensor_view(hd, CPU_TENSOR_NHWC(32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(6 * 5 * 4, 5 * 4, 4, 1));
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&hb_view), TENSOR_LIST((ccv_nnc_tensor_t*)&hd_view), 0);
 	REQUIRE_TENSOR_EQ(hd, ha, "4x3x2x2 tensor should be exactly the same.");
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 7, 6, 5, 4), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
-	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, GPU_TENSOR_NHWC(000, 32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), a->info.dim);
+	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, GPU_TENSOR_NHWC(000, 32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(6 * 5 * 4, 5 * 4, 4, 1));
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 8, 7, 6, 5), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(b), 0);
-	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, GPU_TENSOR_NHWC(000, 32F, 4, 2, 2, 3), DIM_ALLOC(3, 2, 1, 0), b->info.dim);
+	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, GPU_TENSOR_NHWC(000, 32F, 4, 2, 2, 3), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(7 * 6 * 5, 6 * 5, 5, 1));
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
 	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 7, 6, 5, 4), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(d), 0);
-	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, GPU_TENSOR_NHWC(000, 32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), d->info.dim);
+	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, GPU_TENSOR_NHWC(000, 32F, 4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), DIM_ALLOC(6 * 5 * 4, 5 * 4, 4, 1));
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
 	ccv_nnc_tensor_t* const hbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8, 7, 6, 5), 0);
 	ccv_nnc_tensor_t* const hdt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5, 4), 0);

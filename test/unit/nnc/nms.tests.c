@@ -60,8 +60,8 @@ TEST_CASE("compare non-maximal suppression forward with tensor views")
 		a->data.f32[i * 8 + 4] = 1;
 	}
 	memset(b->data.f32, 0, sizeof(float) * 10 * 6);
-	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 10, 5), ccv_nnc_no_ofs, DIM_ALLOC(10, 8));
-	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 10, 5), ccv_nnc_no_ofs, DIM_ALLOC(10, 6));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 10, 5), ccv_nnc_no_ofs, DIM_ALLOC(8, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, CPU_TENSOR_NHWC(32F, 10, 5), ccv_nnc_no_ofs, DIM_ALLOC(6, 1));
 	ccv_nnc_cmd_exec(CMD_NMS_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST((ccv_nnc_tensor_t*)bv, c), 0);
 	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 6), 0);
 	for (i = 0; i < 10; i++)

@@ -961,7 +961,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_
 	stride[axis_count - 1] = 1;
 	for (i = axis_count - 2; i >= 0; i--)
 		dim[i] = tensor->info.dim[i];
-	if (CCV_IS_TENSOR_VIEW(tensor))
+	if (!CCV_IS_TENSOR_VIEW(tensor))
 		for (i = axis_count - 2; i >= 0; i--)
 			stride[i] = stride[i + 1] * dim[i + 1];
 	else
@@ -988,7 +988,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
 	const int axis_count = ccv_nnc_tensor_nd(tensor->info.dim);
 	int i;
-	if (CCV_IS_TENSOR_VIEW(tensor))
+	if (!CCV_IS_TENSOR_VIEW(tensor))
 	{
 		const int* const inc = tensor->info.dim;
 		if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)

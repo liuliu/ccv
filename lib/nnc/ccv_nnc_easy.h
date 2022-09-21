@@ -204,10 +204,10 @@ static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* cons
 
 static inline CCV_WARN_UNUSED(int) ccv_nnc_is_tensor_stride_packed(const int stride[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
-	const int nd = ccv_nnc_tensor_nd(dim);
+	const int nd = ccv_nnc_tensor_nd(stride);
 	int i;
 	int cstride = 1;
-	for (i = nd - 1; i >= 0; i++)
+	for (i = nd - 1; i >= 0; i--)
 	{
 		if (stride[i] != cstride)
 			return 0;
@@ -271,7 +271,7 @@ static inline void ccv_nnc_tensor_view_get_stride(const ccv_nnc_tensor_view_t* c
 			cstride *= tv->info.dim[x - offset];
 		}
 		for (x = 0; x < offset; x++)
-			stride[x] = 1;
+			stride[x] = cstride;
 	}
 }
 
@@ -363,7 +363,7 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	*batch_size_ref = nd < 3 ? 1 : params.dim[0];
 	*batch_inc_ref = nd < 3 ? 0 : stride ? stride[0] : dim[1] * dim[2];
 	int rows = nd == 1 ? 1 : (nd == 2 ? params.dim[0] : params.dim[1]);
-	int rows_inc = stride ? stride[nd - 2] : dim[nd - 1];
+	int rows_inc = stride ? (nd >= 2 ? stride[nd - 2] : stride[0] * dim[0]) : dim[nd - 1];
 	int cols = nd == 1 ? params.dim[0] :(nd == 2 ? params.dim[1] : params.dim[2]);
 	int cols_inc = 1;
 	if (transpose[0] != transpose[1])
