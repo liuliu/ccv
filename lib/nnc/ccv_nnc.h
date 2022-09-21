@@ -3934,6 +3934,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
 /**
+ * Permute the input. For example, [2, 0, 1] means moving dimension 2 to 0, dimension 0 to 1, dimension 1 to 2.
+ * @param index The index for each dimensions from.
+ * @return A permute layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_permute(const int index[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+/**
  * Flatten an input tensor into a one dimensional array.
  * @param name The unique name of the model.
  * @return A flatten layer model.

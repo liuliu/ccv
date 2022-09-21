@@ -756,8 +756,10 @@ int ccv_nnc_tensor_symbol_alias_params(const ccv_nnc_symbolic_graph_t* const gra
 	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
 	if (!symbol_info->alias_ref)
 		return -1;
-	memcpy(ofs, symbol_info->ofs, sizeof(symbol_info->ofs));
-	memcpy(stride, symbol_info->stride, sizeof(symbol_info->stride));
+	if (ofs)
+		memcpy(ofs, symbol_info->ofs, sizeof(symbol_info->ofs));
+	if (stride)
+		memcpy(stride, symbol_info->stride, sizeof(symbol_info->stride));
 	return 0;
 }
 

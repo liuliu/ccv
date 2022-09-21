@@ -628,6 +628,62 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases"
 	ccv_cnnp_model_free(linear);
 }
 
+TEST_CASE("dynamic graph to use cnnp model for permute and reshape")
+{
+	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_reshape(DIM_ALLOC(4, 3, 2), DIM_ALLOC(), DIM_ALLOC(), 0),
+		ccv_cnnp_permute(DIM_ALLOC(2, 0, 1), 0),
+		ccv_cnnp_reshape(DIM_ALLOC(2 * 4, 3), DIM_ALLOC(), DIM_ALLOC(), 0),
+	), 0);
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 4, 3, 2));
+	int i;
+	for (i = 0; i < 4 * 3 * 2; i++)
+		ccv_nnc_tensor_from_variable(graph, x)->data.f32[i] = i;
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_evaluate(graph, sequential, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	// 0, 1,
+	// 2, 3,
+	// 4, 5
+	//
+	// 6, 7,
+	// 8, 9,
+	// 10, 11
+	//
+	// 12, 13,
+	// 14, 15,
+	// 16, 17
+	//
+	// 18, 19,
+	// 20, 21,
+	// 22, 23
+	//
+	// After permute:
+	// 0, 2, 4,
+	// 6, 8, 10,
+	// 12, 14, 16,
+	// 18, 20, 22
+	//
+	// 1, 3, 5,
+	// 7, 9, 11,
+	// 13, 15, 17,
+	// 19, 21, 23
+	float btp[] = {
+		0, 2, 4,
+		6, 8, 10,
+		12, 14, 16,
+		18, 20, 22,
+		1, 3, 5,
+		7, 9, 11,
+		13, 15, 17,
+		19, 21, 23
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 2 * 4, 3), 0);
+	REQUIRE_TENSOR_EQ(ccv_nnc_tensor_from_variable(graph, y), &bt, "should materialize permute before reshape");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_cnnp_model_free(sequential);
+}
+
 TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) and sum on x = 19, 10")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
