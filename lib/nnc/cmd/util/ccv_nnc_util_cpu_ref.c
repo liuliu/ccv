@@ -47,6 +47,25 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f16(const ccv_nnc_tensor_view_t* const a, 
 			}
 		}
 		return;
+	} else if (astride[3] == 1 && bstride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			ccv_float16_t* const ap0 = ap + i[0] * astride[0];
+			ccv_float16_t* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				ccv_float16_t* ap1 = ap0 + i[1] * astride[1];
+				ccv_float16_t* bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					memcpy(bp1, ap1, dim[3] * sizeof(ccv_float16_t));
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
+			}
+		}
+		return;
 	}
 	// Non-optimal case, need to do skip copy.
 	for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -59,7 +78,8 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f16(const ccv_nnc_tensor_view_t* const a, 
 			ccv_float16_t* bp1 = bp0 + i[1] * bstride[1];
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				memcpy(bp1, ap1, dim[3] * sizeof(ccv_float16_t));
+				for (i[3] = 0; i[3] < dim[3]; i[3]++)
+					bp1[i[3] * bstride[3]] = ap1[i[3] * astride[3]];
 				ap1 += astride[2];
 				bp1 += bstride[2];
 			}
@@ -103,6 +123,25 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f32(const ccv_nnc_tensor_view_t* const a, 
 			}
 		}
 		return;
+	} else if (astride[3] == 1 && bstride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					memcpy(bp1, ap1, dim[3] * sizeof(float));
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
+			}
+		}
+		return;
 	}
 	// Non-optimal case, need to do skip copy.
 	for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -115,7 +154,8 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f32(const ccv_nnc_tensor_view_t* const a, 
 			float* bp1 = bp0 + i[1] * bstride[1];
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				memcpy(bp1, ap1, dim[3] * sizeof(float));
+				for (i[3] = 0; i[3] < dim[3]; i[3]++)
+					bp1[i[3] * bstride[3]] = ap1[i[3] * astride[3]];
 				ap1 += astride[2];
 				bp1 += bstride[2];
 			}
@@ -159,6 +199,25 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f64(const ccv_nnc_tensor_view_t* const a, 
 			}
 		}
 		return;
+	} else if (astride[3] == 1 && bstride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			double* const ap0 = ap + i[0] * astride[0];
+			double* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				double* ap1 = ap0 + i[1] * astride[1];
+				double* bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					memcpy(bp1, ap1, dim[3] * sizeof(double));
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
+			}
+		}
+		return;
 	}
 	// Non-optimal case, need to do skip copy.
 	for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -171,7 +230,8 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f64(const ccv_nnc_tensor_view_t* const a, 
 			double* bp1 = bp0 + i[1] * bstride[1];
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				memcpy(bp1, ap1, dim[3] * sizeof(double));
+				for (i[3] = 0; i[3] < dim[3]; i[3]++)
+					bp1[i[3] * bstride[3]] = ap1[i[3] * astride[3]];
 				ap1 += astride[2];
 				bp1 += bstride[2];
 			}
@@ -213,6 +273,23 @@ void _ccv_nnc_tensor_set_cpu_ref_f32(ccv_nnc_tensor_view_t* const a, const float
 			}
 		}
 		return;
+	} else if (astride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			float* const ap0 = ap + i[0] * astride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				float* ap1 = ap0 + i[1] * astride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					for (x = 0; x < dim[3]; x++)
+						ap1[x] = b;
+					ap1 += astride[2];
+				}
+			}
+		}
+		return;
 	}
 	// Non-optimal case, need to do skip copy.
 	for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -224,7 +301,7 @@ void _ccv_nnc_tensor_set_cpu_ref_f32(ccv_nnc_tensor_view_t* const a, const float
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
 				for (x = 0; x < dim[3]; x++)
-					ap1[x] = b;
+					ap1[x * astride[3]] = b;
 				ap1 += astride[2];
 			}
 		}
@@ -265,6 +342,23 @@ void _ccv_nnc_tensor_set_cpu_ref_f64(ccv_nnc_tensor_view_t* const a, const doubl
 			}
 		}
 		return;
+	} else if (astride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			double* const ap0 = ap + i[0] * astride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				double* ap1 = ap0 + i[1] * astride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					for (x = 0; x < dim[3]; x++)
+						ap1[x] = b;
+					ap1 += astride[2];
+				}
+			}
+		}
+		return;
 	}
 	// Non-optimal case, need to do skip copy.
 	for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -276,7 +370,7 @@ void _ccv_nnc_tensor_set_cpu_ref_f64(ccv_nnc_tensor_view_t* const a, const doubl
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
 				for (x = 0; x < dim[3]; x++)
-					ap1[x] = b;
+					ap1[x * astride[3]] = b;
 				ap1 += astride[2];
 			}
 		}

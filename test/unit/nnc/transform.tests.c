@@ -270,4 +270,24 @@ TEST_CASE("masked fill backward a 3d tensor")
 	ccv_nnc_tensor_free(d);
 }
 
+TEST_CASE("compare permute with transpose")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 6, 5, 4, 3), 0);
+	int i;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	for (i = 0; i < 6 * 5 * 4 * 3; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NCHW(32F, 6, 4, 5, 3), ccv_nnc_no_ofs, DIM_ALLOC(5 * 4 * 3, 3, 4 * 3, 1));
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 6, 4, 5, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 6, 4, 5, 3), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), 0);
+	REQUIRE_TENSOR_EQ(b, c, "transposed and permuted should be exactly the same.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+}
+
 #include "case_main.h"

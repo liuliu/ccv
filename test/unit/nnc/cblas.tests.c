@@ -873,7 +873,7 @@ TEST_CASE("backward gemm with transpose a and b batch 2, same b")
 	ccv_nnc_tensor_free(dbias);
 }
 
-TEST_CASE("cublas forward gemm")
+TEST_CASE("cblas forward gemm")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT));
 	dsfmt_t dsfmt;
@@ -922,7 +922,7 @@ TEST_CASE("cublas forward gemm")
 	ccv_nnc_tensor_free(hb);
 }
 
-TEST_CASE("cublas forward gemm no bias")
+TEST_CASE("cblas forward gemm no bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT));
 	dsfmt_t dsfmt;
@@ -965,7 +965,7 @@ TEST_CASE("cublas forward gemm no bias")
 	ccv_nnc_tensor_free(hb);
 }
 
-TEST_CASE("cublas backward gemm")
+TEST_CASE("cblas backward gemm")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT) &&
 		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_CPU_OPT));
@@ -1039,7 +1039,7 @@ TEST_CASE("cublas backward gemm")
 	ccv_nnc_tensor_free(tdbias);
 }
 
-TEST_CASE("cublas backward gemm no bias")
+TEST_CASE("cblas backward gemm no bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT) &&
 		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_CPU_OPT));
@@ -1098,6 +1098,43 @@ TEST_CASE("cublas backward gemm no bias")
 	ccv_nnc_tensor_free(tb);
 	ccv_nnc_tensor_free(th);
 	ccv_nnc_tensor_free(tdw);
+}
+
+TEST_CASE("cblas handle permute")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 2, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 2, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 128), 0);
+	ccv_nnc_tensor_t* wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 64), 0);
+	int i;
+	for (i = 0; i < 2 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 2 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(0, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(0, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wt), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2));
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
+	cmd.algorithm = 1; // This is cblas.
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(at, wt), TENSOR_LIST(bt), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(128, 2 * 128, 1));
+	ccv_nnc_tensor_view_t* wv = ccv_nnc_tensor_view_new(w, CPU_TENSOR_NHWC(32F, 2, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(128, 2 * 128, 1));
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)wv), TENSOR_LIST(b), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(wv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(wt);
+	ccv_nnc_tensor_free(bt);
 }
 
 #endif
