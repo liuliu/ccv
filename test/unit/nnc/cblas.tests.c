@@ -1137,6 +1137,306 @@ TEST_CASE("cblas handle permute")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("generalized batched gemm with batch (2, 4)")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64, 4, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 8 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wt), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_tensor_view_t* wv = ccv_nnc_tensor_view_new(w, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)wv), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_view_t* atv = ccv_nnc_tensor_view_new(at, CPU_TENSOR_NHWC(32F, 8, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* wtv = ccv_nnc_tensor_view_new(wt, CPU_TENSOR_NHWC(32F, 8, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NHWC(32F, 8, 10, 64), ccv_nnc_no_ofs, DIM_ALLOC(10 * 64, 64, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)atv, (ccv_nnc_tensor_t*)wtv), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(wv);
+	ccv_nnc_tensor_view_free(atv);
+	ccv_nnc_tensor_view_free(wtv);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(wt);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) and broadcast")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, w), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_view_t* atv = ccv_nnc_tensor_view_new(at, CPU_TENSOR_NHWC(32F, 8, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NHWC(32F, 8, 10, 64), ccv_nnc_no_ofs, DIM_ALLOC(10 * 64, 64, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)atv, w), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(atv);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) with bias")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64, 4, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 8 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64; i++)
+		bias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wt), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_tensor_view_t* wv = ccv_nnc_tensor_view_new(w, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)wv, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_view_t* atv = ccv_nnc_tensor_view_new(at, CPU_TENSOR_NHWC(32F, 8, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* wtv = ccv_nnc_tensor_view_new(wt, CPU_TENSOR_NHWC(32F, 8, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NHWC(32F, 8, 10, 64), ccv_nnc_no_ofs, DIM_ALLOC(10 * 64, 64, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)atv, (ccv_nnc_tensor_t*)wtv, bias), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(wv);
+	ccv_nnc_tensor_view_free(atv);
+	ccv_nnc_tensor_view_free(wtv);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(wt);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) with bias and broadcast")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64; i++)
+		bias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_view_t* atv = ccv_nnc_tensor_view_new(at, CPU_TENSOR_NHWC(32F, 8, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 128, 128, 1));
+	ccv_nnc_tensor_view_t* btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NHWC(32F, 8, 10, 64), ccv_nnc_no_ofs, DIM_ALLOC(10 * 64, 64, 1));
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)atv, w, bias), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(atv);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) compare cblas")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64, 4, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 8 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wt), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_tensor_view_t* wv = ccv_nnc_tensor_view_new(w, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3));
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
+	cmd.algorithm = 1; // This is cblas.
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)wv), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3)), ccv_nnc_no_hint, 0, TENSOR_LIST(at, wt), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(wv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(wt);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) and broadcast compare cblas")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
+	cmd.algorithm = 1; // This is cblas.
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, w), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at, w), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) with bias compare cblas")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64, 4, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 8 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64; i++)
+		bias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wt), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_tensor_view_t* wv = ccv_nnc_tensor_view_new(w, CPU_TENSOR_NHWC(32F, 2, 4, 64, 128), ccv_nnc_no_ofs, DIM_ALLOC(64 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3));
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
+	cmd.algorithm = 1; // This is cblas.
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, (ccv_nnc_tensor_t*)wv, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(2, 3)), ccv_nnc_no_hint, 0, TENSOR_LIST(at, wt, bias), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(wv);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(wt);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("generalized batched gemm with batch (2, 4) with bias and broadcast compare cblas")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 4, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+
+	ccv_nnc_tensor_t* at = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 10, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64; i++)
+		bias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 8 * 10 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_tensor_view_t* av = ccv_nnc_tensor_view_new(a, CPU_TENSOR_NHWC(32F, 2, 4, 10, 128), ccv_nnc_no_ofs, DIM_ALLOC(10 * 4 * 128, 128, 4 * 128, 1));
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
+	cmd.algorithm = 1; // This is cblas.
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at, w, bias), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(bt);
+}
+
 #endif
 
 #include "case_main.h"

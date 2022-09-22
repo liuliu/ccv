@@ -10,6 +10,58 @@
 #include <cblas.h>
 #endif
 
+static inline void _ccv_nnc_gbmm_and_bias(const float* const ones, const float* const a, const int a_nd, const int* const adim, const int* const astride, const float* const w, const int w_nd, const int* const wdim, const int* const wstride, const float* const bias, const int bias_nd, const int* const biasdim, const int* const biasstride, float* const b, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const int transa, const int transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc)
+{
+	int i;
+	if (b_nd <= 3)
+	{
+		for (i = 0; i < b_batch_size; i++)
+		{
+			cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, b_cols, b_rows, 1, 1.0, bias + i * bias_batch_inc, bias_rows_inc, ones, 1, 0.0, b + i * b_batch_inc, b_rows_inc);
+			cblas_sgemm(CblasColMajor, transa, transb, b_cols, b_rows, a_cols, 1.0, w + i * w_batch_inc, lda_inc, a + i * a_batch_inc, ldb_inc, 1.0, b + i * b_batch_inc, b_rows_inc);
+		}
+		return;
+	}
+	const int dim = bdim[0];
+	if (a_nd > 3)
+		{ assert(adim[0] == 1 || dim == adim[0]); }
+	if (w_nd > 3)
+		{ assert(wdim[0] == 1 || dim == wdim[0]); }
+	if (bias_nd > 3)
+		{ assert(biasdim[0] == 1 || dim == biasdim[0]); }
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm_and_bias(ones,
+			a_nd > 3 ? a + i * astride[0] : a, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
+			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
+			bias_nd > 3 ? bias + i * biasstride[0] : bias, bias_nd > 3 ? bias_nd - 1 : bias_nd, bias_nd > 3 ? biasdim + 1 : biasdim, bias_nd > 3 ? biasstride + 1 : biasstride,
+			b + i * bstride[0], b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+	}
+}
+
+static inline void _ccv_nnc_gbmm(const float* const a, const int a_nd, const int* const adim, const int* const astride, const float* const w, const int w_nd, const int* const wdim, const int* const wstride, float* const b, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const int transa, const int transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int b_rows_inc)
+{
+	int i;
+	if (b_nd <= 3)
+	{
+		for (i = 0; i < b_batch_size; i++)
+			cblas_sgemm(CblasColMajor, transa, transb, b_cols, b_rows, a_cols, 1.0, w + i * w_batch_inc, lda_inc, a + i * a_batch_inc, ldb_inc, 0.0, b + i * b_batch_inc, b_rows_inc);
+		return;
+	}
+	const int dim = bdim[0];
+	if (a_nd > 3)
+		{ assert(adim[0] == 1 || dim == adim[0]); }
+	if (w_nd > 3)
+		{ assert(wdim[0] == 1 || dim == wdim[0]); }
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm(
+			a_nd > 3 ? a + i * astride[0] : a, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
+			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
+			b + i * bstride[0], b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+	}
+}
+
 int _ccv_nnc_gemm_forw_cpu_sys(const int transpose_a[2], const int transpose_b[2], const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
@@ -33,6 +85,34 @@ int _ccv_nnc_gemm_forw_cpu_sys(const int transpose_a[2], const int transpose_b[2
 	assert(w_cols == b_cols);
 	const int is_transpose_a = ccv_nnc_is_matrix_transpose(a->info, transpose_a);
 	const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, transpose_b);
+	int astride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	int wstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	const int* astride;
+	if (CCV_IS_TENSOR_VIEW(a))
+		astride = a->stride;
+	else {
+		ccv_nnc_tensor_get_stride(a->info.dim, astride_from_dim);
+		astride = astride_from_dim;
+	}
+	const int* wstride;
+	if (CCV_IS_TENSOR_VIEW(w))
+		wstride = w->stride;
+	else {
+		ccv_nnc_tensor_get_stride(w->info.dim, wstride_from_dim);
+		wstride = wstride_from_dim;
+	}
+	const int* bstride;
+	if (CCV_IS_TENSOR_VIEW(b))
+		bstride = b->stride;
+	else {
+		ccv_nnc_tensor_get_stride(b->info.dim, bstride_from_dim);
+		bstride = bstride_from_dim;
+	}
+	const int transa = is_transpose_w ? CblasTrans : CblasNoTrans;
+	const int transb = is_transpose_a ? CblasTrans : CblasNoTrans;
+	const int lda_inc = is_transpose_w ? w_cols_inc : w_rows_inc;
+	const int ldb_inc = is_transpose_a ? a_cols_inc : a_rows_inc;
 	if (bias)
 	{
 		float* const ones = (float*)ccmalloc(sizeof(float) * b_rows);
@@ -45,23 +125,18 @@ int _ccv_nnc_gemm_forw_cpu_sys(const int transpose_a[2], const int transpose_b[2
 		if (bias_batch_size == 1 && b_batch_size > 1)
 			bias_batch_inc = 0;
 		assert(bias_cols == b_cols);
-		for (i = 0; i < b_batch_size; i++)
-			cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, b_cols, b_rows, 1, 1.0, bias->data.f32 + i * bias_batch_inc, bias_rows_inc, ones, 1, 0.0, b->data.f32 + i * b_batch_inc, b_rows_inc);
+		const int* biasstride;
+		int biasstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		if (CCV_IS_TENSOR_VIEW(bias))
+			biasstride = bias->stride;
+		else {
+			ccv_nnc_tensor_get_stride(bias->info.dim, biasstride_from_dim);
+			biasstride = biasstride_from_dim;
+		}
+		_ccv_nnc_gbmm_and_bias(ones, a->data.f32, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w->data.f32, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.f32, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.f32, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
 		ccfree(ones);
-		const int transa = is_transpose_w ? CblasTrans : CblasNoTrans;
-		const int transb = is_transpose_a ? CblasTrans : CblasNoTrans;
-		const int lda_inc = is_transpose_w ? w_cols_inc : w_rows_inc;
-		const int ldb_inc = is_transpose_a ? a_cols_inc : a_rows_inc;
-		for (i = 0; i < b_batch_size; i++)
-			cblas_sgemm(CblasColMajor, transa, transb, b_cols, b_rows, a_cols, 1.0, w->data.f32 + i * w_batch_inc, lda_inc, a->data.f32 + i * a_batch_inc, ldb_inc, 1.0, b->data.f32 + i * b_batch_inc, b_rows_inc);
 	} else {
-		const int transa = is_transpose_w ? CblasTrans : CblasNoTrans;
-		const int transb = is_transpose_a ? CblasTrans : CblasNoTrans;
-		const int lda_inc = is_transpose_w ? w_cols_inc : w_rows_inc;
-		const int ldb_inc = is_transpose_a ? a_cols_inc : a_rows_inc;
-		int i;
-		for (i = 0; i < b_batch_size; i++)
-			cblas_sgemm(CblasColMajor, transa, transb, b_cols, b_rows, a_cols, 1.0, w->data.f32 + i * w_batch_inc, lda_inc, a->data.f32 + i * a_batch_inc, ldb_inc, 0.0, b->data.f32 + i * b_batch_inc, b_rows_inc);
+		_ccv_nnc_gbmm(a->data.f32, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w->data.f32, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.f32, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 #else

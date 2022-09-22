@@ -344,12 +344,12 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 static inline int ccv_nnc_is_matrix_transpose(const ccv_nnc_tensor_param_t params, const int transpose[2])
 {
 	const int nd = ccv_nnc_tensor_nd(params.dim);
-	assert(nd >= 1 && nd <= 3);
+	assert(nd >= 1);
 	if (transpose[0] != transpose[1])
 	{
 		assert(nd > 1);
-		assert(((transpose[0] == ((nd == 2) ? 0 : 1)) && (transpose[1] == ((nd == 2) ? 1 : 2))) ||
-			((transpose[1] == ((nd == 2) ? 0 : 1)) && (transpose[0] == ((nd == 2) ? 1 : 2))));
+		assert(((transpose[0] == ((nd == 2) ? 0 : nd - 2)) && (transpose[1] == ((nd == 2) ? 1 : nd - 1))) ||
+			((transpose[1] == ((nd == 2) ? 0 : nd - 2)) && (transpose[0] == ((nd == 2) ? 1 : nd - 1))));
 		return 1;
 	}
 	return 0;
@@ -359,18 +359,18 @@ static inline int ccv_nnc_is_matrix_transpose(const ccv_nnc_tensor_param_t param
 static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t params, const int* const stride, const int* const dim, const int transpose[2], int* const batch_size_ref, int* const rows_ref, int* const cols_ref, int* const batch_inc_ref, int* const rows_inc_ref, int* const cols_inc_ref)
 {
 	const int nd = ccv_nnc_tensor_nd(params.dim);
-	assert(nd >= 1 && nd <= 3);
-	*batch_size_ref = nd < 3 ? 1 : params.dim[0];
-	*batch_inc_ref = nd < 3 ? 0 : stride ? stride[0] : dim[1] * dim[2];
-	int rows = nd == 1 ? 1 : (nd == 2 ? params.dim[0] : params.dim[1]);
+	assert(nd >= 1);
+	*batch_size_ref = nd < 3 ? 1 : params.dim[nd - 3];
+	*batch_inc_ref = nd < 3 ? 0 : stride ? stride[nd - 3] : dim[nd - 2] * dim[nd - 1];
+	int rows = nd == 1 ? 1 : (nd == 2 ? params.dim[0] : params.dim[nd - 2]);
 	int rows_inc = stride ? (nd >= 2 ? stride[nd - 2] : stride[0] * dim[0]) : dim[nd - 1];
-	int cols = nd == 1 ? params.dim[0] :(nd == 2 ? params.dim[1] : params.dim[2]);
+	int cols = nd == 1 ? params.dim[0] :(nd == 2 ? params.dim[1] : params.dim[nd - 1]);
 	int cols_inc = 1;
 	if (transpose[0] != transpose[1])
 	{
 		assert(nd > 1);
-		assert(((transpose[0] == ((nd == 2) ? 0 : 1)) && (transpose[1] == ((nd == 2) ? 1 : 2))) ||
-			((transpose[1] == ((nd == 2) ? 0 : 1)) && (transpose[0] == ((nd == 2) ? 1 : 2))));
+		assert(((transpose[0] == ((nd == 2) ? 0 : nd - 2)) && (transpose[1] == ((nd == 2) ? 1 : nd - 1))) ||
+			((transpose[1] == ((nd == 2) ? 0 : nd - 2)) && (transpose[0] == ((nd == 2) ? 1 : nd - 1))));
 		int t;
 		CCV_SWAP(rows, cols, t);
 		CCV_SWAP(rows_inc, cols_inc, t);

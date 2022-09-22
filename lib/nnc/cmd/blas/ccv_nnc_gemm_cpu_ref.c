@@ -10,6 +10,103 @@
 #include <dispatch/dispatch.h>
 #endif
 
+static inline void _ccv_nnc_bmm_and_bias(const float* const a, const float* const w, const float* const bias, float* const b, const int b_batch_size, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int a_cols_inc, const int w_cols_inc, const int bias_cols_inc, const int b_cols_inc, const int a_rows_inc, const int w_rows_inc, const int bias_rows_inc, const int b_rows_inc)
+{
+	int n, i;
+	for (n = 0; n < b_batch_size; n++)
+	{
+		const float* const ap = a + n * a_batch_inc;
+		const float* const wp = w + n * w_batch_inc;
+		const float* const biasp = bias + n * bias_batch_inc;
+		float* const bp = b + n * b_batch_inc;
+		for (i = 0; i < b_rows; i++)
+		{
+			const float* const api = ap + i * a_rows_inc;
+			const float* const biaspi = biasp + i * bias_rows_inc;
+			float* const bpi = bp + i * b_rows_inc;
+			parallel_for(j, b_cols) {
+				float v = biaspi[j * bias_cols_inc];
+				const float* const wpj = wp + j * w_cols_inc;
+				int k;
+				for (k = 0; k < a_cols; k++)
+					v += wpj[k * w_rows_inc] * api[k * a_cols_inc];
+				bpi[j * b_cols_inc] = v;
+			} parallel_endfor
+		}
+	}
+}
+
+static inline void _ccv_nnc_gbmm_and_bias(const float* const a, const int a_nd, const int* const adim, const int* const astride, const float* const w, const int w_nd, const int* const wdim, const int* const wstride, const float* const bias, const int bias_nd, const int* const biasdim, const int* const biasstride, float* const b, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int a_cols_inc, const int w_cols_inc, const int bias_cols_inc, const int b_cols_inc, const int a_rows_inc, const int w_rows_inc, const int bias_rows_inc, const int b_rows_inc)
+{
+	if (b_nd <= 3)
+	{
+		_ccv_nnc_bmm_and_bias(a, w, bias, b, b_batch_size, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, bias_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, bias_rows_inc, b_rows_inc);
+		return;
+	}
+	const int dim = bdim[0];
+	if (a_nd > 3)
+		{ assert(adim[0] == 1 || dim == adim[0]); }
+	if (w_nd > 3)
+		{ assert(wdim[0] == 1 || dim == wdim[0]); }
+	if (bias_nd > 3)
+		{ assert(biasdim[0] == 1 || dim == biasdim[0]); }
+	int i;
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm_and_bias(
+			a_nd > 3 ? a + i * astride[0] : a, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
+			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
+			bias_nd > 3 ? bias + i * biasstride[0] : bias, bias_nd > 3 ? bias_nd - 1 : bias_nd, bias_nd > 3 ? biasdim + 1 : biasdim, bias_nd > 3 ? biasstride + 1 : biasstride,
+			b + i * bstride[0], b_nd - 1, bdim + 1, bstride + 1, b_batch_size, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, bias_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, bias_rows_inc, b_rows_inc);
+	}
+}
+
+static inline void _ccv_nnc_bmm(const float* const a, const float* const w, float* const b, const int b_batch_size, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int a_cols_inc, const int w_cols_inc, const int b_cols_inc, const int a_rows_inc, const int w_rows_inc, const int b_rows_inc)
+{
+	int n, i;
+	for (n = 0; n < b_batch_size; n++)
+	{
+		const float* const ap = a + n * a_batch_inc;
+		const float* const wp = w + n * w_batch_inc;
+		float* const bp = b + n * b_batch_inc;
+		for (i = 0; i < b_rows; i++)
+		{
+			const float* const api = ap + i * a_rows_inc;
+			float* const bpi = bp + i * b_rows_inc;
+			parallel_for(j, b_cols) {
+				float v = 0;
+				const float* const wpj = wp + j * w_cols_inc;
+				int k;
+				for (k = 0; k < a_cols; k++)
+					v += wpj[k * w_rows_inc] * api[k * a_cols_inc];
+				bpi[j * b_cols_inc] = v;
+			} parallel_endfor
+		}
+	}
+}
+
+static inline void _ccv_nnc_gbmm(const float* const a, const int a_nd, const int* const adim, const int* const astride, const float* const w, const int w_nd, const int* const wdim, const int* const wstride, float* const b, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int a_cols_inc, const int w_cols_inc, const int b_cols_inc, const int a_rows_inc, const int w_rows_inc, const int b_rows_inc)
+{
+	if (b_nd <= 3)
+	{
+		_ccv_nnc_bmm(a, w, b, b_batch_size, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, b_rows_inc);
+		return;
+	}
+	const int dim = bdim[0];
+	if (a_nd > 3)
+		{ assert(adim[0] == 1 || dim == adim[0]); }
+	if (w_nd > 3)
+		{ assert(wdim[0] == 1 || dim == wdim[0]); }
+	int i;
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm(
+			a_nd > 3 ? a + i * astride[0] : a, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
+			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
+			b + i * bstride[0], b_nd - 1, bdim + 1, bstride + 1, b_batch_size, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, b_rows_inc);
+	}
+}
+
 static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 2);
@@ -37,7 +134,30 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a_rows == b_rows);
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
-	int n, i;
+	int astride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	int wstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	const int* astride;
+	if (CCV_IS_TENSOR_VIEW(a))
+		astride = a->stride;
+	else {
+		ccv_nnc_tensor_get_stride(a->info.dim, astride_from_dim);
+		astride = astride_from_dim;
+	}
+	const int* wstride;
+	if (CCV_IS_TENSOR_VIEW(w))
+		wstride = w->stride;
+	else {
+		ccv_nnc_tensor_get_stride(w->info.dim, wstride_from_dim);
+		wstride = wstride_from_dim;
+	}
+	const int* bstride;
+	if (CCV_IS_TENSOR_VIEW(b))
+		bstride = b->stride;
+	else {
+		ccv_nnc_tensor_get_stride(b->info.dim, bstride_from_dim);
+		bstride = bstride_from_dim;
+	}
 	if (bias)
 	{
 		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
@@ -48,47 +168,17 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (bias_rows == 1 && b_rows > 1)
 			bias_rows_inc = 0;
 		assert(bias_cols == b_cols);
-		for (n = 0; n < b_batch_size; n++)
-		{
-			const float* const ap = a->data.f32 + n * a_batch_inc;
-			const float* const wp = w->data.f32 + n * w_batch_inc;
-			const float* const biasp = bias->data.f32 + n * bias_batch_inc;
-			float* const bp = b->data.f32 + n * b_batch_inc;
-			for (i = 0; i < b_rows; i++)
-			{
-				const float* const api = ap + i * a_rows_inc;
-				const float* const biaspi = biasp + i * bias_rows_inc;
-				float* const bpi = bp + i * b_rows_inc;
-				parallel_for(j, b_cols) {
-					float v = biaspi[j * bias_cols_inc];
-					const float* const wpj = wp + j * w_cols_inc;
-					int k;
-					for (k = 0; k < a_cols; k++)
-						v += wpj[k * w_rows_inc] * api[k * a_cols_inc];
-					bpi[j * b_cols_inc] = v;
-				} parallel_endfor
-			}
+		const int* biasstride;
+		int biasstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		if (CCV_IS_TENSOR_VIEW(bias))
+			biasstride = bias->stride;
+		else {
+			ccv_nnc_tensor_get_stride(bias->info.dim, biasstride_from_dim);
+			biasstride = biasstride_from_dim;
 		}
+		_ccv_nnc_gbmm_and_bias(a->data.f32, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w->data.f32, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.f32, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.f32, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, bias_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, bias_rows_inc, b_rows_inc);
 	} else {
-		for (n = 0; n < b_batch_size; n++)
-		{
-			const float* const ap = a->data.f32 + n * a_batch_inc;
-			const float* const wp = w->data.f32 + n * w_batch_inc;
-			float* const bp = b->data.f32 + n * b_batch_inc;
-			for (i = 0; i < b_rows; i++)
-			{
-				const float* const api = ap + i * a_rows_inc;
-				float* const bpi = bp + i * b_rows_inc;
-				parallel_for(j, b_cols) {
-					float v = 0;
-					const float* const wpj = wp + j * w_cols_inc;
-					int k;
-					for (k = 0; k < a_cols; k++)
-						v += wpj[k * w_rows_inc] * api[k * a_cols_inc];
-					bpi[j * b_cols_inc] = v;
-				} parallel_endfor
-			}
-		}
+		_ccv_nnc_gbmm(a->data.f32, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w->data.f32, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.f32, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, a_cols_inc, w_cols_inc, b_cols_inc, a_rows_inc, w_rows_inc, b_rows_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
