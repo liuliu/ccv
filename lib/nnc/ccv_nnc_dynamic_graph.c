@@ -218,17 +218,32 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 		// The tensor variable need to be fully specified if I am doing alias an alias.
 		assert(!ccv_nnc_is_tensor_auto(tensor_variable->info));
 		int i;
-		int no_inc = 1;
-		for (i = 0; no_inc && i < CCV_NNC_MAX_DIM_ALLOC; i++)
-			no_inc = (tensor_variable->stride[i] == 0);
-		// It has to satisfy the condition that the tensor variable itself is contiguous.
-		assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, no_inc ? tensor_variable->info.dim : tensor_variable->stride, tensor_variable->ofs));
+		int no_stride = 1;
+		for (i = 0; no_stride && i < CCV_NNC_MAX_DIM_ALLOC; i++)
+			no_stride = (tensor_variable->stride[i] == 0);
+		int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int* to_stride;
+		if (no_stride)
+		{
+			ccv_nnc_tensor_get_stride(tensor_variable->info.dim, stride_from_dim);
+			to_stride = stride_from_dim;
+		} else
+			to_stride = tensor_variable->stride;
+		// If we provide stride, or reshape to a different size, assert the tensor variable itself is contiguous (otherwise we cannot satisfy the reshape requirements).
+		if (ccv_nnc_tensor_nd(info.dim) != ccv_nnc_tensor_nd(tensor_variable->info.dim) || (stride[0] != 0 && memcmp(stride, to_stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0))
+			{ assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, to_stride, tensor_variable->ofs)); }
 		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
-		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, no_inc ? tensor_variable->info.dim : tensor_variable->stride, tensor_variable->ofs);
+		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, to_stride, tensor_variable->ofs);
 		variable_alias->alias_off = tensor_variable->alias_off + off;
+		// If we don't provide stride, copy the stride from previous variable.
+		if (stride[0] == 0)
+			memcpy(variable_alias->stride, tensor_variable->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+		else
+			memcpy(variable_alias->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	} else {
 		variable_alias->alias_index_ref = tensor_variable->index + 1;
 		variable_alias->alias_off = 0;
+		memcpy(variable_alias->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	}
 	variable_alias->info = info;
 	variable_alias->symbol = NO_TENSOR_SYMBOL;
@@ -236,7 +251,6 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	variable_alias->destructor_hook.context = 0;
 	variable_alias->tensor_view = 0;
 	memcpy(variable_alias->ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	memcpy(variable_alias->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	if (graph->reuse_var >= 0)
 	{
 		const int reuse_var = graph->reuse_var;
