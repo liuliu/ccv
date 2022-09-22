@@ -2603,6 +2603,15 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv
  * @return The tensor parameters.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_variable_params(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+/**
+ * Get the parameters for a tensor variable alias.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @param ofs The offset on each of the dimension.
+ * @param stride The stride of each dimension.
+ * @return non-zero if it is not a tensor alias.
+ */
+int ccv_nnc_tensor_variable_alias_params(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, int ofs[CCV_NNC_MAX_DIM_ALLOC], int stride[CCV_NNC_MAX_DIM_ALLOC]);
 
 /** @cond ALL */
 /**

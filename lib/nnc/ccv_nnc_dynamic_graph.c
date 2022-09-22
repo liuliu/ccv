@@ -255,6 +255,17 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 	return variable_alias;
 }
 
+int ccv_nnc_tensor_variable_alias_params(const ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, int ofs[CCV_NNC_MAX_DIM_ALLOC], int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	if (!tensor_variable->alias_index_ref)
+		return -1;
+	if (ofs)
+		memcpy(ofs, tensor_variable->ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	if (stride)
+		memcpy(stride, tensor_variable->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	return 0;
+}
+
 ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (tensor_variable->tensor_view)
