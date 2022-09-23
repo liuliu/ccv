@@ -21,15 +21,6 @@ static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int
 {
 	if (CCV_IS_TENSOR_VIEW(tv))
 	{
-		// Only work for contiguous tensors (no skipping).
-		int i;
-		const int nd = ccv_nnc_tensor_nd(tv->info.dim);
-		int cstride = 1;
-		for (i = nd - 1; i >= axis + 1; i--)
-		{
-			assert(tv->stride[i] == cstride);
-			cstride *= tv->info.dim[i];
-		}
 		if (CCV_NNC_MAX_DIM_ALLOC - axis - 2 > 0)
 		{
 			// Need to handle ofs and stride.
