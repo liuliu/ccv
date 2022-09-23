@@ -51,11 +51,15 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	int b_rows = a_rows, b_cols = w_cols;
-	if (nd == 1) {
+	if (nd == 1)
 		outputs[0].dim[0] = b_cols;
-	} else if (nd == 2) {
-		outputs[0].dim[0] = b_rows;
-		outputs[0].dim[1] = b_cols;
+	else if (nd == 2) {
+		if (a_nd == 1) // If a is a vector, output is a vector too.
+			outputs[0].dim[0] = b_cols;
+		else {
+			outputs[0].dim[0] = b_rows;
+			outputs[0].dim[1] = b_cols;
+		}
 	} else {
 		assert(nd >= 3);
 		outputs[0].dim[nd - 3] = ccv_max(a_batch_size, w_batch_size);
