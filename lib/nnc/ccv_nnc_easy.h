@@ -364,7 +364,7 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	*batch_inc_ref = nd < 3 ? 0 : stride ? stride[nd - 3] : dim[nd - 2] * dim[nd - 1];
 	int rows = nd == 1 ? 1 : (nd == 2 ? params.dim[0] : params.dim[nd - 2]);
 	int rows_inc = stride ? (nd >= 2 ? stride[nd - 2] : stride[0] * dim[0]) : dim[nd - 1];
-	int cols = nd == 1 ? params.dim[0] :(nd == 2 ? params.dim[1] : params.dim[nd - 1]);
+	int cols = params.dim[nd - 1];
 	int cols_inc = 1;
 	if (transpose[0] != transpose[1])
 	{

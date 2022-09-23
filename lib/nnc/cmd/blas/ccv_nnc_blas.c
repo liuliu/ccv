@@ -43,22 +43,31 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
 	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
+	const int w_nd = ccv_nnc_tensor_nd(inputs[1].dim);
+	const int nd = ccv_max(a_nd, w_nd);
 	ccv_nnc_tensor_get_matrix_params(inputs[0], 0, inputs[0].dim, cmd.blas.transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
 	ccv_nnc_tensor_get_matrix_params(inputs[1], 0, inputs[1].dim, cmd.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	int b_rows = a_rows, b_cols = w_cols;
-	if (a_nd == 1) {
+	if (nd == 1) {
 		outputs[0].dim[0] = b_cols;
-	} else if (a_nd == 2) {
+	} else if (nd == 2) {
 		outputs[0].dim[0] = b_rows;
 		outputs[0].dim[1] = b_cols;
 	} else {
-		assert(a_nd == 3);
-		outputs[0].dim[0] = a_batch_size;
-		outputs[0].dim[1] = b_rows;
-		outputs[0].dim[2] = b_cols;
+		assert(nd >= 3);
+		outputs[0].dim[nd - 3] = ccv_max(a_batch_size, w_batch_size);
+		outputs[0].dim[nd - 2] = b_rows;
+		outputs[0].dim[nd - 1] = b_cols;
+		int i;
+		if (a_nd > w_nd)
+			for (i = 0; i < nd - 3; i++)
+				outputs[0].dim[i] = inputs[0].dim[i];
+		else
+			for (i = 0; i < nd - 3; i++)
+				outputs[0].dim[i] = inputs[1].dim[i];
 	}
 }
 

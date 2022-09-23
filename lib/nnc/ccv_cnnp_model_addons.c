@@ -395,12 +395,12 @@ static void _ccv_cnnp_permute_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	int output_stride[CCV_NNC_MAX_DIM_ALLOC] = {};
 	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If it is not an alias. Find stride and permute.
 	{
-		ccv_nnc_tensor_get_stride(params.dim, input_stride);
+		ccv_nnc_tensor_get_stride(input_dim, input_stride);
 		int i;
 		for (i = 0; i < nd; i++)
 		{
 			const int idx = self->index[i];
-			assert(idx >= 0 && idx < CCV_NNC_MAX_DIM_ALLOC);
+			assert(idx >= 0 && idx < nd);
 			params.dim[i] = input_dim[idx];
 			output_stride[i] = input_stride[idx];
 		}
@@ -409,12 +409,13 @@ static void _ccv_cnnp_permute_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		// if it is an alias, we can get the stride from it and use that.
 		int input_ofs[CCV_NNC_MAX_DIM_ALLOC];
 		ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], input_ofs, input_stride);
+		assert(input_stride[0] != 0);
 		int output_ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
 		int i;
 		for (i = 0; i < nd; i++)
 		{
 			const int idx = self->index[i];
-			assert(idx >= 0 && idx < CCV_NNC_MAX_DIM_ALLOC);
+			assert(idx >= 0 && idx < nd);
 			params.dim[i] = input_dim[idx];
 			output_stride[i] = input_stride[idx];
 			output_ofs[i] = input_ofs[idx];
