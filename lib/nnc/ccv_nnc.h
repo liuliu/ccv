@@ -2606,7 +2606,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_variable_params(ccv_nnc_d
 /**
  * Get the parameters for a tensor variable alias.
  * @param graph The symbolic graph.
- * @param tensor The tensor symbol reference.
+ * @param tensor_variable The tensor variable reference.
  * @param ofs The offset on each of the dimension.
  * @param stride The stride of each dimension.
  * @return non-zero if it is not a tensor alias.
@@ -3888,32 +3888,38 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_batch_norm(const float momentum, const float epsilon, const char* const name);
 /**
  * A RELU activation layer model.
+ * @param name The unique name of the model.
  * @return A RELU activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
 /**
  * A sigmoid activation layer model.
+ * @param name The unique name of the model.
  * @return A sigmoid activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
 /**
  * A tanh activation layer model.
+ * @param name The unique name of the model.
  * @return A tanh activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
 /**
  * A swish activation layer model.
+ * @param name The unique name of the model.
  * @return A swish activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const char* const name);
 /**
  * A GELU activation layer model.
  * @param tanh Whether enable fast approximate GELU.
+ * @param name The unique name of the model.
  * @return A GELU activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gelu(const int tanh, const char* const name);
 /**
  * A softmax activation layer model.
+ * @param name The unique name of the model.
  * @return A softmax activation layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softmax(const char* const name);
@@ -3945,6 +3951,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DI
 /**
  * Permute the input. For example, [2, 0, 1] means moving dimension 2 to 0, dimension 0 to 1, dimension 1 to 2.
  * @param index The index for each dimensions from.
+ * @param name The unique name of the model.
  * @return A permute layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_permute(const int index[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
@@ -3965,9 +3972,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
 /**
  * A group norm model.
- * @param axis The axis are the feature axis to compute norm.
+ * @param group_axis The axis are the feature axis to compute norm.
  * @param groups How many groups per axis channel.
  * @param epsilon The epsilon in layer norm parameter.
+ * @param reduce_axis The other axes to be reduced.
+ * @param axis_count The number of other axes to be reduced.
  * @param name The unique name of the model.
  * @return A group norm model.
  */
