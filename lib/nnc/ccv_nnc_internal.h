@@ -174,7 +174,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 #define SET_BORDER_OFFSET_SIZE_FOR(x, i, hint, wd, ad, n, m) \
 	do { \
 		n[x] = ccv_max(i[x] * hint.stride.dim[x] - hint.border.begin[x], 0) - (i[x] * hint.stride.dim[x] - hint.border.begin[x]); \
-		m[x] = (wd)[x] - n[x] - (i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x] - ccv_min(ad[x], i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x])); \
+		m[x] = (wd)[x] - n[x] - (i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x] - ccv_min((ad)[x], i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x])); \
 	} while (0)
 
 // Defines common graph visit macros

@@ -149,8 +149,11 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 
 typedef struct {
 	ccv_cnnp_model_t super;
+	// The model's outputs, it is different from super.output_size, as latter is for actual tensor symbols.
+	int model_output_size;
 	// The name is similar to sequential model, but it is just topological sorted models.
 	int sequence_size;
+	int* model_outputs; // Which model, as in sequences, have some outputs.
 	ccv_cnnp_model_io_t sequence[1];
 } ccv_cnnp_functional_model_t;
 
@@ -230,16 +233,14 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 	ccv_array_free(input_symbols);
 	if (parameter_indices)
 		ccv_array_free(parameter_indices);
-	for (i = output_size, k = self->sequence_size - 1; k >= 0; k--)
+	for (i = 0, k = 0; k < self->model_output_size; k++)
 	{
-		ccv_cnnp_model_t* const sub_model = self->sequence[k]->model;
-		i -= sub_model->output_size;
-		if (i < 0)
-			break;
+		ccv_cnnp_model_t* const sub_model = self->sequence[self->model_outputs[k]]->model;
 		for (j = 0; j < sub_model->output_size; j++)
-			outputs[i + j] = self->sequence[k]->outputs[j];
+			outputs[i + j] = self->sequence[self->model_outputs[k]]->outputs[j];
+		i += sub_model->output_size;
 	}
-	assert(i <= 0);
+	assert(i == output_size);
 }
 
 static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -294,13 +295,16 @@ KHASH_MAP_INIT_INT64(model_io, ccv_cnnp_model_io_t)
 static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_functional_model_t* const self = (const ccv_cnnp_functional_model_t*)super;
-	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (self->sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * self->super.output_size);
+	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (self->sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * self->super.output_size + sizeof(int) * self->model_output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
 	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + self->sequence_size);
 	functional_model->super.output_size = self->super.output_size;
 	functional_model->super.input_size = self->super.input_size;
 	ccv_cnnp_model_copy_name(&functional_model->super, self->super.name);
 	functional_model->sequence_size = self->sequence_size;
+	functional_model->model_output_size = self->model_output_size;
+	functional_model->model_outputs = (int*)(functional_model->super.outputs + functional_model->super.output_size);
+	memcpy(functional_model->model_outputs, self->model_outputs, sizeof(int) * self->model_output_size);
 	// Now the difficult part, copy over the model_io.
 	khash_t(model_io)* model_io_map = kh_init(model_io);
 	khash_t(model)* model_map = context ? (khash_t(model)*)context : kh_init(model);
@@ -499,16 +503,27 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	for (i = 0; i < input_size; i++)
 		{ assert((input_bitmask[i >> 6] & ((uint64_t)1 << (i & 63)))); } // Assuming they all match.
 	const int sequence_size = reverse_top->rnum + input_size;
-	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * tensor_output_size);
+	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * tensor_output_size + sizeof(int) * output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
 	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + sequence_size);
 	functional_model->super.output_size = tensor_output_size;
 	functional_model->super.input_size = input_size;
+	functional_model->model_output_size = output_size;
+	functional_model->model_outputs = (int*)(functional_model->super.outputs + tensor_output_size);
 	ccv_cnnp_model_copy_name(&functional_model->super, name);
 	functional_model->sequence_size = sequence_size;
 	memcpy(functional_model->sequence, inputs, sizeof(ccv_cnnp_model_io_t) * input_size);
 	for (i = 0; i < reverse_top->rnum; i++)
 		functional_model->sequence[input_size + i] = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
+	for (i = 0; i < output_size; i++)
+	{
+		for (j = sequence_size - 1; j >= input_size; j--)
+			if (functional_model->sequence[j] == outputs[i])
+			{
+				functional_model->model_outputs[i] = j;
+				break;
+			}
+	}
 	ccv_array_free(reverse_top);
 	return (ccv_cnnp_model_t*)functional_model;
 }

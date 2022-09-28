@@ -155,7 +155,7 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 		assert(0 && "unknown format");
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
-		if ((hint.border.begin[i] + hint.border.end[i] + a.dim[i] - cmd.size.dim[i]) % hint.stride.dim[i] != 0)
+		if ((hint.border.begin[i] + hint.border.end[i] + a.dim[i + hw] - cmd.size.dim[i]) % hint.stride.dim[i] != 0)
 			return -1;
 		int expected = (hint.border.begin[i] + hint.border.end[i] + a.dim[i + hw] - cmd.size.dim[i]) / hint.stride.dim[i] + 1;
 		if (expected != b.dim[i + hw])
