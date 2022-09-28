@@ -314,9 +314,10 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		// We identify permute by checking if the stride is not in descending order.
 		// This also covered "permute" through reshape, rather than using ccv_cnnp_permute directly.
 		const int nd = ccv_nnc_tensor_nd(params.dim);
+		const int new_nd = ccv_nnc_tensor_nd(self->dim);
 		int i, no_permute = 1;
 		// If the new dim has different nd, or we actually have a stride, we need to check if it is no permute or not.
-		if (ccv_nnc_tensor_nd(self->dim) != nd || (self->stride[0] != 0 && memcmp(self->stride, old_stride, sizeof(self->stride)) != 0))
+		if (new_nd != nd || (self->stride[0] != 0 && memcmp(self->stride, old_stride, sizeof(self->stride)) != 0))
 			for (i = 1; no_permute && i < nd; i++)
 				if (old_stride[i - 1] < old_stride[i])
 					no_permute = 0;
@@ -325,8 +326,14 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 			memcpy(params.dim, self->dim, sizeof(params.dim));
 			int* stride;
 			if (self->stride[0] == 0)
-				stride = old_stride;
-			else
+			{
+				if (new_nd != nd) // Cannot use old stride.
+				{
+					ccv_nnc_tensor_get_stride(self->dim, stride_from_dim);
+					stride = stride_from_dim;
+				} else
+					stride = old_stride;
+			} else
 				stride = self->stride;
 			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
 		} else {
