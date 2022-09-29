@@ -51,7 +51,7 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 		float* const ap = a->data.f32;
 		float* const cp = c->data.f32;
 		const int count = dim[2] * dim[3];
-		if (astride[2] == dim[3] && cstride[2] == dim[3])
+		if (astride[2] == dim[3] && cstride[2] == dim[3] && astride[3] == 1 && cstride[3] == 1)
 		{
 			// Special casing if the ainc[3] is the same as dim[3]
 			for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -80,7 +80,7 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
 					for (x = 0; x < dim[3]; x++)
-						cp1[x] = p * ap1[x];
+						cp1[x * cstride[3]] = p * ap1[x * astride[3]];
 					ap1 += astride[2];
 					cp1 += cstride[2];
 				}
@@ -118,9 +118,6 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
-	int astride[CCV_NNC_MAX_DIM_ALLOC];
-	int bstride[CCV_NNC_MAX_DIM_ALLOC];
-	int cstride[CCV_NNC_MAX_DIM_ALLOC];
 	assert(ccv_nnc_tensor_nd(c->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_view_check_dim(c, cdim));
 	int x;
@@ -133,6 +130,9 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 		return;
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(a, astride);
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	ccv_nnc_tensor_view_get_stride(c, cstride);
@@ -141,7 +141,7 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 	float* const bp = b->data.f32;
 	float* const cp = c->data.f32;
 	const int count = cdim[2] * cdim[3];
-	if (astride[2] == cdim[3] && bstride[2] == cdim[3] && cstride[2] == cdim[3] && adim[2] == cdim[2] && bdim[2] == cdim[2])
+	if (astride[2] == cdim[3] && bstride[2] == cdim[3] && cstride[2] == cdim[3] && adim[2] == cdim[2] && bdim[2] == cdim[2] && astride[3] == 1 && bstride[3] == 1)
 	{
 		// Special casing if the ainc[3] is the same as dim[3]
 		for (i[0] = 0; i[0] < cdim[0]; i[0]++)
@@ -177,13 +177,13 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 				float* const bp2 = bdim[2] == 1 ? bp1 : bp1 + i[2] * bstride[2];
 				if (adim[3] == 1)
 					for (x = 0; x < cdim[3]; x++)
-						cp1[x] = p * ap2[0] + q * bp2[x];
+						cp1[x] = p * ap2[0] + q * bp2[x * bstride[3]];
 				else if (bdim[3] == 1)
 					for (x = 0; x < cdim[3]; x++)
-						cp1[x] = p * ap2[x] + q * bp2[0];
+						cp1[x] = p * ap2[x * astride[3]] + q * bp2[0];
 				else
 					for (x = 0; x < cdim[3]; x++)
-						cp1[x] = p * ap2[x] + q * bp2[x];
+						cp1[x] = p * ap2[x * astride[3]] + q * bp2[x * bstride[3]];
 				cp1 += cstride[2];
 			}
 		}

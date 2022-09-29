@@ -77,13 +77,13 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				if (rdim[3] == 1)
 					for (x = 0; x < adim[3]; x++)
 					{
-						float w = ap1[x] - meanp2[0];
+						float w = ap1[x * astride[3]] - meanp2[0];
 						varp2[0] += w * w;
 					}
 				else
 					for (x = 0; x < adim[3]; x++)
 					{
-						float w = ap1[x] - meanp2[x];
+						float w = ap1[x * astride[3]] - meanp2[x];
 						varp2[x] += w * w;
 					}
 				ap1 += astride[2];
@@ -137,10 +137,10 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				float* const biasp2 = bias_dim[2] == 1 ? biasp1 : biasp1 + i[2] * bias_stride[2];
 				if (rdim[3] == 1)
 					for (x = 0; x < adim[3]; x++)
-						bp1[x] = (ap1[x] - meanp2[0]) * varp2[0] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
+						bp1[x] = (ap1[x * astride[3]] - meanp2[0]) * varp2[0] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
 				else
 					for (x = 0; x < adim[3]; x++)
-						bp1[x] = (ap1[x] - meanp2[x]) * varp2[x] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
+						bp1[x] = (ap1[x * astride[3]] - meanp2[x]) * varp2[x] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
 				ap1 += astride[2];
 				bp1 += bstride[2];
 			}

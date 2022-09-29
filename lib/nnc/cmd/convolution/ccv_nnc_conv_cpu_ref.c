@@ -118,16 +118,16 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 2, adim + 1, n, m);
 					float p = biasval;
 					float* wpz = wpu + n[1];
-					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) + gidx * channel_size * astride[1];
+					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM + 1] + gidx * channel_size * astride[1];
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
 					{
 						for (j[1] = 0; j[1] < m[1]; j[1]++)
 							for (c = 0; c < channel_size; c++)
-								p += wpz[j[1] + c * hw] * apz[j[1] + c * astride[1]];
+								p += wpz[j[1] + c * hw] * apz[j[1] * astride[CCV_NNC_MAX_DIM + 1] + c * astride[1]];
 						wpz += w->info.dim[CCV_NNC_MAX_DIM + 1];
 						apz += astride[CCV_NNC_MAX_DIM];
 					}
-					bp[i[1] * bstride[CCV_NNC_MAX_DIM + 1]] = p;
+					bp[i[1]] = p;
 				}
 				bp += bstride[CCV_NNC_MAX_DIM];
 				ap += astride[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));

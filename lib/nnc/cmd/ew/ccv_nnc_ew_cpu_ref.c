@@ -65,7 +65,7 @@ void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, con
 		float* const bp = b->data.f32;
 		float* const cp = c->data.f32;
 		const int count = dim[2] * dim[3];
-		if (astride[2] == dim[3] && bstride[2] == dim[3] && cstride[2] == dim[3])
+		if (astride[2] == dim[3] && bstride[2] == dim[3] && cstride[2] == dim[3] && astride[3] == 1 && bstride[3] == 1 && cstride[3] == 1)
 		{
 			// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
 			for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -98,7 +98,7 @@ void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, con
 				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
 					for (x = 0; x < dim[3]; x++)
-						cp1[x] = ap1[x] + bp1[x];
+						cp1[x * cstride[3]] = ap1[x * astride[3]] + bp1[x * bstride[3]];
 					ap1 += astride[2];
 					bp1 += bstride[2];
 					cp1 += cstride[2];
