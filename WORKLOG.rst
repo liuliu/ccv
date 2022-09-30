@@ -1,3 +1,10 @@
+2022-09-30
+----------
+With the recent interests in Textual Inversion, it seems implementing model freeze (such that, not only parameters are not updating, but we don't allocate space and do gradient computations for these at all) are beneficial. Textual Inversion only cares about the input guidance and use gradient descent to find better input vector, the model itself not updating. Thus, by "freeze" the model, we can potentially saving quite a bit of memory usage that way.
+
+Also, I need to dig deeper into MPSGraph, seems Metal buffers are not contiguous (as flat memory space), so the memory allocation algo probably need to retrofit that requirement (or have some other clever ways to do it?).
+
+
 2022-08-28
 ----------
 There are always edge cases need extra care even if the core is pretty stable. The latest case is the fact that for models, I optimize too aggressively and when we change outgrad from some to none and back, while minimizer changes, we could end up with a case where the saved_aux reset to 0. This is undesirable for Adam optimizers or other stateful optimizers. An example would be:

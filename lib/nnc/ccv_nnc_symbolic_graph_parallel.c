@@ -190,6 +190,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		const int d = *(int*)ccv_array_get(dup_tensors, i);
 		ccv_nnc_tensor_symbol_info_t* const tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
 		ccv_nnc_tensor_param_t info = tensor_symbol->info;
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
 		const int flags = tensor_symbol->flags;
 		if (tensor_symbol->alias_ref)
 		{
@@ -197,7 +198,10 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			for (j = 0; j < parallel_count - 1; j++)
 			{
 				const int dup_d = dup_tensor_idx[alias_ref * (parallel_count - 1) + j];
-				CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
+				if (j + 1 != device_id)
+					CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
+				else
+					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 				assert(dup_d >= 0);
 				// Get tensor symbol again, it may be invalid after added new symbol (we use it for ofs and inc).
 				ccv_nnc_tensor_symbol_info_t* const tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
@@ -211,7 +215,10 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		} else {
 			for (j = 0; j < parallel_count - 1; j++)
 			{
-				CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
+				if (j + 1 != device_id)
+					CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
+				else
+					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 				const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, info, 0);
 				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
 				dup_tensor_idx[d * (parallel_count - 1) + j] = new_symbol.d;

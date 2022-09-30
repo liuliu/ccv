@@ -740,10 +740,14 @@ static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const
 				{
 					saved_aux[parameter_indice * max_saved_aux_size + j].source = ccv_nnc_tensor_symbol_new(graph, info, 0);
 					saved_aux[parameter_indice * max_saved_aux_size + j].destination = ccv_nnc_tensor_symbol_new(graph, info, 0);
+					const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
 					for (k = 1; k < parallel_count; k++)
 					{
 						ccv_nnc_tensor_param_t dev_info = info;
-						CCV_TENSOR_SET_DEVICE_ID(dev_info.type, k);
+						if (k != device_id)
+							CCV_TENSOR_SET_DEVICE_ID(dev_info.type, k);
+						else
+							CCV_TENSOR_SET_DEVICE_ID(dev_info.type, 0);
 						const ccv_nnc_tensor_symbol_t src_copy = ccv_nnc_tensor_symbol_new(graph, dev_info, 0);
 						const ccv_nnc_tensor_symbol_t dest_copy = ccv_nnc_tensor_symbol_new(graph, dev_info, 0);
 						ccv_nnc_tensor_symbol_set_copy(graph, saved_aux[parameter_indice * max_saved_aux_size + j].source, k, src_copy);
@@ -1028,11 +1032,16 @@ void ccv_cnnp_model_tensors_init(const ccv_cnnp_model_t* const model, ccv_cnnp_c
 	{
 		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
-		CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
 		compiled_data->tensors.parameters[i] = ccv_nnc_tensor_new(0, info, 0);
 		for (j = 1; j < parallel_count; j++)
 		{
-			CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			if (j != device_id)
+				CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			else
+				CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 			compiled_data->tensors.parameters[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
 		}
 	}
@@ -1040,11 +1049,16 @@ void ccv_cnnp_model_tensors_init(const ccv_cnnp_model_t* const model, ccv_cnnp_c
 	{
 		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, i);
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(retained.graph, retained);
-		CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
 		compiled_data->tensors.internals[i] = ccv_nnc_tensor_new(0, info, 0);
 		for (j = 1; j < parallel_count; j++)
 		{
-			CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			if (j != device_id)
+				CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			else
+				CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 			compiled_data->tensors.internals[i + j * internal_size] = ccv_nnc_tensor_new(0, info, 0);
 		}
 	}
@@ -1434,12 +1448,17 @@ static void _ccv_cnnp_model_gradient_tensors_init(const ccv_cnnp_model_t* const 
 	{
 		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
-		CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
 		compiled_data->tensors.gradients[i] = ccv_nnc_tensor_new(0, info, 0);
 		compiled_data->tensors.accum_gradients[i] = 0; // delay the accumulated gradient allocation until when we need it.
 		for (j = 1; j < parallel_count; j++)
 		{
-			CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			if (j != device_id)
+				CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			else
+				CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 			compiled_data->tensors.gradients[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
 			compiled_data->tensors.accum_gradients[i + j * parameter_size] = 0;
 		}

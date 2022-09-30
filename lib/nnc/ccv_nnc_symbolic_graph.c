@@ -2001,17 +2001,23 @@ void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, c
 	{
 		int j;
 		for (i = 0; i < graph->data_parallel.tensor_symbol_size; i++)
+		{
+			const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_symbol_info[i].info.type);
 			for (j = 0; j < parallel_count - 1; j++)
 			{
 				const int d = graph->data_parallel.tensor_symbol_idx[i * (parallel_count - 1) + j];
 				if (d >= 0)
 				{
 					tensor_symbol_info[d].info = tensor_symbol_info[i].info;
-					CCV_TENSOR_SET_DEVICE_ID(tensor_symbol_info[d].info.type, j + 1); // Set the device id.
+					if (j + 1 != device_id)
+						CCV_TENSOR_SET_DEVICE_ID(tensor_symbol_info[d].info.type, j + 1); // Set the device id.
+					else
+						CCV_TENSOR_SET_DEVICE_ID(tensor_symbol_info[d].info.type, 0);
 					memcpy(tensor_symbol_info[d].stride, tensor_symbol_info[i].stride, sizeof(tensor_symbol_info[i].stride));
 					memcpy(tensor_symbol_info[d].ofs, tensor_symbol_info[i].ofs, sizeof(tensor_symbol_info[i].ofs));
 				}
 			}
+		}
 		for (i = 0; i < graph->data_parallel.exec_symbol_size; i++)
 			for (j = 0; j < parallel_count - 1; j++)
 			{
