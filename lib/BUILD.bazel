@@ -214,6 +214,13 @@ cc_library(
 	]
 )
 
+config_setting(
+	name = "linux_build",
+	constraint_values = [
+		"@platforms//os:linux"
+	]
+)
+
 cc_library(
 	name = "ccv_cwc",
 	srcs = [
@@ -228,10 +235,12 @@ cc_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":ccv_headers",
-		"@sqlite3//:SQLite3",
-		":sqlite3_hdrs",
-		":ccv_numeric"
-	]
+		":ccv_numeric",
+		":sqlite3_hdrs"
+	] + select({
+		":linux_build": ["@sqlite3//:SQLite3"],
+		"//conditions:default": []
+	})
 )
 
 cuda_library(
@@ -273,7 +282,6 @@ cc_library(
 	copts = ccv_default_copts(),
 	tags = ["swift_module=C_ccv"],
 	deps = [
-		"@sqlite3//:SQLite3",
 		":sqlite3_hdrs",
 		":dSFMT",
 		":kissfft",
@@ -294,6 +302,9 @@ cc_library(
 		"//conditions:default": [
 			":ccv_cwc"
 		]
+	}) + select({
+		":linux_build": ["@sqlite3//:SQLite3"],
+		"//conditions:default": []
 	})
 )
 
@@ -450,7 +461,6 @@ cc_library(
 		":ccv_resample",
 		":ccv_io",
 		":cmd",
-		"@sqlite3//:SQLite3",
 		":sqlite3_hdrs",
 		":khash",
 		":jemalloc",
@@ -461,5 +471,9 @@ cc_library(
 			":cmd_cuda"
 		],
 		"//conditions:default": []
+	}) + select({
+		":linux_build": ["@sqlite3//:SQLite3"],
+		"//conditions:default": []
 	})
+
 )
