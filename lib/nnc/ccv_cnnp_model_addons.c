@@ -1454,9 +1454,6 @@ static void _ccv_cnnp_layer_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t bias_params = params;
-	// If the accuracy is not enough, bump it to 32-bit floating point.
-	if (bias_params.datatype != CCV_32F && bias_params.datatype != CCV_64F)
-		bias_params.datatype = CCV_32F;
 	const int nd = ccv_nnc_tensor_nd(params.dim);
 	int i;
 	for (i = 0; i < nd; i++)
@@ -1550,9 +1547,6 @@ static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t bias_params = params;
-	// If the accuracy is not enough, bump it to 32-bit floating point.
-	if (bias_params.datatype != CCV_32F && bias_params.datatype != CCV_64F)
-		bias_params.datatype = CCV_32F;
 	const int nd = ccv_nnc_tensor_nd(params.dim);
 	int i;
 	for (i = 0; i < nd; i++)

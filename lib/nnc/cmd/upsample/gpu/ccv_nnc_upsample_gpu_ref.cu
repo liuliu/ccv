@@ -122,7 +122,6 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
-	assert(a->info.datatype == CCV_32F);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		assert(adim[0] == bdim[0]);
@@ -132,7 +131,10 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
+		else if (a->info.datatype = CCV_16F)
+			_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], (__half*)a->data.f16, bstride[1], bdim[3], bstride[2], (__half*)b->data.f16);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -140,7 +142,10 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const int hw = bdim[1] * bdim[2];
-		_ccv_nnc_upsample_nearest_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_upsample_nearest_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
+		else if (a->info.datatype == CCV_16F)
+			_ccv_nnc_upsample_nearest_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], (__half*)a->data.f16, bstride[0], bdim[2], bstride[1], bstride[2], (__half*)b->data.f16);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -324,7 +329,6 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
-	assert(a->info.datatype == CCV_32F);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		assert(adim[0] == bdim[0]);
@@ -334,7 +338,10 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		const float rwidth = (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
-		_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
+		else if (a->info.datatype == CCV_16F)
+			_ccv_nnc_upsample_bilinear_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], (__half*)a->data.f16, bstride[1], bdim[3], bstride[2], (__half*)b->data.f16);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
 		const float rheight = (float)adim[1] / bdim[1];
@@ -342,7 +349,10 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		const int hw = bdim[1] * bdim[2];
-		_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
+		if (a->info.datatype == CCV_32F)
+			_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], a->data.f32, bstride[0], bdim[2], bstride[1], bstride[2], b->data.f32);
+		else if (a->info.datatype == CCV_16F)
+			_ccv_nnc_upsample_bilinear_forw_nhwc<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0], adim[3], adim[1], astride[0], adim[2], astride[1], astride[2], (__half*)a->data.f16, bstride[0], bdim[2], bstride[1], bstride[2], (__half*)b->data.f16);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -415,7 +425,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_
 {
 #ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F; // Currently only support CCV_32F because atomicAdd only supports __half at sm_70. I will revisit this by either get rid of atomicAdd or deprecate support for Jetson Nano / TX2.
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_upsample_forw;
@@ -426,7 +436,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_UPSAMPLE_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv
 {
 #ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F; // Currently only support CCV_32F because atomicAdd only supports __half at sm_70. I will revisit this by either get rid of atomicAdd or deprecate support for Jetson Nano / TX2.
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_upsample_back;
