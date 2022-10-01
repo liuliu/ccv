@@ -133,7 +133,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		assert(rwidth <= 1);
 		if (a->info.datatype == CCV_32F)
 			_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], a->data.f32, bstride[1], bdim[3], bstride[2], b->data.f32);
-		else if (a->info.datatype = CCV_16F)
+		else if (a->info.datatype == CCV_16F)
 			_ccv_nnc_upsample_nearest_forw_nchw<<<CUDA_GET_BLOCKS(hw), CUDA_NUM_THREADS, 0, stream>>>(hw, rwidth, rheight, adim[0] * adim[1], adim[2], astride[1], adim[3], astride[2], (__half*)a->data.f16, bstride[1], bdim[3], bstride[2], (__half*)b->data.f16);
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
