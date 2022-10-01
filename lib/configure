@@ -594,6 +594,8 @@ LDFLAGS
 CFLAGS
 NVCC
 CC
+MPS_CMD_LIB
+MPS_COMPAT_LIB
 CUDA_CMD_LIB
 CUDA_COMPAT_LIB
 CUDA_SRCS
@@ -648,6 +650,7 @@ enable_fftw3
 enable_openmp
 enable_gsl
 with_cuda
+enable_mps
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1282,6 +1285,7 @@ Optional Features:
   --disable-fftw3         disable FFTW3 (GPL License)
   --disable-openmp        do not use OpenMP
   --disable-gsl           disable GSL (GPL License)
+  --enable-mps            Enable Metal support
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -1863,6 +1867,10 @@ CUDA_SRCS="cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_c
 CUDA_COMPAT_LIB="gpu/libnnc-compat-cuda.o"
 
 CUDA_CMD_LIB="libnnc-cmd-cuda.o"
+
+MPS_COMPAT_LIB="gpu/libnnc-compat-mps.o"
+
+MPS_CMD_LIB="libnnc-cmd-mps.o"
 
 
 # check if clang exists
@@ -4073,6 +4081,38 @@ else
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
+fi
+
+# check for MPS support
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking Metal Performance Shaders" >&5
+$as_echo_n "checking Metal Performance Shaders... " >&6; }
+# Check whether --enable-mps was given.
+if test "${enable_mps+set}" = set; then :
+  enableval=$enable_mps; mps_support=$enableval
+else
+  mps_support="no"
+fi
+
+if test "$mps_support" = yes; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_MPS "
+
+	MKLDFLAGS="$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal "
+
+	CUDA_SRCS=""
+
+	CUDA_COMPAT_LIB=""
+
+	CUDA_CMD_LIB=""
+
+else
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+	MPS_COMPAT_LIB=""
+
+	MPS_CMD_LIB=""
+
 fi
 
 # for display only, concatenate CFLAGS and DEFINE_MACROS

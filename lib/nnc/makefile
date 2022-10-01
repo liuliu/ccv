@@ -7,7 +7,7 @@ SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_tensor_io.c ccv_nnc_stream.c ccv_
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
-.PHONY: release all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
+.PHONY: release all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o mps/libnnc-compat-mps.o
 
 release: all
 
@@ -37,6 +37,9 @@ cmd:
 
 gpu/libnnc-compat-cuda.o:
 	${MAKE} -C ./gpu
+
+mps/libnnc-compat-mps.o:
+	${MAKE} -C ./mps
 
 dep: .dep.mk
 .dep.mk: $(SRCS)

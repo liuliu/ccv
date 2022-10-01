@@ -3,11 +3,12 @@ include config.mk
 
 CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CMD_SRCS)))
 CUDA_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_CMD_SRCS)))
+MPS_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.m,%.o,$(MPS_CMD_SRCS)))
 
 CFLAGS := -O3 -Wall -I"../../" -I".." $(CFLAGS)
 NVFLAGS := -O3 -I"../../" -I".." $(NVFLAGS)
 
-.PHONY: release all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
+.PHONY: release all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB) $(MPS_CMD_LIB)
 
 release: all
 
@@ -23,10 +24,13 @@ clean:
 cmd:
 	./build-cmd.rb .
 
-libnnc-cmd.o: $(CMD_OBJS) $(CUDA_CMD_LIB)
+libnnc-cmd.o: $(CMD_OBJS) $(CUDA_CMD_LIB) $(MPS_CMD_LIB)
 	ld -r $^ -o $@
 
 libnnc-cmd-cuda.o: $(CUDA_CMD_OBJS)
+	ld -r $^ -o $@
+
+libnnc-cmd-mps.o: $(MPS_CMD_OBJS)
 	ld -r $^ -o $@
 
 %.o: %.c
@@ -36,7 +40,7 @@ libnnc-cmd-cuda.o: $(CUDA_CMD_OBJS)
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
 
 dep: .dep.mk
-.dep.mk: $(CMD_SRCS) $(CUDA_CMD_SRCS)
+.dep.mk: $(CMD_SRCS) $(CUDA_CMD_SRCS) $(MPS_CMD_SRCS)
 	echo '' > .dep.mk
 	for CMD_SRC in $(patsubst %.cu,,$^) ; do \
 		$(CC) $(CFLAGS) -MM $$CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \

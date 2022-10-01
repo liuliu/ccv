@@ -81,9 +81,14 @@ class CommandFile
 		@cuda
 	end
 
+	def mps?
+		@mps
+	end
+
 	def initialize filename
 		@filename = filename
 		@cuda = filename.end_with? '.cu' # If the file end with cu, it is a cuda command backend
+		@mps = filename.end_with? '.m' # If the file end with m, it is a mps command backend
 	end
 end
 
@@ -210,8 +215,9 @@ Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
 end
 
 def config_mk command_backends, command_configs, command_files
-	cmd_srcs = command_backends.reject(&:cuda?).map(&:filename).uniq + command_configs.reject(&:cuda?).map(&:filename).uniq + command_files.reject(&:cuda?).map(&:filename).uniq
+	cmd_srcs = command_backends.reject(&:cuda?).reject(&:mps?).map(&:filename).uniq + command_configs.reject(&:cuda?).reject(&:mps?).map(&:filename).uniq + command_files.reject(&:cuda?).reject(&:mps?).map(&:filename).uniq
 	cuda_cmd_srcs = command_backends.select(&:cuda?).map(&:filename).uniq + command_configs.select(&:cuda?).map(&:filename).uniq + command_files.select(&:cuda?).map(&:filename).uniq
+	mps_cmd_srcs = command_backends.select(&:mps?).map(&:filename).uniq + command_configs.select(&:mps?).map(&:filename).uniq + command_files.select(&:mps?).map(&:filename).uniq
 	config_mk = ERB.new File.read('config.mk.erb')
 	config_mk.result binding
 end
