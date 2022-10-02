@@ -381,3 +381,276 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 	}
 	return 0;
 }
+
+static void _strcat(char** str, int* written, size_t* len, char* from, int from_size)
+{
+	if (*len - *written < from_size)
+	{
+		*len += from_size * 2;
+		*str = (char*)ccrealloc(*str, *len);
+	}
+	memcpy(*str + *written, from, from_size);
+	*written += from_size;
+}
+
+#define _STRPRINTF(str, written, len, format, ...) \
+do { \
+	const int newly_written = snprintf((str) + (written), (len) - (written), format, ## __VA_ARGS__); \
+	if ((len) - (written) < newly_written) \
+	{ \
+		(len) += newly_written * 2; \
+		(str) = (char*)ccrealloc((str), (len)); \
+		(written) += snprintf((str) + (written), (len) - (written), format, ## __VA_ARGS__); \
+	} else \
+		(written) += newly_written; \
+} while (0)
+
+static void _strv(char** str, int* written, size_t* len, const ccv_nnc_tensor_t* const a, int i)
+{
+	if (a->info.datatype == CCV_32F)
+		_STRPRINTF(*str, *written, *len, "%10.5g", a->data.f32[i]);
+	else if (a->info.datatype == CCV_64F)
+		_STRPRINTF(*str, *written, *len, "%10.5g", a->data.f64[i]);
+	else if (a->info.datatype == CCV_16F) {
+		float v;
+		ccv_half_precision_to_float((uint16_t*)(a->data.f16 + i), &v, 1);
+		_STRPRINTF(*str, *written, *len, "%10.5g", v);
+	} else if (a->info.datatype == CCV_32S)
+		_STRPRINTF(*str, *written, *len, "%10d", a->data.i32[i]);
+	else if (a->info.datatype == CCV_64S)
+		_STRPRINTF(*str, *written, *len, "%12lld", (long long int)a->data.i64[i]);
+	else if (a->info.datatype == CCV_8U)
+		_STRPRINTF(*str, *written, *len, "%3d", (int)a->data.u8[i]);
+}
+
+static void _strt(char** str, int* written, size_t* len, const ccv_nnc_tensor_t* const a, int nd, int spacer, const int* const dim, const int* const stride, int idx)
+{
+	assert(nd != 1);
+	if (nd == 2)
+	{
+		// Print columns and the rows.
+		int i, j, k;
+		if (dim[0] <= 8)
+		{
+			for (i = 0; i < dim[0]; i++)
+			{
+				if (i != 0)
+				{
+					_strcat(str, written, len, "  ", 2);
+					for (k = 0; k < spacer; k++)
+						_strcat(str, written, len, " ", 1);
+				}
+				_strcat(str, written, len, "[", 1);
+				if (dim[1] <= 8)
+				{
+					for (j = 0; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					if (i < dim[0] - 1)
+						_strcat(str, written, len, "],\n", 3);
+				} else {
+					for (j = 0; j < 3; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						_strcat(str, written, len, ", ", 2);
+					}
+					_strcat(str, written, len, " ..., ", 6);
+					for (j = dim[1] - 3; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					if (i < dim[0] - 1)
+						_strcat(str, written, len, "],\n", 3);
+				}
+			}
+			_strcat(str, written, len, "]", 1);
+		} else {
+			for (i = 0; i < 3; i++)
+			{
+				if (i != 0)
+				{
+					_strcat(str, written, len, "  ", 2);
+					for (k = 0; k < spacer; k++)
+						_strcat(str, written, len, " ", 1);
+				}
+				_strcat(str, written, len, "[", 1);
+				if (dim[1] <= 8)
+				{
+					for (j = 0; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					_strcat(str, written, len, "],\n", 3);
+				} else {
+					for (j = 0; j < 3; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						_strcat(str, written, len, ", ", 2);
+					}
+					_strcat(str, written, len, " ..., ", 6);
+					for (j = dim[1] - 3; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					_strcat(str, written, len, "],\n", 3);
+				}
+			}
+			_strcat(str, written, len, "  ", 2);
+			for (k = 0; k < spacer; k++)
+				_strcat(str, written, len, " ", 1);
+			_strcat(str, written, len, "...,\n", 5);
+			for (i = dim[0] - 3; i < dim[0]; i++)
+			{
+				_strcat(str, written, len, "  ", 2);
+				for (k = 0; k < spacer; k++)
+					_strcat(str, written, len, " ", 1);
+				_strcat(str, written, len, "[", 1);
+				if (dim[1] < 8)
+				{
+					for (j = 0; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					if (i < dim[0] - 1)
+						_strcat(str, written, len, "],\n", 3);
+				} else {
+					for (j = 0; j < 3; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						_strcat(str, written, len, ", ", 2);
+					}
+					_strcat(str, written, len, " ..., ", 6);
+					for (j = dim[1] - 3; j < dim[1]; j++)
+					{
+						_strv(str, written, len, a, idx + i * stride[0] + j * stride[1]);
+						if (j < dim[1] - 1)
+							_strcat(str, written, len, ", ", 2);
+					}
+					if (i < dim[0] - 1)
+						_strcat(str, written, len, "],\n", 3);
+				}
+			}
+			_strcat(str, written, len, "]", 1);
+		}
+		return;
+	}
+	int i, j;
+	if (dim[0] > 4)
+	{
+		for (i = 0; i < 2; i++)
+		{
+			_strcat(str, written, len, "[", 1);
+			_strt(str, written, len, a, nd - 1, spacer + 1, dim + 1, stride + 1, idx + stride[0] * i);
+			_strcat(str, written, len, "],\n  ", 5);
+			for (j = 0; j < spacer; j++)
+				_strcat(str, written, len, " ", 1);
+		}
+		_strcat(str, written, len, "...,\n", 5);
+		_strcat(str, written, len, "  ", 2);
+		for (j = 0; j < spacer; j++)
+			_strcat(str, written, len, " ", 1);
+		for (i = dim[0] - 2; i < dim[0]; i++)
+		{
+			_strcat(str, written, len, "[", 1);
+			_strt(str, written, len, a, nd - 1, spacer + 1, dim + 1, stride + 1, idx + stride[0] * i);
+			if (i < dim[0] - 1)
+			{
+				_strcat(str, written, len, "],\n  ", 5);
+				for (j = 0; j < spacer; j++)
+					_strcat(str, written, len, " ", 1);
+			}
+		}
+		_strcat(str, written, len, "]", 1);
+	} else {
+		for (i = 0; i < dim[0]; i++)
+		{
+			_strcat(str, written, len, "[", 1);
+			_strt(str, written, len, a, nd - 1, spacer + 1, dim + 1, stride + 1, idx + stride[0] * i);
+			if (i < dim[0] - 1)
+			{
+				_strcat(str, written, len, "],\n", 3);
+				_strcat(str, written, len, "  ", 2);
+				for (j = 0; j < spacer; j++)
+					_strcat(str, written, len, " ", 1);
+			}
+		}
+		_strcat(str, written, len, "]", 1);
+	}
+}
+
+char* ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a)
+{
+	const int nd = ccv_nnc_tensor_nd(a->info.dim);
+	int i;
+	int rows = 8; // 8 rows for the first one, and then just first and last.
+	for (i = 2; i < nd; i++)
+		rows *= 5; // Maximum 3 rows beyond the first two.
+	int columns = nd * 2 + 16 * 8;
+	size_t len = sizeof(char) * columns * rows;
+	// Allocate return string buffer.
+	char* str = (char*)ccmalloc(len);
+	int written = 0;
+	int stride[CCV_NNC_MAX_DIM_ALLOC];
+	if (CCV_IS_TENSOR_VIEW(a))
+		memcpy(stride, ((ccv_nnc_tensor_view_t*)a)->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	else
+		ccv_nnc_tensor_get_stride(a->info.dim, stride);
+	_strcat(&str, &written, &len, "[\n  ", 4);
+	if (nd == 1)
+	{
+		// Special casing for vector.
+		if (a->info.dim[0] <= 64)
+			for (i = 0; i < a->info.dim[0]; i++)
+			{
+				_strv(&str, &written, &len, a, i * stride[0]);
+				if (i < a->info.dim[0] - 1)
+				{
+					if ((i + 1) % 8 == 0)
+						_strcat(&str, &written, &len, ",\n  ", 4);
+					else
+						_strcat(&str, &written, &len, ", ", 2);
+				}
+			}
+		else {
+			// First 3 rows.
+			for (i = 0; i < 24; i++)
+			{
+				_strv(&str, &written, &len, a, i * stride[0]);
+				if ((i + 1) % 8 == 0)
+					_strcat(&str, &written, &len, ",\n  ", 4);
+				else
+					_strcat(&str, &written, &len, ", ", 2);
+			}
+			_strcat(&str, &written, &len, "...,\n  ", 7);
+			// Last 3 rows (aligned to 8 items per row).
+			int start = ((a->info.dim[0] + 7) / 8 - 3) * 8;
+			for (i = start; i < a->info.dim[0]; i++)
+			{
+				_strv(&str, &written, &len, a, i * stride[0]);
+				if (i < a->info.dim[0] - 1)
+				{
+					if ((i + 1) % 8 == 0)
+						_strcat(&str, &written, &len, ",\n  ", 4);
+					else
+						_strcat(&str, &written, &len, ", ", 2);
+				}
+			}
+		}
+	} else {
+		_strt(&str, &written, &len, a, nd, 0, a->info.dim, stride, 0);
+	}
+	_strcat(&str, &written, &len, "\n]", 3); // Including the terminal \0.
+	str = (char*)ccrealloc(str, written); // Don't need the extra spaces.
+	return str;
+}

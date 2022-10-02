@@ -570,6 +570,16 @@ void ccv_nnc_tensor_zero(void* const tensor);
  */
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b);
 /**
+ * Format a tensor output to string so that it can be used as debug output for other languages. This will look like:
+ * [
+ *   0.13, 0.44, 0.24, 0.24
+ * ]
+ * And format closely to what numpy looks like.
+ * @param a The input tensor, it can be a tensor or a tensor view. It has to be accessible on CPU.
+ * @return An allocated string that you can call ccfree to free it.
+ */
+CCV_WARN_UNUSED(char*) ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a);
+/**
  * Write tensor to a SQLite database with a given name.
  * @param tensor The tensor.
  * @param handle The SQLite handle.
