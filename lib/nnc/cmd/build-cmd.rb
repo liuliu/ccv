@@ -88,7 +88,7 @@ class CommandFile
 	def initialize filename
 		@filename = filename
 		@cuda = filename.end_with? '.cu' # If the file end with cu, it is a cuda command backend
-		@mps = filename.end_with? '.m' # If the file end with m, it is a mps command backend
+		@mps = filename.end_with?('.m') or filename.end_with?('.mm') # If the file end with m, it is a mps command backend
 	end
 end
 
@@ -159,7 +159,7 @@ def parse_find_backend filename, which_command, find_backend
 end
 
 # Find source code in subdirs.
-Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
+Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu,m,mm}").each do |fn|
 	File.open(fn, 'r') do |f|
 		command_parser = MacroParser.new 'REGISTER_COMMAND'
 		find_backend_parser = MacroParser.new 'FIND_BACKEND'
