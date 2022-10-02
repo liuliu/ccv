@@ -28,17 +28,23 @@ static inline int _ccv_nnc_cmd_backend_ph(const uint32_t backend)
 
 <% init_map.each do |init| %>void _register_command_<%= init[:name] %>(ccv_nnc_cmd_registry_t* const registry);
 <% end %>
-<% command_backends.reject(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
+<% command_backends.reject(&:cuda?).reject(&:mps?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
 <% end %>#ifdef HAVE_CUDA
 <% command_backends.select(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
+<% end %>#endif
+#ifdef HAVE_MPS
+<% command_backends.select(&:mps?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
 <% end %>#endif
 
 static inline void _ccv_nnc_cmd_init(void)
 {<% init_map.each_with_index do |init, i| %>
 	_register_command_<%= init[:name] %>(&init_map[<%= i%>].registry);<% end %>
-<% command_backends.reject(&:cuda?).each do |command_backend| %>
+<% command_backends.reject(&:cuda?).reject(&:mps?).each do |command_backend| %>
 	_register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(&(init_map[<%= command_idx[command_backend.command] %>].backends[<%= backend_idx[command_backend.backend] %>]));<% end %>
 #ifdef HAVE_CUDA<% command_backends.select(&:cuda?).each do |command_backend| %>
+	_register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(&(init_map[<%= command_idx[command_backend.command] %>].backends[<%= backend_idx[command_backend.backend] %>]));<% end %>
+#endif
+#ifdef HAVE_MPS<% command_backends.select(&:mps?).each do |command_backend| %>
 	_register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(&(init_map[<%= command_idx[command_backend.command] %>].backends[<%= backend_idx[command_backend.backend] %>]));<% end %>
 #endif
 }

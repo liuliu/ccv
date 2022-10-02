@@ -294,10 +294,8 @@ void _register_command_CCV_NNC_UPSAMPLE_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(
 void _register_command_CCV_NNC_UPSAMPLE_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_OPT(ccv_nnc_cmd_backend_registry_t* const registry);
-void _register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_OPT(ccv_nnc_cmd_backend_registry_t* const registry);
-void _register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -513,6 +511,10 @@ void _register_command_CCV_NNC_LSTM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(c
 void _register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 #endif
+#ifdef HAVE_MPS
+void _register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+#endif
 
 static inline void _ccv_nnc_cmd_init(void)
 {
@@ -645,10 +647,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_UPSAMPLE_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[57].backends[2]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[22].backends[2]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_OPT(&(init_map[22].backends[4]));
-	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[22].backends[6]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[23].backends[2]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_OPT(&(init_map[23].backends[4]));
-	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[23].backends[6]));
 	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[104].backends[2]));
 	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[105].backends[2]));
 	_register_command_CCV_NNC_MUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[50].backends[2]));
@@ -863,5 +863,9 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_LSTM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[19].backends[3]));
 	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[98].backends[5]));
 	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[99].backends[5]));
+#endif
+#ifdef HAVE_MPS
+	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[22].backends[6]));
+	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[23].backends[6]));
 #endif
 }
