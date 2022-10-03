@@ -60,7 +60,7 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 				if (CCV_IS_TENSOR_VIEW(tensor))
 				{
 					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)tensor;
-					tensor_view->data.u8 = data + tensor_view->off;
+					tensor_view->data.u8 = ccv_nnc_tensor_view_data(tensor_view->info, data, tensor_view->off);
 				} else
 					tensor->data.u8 = data;
 			}

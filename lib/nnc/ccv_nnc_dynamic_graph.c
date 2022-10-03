@@ -295,13 +295,13 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
 				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
 				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
-				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tv->off + tensor_variable->alias_off;
+				tv->data.u8 = ccv_nnc_tensor_view_data(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->info, CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tv->off + tensor_variable->alias_off);
 			} else {
 				ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 				// We cannot have an alias with custom set tensor, otherwise the pointer update is invalid.
 				assert(!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv));
 				// Update the tensor_view pointer every time access it, because the underlying variable it alias to have changed.
-				tv->data.u8 = CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8 + tensor_variable->alias_off;
+				tv->data.u8 = ccv_nnc_tensor_view_data(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->info, CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->alias_off);
 			}
 		}
 		return (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(tensor_variable->tensor_view);

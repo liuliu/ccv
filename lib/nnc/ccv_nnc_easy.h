@@ -188,7 +188,16 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 
 static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
 {
-	return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 15) & -16);
+#ifdef HAVE_CUDA // For CUDA, we align to 128-bytes.
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 127) & -128);
+	else
+#elif defined(HAVE_MPS) // For MPS, we have to align to PAGE_SIZE (4096).
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 4095) & -4096);
+	else
+#endif
+	return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 63) & -64);
 }
 
 static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])

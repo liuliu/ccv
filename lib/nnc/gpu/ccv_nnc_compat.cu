@@ -421,7 +421,7 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		if (stream_compat->cpu.workspace)
 			ccfree(stream_compat->cpu.workspace);
 		stream_compat->cpu.workspace = 0;
-		const int success = ccmemalign(&stream_compat->cpu.workspace, 16, workspace_size);
+		const int success = ccmemalign(&stream_compat->cpu.workspace, 64, workspace_size);
 		return success != 0 ? 0 : stream_compat->cpu.workspace;
 	} else if (mem == CCV_TENSOR_GPU_MEMORY) {
 		ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);

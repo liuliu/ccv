@@ -257,7 +257,7 @@ typedef struct {
  * @defgroup ccv_memory memory alloc/dealloc
  * @{
  */
-#define ccv_compute_dense_matrix_size(rows, cols, type) (((sizeof(ccv_dense_matrix_t) + 15) & -16) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
+#define ccv_compute_dense_matrix_size(rows, cols, type) (((sizeof(ccv_dense_matrix_t) + 63) & -64) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
 /**
  * Check the input matrix, if it is the allowed type, return it, otherwise create one with prefer_type.
  * @param x The matrix to check.

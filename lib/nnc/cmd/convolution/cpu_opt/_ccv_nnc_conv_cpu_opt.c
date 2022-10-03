@@ -61,7 +61,7 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(w->info.dim[0] % 4 == 0);
 	float* x4w = 0;
-	ccmemalign((void **)&x4w, 16, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
+	ccmemalign((void **)&x4w, 64, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
 	if (!x4w)
 		return CCV_NNC_EXEC_OOM;
 	_ccv_nnc_x4w_sse2(w->data.f32, w->info.dim, x4w);
@@ -221,7 +221,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(w->info.dim[0] % 4 == 0);
 	float* x4w = 0;
-	ccmemalign((void **)&x4w, 16, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
+	ccmemalign((void **)&x4w, 64, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
 	if (!x4w)
 		return CCV_NNC_EXEC_OOM;
 	_ccv_nnc_x4w_neon(w->data.f32, w->info.dim, x4w);

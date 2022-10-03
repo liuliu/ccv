@@ -37,7 +37,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	} else if (flags & CCV_TENSOR_GPU_MEMORY) {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY);
 	}
-	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 15) & -16;
+	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 63) & -64;
 	const size_t size = ccv_nnc_tensor_data_size(params);
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
@@ -47,12 +47,12 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
-		ccmemalign((void **)&tensor, 16, tensor_hdr_size + size);
+		ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
 		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 	}
 #else
 	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
-	ccmemalign((void **)&tensor, 16, tensor_hdr_size + size);
+	ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
 	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 #endif
 	tensor->alias_ref = 0;
@@ -99,7 +99,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 		return tensor;
 	}
 	ccv_nnc_tensor_t* new_tensor = tensor;
-	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 15) & -16;
+	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 63) & -64;
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
@@ -191,7 +191,7 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	uint8_t* const p = tensor->data.u8;
 	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, stride, ofs);
 	tv->contiguous = ccv_nnc_tensor_view_is_contiguous(dim, stride, ofs);
-	tv->data.u8 = p + off;
+	tv->data.u8 = ccv_nnc_tensor_view_data(tv->info, p, off);
 }
 
 ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])

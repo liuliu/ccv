@@ -140,6 +140,11 @@ static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DI
 	return 1;
 }
 
+static inline unsigned char* ccv_nnc_tensor_view_data(const ccv_nnc_tensor_param_t params, unsigned char* const data, const off_t off)
+{
+	return data + off;
+}
+
 static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 {
 	int i;

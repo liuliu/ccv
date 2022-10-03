@@ -1172,12 +1172,12 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				if (tensor_arena->buffers[i].pin_mem)
 					tensor_arena->buffers[i].ptr = (uint8_t*)cuhostalloc(tensor_arena->buffers[i].size);
 				else
-					ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+					ccmemalign((void**)&tensor_arena->buffers[i].ptr, 64, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 #else
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-			ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+			ccmemalign((void**)&tensor_arena->buffers[i].ptr, 64, tensor_arena->buffers[i].size);
 			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 #endif
 			assert(tensor_arena->buffers[i].ptr);
@@ -3977,7 +3977,7 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				break;
 			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
-				d_tensor->data.u8 = tensor->data.u8 + ((ccv_nnc_tensor_view_t*)d_tensor)->off;
+				d_tensor->data.u8 = ccv_nnc_tensor_view_data(tensor->info, tensor->data.u8, ((ccv_nnc_tensor_view_t*)d_tensor)->off);
 			else
 				d_tensor->data.u8 = tensor->data.u8;
 		}
@@ -4062,7 +4062,7 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->stride, symbol_info->ofs);
 				tensor->info = symbol_info->info;
 				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
-				tensor->data.u8 = tensor_arena->vt_tensors[alias_ref]->data.u8 + off;
+				tensor->data.u8 = ccv_nnc_tensor_view_data(tensor->info, tensor_arena->vt_tensors[alias_ref]->data.u8, off);
 				if (CCV_IS_TENSOR_VIEW(tensor))
 					((ccv_nnc_tensor_view_t*)tensor)->off = off;
 			}

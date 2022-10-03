@@ -201,10 +201,10 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 				data_array->data[idx].data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), size);
 			else
-				ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
+				ccmemalign((void **)&data_array->data[idx].data.u8, 64, size);
 #else
 			assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
-			ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
+			ccmemalign((void **)&data_array->data[idx].data.u8, 64, size);
 #endif
 			data = data_array->data[idx].data;
 		}

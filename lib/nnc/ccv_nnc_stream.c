@@ -60,7 +60,7 @@ void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const strea
 	if (stream_cpu->workspace)
 		ccfree(stream_cpu->workspace);
 	stream_cpu->workspace = 0;
-	ccmemalign(&stream_cpu->workspace, 16, workspace_size);
+	ccmemalign(&stream_cpu->workspace, 64, workspace_size);
 	return stream_cpu->workspace;
 #endif
 }
