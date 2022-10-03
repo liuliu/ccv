@@ -574,6 +574,7 @@ TEST_CASE("gemm transpose a batch 2")
 
 TEST_CASE("gemm transpose b batch 2")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float ap[] = {
 		1, 2,
 		3, 4,
@@ -631,6 +632,8 @@ TEST_CASE("gemm transpose b batch 2")
 
 TEST_CASE("backward gemm with no transpose batch 2, same b")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float gp[] = {
 		1, 2, 3,
 		4, 5, 6,
@@ -709,6 +712,8 @@ TEST_CASE("backward gemm with no transpose batch 2, same b")
 
 TEST_CASE("backward gemm with no transpose batch 2, batched b")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float gp[] = {
 		1, 2, 3,
 		4, 5, 6,
@@ -792,6 +797,8 @@ TEST_CASE("backward gemm with no transpose batch 2, batched b")
 
 TEST_CASE("backward gemm with transpose a batch 2, same b")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float gp[] = {
 		1, 2, 3,
 		4, 5, 6,
@@ -862,6 +869,8 @@ TEST_CASE("backward gemm with transpose a batch 2, same b")
 
 TEST_CASE("backward gemm with transpose b batch 2, batched b")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float gp[] = {
 		1, 2, 3,
 		4, 5, 6,
@@ -949,6 +958,8 @@ TEST_CASE("backward gemm with transpose b batch 2, batched b")
 
 TEST_CASE("backward gemm with transpose a and b batch 2, same b")
 {
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	float gp[] = {
 		1, 2, 3,
 		4, 5, 6,

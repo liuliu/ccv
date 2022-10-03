@@ -3,6 +3,8 @@
 #include "ccv_nnc_internal.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 
 // MARK - Level-1 API
@@ -45,6 +47,17 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
 		tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
+		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+	}
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		tensor->data.u8 = (uint8_t*)mpmalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 		ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
@@ -117,6 +130,20 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 		new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
 		new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
 	}
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(params.type);
+		assert(device_id == CCV_TENSOR_GET_DEVICE_ID(tensor->info.type));
+		mpfree(device_id, tensor->data.u8);
+		new_tensor->data.u8 = (uint8_t*)mpmalloc(device_id, size);
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
+		new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
+		new_tensor->data.u8 = (uint8_t*)new_tensor + tensor_hdr_size;
+	}
 #else
 	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 	new_tensor = ccrealloc(new_tensor, tensor_hdr_size + size);
@@ -180,6 +207,10 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 		cufree(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), tensor->data.u8);
 	if (tensor->type & CCV_PINNED_MEM)
 		cuunregister(tensor->data.u8);
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY &&
+		!(tensor->type & CCV_NO_DATA_ALLOC)) // If this is GPU memory and it is allocated, free.
+		mpfree(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), tensor->data.u8);
 #endif
 	ccfree(tensor);
 }

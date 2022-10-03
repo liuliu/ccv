@@ -18,9 +18,9 @@ all: lib
 lib: libnnc.o
 
 clean:
-	rm -f *.o gpu/*.o && ${MAKE} -C ./gpu clean && ${MAKE} -C ./cmd clean
+	rm -f *.o gpu/*.o && ${MAKE} -C ./gpu clean && ${MAKE} -C ./mps clean && ${MAKE} -C ./cmd clean
 
-libnnc.o: $(SRC_OBJS) cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB)
+libnnc.o: $(SRC_OBJS) cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB) $(MPS_COMPAT_LIB)
 	ld -r $^ -o $@
 
 %.o: %.c

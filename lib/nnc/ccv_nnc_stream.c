@@ -4,6 +4,8 @@
 #include "co.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
@@ -27,7 +29,7 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)cccalloc(1, sizeof(ccv_nnc_stream_cpu_t));
 	stream_cpu->super.type = type;
 	stream_cpu->super.reuse_destructor_hook = -1;
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_init_stream_context((ccv_nnc_stream_context_t*)stream_cpu);
 #endif
@@ -47,7 +49,7 @@ static __thread ccv_nnc_stream_cpu_t ccv_nnc_per_thread_stream_cpu = {
 
 void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	return ccv_nnc_stream_compat_get_workspace(stream_context, workspace_size, mem);
 #else
 	ccv_nnc_stream_cpu_t* stream_cpu = (ccv_nnc_stream_cpu_t*)stream_context;
@@ -67,7 +69,7 @@ void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const strea
 
 void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	ccv_nnc_stream_compat_drain(stream_context);
 #else
 	ccv_nnc_stream_cpu_t* stream_cpu = (ccv_nnc_stream_cpu_t*)stream_context;
@@ -84,7 +86,7 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context
 
 static void _ccv_nnc_stream_context_add_callback(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_callback_f callback, const ccv_nnc_async_callback_f async_callback, void* const callback_context)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_stream_compat_add_callback(stream_context, callback, async_callback, callback_context);
 	else
@@ -153,7 +155,7 @@ void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_co
 			pthread_cond_wait(&scheduler->notify, &scheduler->mutex);
 		pthread_mutex_unlock(&scheduler->mutex);
 	}
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_synchronize_stream_context(stream_context);
 #endif
@@ -219,7 +221,7 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 		}
 		ccv_array_free(stream_context->destructor_hooks);
 	}
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_context(stream_context);
 	else {
@@ -227,7 +229,7 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	ccv_nnc_stream_cpu_t* stream_cpu = (ccv_nnc_stream_cpu_t*)stream_context;
 	if (stream_cpu->workspace)
 		ccfree(stream_cpu->workspace);
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	}
 #endif
 	if (stream_context->scheduler)
@@ -296,7 +298,7 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_signal_new(const int type)
 	ccv_nnc_stream_signal_t* const signal = (ccv_nnc_stream_signal_t*)ccmalloc(sizeof(ccv_nnc_stream_signal_t));
 	signal->type = type;
 	signal->emit_context = 0;
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_init_stream_signal(signal);
 #endif
@@ -311,7 +313,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_stream_signal_type(const ccv_nnc_stream_signal_t* c
 void ccv_nnc_stream_context_emit_signal(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const signal)
 {
 	signal->emit_context = stream;
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(signal->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_stream_compat_emit_signal(stream, signal);
 #endif
@@ -324,7 +326,7 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_signal_get_emitter(const ccv_nnc_stream
 
 void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(signal->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_stream_compat_wait_signal(stream, signal);
 #endif
@@ -332,7 +334,7 @@ void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const st
 
 void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(signal->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_signal(signal);
 #endif
@@ -341,7 +343,7 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal)
 
 int ccv_nnc_device_count(const int type)
 {
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_gpu_device_count();
 #else
@@ -363,7 +365,7 @@ int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const s
 {
 	if (!stream)
 		return 1;
-#ifdef HAVE_CUDA
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	if (CCV_STREAM_GET_CONTEXT(stream->type) == CCV_STREAM_CONTEXT_GPU)
 		return co_stream_compat_await(self, stream);
 #endif

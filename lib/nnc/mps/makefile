@@ -1,7 +1,6 @@
 include ../../config.mk
 
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
-NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
 SRCS := ccv_nnc_mps.m
 
@@ -26,8 +25,8 @@ libnnc-compat-mps.o: $(SRC_OBJS)
 %.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu
-	$(NVCC) $< -o $@ -c $(NVFLAGS)
+%.o: %.m
+	$(CC) $< -o $@ -c $(CFLAGS)
 
 dep: .dep.mk
 .dep.mk: $(SRCS)

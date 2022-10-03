@@ -36,6 +36,9 @@ libnnc-cmd-mps.o: $(MPS_CMD_OBJS)
 %.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
+%.o: %.m
+	$(CC) $< -o $@ -c $(CFLAGS)
+
 %.o: %.cu
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
 

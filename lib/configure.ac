@@ -6,7 +6,7 @@ AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_SRCS, ["cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_convolutional.cu cuda/convnet/cwc_convnet_rnorm.cu cuda/convnet/cwc_convnet_pool.cu cuda/convnet/cwc_convnet_full_connect.cu"])
 AC_SUBST(CUDA_COMPAT_LIB, ["gpu/libnnc-compat-cuda.o"])
 AC_SUBST(CUDA_CMD_LIB, ["libnnc-cmd-cuda.o"])
-AC_SUBST(MPS_COMPAT_LIB, ["gpu/libnnc-compat-mps.o"])
+AC_SUBST(MPS_COMPAT_LIB, ["mps/libnnc-compat-mps.o"])
 AC_SUBST(MPS_CMD_LIB, ["libnnc-cmd-mps.o"])
 
 # check if clang exists

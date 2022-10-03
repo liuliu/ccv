@@ -1868,7 +1868,7 @@ CUDA_COMPAT_LIB="gpu/libnnc-compat-cuda.o"
 
 CUDA_CMD_LIB="libnnc-cmd-cuda.o"
 
-MPS_COMPAT_LIB="gpu/libnnc-compat-mps.o"
+MPS_COMPAT_LIB="mps/libnnc-compat-mps.o"
 
 MPS_CMD_LIB="libnnc-cmd-mps.o"
 
