@@ -9,7 +9,7 @@ jobs:
         run: |
           brew install libjpeg libpng
       - run: |
-          cd lib && ./configure && cd ..
+          cd lib && ./configure --enable-mps && cd ..
           make -C lib lib
           make -C bin
           make -C site source
