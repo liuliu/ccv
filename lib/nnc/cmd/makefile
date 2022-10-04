@@ -8,6 +8,13 @@ MPS_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.m,%.o,$(MPS_CMD_SRCS)))
 CFLAGS := -O3 -Wall -I"../../" -I".." $(CFLAGS)
 NVFLAGS := -O3 -I"../../" -I".." $(NVFLAGS)
 
+ifeq ($(CUDA_CMD_LIB),)
+CUDA_CMD_SRCS :=
+endif
+ifeq ($(MPS_CMD_LIB),)
+MPS_CMD_SRCS :=
+endif
+
 .PHONY: release all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB) $(MPS_CMD_LIB)
 
 release: all
@@ -45,17 +52,12 @@ libnnc-cmd-mps.o: $(MPS_CMD_OBJS)
 dep: .dep.mk
 .dep.mk: $(CMD_SRCS) $(CUDA_CMD_SRCS) $(MPS_CMD_SRCS)
 	echo '' > .dep.mk
-	for CMD_SRC in $(patsubst %.m,,$(patsubst %.cu,,$^)) ; do \
+	for CMD_SRC in $(patsubst %.cu,,$^) ; do \
 		$(CC) $(CFLAGS) -MM $$CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
 	done
 ifneq ($(CUDA_CMD_LIB),)
 	for CUDA_CMD_SRC in $(patsubst %.m,,$(patsubst %.c,,$^)) ; do \
 		$(NVCC) $(NVFLAGS) -M $$CUDA_CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CUDA_CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
-	done
-endif
-ifneq ($(MPS_CMD_LIB),)
-	for MPS_CMD_SRC in $(patsubst %.c,,$(patsubst %.cu,,$^)) ; do \
-		$(CC) $(CFLAGS) -MM $$MPS_CMD_SRC | sed -e 's/^.*\://g' | (echo "$${MPS_CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
 	done
 endif
 

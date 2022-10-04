@@ -70,9 +70,33 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 {
 }
 
+typedef struct {
+	ccv_nnc_stream_context_t super;
+	// Left for implementation yet, the CPU support for stream context.
+	size_t workspace_size;
+	void* workspace;
+} ccv_nnc_stream_mps_t;
+
+static __thread ccv_nnc_stream_mps_t ccv_nnc_per_thread_stream_mps = {
+	.super = {
+		.type = CCV_STREAM_CONTEXT_CPU,
+	},
+};
+
 void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
-	return 0;
+	ccv_nnc_stream_mps_t* stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	if (!stream_mps)
+		stream_mps = &ccv_nnc_per_thread_stream_mps;
+	assert(mem == CCV_TENSOR_CPU_MEMORY);
+	if (stream_mps->workspace_size >= workspace_size)
+		return stream_mps->workspace;
+	stream_mps->workspace_size = workspace_size;
+	if (stream_mps->workspace)
+		ccfree(stream_mps->workspace);
+	stream_mps->workspace = 0;
+	ccmemalign(&stream_mps->workspace, 64, workspace_size);
+	return stream_mps->workspace;
 }
 
 void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
