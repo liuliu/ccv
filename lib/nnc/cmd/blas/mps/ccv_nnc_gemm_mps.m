@@ -40,20 +40,45 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a_rows == b_rows);
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
-	MPSGraph *graph = [MPSGraph new];
-	@autoreleasepool {
-		MPSGraphTensor* mps_a = [graph placeholderWithShape:@[@(a_rows), @(a_cols)] dataType:MPSDataTypeFloat32 name:nil];
-		MPSGraphTensor* mps_w = [graph placeholderWithShape:@[@(w_rows), @(w_cols)] dataType:MPSDataTypeFloat32 name:nil];
-		MPSGraphTensor* mps_b = [graph matrixMultiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_w name:nil];
-		id<MTLBuffer> buffer_a = (id<MTLBuffer>)a->data.u8;
-		MPSGraphTensorData* data_a = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer_a shape:@[@(a_rows), @(a_cols)] dataType:MPSDataTypeFloat32];
-		id<MTLBuffer> buffer_w = (id<MTLBuffer>)w->data.u8;
-		MPSGraphTensorData* data_w = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer_w shape:@[@(w_rows), @(w_cols)] dataType:MPSDataTypeFloat32];
-		id<MTLBuffer> buffer_b = (id<MTLBuffer>)b->data.u8;
-		MPSGraphTensorData* data_b = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer_b shape:@[@(b_rows), @(b_cols)] dataType:MPSDataTypeFloat32];
-		[graph runWithMTLCommandQueue:ccv_nnc_default_queue() feeds:@{mps_a: data_a, mps_w: data_w} targetOperations:nil resultsDictionary:@{mps_b: data_b}];
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	memcpy(adim, a->info.dim, sizeof(adim));
+	if (CCV_IS_TENSOR_VIEW(a))
+		memcpy(astride, a->stride, sizeof(astride));
+	if (ccv_nnc_tensor_nd(adim) < 2)
+	{
+		adim[1] = 1;
+		astride[1] = 1;
 	}
-	[graph release];
+	assert(ccv_nnc_tensor_nd(w->info.dim) >= 2);
+	const int is_transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
+	const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
+	@autoreleasepool {
+		MPSGraph *graph = [MPSGraph new];
+		MPSGraphTensor* mps_input_a;
+		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim, astride, &mps_input_a);
+		MPSGraphTensor* mps_input_w;
+		MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w, w->info.dim, w->stride, &mps_input_w);
+		if (is_transpose_a)
+			mps_a = [graph transposeTensor:mps_a dimension:-2 withDimension:-1 name:nil];
+		if (is_transpose_w)
+			mps_w = [graph transposeTensor:mps_w dimension:-2 withDimension:-1 name:nil];
+		MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_result(graph, [graph matrixMultiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_w name:nil], b);
+		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
+		MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
+		MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
+		if (bias)
+		{
+			MPSGraphTensor* mps_input_bias;
+			MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, bias, bias->info.dim, bias->stride, &mps_input_bias);
+			// Add support broadcast directly.
+			mps_b = [graph additionWithPrimaryTensor:mps_b secondaryTensor:mps_bias name:nil];
+			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, bias->info.dim, bias->stride);
+			[graph runWithMTLCommandQueue:ccv_nnc_default_queue() feeds:@{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias} targetOperations:nil resultsDictionary:@{mps_b: data_b}];
+		} else
+			[graph runWithMTLCommandQueue:ccv_nnc_default_queue() feeds:@{mps_input_a: data_a, mps_input_w: data_w} targetOperations:nil resultsDictionary:@{mps_b: data_b}];
+		[graph release];
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -65,7 +90,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gemm_forw;
@@ -74,7 +99,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gemm_back;

@@ -1708,7 +1708,6 @@ TEST_CASE("generalized batched gemm with batch (2, 4) with bias and broadcast co
 	ccv_nnc_tensor_free(bt);
 }
 
-
 TEST_CASE("ewdiv forward with reciprocal")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWDIV_FORWARD, CCV_NNC_BACKEND_GPU_REF));
