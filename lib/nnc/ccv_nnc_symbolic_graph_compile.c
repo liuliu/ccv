@@ -4,6 +4,8 @@
 #include "ccv_internal.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 #include "_ccv_nnc_graph.h"
 #include "_ccv_nnc_symbolic_graph.h"
@@ -1173,6 +1175,20 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					tensor_arena->buffers[i].ptr = (uint8_t*)cuhostalloc(tensor_arena->buffers[i].size);
 				else
 					ccmemalign((void**)&tensor_arena->buffers[i].ptr, 64, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
+			}
+#elif defined(HAVE_MPS)
+			if (memory_type == CCV_TENSOR_GPU_MEMORY)
+			{
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
+				if (allocator.isa && allocator.isa->alloc)
+					tensor_arena->buffers[i].ptr = (uint8_t*)allocator.isa->alloc(buffer_type, 0, tensor_arena->buffers[i].size, allocator.context.alloc);
+				else
+					tensor_arena->buffers[i].ptr = (uint8_t*)mpmalloc(device_id, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
+			} else {
+				assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+				ccmemalign((void**)&tensor_arena->buffers[i].ptr, 64, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 #else
@@ -4116,6 +4132,18 @@ void ccv_nnc_tensor_arena_buffer_free(ccv_nnc_tensor_arena_t* const tensor_arena
 				cuhostfree(tensor_arena->buffers[i].ptr);
 			else
 				ccfree(tensor_arena->buffers[i].ptr);
+		}
+#elif defined(HAVE_MPS)
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
+		if (memory_type == CCV_TENSOR_GPU_MEMORY)
+		{
+			if (tensor_arena->allocator.isa && tensor_arena->allocator.isa->free)
+				tensor_arena->allocator.isa->free(tensor_arena->buffers[i].ptr, tensor_arena->allocator.context.free);
+			else
+				mpfree(device_id, tensor_arena->buffers[i].ptr);
+		} else {
+			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+			ccfree(tensor_arena->buffers[i].ptr);
 		}
 #else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);

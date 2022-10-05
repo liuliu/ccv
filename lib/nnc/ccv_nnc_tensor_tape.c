@@ -13,6 +13,8 @@
 #include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 
 ccv_nnc_tensor_tape_t* ccv_nnc_tensor_tape_new(void)
@@ -200,6 +202,11 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 #ifdef HAVE_CUDA
 			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 				data_array->data[idx].data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), size);
+			else
+				ccmemalign((void **)&data_array->data[idx].data.u8, 64, size);
+#elif defined(HAVE_MPS)
+			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+				data_array->data[idx].data.u8 = (uint8_t*)mpmalloc(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), size);
 			else
 				ccmemalign((void **)&data_array->data[idx].data.u8, 64, size);
 #else

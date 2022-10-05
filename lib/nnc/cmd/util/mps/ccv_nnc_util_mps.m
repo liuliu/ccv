@@ -214,26 +214,9 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			if (mps_a != mps_input_a)
-			{
-				MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetTensors:@[mps_a] targetOperations:nil executionDescriptor:nil];
-				data_a = result[mps_a];
-			}
-			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, (ccv_nnc_tensor_t*)b);
-			off_t offset_b = mpgetoffset(b->data.u8);
-			NSInteger rowStrides[CCV_NNC_MAX_DIM_ALLOC];
-			int bstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
-			const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
-			int* bstride;
-			if (!CCV_IS_TENSOR_VIEW(b))
-			{
-				ccv_nnc_tensor_get_stride(b->info.dim, bstride_from_dim);
-				bstride = bstride_from_dim;
-			} else
-				bstride = b->stride;
-			for (i = 0; i < b_nd; i++)
-				rowStrides[b_nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * bstride[i];
-			MPSNDArray* array_a = data_a.mpsndarray;
-			[array_a exportDataWithCommandBuffer:command_buffer toBuffer:buffer_b destinationDataType:ccv_nnc_mps_datatype(b->info.datatype) offset:offset_b rowStrides:rowStrides];
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b);
+			else
+				ccv_nnc_mps_export_data(data_a, command_buffer, b);
 			[graph release];
 		}
 		[command_buffer commit];

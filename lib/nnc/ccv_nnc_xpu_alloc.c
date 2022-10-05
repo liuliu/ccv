@@ -4,8 +4,12 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_internal.h"
 #include "_ccv_nnc_xpu_alloc.h"
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#else
+#include "mps/ccv_nnc_mps.h"
+#endif
 #include <stdbool.h>
 
 static int dy_alloc_tree_cmp(const dy_alloc_metadata_t* const a_node, const dy_alloc_metadata_t* const b_node)
@@ -19,7 +23,11 @@ static void _ccv_nnc_xpu_metadata_free(dy_alloc_metadata_t* node, void* arg)
 {
 	do {
 		dy_alloc_metadata_t* const next = node->next;
+#ifdef HAVE_CUDA
 		cufree(node->device, node->ptr);
+#elif defined(HAVE_MPS)
+		mpfree(node->device, node->ptr);
+#endif
 		ccfree(node);
 		node = next;
 	} while (node);
@@ -107,9 +115,15 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 	if (!node)
 	{
 		node = (dy_alloc_metadata_t*)ccmalloc(sizeof(dy_alloc_metadata_t));
+#ifdef HAVE_CUDA
 		if (xpu_alloc->mp_hdr < 0)
 			xpu_alloc->mp_hdr = curegmp(device, (cump_f)ccv_nnc_xpu_gc, xpu_alloc);
 		node->ptr = cumalloc(device, size);
+#elif defined(HAVE_MPS)
+		if (xpu_alloc->mp_hdr < 0)
+			xpu_alloc->mp_hdr = mpregmp(device, (mpmp_f)ccv_nnc_xpu_gc, xpu_alloc);
+		node->ptr = mpmalloc(device, size);
+#endif
 		if (!node->ptr) // If cannot allocate, drain the pool first and then allocate.
 		{
 			ccfree(node);
@@ -145,7 +159,11 @@ void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
 	// stream has been freed. I have to do synchronous free of this pointer.
 	if (i == kh_end(freed))
 	{
+#ifdef HAVE_CUDA
 		cufree(node->device, node->ptr);
+#elif defined(HAVE_MPS)
+		mpfree(node->device, node->ptr);
+#endif
 		ccfree(node);
 		return;
 	}
@@ -192,8 +210,13 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 		kh_destroy(dy_dev, dev);
 	}
 	kh_destroy(dy_str, freed);
+#ifdef HAVE_CUDA
 	if (xpu_alloc->mp_hdr >= 0)
 		cuunregmp(xpu_alloc->mp_hdr);
+#elif defined(HAVE_MPS)
+	if (xpu_alloc->mp_hdr >= 0)
+		mpunregmp(xpu_alloc->mp_hdr);
+#endif
 }
 
 void ccv_nnc_xpu_gc(const int device, ccv_nnc_xpu_alloc_t* const xpu_alloc)
