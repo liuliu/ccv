@@ -27,7 +27,7 @@ static int _ccv_nnc_softmax_back_bitmask(const int input_size, const int output_
 }
 
 REGISTER_COMMAND(CCV_NNC_SOFTMAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_softmax_cpu_ref.c, gpu/ccv_nnc_softmax_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_softmax_cpu_ref.c, gpu/ccv_nnc_softmax_gpu_cudnn.cu, mps/ccv_nnc_softmax_mps.m)
 {
 	registry->bitmask = _ccv_nnc_softmax_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -35,7 +35,7 @@ REGISTER_COMMAND(CCV_NNC_SOFTMAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry
 }
 
 REGISTER_COMMAND(CCV_NNC_SOFTMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_softmax_cpu_ref.c, gpu/ccv_nnc_softmax_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_softmax_cpu_ref.c, gpu/ccv_nnc_softmax_gpu_cudnn.cu, mps/ccv_nnc_softmax_mps.m)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_softmax_back_bitmask;

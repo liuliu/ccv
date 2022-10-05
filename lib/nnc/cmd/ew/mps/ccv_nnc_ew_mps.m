@@ -20,23 +20,28 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSGraph *graph = [MPSGraph new];
+		NSMutableDictionary<MPSGraphTensor*, MPSGraphTensorData*>* feeds = [NSMutableDictionary new];
+		ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[k];
+		MPSGraphTensor* mps_input_a;
+		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+		feeds[mps_input_a] = data_a;
+		MPSGraphTensor* mps_c = mps_a;
 		for (z = 0; z < input_size - 1; z++)
 		{
-			ccv_nnc_tensor_view_t* const a = z > 0 ? c : (ccv_nnc_tensor_view_t*)inputs[k];
 			const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)(z >= k ? inputs[z + 1] : inputs[z]);
-			MPSGraph *graph = [MPSGraph new];
-			MPSGraphTensor* mps_input_a;
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_input_b;
 			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_b);
-			MPSGraphTensor* mps_c = [graph divisionWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil];
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			mps_c = [graph additionWithPrimaryTensor:mps_c secondaryTensor:mps_b name:nil];
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_b: data_b}, mps_c, c);
-			[graph release];
-			[command_buffer commit];
-			[command_buffer waitUntilCompleted];
+			feeds[mps_input_b] = data_b;
 		}
+		ccv_nnc_mps_graph_result(graph, command_buffer, feeds, mps_c, c);
+		[feeds release];
+		[graph release];
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
