@@ -104,10 +104,9 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSGraph *graph = [MPSGraph new];
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_result(graph, [graph transposeTensor:mps_a dimension:cmd.info.transpose.axis[0] withDimension:cmd.info.transpose.axis[1] name:nil], b);
+			MPSGraphTensor* mps_b = [graph transposeTensor:mps_a dimension:cmd.info.transpose.axis[0] withDimension:cmd.info.transpose.axis[1] name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
 			[graph release];
 		}
 		[command_buffer commit];
@@ -147,10 +146,10 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)
 				[shape addObject:@(a->info.dim[j])];
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_result(graph, [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)], a);
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{} targetOperations:nil resultsDictionary:@{mps_a: data_a} executionDescriptor:nil];
+			MPSGraphTensor* mps_a = [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			[shape release];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a);
+			[graph release];
 		}
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -171,10 +170,10 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)
 				[shape addObject:@(a->info.dim[j])];
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_result(graph, [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)], a);
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{} targetOperations:nil resultsDictionary:@{mps_a: data_a} executionDescriptor:nil];
+			MPSGraphTensor* mps_a = [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			[shape release];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a);
+			[graph release];
 		}
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

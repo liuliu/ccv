@@ -340,7 +340,31 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 	return [data autorelease];
 }
 
-MPSGraphTensor* ccv_nnc_mps_graph_tensor_result(MPSGraph* graph, MPSGraphTensor* tensor, ccv_nnc_tensor_view_t* tensor_view)
+void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data)
 {
-	return tensor;
+	off_t offset = mpgetoffset(data->data.u8);
+	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
+	{
+		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, data->info.dim, data->stride);
+		[graph encodeToCommandBuffer:command_buffer feeds:feeds targetOperations:nil resultsDictionary:@{output: tensor_data} executionDescriptor:nil];
+		return;
+	}
+	MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:feeds targetTensors:@[output] targetOperations:nil executionDescriptor:nil];
+	MPSGraphTensorData* tensor_data = result[output];
+	id<MTLBuffer> buffer = mpgetbuffer(data->data.u8, (ccv_nnc_tensor_t*)data);
+	NSInteger rowStrides[CCV_NNC_MAX_DIM_ALLOC];
+	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+	const int nd = ccv_nnc_tensor_nd(data->info.dim);
+	int* stride;
+	if (!CCV_IS_TENSOR_VIEW(data))
+	{
+		ccv_nnc_tensor_get_stride(data->info.dim, stride_from_dim);
+		stride = stride_from_dim;
+	} else
+		stride = data->stride;
+	int i;
+	for (i = 0; i < nd; i++)
+		rowStrides[nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(data->info.datatype) * stride[i];
+	MPSNDArray* ndarray = tensor_data.mpsndarray;
+	[ndarray exportDataWithCommandBuffer:command_buffer toBuffer:buffer destinationDataType:ccv_nnc_mps_datatype(data->info.datatype) offset:offset rowStrides:rowStrides];
 }

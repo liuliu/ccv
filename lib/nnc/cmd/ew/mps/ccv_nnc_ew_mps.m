@@ -12,13 +12,11 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 		{ assert(b->info.dim[i] == c->info.dim[i]); }
 	if (a)
 	{
-		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 		assert(a->info.datatype == b->info.datatype);
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 			{ assert(a->info.dim[i] == b->info.dim[i]); }
@@ -29,11 +27,10 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_input_b;
 			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_b);
-			MPSGraphTensor* mps_c = ccv_nnc_mps_graph_tensor_result(graph, [graph divisionWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil], c);
+			MPSGraphTensor* mps_c = [graph divisionWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			MPSGraphTensorData* data_c = ccv_nnc_mps_graph_tensor_data(c, c->info.dim, c->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a, mps_input_b: data_b} targetOperations:nil resultsDictionary:@{mps_c: data_c} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_b: data_b}, mps_c, c);
 			[graph release];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
@@ -44,10 +41,9 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraph *graph = [MPSGraph new];
 			MPSGraphTensor* mps_input_b;
 			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_b);
-			MPSGraphTensor* mps_c = ccv_nnc_mps_graph_tensor_result(graph, [graph reciprocalWithTensor:mps_b name:nil], c);
+			MPSGraphTensor* mps_c = [graph reciprocalWithTensor:mps_b name:nil];
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			MPSGraphTensorData* data_c = ccv_nnc_mps_graph_tensor_data(c, c->info.dim, c->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_b: data_b} targetOperations:nil resultsDictionary:@{mps_c: data_c} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_b: data_b}, mps_c, c);
 			[graph release];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
@@ -71,7 +67,6 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == c->info.dim[i]); }
@@ -80,10 +75,9 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		MPSGraph *graph = [MPSGraph new];
 		MPSGraphTensor* mps_input_a;
 		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-		MPSGraphTensor* mps_c = ccv_nnc_mps_graph_tensor_result(graph, [graph exponentWithTensor:mps_a name:nil], c);
+		MPSGraphTensor* mps_c = [graph exponentWithTensor:mps_a name:nil];
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		MPSGraphTensorData* data_c = ccv_nnc_mps_graph_tensor_data(c, c->info.dim, c->stride);
-		[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_c: data_c} executionDescriptor:nil];
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -106,7 +100,6 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == c->info.dim[i]); }
@@ -115,10 +108,9 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		MPSGraph *graph = [MPSGraph new];
 		MPSGraphTensor* mps_input_a;
 		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-		MPSGraphTensor* mps_c = ccv_nnc_mps_graph_tensor_result(graph, [graph logarithmWithTensor:mps_a name:nil], c);
+		MPSGraphTensor* mps_c = [graph logarithmWithTensor:mps_a name:nil];
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		MPSGraphTensorData* data_c = ccv_nnc_mps_graph_tensor_data(c, c->info.dim, c->stride);
-		[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_c: data_c} executionDescriptor:nil];
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -141,7 +133,6 @@ static int _ccv_nnc_ewsqrt_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == c->info.dim[i]); }
@@ -150,10 +141,9 @@ static int _ccv_nnc_ewsqrt_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		MPSGraph *graph = [MPSGraph new];
 		MPSGraphTensor* mps_input_a;
 		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-		MPSGraphTensor* mps_c = ccv_nnc_mps_graph_tensor_result(graph, [graph squareRootWithTensor:mps_a name:nil], c);
+		MPSGraphTensor* mps_c = [graph squareRootWithTensor:mps_a name:nil];
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		MPSGraphTensorData* data_c = ccv_nnc_mps_graph_tensor_data(c, c->info.dim, c->stride);
-		[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_c: data_c} executionDescriptor:nil];
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -176,7 +166,6 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == b->info.dim[i]); }
@@ -191,10 +180,9 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_c = [graph constantWithScalar:maxv dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_result(graph, [graph minimumWithPrimaryTensor:mps_a secondaryTensor:mps_c name:nil], b);
+			MPSGraphTensor* mps_b = [graph minimumWithPrimaryTensor:mps_a secondaryTensor:mps_c name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
 			[graph release];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
@@ -206,10 +194,9 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_c = [graph constantWithScalar:minv dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_result(graph, [graph maximumWithPrimaryTensor:mps_a secondaryTensor:mps_c name:nil], b);
+			MPSGraphTensor* mps_b = [graph maximumWithPrimaryTensor:mps_a secondaryTensor:mps_c name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
 			[graph release];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
@@ -222,10 +209,9 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_min = [graph constantWithScalar:minv dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			MPSGraphTensor* mps_max = [graph constantWithScalar:maxv dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-			MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_result(graph, [graph clampWithTensor:mps_a minValueTensor:mps_min maxValueTensor:mps_max name:nil], b);
+			MPSGraphTensor* mps_b = [graph clampWithTensor:mps_a minValueTensor:mps_min maxValueTensor:mps_max name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
-			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
 			[graph release];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
