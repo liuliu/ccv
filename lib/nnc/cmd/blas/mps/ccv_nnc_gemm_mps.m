@@ -67,6 +67,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 		MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
 		MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 		if (bias)
 		{
 			MPSGraphTensor* mps_input_bias;
@@ -74,10 +75,12 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// Add support broadcast directly.
 			mps_b = [graph additionWithPrimaryTensor:mps_b secondaryTensor:mps_bias name:nil];
 			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, bias->info.dim, bias->stride);
-			[graph runWithMTLCommandQueue:ccv_nnc_default_queue() feeds:@{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias} targetOperations:nil resultsDictionary:@{mps_b: data_b}];
+			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
 		} else
-			[graph runWithMTLCommandQueue:ccv_nnc_default_queue() feeds:@{mps_input_a: data_a, mps_input_w: data_w} targetOperations:nil resultsDictionary:@{mps_b: data_b}];
+			[graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a, mps_input_w: data_w} targetOperations:nil resultsDictionary:@{mps_b: data_b} executionDescriptor:nil];
 		[graph release];
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

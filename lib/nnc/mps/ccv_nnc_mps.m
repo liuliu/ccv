@@ -126,9 +126,9 @@ int ccv_nnc_gpu_device_count(void)
 	return 1;
 }
 
-id<MTLCommandBuffer> ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context)
+MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
-	return [[[ccv_nnc_default_queue() commandBuffer] retain] autorelease];
+	return [MPSCommandBuffer commandBufferFromCommandQueue:ccv_nnc_default_queue()];
 }
 
 MPSDataType ccv_nnc_mps_datatype(const int datatype)
