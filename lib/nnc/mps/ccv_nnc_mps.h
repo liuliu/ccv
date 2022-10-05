@@ -6,7 +6,6 @@
 
 void* mpmalloc(int device, size_t size);
 void mpfree(int device, void* ptr);
-void mpsetoffset(void* ptr, off_t off);
 off_t mpgetoffset(void* ptr);
 
 // Stream context
@@ -27,10 +26,11 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #ifdef __OBJC__
 
 #import <Metal/Metal.h>
+#import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
+id<MTLBuffer> mpgetbuffer(void* ptr, const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
-id<MTLCommandQueue> ccv_nnc_default_queue(void);
 MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSDataType) ccv_nnc_mps_datatype(const int datatype); // Get the datatype corresponding to MPS datatype.
 CCV_WARN_UNUSED(MPSGraphTensor*) ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input);

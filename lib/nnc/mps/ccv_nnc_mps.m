@@ -1,5 +1,7 @@
 #include "ccv_nnc_mps.h"
 #include "ccv_internal.h"
+#include "nnc/ccv_nnc_internal.h"
+#include "nnc/ccv_nnc_easy.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
@@ -14,7 +16,7 @@ id<MTLDevice> ccv_nnc_default_device(void)
 	return device;
 }
 
-id<MTLCommandQueue> ccv_nnc_default_queue(void)
+static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
 {
 	static __thread id<MTLCommandQueue> queue;
 	if (queue == nil)
@@ -24,28 +26,40 @@ id<MTLCommandQueue> ccv_nnc_default_queue(void)
 
 void* mpmalloc(int device, size_t size)
 {
-	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
-	return (void*)buffer;
-}
-
-static const char kMPSGraphTensorDataMTLBufferOffsetKey[0];
-
-void mpsetoffset(void* ptr, off_t off)
-{
-	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
-	objc_setAssociatedObject(buffer, &kMPSGraphTensorDataMTLBufferOffsetKey, (id)(intptr_t)off, OBJC_ASSOCIATION_ASSIGN);
-}
-
-off_t mpgetoffset(void* ptr)
-{
-	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
-	return (off_t)(intptr_t)objc_getAssociatedObject(buffer, &kMPSGraphTensorDataMTLBufferOffsetKey);
+	size_t aligned_size = ((size + PAGE_SIZE - 1) & -PAGE_SIZE);
+	void* ptr;
+	ccmemalign(&ptr, PAGE_SIZE, aligned_size);
+	return ptr;
 }
 
 void mpfree(int device, void* ptr)
 {
-	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
-	[buffer release];
+	ccfree(ptr);
+}
+
+id<MTLBuffer> mpgetbuffer(void* ptr, const ccv_nnc_tensor_t* const tensor)
+{
+	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -PAGE_SIZE);
+	const off_t offset_a = (uintptr_t)ptr - (uintptr_t)aligned_ptr;
+	size_t size = CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype);
+	if (CCV_IS_TENSOR_VIEW(tensor))
+	{
+		int i, j = 0;
+		const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+		for (i = 1; i < nd; i++)
+			if (((ccv_nnc_tensor_view_t*)tensor)->stride[i] > ((ccv_nnc_tensor_view_t*)tensor)->stride[j])
+				j = i;
+		size *= tensor->info.dim[j] * ((ccv_nnc_tensor_view_t*)tensor)->stride[j];
+	} else
+		size *= ccv_nnc_tensor_count(tensor->info);
+	const size_t aligned_size = ((size + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
+	return [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil] autorelease];
+}
+
+off_t mpgetoffset(void* ptr)
+{
+	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -4096);
+	return (off_t)((uintptr_t)ptr - (uintptr_t)aligned_ptr);
 }
 
 // Stream context
@@ -128,7 +142,7 @@ int ccv_nnc_gpu_device_count(void)
 
 MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
-	return [MPSCommandBuffer commandBufferFromCommandQueue:ccv_nnc_default_queue()];
+	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 }
 
 MPSDataType ccv_nnc_mps_datatype(const int datatype)
@@ -153,10 +167,12 @@ MPSDataType ccv_nnc_mps_datatype(const int datatype)
 
 MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input)
 {
-	off_t offset = mpgetoffset(tensor_view->data.u8);
-	assert(offset == 0); // I need to dig more into supporting non-zero offset.
+	const off_t offset = mpgetoffset(tensor_view->data.u8);
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
 	int i;
+	NSInteger full_count, partial_count;
 	if (CCV_IS_TENSOR_VIEW(tensor_view))
 	{
 		// Figure out if there are permutations based on strides, if there are, find the permutation and apply to the tensor.
@@ -189,12 +205,23 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			if (!flag)
 				flag = (full_dim[i] != sorted_dim[i]);
 		}
+		MPSGraphTensor* desc;
 		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 		for (i = 0; i < nd; i++)
 			[shape addObject:@(full_dim[i])];
-		MPSGraphTensor* desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
-		[shape release];
-		*input = desc;
+		if (offset)
+		{
+			partial_count = sorted_stride[0] * sorted_dim[0];
+			full_count = partial_count + offc;
+			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			*input = desc;
+			desc = [graph sliceTensor:desc dimension:0 start:offc length:partial_count name:nil];
+			desc = [graph reshapeTensor:desc withShape:shape name:nil];
+		} else {
+			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			[shape release];
+			*input = desc;
+		}
 		if (flag) // If we sliced this tensor before.
 		{
 			NSMutableArray<NSNumber*>* starts = [NSMutableArray new];
@@ -222,8 +249,7 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 				[permutation addObject:@(sorted_idx[i])];
 			desc = [graph transposeTensor:desc permutation:permutation name:nil];
 			[permutation release];
-		}
-		*/
+		} */
 		for (i = 0; i < nd - 1; i++)
 			if (sorted_idx[i] != i && sorted_idx[i] > i)
 				desc = [graph transposeTensor:desc dimension:i withDimension:sorted_idx[i] name:nil];
@@ -232,20 +258,35 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 		for (i = 0; i < nd; i++)
 			[shape addObject:@(dim[i])];
-		MPSGraphTensor* desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
-		[shape release];
-		*input = desc;
+		MPSGraphTensor* desc;
+		if (offset)
+		{
+			partial_count = dim[0];
+			for (i = 1; i < nd; i++)
+				partial_count *= dim[i];
+			full_count = offc + partial_count;
+			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			*input = desc;
+			desc = [graph sliceTensor:desc dimension:0 start:offc length:partial_count name:nil];
+			desc = [graph reshapeTensor:desc withShape:shape name:nil];
+		} else {
+			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			[shape release];
+			*input = desc;
+		}
 		return desc;
 	}
 }
 
 MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
-	off_t offset = mpgetoffset(tensor_view->data.u8);
-	assert(offset == 0); // I need to dig more into supporting non-zero offset.
+	const off_t offset = mpgetoffset(tensor_view->data.u8);
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
 	int i;
 	NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+	NSInteger full_count, partial_count;
 	if (CCV_IS_TENSOR_VIEW(tensor_view))
 	{
 		int sorted_dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -273,12 +314,27 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 			assert(sorted_stride[i - 1] % sorted_stride[i] == 0);
 			full_dim[i] = sorted_stride[i - 1] / sorted_stride[i];
 		}
-		for (i = 0; i < nd; i++)
-			[shape addObject:@(full_dim[i])];
-	} else
-		for (i = 0; i < nd; i++)
-			[shape addObject:@(dim[i])];
-	id<MTLBuffer> buffer = (id<MTLBuffer>)tensor_view->data.u8;
+		if (offset)
+		{
+			partial_count = sorted_stride[0] * sorted_dim[0];
+			full_count = partial_count + offc;
+			[shape addObject:@(full_count)];
+		} else
+			for (i = 0; i < nd; i++)
+				[shape addObject:@(full_dim[i])];
+	} else {
+		if (offset)
+		{
+			partial_count = dim[0];
+			for (i = 1; i < nd; i++)
+				partial_count *= dim[i];
+			full_count = offc + partial_count;
+			[shape addObject:@(full_count)];
+		} else
+			for (i = 0; i < nd; i++)
+				[shape addObject:@(dim[i])];
+	}
+	id<MTLBuffer> buffer = mpgetbuffer(tensor_view->data.u8, (ccv_nnc_tensor_t*)tensor_view);
 	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
 	[shape release];
 	return [data autorelease];

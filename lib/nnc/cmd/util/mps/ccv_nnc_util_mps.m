@@ -25,8 +25,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const off_t offset_a = (uintptr_t)a->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_a + 4095) & -4096);
 			id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
-			id<MTLBuffer> buffer_b = (id<MTLBuffer>)b->data.u8;
-			const off_t offset_b = mpgetoffset(buffer_b);
+			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, b);
+			const off_t offset_b = mpgetoffset(b->data.u8);
 			@autoreleasepool {
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
@@ -36,8 +36,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				[command_buffer waitUntilCompleted];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
-			id<MTLBuffer> buffer_a = (id<MTLBuffer>)a->data.u8;
-			const off_t offset_a = mpgetoffset(buffer_a);
+			id<MTLBuffer> buffer_a = mpgetbuffer(a->data.u8, a);
+			const off_t offset_a = mpgetoffset(a->data.u8);
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -4096);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_b + 4095) & -4096);
@@ -56,10 +56,10 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 			const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 			assert(device_a == device_b);
-			id<MTLBuffer> buffer_a = (id<MTLBuffer>)a->data.u8;
-			id<MTLBuffer> buffer_b = (id<MTLBuffer>)b->data.u8;
-			const off_t offset_a = mpgetoffset(buffer_a);
-			const off_t offset_b = mpgetoffset(buffer_b);
+			id<MTLBuffer> buffer_a = mpgetbuffer(a->data.u8, a);
+			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, b);
+			const off_t offset_a = mpgetoffset(a->data.u8);
+			const off_t offset_b = mpgetoffset(b->data.u8);
 			@autoreleasepool {
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
@@ -185,7 +185,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 REGISTER_COMMAND_BACKEND(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_set_forw;
@@ -194,8 +194,69 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_b
 REGISTER_COMMAND_BACKEND(CCV_NNC_SET_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_set_back;
+}
+
+static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(output_size <= input_size);
+	int i;
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		for (i = 0; i < output_size; i++)
+		{
+			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
+			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
+			MPSGraph *graph = [MPSGraph new];
+			MPSGraphTensor* mps_input_a;
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			if (mps_a != mps_input_a)
+			{
+				MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:@{mps_input_a: data_a} targetTensors:@[mps_a] targetOperations:nil executionDescriptor:nil];
+				data_a = result[mps_a];
+			}
+			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, (ccv_nnc_tensor_t*)b);
+			off_t offset_b = mpgetoffset(b->data.u8);
+			NSInteger rowStrides[CCV_NNC_MAX_DIM_ALLOC];
+			int bstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+			const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+			int* bstride;
+			if (!CCV_IS_TENSOR_VIEW(b))
+			{
+				ccv_nnc_tensor_get_stride(b->info.dim, bstride_from_dim);
+				bstride = bstride_from_dim;
+			} else
+				bstride = b->stride;
+			for (i = 0; i < b_nd; i++)
+				rowStrides[b_nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * bstride[i];
+			MPSNDArray* array_a = data_a.mpsndarray;
+			[array_a exportDataWithCommandBuffer:command_buffer toBuffer:buffer_b destinationDataType:ccv_nnc_mps_datatype(b->info.datatype) offset:offset_b rowStrides:rowStrides];
+			[graph release];
+		}
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_format_transform;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_format_transform;
 }
