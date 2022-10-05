@@ -15,6 +15,7 @@
 typedef struct {
 	int type;
 	ccv_numeric_data_t data;
+	off_t dataof;
 } ccv_nnc_tape_tensor_data_t;
 
 // These are data structure that directly take pointers.

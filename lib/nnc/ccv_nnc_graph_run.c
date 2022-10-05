@@ -6,6 +6,8 @@
 #include "_ccv_nnc_stream.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 
 // MARK - Level-2 API
@@ -288,32 +290,49 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 		switch (tensor->info.datatype)
 		{
 			case CCV_16F: {
+				uint16_t data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.f16, tensor->dataof, tensor->info.type, len * sizeof(uint16_t));
 				float fp32[len];
-				ccv_half_precision_to_float((uint16_t*)tensor->data.f16, fp32, len);
+				ccv_half_precision_to_float(data, fp32, len);
 				for (i = 0; i < len; i++)
 					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
 				break;
 			}
-			case CCV_32F:
+			case CCV_32F: {
+				float data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.f32, tensor->dataof, tensor->info.type, len * sizeof(float));
 				for (i = 0; i < len; i++)
-					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
+					PRINT(CCV_CLI_VERBOSE, " %f", data[i]);
 				break;
-			case CCV_64F:
+			}
+			case CCV_64F: {
+				double data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.f64, tensor->dataof, tensor->info.type, len * sizeof(double));
 				for (i = 0; i < len; i++)
-					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f64[i]);
+					PRINT(CCV_CLI_VERBOSE, " %f", data[i]);
 				break;
-			case CCV_32S:
+			}
+			case CCV_32S: {
+				int data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.i32, tensor->dataof, tensor->info.type, len * sizeof(int));
 				for (i = 0; i < len; i++)
-					PRINT(CCV_CLI_VERBOSE, " %d", tensor->data.i32[i]);
+					PRINT(CCV_CLI_VERBOSE, " %d", data[i]);
 				break;
-			case CCV_64S:
+			}
+			case CCV_64S: {
+				int64_t data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.i64, tensor->dataof, tensor->info.type, len * sizeof(int64_t));
 				for (i = 0; i < len; i++)
-					PRINT(CCV_CLI_VERBOSE, " %lld", (long long)tensor->data.i64[i]);
+					PRINT(CCV_CLI_VERBOSE, " %lld", (long long)data[i]);
 				break;
-			case CCV_8U:
+			}
+			case CCV_8U: {
+				uint8_t data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->dataof, tensor->info.type, len * sizeof(uint8_t));
 				for (i = 0; i < len; i++)
-					PRINT(CCV_CLI_VERBOSE, " %d", (int)tensor->data.u8[i]);
+					PRINT(CCV_CLI_VERBOSE, " %d", (int)data[i]);
 				break;
+			}
 		}
 		if (ccv_nnc_tensor_count(tensor->info) > 3)
 			PRINT(CCV_CLI_VERBOSE, " ..");

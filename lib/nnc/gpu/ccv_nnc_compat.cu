@@ -157,7 +157,7 @@ void cuunregmp(const int slot)
 	pthread_mutex_unlock(&g_mp_mutex);
 }
 
-void cutrigmp(void)
+static void cutrigmp(void)
 {
 	int device_id;
 	CUDA_ENFORCE(cudaGetDevice(&device_id));

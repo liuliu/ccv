@@ -201,20 +201,20 @@ TEST_CASE("dynamic graph memory reuse logic")
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 128));
 	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_from_variable(graph, a);
-	const intptr_t a_ptr = (intptr_t)a_tensor->data.ptr;
+	const intptr_t a_ptr = (intptr_t)a_tensor->data.u8;
 	ccv_nnc_tensor_variable_free(graph, a);
 	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 64));
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_from_variable(graph, b);
-	const intptr_t b_ptr = (intptr_t)b_tensor->data.ptr;
+	const intptr_t b_ptr = (intptr_t)b_tensor->data.u8;
 	REQUIRE(a_ptr == b_ptr, "allocate to the same region, even though it is smaller");
 	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 128));
 	ccv_nnc_tensor_t* c_tensor = ccv_nnc_tensor_from_variable(graph, c);
-	const intptr_t c_ptr = (intptr_t)c_tensor->data.ptr;
+	const intptr_t c_ptr = (intptr_t)c_tensor->data.u8;
 	ccv_nnc_tensor_variable_free(graph, b);
 	ccv_nnc_tensor_variable_free(graph, c);
 	ccv_nnc_tensor_variable_t d = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 128));
 	ccv_nnc_tensor_t* d_tensor = ccv_nnc_tensor_from_variable(graph, d);
-	const intptr_t d_ptr = (intptr_t)d_tensor->data.ptr;
+	const intptr_t d_ptr = (intptr_t)d_tensor->data.u8;
 	REQUIRE(c_ptr == d_ptr, "c freed last, it is the first to be reused");
 	ccv_nnc_dynamic_graph_free(graph);
 }

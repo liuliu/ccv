@@ -69,7 +69,7 @@ typedef union ccv_numeric_data_u {
 	int64_t* i64;
 	uint64_t* u64;
 	double* f64;
-	void* ptr; // Raw pointer
+	void* ptr;
 } ccv_numeric_data_t;
 
 #define CCV_NNC_MAX_DIM_ALLOC (12)
@@ -86,6 +86,7 @@ typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;
+	off_t dataof; // Offset.
 	uintptr_t alias_ref;
 	uint64_t data_size;
 	uint64_t sig;
@@ -96,13 +97,14 @@ typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;
+	off_t dataof; // Offset for the data.
 	uintptr_t alias_ref;
 	uint64_t data_size;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 	/* tensor view and tensor shares the same data structure besides the following. */
 	int contiguous; // If we have other flags later, we can make this a generic flag.
-	off_t off;
+	off_t off; // Offset from the original tensor. This could be different from dataof.
 	int stride[CCV_NNC_MAX_DIM_ALLOC]; /**< "stride" or, length */
 } ccv_nnc_tensor_view_t;
 
@@ -116,8 +118,9 @@ typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;
-	uintptr_t reserved0;
-	uint64_t reserved1;
+	off_t reserved0;
+	uintptr_t reserved1;
+	uint64_t reserved2;
 	uint64_t sig;
 	// This is used for toll-free bridging between ccv_dense_matrix_t and ccv_nnc_tensor_t
 	// Note that this is bigger than it is needed, we carefully structured this
@@ -130,7 +133,7 @@ typedef struct {
 			int rows;
 			int cols;
 			int channels;
-			int reserved2; /* This reserved bit need to be zero'ed such that later dim is not cared. */
+			int reserved3; /* This reserved bit need to be zero'ed such that later dim is not cared. */
 			int step;
 			union {
 				unsigned char u8;

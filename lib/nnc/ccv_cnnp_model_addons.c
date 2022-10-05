@@ -163,9 +163,9 @@ void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, con
 	if (stream_type == CCV_STREAM_CONTEXT_GPU)
 		for (i = 0; i < parallel_count; i++)
 		{
-			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2]->data.ptr);
-			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2 + 1]->data.ptr);
-			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, max_normt[i]->data.ptr);
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2]->data.u8);
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, norm2[i * 2 + 1]->data.u8);
+			ccv_nnc_xpu_free(&compiled_data->xpu_alloc, max_normt[i]->data.u8);
 		}
 	for (i = 0; i < parallel_count; i++)
 	{

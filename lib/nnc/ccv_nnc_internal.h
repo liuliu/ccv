@@ -140,9 +140,29 @@ static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DI
 	return 1;
 }
 
-static inline unsigned char* ccv_nnc_tensor_view_data(const ccv_nnc_tensor_param_t params, unsigned char* const data, const off_t off)
+static inline void ccv_nnc_tensor_data(const ccv_nnc_tensor_param_t params, unsigned char* const data, const off_t off, ccv_numeric_data_t* const data_ref, off_t* const dataof_ref)
 {
-	return data + off;
+#ifdef HAVE_MPS
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		(*data_ref).u8 = data;
+		*dataof_ref = off;
+		return;
+	}
+#endif
+	(*data_ref).u8 = data + off;
+}
+
+static inline void ccv_nnc_tensor_data_add(const ccv_nnc_tensor_param_t params, const off_t off, ccv_numeric_data_t* const data_ref, off_t* const dataof_ref)
+{
+#ifdef HAVE_MPS
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		(*dataof_ref) += off;
+		return;
+	}
+#endif
+	(*data_ref).u8 += off;
 }
 
 static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)

@@ -19,6 +19,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	if (ptr)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
+		tensor->dataof = 0;
 		tensor->alias_ref = 0;
 		tensor->sig = 0;
 		tensor->refcount = 1;
@@ -68,6 +69,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
 	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 #endif
+	tensor->dataof = 0;
 	tensor->alias_ref = 0;
 	tensor->data_size = size;
 	tensor->sig = 0;
@@ -162,6 +164,7 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
 	const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 	ccv_nnc_tensor_t tensor;
+	tensor.dataof = 0;
 	tensor.alias_ref = 0;
 	tensor.sig = 0;
 	tensor.refcount = 1;
@@ -223,13 +226,14 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, stride, ofs);
 	tv->contiguous = ccv_nnc_tensor_view_is_contiguous(dim, stride, ofs);
 	assert(off + CCV_GET_DATA_TYPE_SIZE(tv->info.datatype) * ccv_nnc_dimension_upper_bound(tv->info.dim, tv->stride) <= CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype) * ccv_nnc_tensor_count(tensor->info));
-	tv->data.u8 = ccv_nnc_tensor_view_data(tv->info, p, off);
+	ccv_nnc_tensor_data(tv->info, p, off + tensor->dataof, &tv->data, &tv->dataof);
 }
 
 ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
+	tv->dataof = 0;
 	tv->alias_ref = (uintptr_t)tensor;
 	tv->refcount = 1;
 	tv->sig = 0;
@@ -247,6 +251,7 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, 
 	assert(params.type == tensor->info.type);
 	assert(params.datatype == tensor->info.datatype);
 	ccv_nnc_tensor_view_t tv = {
+		.dataof = 0,
 		.alias_ref = (uintptr_t)tensor,
 		.type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW, // clean up the channel bits, and then add CCV_TENSOR_VIEW identifier
 		.refcount = 1,
@@ -369,7 +374,7 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 		c *= a->info.dim[i];
 	}
 	if (CCV_GET_DATA_TYPE(a->type) == CCV_32S)
-		return memcmp(a->data.ptr, b->data.ptr, sizeof(int) * c) == 0 ? 0 : -1;
+		return memcmp(a->data.i32, b->data.i32, sizeof(int) * c) == 0 ? 0 : -1;
 	// Only support 32F at this point.
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F || CCV_GET_DATA_TYPE(a->type) == CCV_64F);
 	// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm

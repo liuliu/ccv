@@ -6,6 +6,8 @@
 #include "3rdparty/sqlite3/sqlite3.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif HAVE_MPS
+#include "mps/ccv_nnc_mps.h"
 #endif
 
 #ifdef NDEBUG
@@ -45,6 +47,14 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	{
 		workspace = ccmalloc(data_size);
 		cumemcpy(workspace, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->info.type, data_size);
+		sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
+	} else
+		sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		workspace = ccmalloc(data_size);
+		mpmemcpy(workspace, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->dataof, tensor->info.type, data_size);
 		sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
 	} else
 		sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
@@ -111,6 +121,24 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 			else
 				ccv_float_to_half_precision((float*)data, (uint16_t*)tensor->data.f16, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
 		}
+#elif defined(HAVE_MPS)
+		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+		{
+			size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+			void* const workspace = ccmalloc(data_size);
+			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
+				ccv_half_precision_to_float((uint16_t*)data, (float*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+			else
+				ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+				mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, workspace, 0, CCV_TENSOR_CPU_MEMORY, data_size);
+			ccfree(workspace);
+		} else {
+			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
+				ccv_half_precision_to_float((uint16_t*)data, tensor->data.f32, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+			else
+				ccv_float_to_half_precision((float*)data, (uint16_t*)tensor->data.f16, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+		}
 #else
 		if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
 			ccv_half_precision_to_float((uint16_t*)data, tensor->data.f32, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
@@ -122,6 +150,11 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 #ifdef HAVE_CUDA
 		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 			cumemcpy(tensor->data.u8, tensor->info.type, data, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+		else
+			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+#elif defined(HAVE_MPS)
+		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+			mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, data, 0, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 		else
 			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 #else

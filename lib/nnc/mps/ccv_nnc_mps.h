@@ -6,10 +6,10 @@
 
 void* mpmalloc(int device, size_t size);
 void mpfree(int device, void* ptr);
-off_t mpgetoffset(void* ptr);
 typedef void(*mpmp_f)(int device_id, void* const context);
 int mpregmp(int device_id, mpmp_f func, void* const context); // register memory pressure handler
 void mpunregmp(const int id); // un-register memory pressure handler.
+void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n);
 
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);
@@ -32,7 +32,8 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
-id<MTLBuffer> mpgetbuffer(void* ptr, const ccv_nnc_tensor_t* const tensor);
+off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
+id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
 MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSDataType) ccv_nnc_mps_datatype(const int datatype); // Get the datatype corresponding to MPS datatype.

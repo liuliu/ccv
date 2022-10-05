@@ -49,7 +49,10 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 {
 	assert(tensor_multiview->it && !CCV_IS_TENSOR_MULTIVIEW(tensor_multiview->it));
 	// Update the pointer on tv only if it is not a single tensor pointer.
-	unsigned char* const data = tensor_multiview->it->data.u8 - tensor_multiview->offset;
+	// TODO: This will not work with fat pointers (MPS).
+	ccv_numeric_data_t data = tensor_multiview->it->data;
+	off_t dataof = tensor_multiview->it->dataof;
+	ccv_nnc_tensor_data_add(tensor_multiview->it->info, -tensor_multiview->offset, &data, &dataof);
 	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
 	int i;
 	do {
@@ -60,9 +63,11 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 				if (CCV_IS_TENSOR_VIEW(tensor))
 				{
 					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)tensor;
-					tensor_view->data.u8 = ccv_nnc_tensor_view_data(tensor_view->info, data, tensor_view->off);
-				} else
-					tensor->data.u8 = data;
+					ccv_nnc_tensor_data(tensor_view->info, data.u8, tensor_view->off + dataof, &tensor_view->data, &tensor_view->dataof);
+				} else {
+					tensor->data = data;
+					tensor->dataof = dataof;
+				}
 			}
 		c = c->p;
 	} while (c);

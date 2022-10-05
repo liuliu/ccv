@@ -43,12 +43,13 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->sig = sig;
 #if CCV_NNC_TENSOR_TFB
 	mat->reserved0 = 0;
+	mat->reserved1 = 0;
+	mat->reserved2 = 0;
 	mat->resides = CCV_TENSOR_CPU_MEMORY;
 	mat->format = CCV_TENSOR_FORMAT_NHWC;
 	mat->datatype = CCV_GET_DATA_TYPE(type);
 	mat->channels = CCV_GET_CHANNEL(type);
-	mat->reserved1 = 0;
-	mat->reserved2 = 0;
+	mat->reserved3 = 0;
 #endif
 	mat->rows = rows;
 	mat->cols = cols;
@@ -112,12 +113,13 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.refcount = 1;
 #if CCV_NNC_TENSOR_TFB
 	mat.reserved0 = 0;
+	mat.reserved1 = 0;
+	mat.reserved2 = 0;
 	mat.resides = CCV_TENSOR_CPU_MEMORY;
 	mat.format = CCV_TENSOR_FORMAT_NHWC;
 	mat.datatype = CCV_GET_DATA_TYPE(type);
 	mat.channels = CCV_GET_CHANNEL(type);
-	mat.reserved1 = 0;
-	mat.reserved2 = 0;
+	mat.reserved3 = 0;
 #endif
 	mat.data.u8 = (unsigned char*)data;
 	return mat;

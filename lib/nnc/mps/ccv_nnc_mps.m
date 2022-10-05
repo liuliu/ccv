@@ -24,53 +24,137 @@ static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
 	return queue;
 }
 
+typedef struct {
+	int device_id;
+	mpmp_f func;
+	void* ctx;
+} mpmp_t;
+
+static pthread_mutex_t g_mp_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ccv_array_t* g_mp_h;
+static int g_mp_slot;
+
+int mpregmp(int device_id, mpmp_f func, void* const context)
+{
+	assert(func);
+	pthread_mutex_lock(&g_mp_mutex);
+	if (!g_mp_h)
+	{
+		g_mp_h = ccv_array_new(sizeof(mpmp_t), 1, 0);
+		g_mp_slot = -1;
+	}
+	mpmp_t mp = {
+		device_id, func, context,
+	};
+	int slot = g_mp_slot;
+	if (g_mp_slot >= 0)
+	{
+		assert(g_mp_slot < g_mp_h->rnum);
+		*(mpmp_t*)ccv_array_get(g_mp_h, g_mp_slot) = mp;
+		int i;
+		for (i = g_mp_slot + 1; i < g_mp_h->rnum; i++)
+			if (((mpmp_t*)ccv_array_get(g_mp_h, i))->func == 0)
+			{
+				g_mp_slot = i;
+				break;
+			}
+		if (g_mp_slot == slot)
+			g_mp_slot = -1; // Cannot find a slot.
+	} else {
+		ccv_array_push(g_mp_h, &mp);
+		slot = g_mp_h->rnum - 1;
+	}
+	pthread_mutex_unlock(&g_mp_mutex);
+	return slot;
+}
+
+void mpunregmp(const int slot)
+{
+	pthread_mutex_lock(&g_mp_mutex);
+	assert(slot < g_mp_h->rnum);
+	if (g_mp_slot < 0 || slot < g_mp_slot)
+		g_mp_slot = slot;
+	*(mpmp_t*)ccv_array_get(g_mp_h, g_mp_slot) = (mpmp_t){};
+	pthread_mutex_unlock(&g_mp_mutex);
+}
+
+static void mptrigmp(void)
+{
+	pthread_mutex_lock(&g_mp_mutex);
+	int i;
+	for (i = 0; i < g_mp_h->rnum; i++)
+	{
+		mpmp_t* const mp = (mpmp_t*)ccv_array_get(g_mp_h, i);
+		if (mp->device_id == 0 && mp->func)
+			mp->func(0, mp->ctx);
+	}
+	pthread_mutex_unlock(&g_mp_mutex);
+}
+
 void* mpmalloc(int device, size_t size)
 {
-	size_t aligned_size = ((size + PAGE_SIZE - 1) & -PAGE_SIZE);
-	void* ptr;
-	ccmemalign(&ptr, PAGE_SIZE, aligned_size);
-	return ptr;
+	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+	if (buffer == nil)
+	{
+		mptrigmp();
+		buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+		assert(buffer != nil);
+	}
+	return (void*)buffer;
 }
 
 void mpfree(int device, void* ptr)
 {
-	ccfree(ptr);
+	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
+	[buffer release];
 }
 
-int mpregmp(int device_id, mpmp_f func, void* const context)
+id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 {
-	return 0;
+	return (id<MTLBuffer>)tensor->data.u8;
 }
 
-void mpunregmp(const int id)
+off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
+	return tensor->dataof;
 }
 
-id<MTLBuffer> mpgetbuffer(void* ptr, const ccv_nnc_tensor_t* const tensor)
+void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n)
 {
-	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -PAGE_SIZE);
-	const off_t offset_a = (uintptr_t)ptr - (uintptr_t)aligned_ptr;
-	size_t size = CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype);
-	if (CCV_IS_TENSOR_VIEW(tensor))
+	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY)
 	{
-		int i, j = 0;
-		const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
-		for (i = 1; i < nd; i++)
-			if (((ccv_nnc_tensor_view_t*)tensor)->stride[i] > ((ccv_nnc_tensor_view_t*)tensor)->stride[j])
-				j = i;
-		size *= tensor->info.dim[j] * ((ccv_nnc_tensor_view_t*)tensor)->stride[j];
-	} else
-		size *= ccv_nnc_tensor_count(tensor->info);
-	const size_t aligned_size = ((size + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
-	id<MTLBuffer> buffer = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil] autorelease];
-	assert(buffer != nil);
-	return buffer;
-}
-
-off_t mpgetoffset(void* ptr)
-{
-	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -4096);
-	return (off_t)((uintptr_t)ptr - (uintptr_t)aligned_ptr);
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)src & -PAGE_SIZE);
+		const off_t offset_a = (uintptr_t)src - (uintptr_t)aligned_ptr + src_off;
+		const size_t aligned_size = ((n + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
+		id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
+		id<MTLBuffer> buffer_b = (id<MTLBuffer>)dest;
+		const off_t offset_b = dest_off;
+		@autoreleasepool {
+			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
+			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
+			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
+			[encoder endEncoding];
+			[command_buffer commit];
+			[command_buffer waitUntilCompleted];
+		}
+	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
+		id<MTLBuffer> buffer_a = (id<MTLBuffer>)src;
+		const off_t offset_a = src_off;
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)dest & -PAGE_SIZE);
+		const off_t offset_b = (uintptr_t)dest - (uintptr_t)aligned_ptr;
+		const size_t aligned_size = ((n + offset_b + PAGE_SIZE - 1) & -PAGE_SIZE);
+		id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
+		@autoreleasepool {
+			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
+			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
+			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
+			[encoder endEncoding];
+			[command_buffer commit];
+			[command_buffer waitUntilCompleted];
+		}
+	} else {
+		assert(0 && "can only copy from GPU to CPU or vice versa");
+	}
 }
 
 // Stream context
@@ -192,7 +276,7 @@ MPSGraphTensorNamedDataLayout ccv_nnc_mps_tensor_data_layout(const int format)
 
 MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input)
 {
-	const off_t offset = mpgetoffset(tensor_view->data.u8);
+	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
 	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
 	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
@@ -234,13 +318,16 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 		for (i = 0; i < nd; i++)
 			[shape addObject:@(full_dim[i])];
+		NSInteger remaining_start = 0;
 		if (offset)
 		{
-			partial_count = sorted_stride[0] * sorted_dim[0];
-			full_count = partial_count + offc;
+			partial_count = ccv_nnc_dimension_upper_bound(dim, stride);
+			remaining_start = ccv_min(sorted_dim[0] * sorted_stride[0] - partial_count, offc);
+			assert(remaining_start <= offc);
+			full_count = offc - remaining_start + sorted_dim[0] * sorted_stride[0];
 			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
 			*input = desc;
-			desc = [graph sliceTensor:desc dimension:0 start:offc length:partial_count name:nil];
+			desc = [graph sliceTensor:desc dimension:0 start:offc - remaining_start length:sorted_dim[0] * sorted_stride[0] name:nil];
 			desc = [graph reshapeTensor:desc withShape:shape name:nil];
 		} else {
 			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
@@ -254,10 +341,17 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			NSMutableArray<NSNumber*>* strides = [NSMutableArray new];
 			for (i = 0; i < nd; i++)
 			{
-				[starts addObject:@(0)];
-				[ends addObject:@(sorted_dim[i])];
+				NSInteger start = 0;
+				if (full_dim[i] > sorted_dim[i])
+				{
+					start = ccv_min(remaining_start / sorted_stride[i], full_dim[i] - sorted_dim[i]);
+					remaining_start -= start * sorted_stride[i];
+				}
+				[starts addObject:@(start)];
+				[ends addObject:@(sorted_dim[i] + start)];
 				[strides addObject:@(1)];
 			}
+			assert(remaining_start == 0);
 			desc = [graph sliceTensor:desc starts:starts ends:ends strides:strides name:nil];
 			[starts release];
 			[ends release];
@@ -313,7 +407,7 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 
 MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
-	const off_t offset = mpgetoffset(tensor_view->data.u8);
+	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
 	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
 	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
@@ -347,8 +441,10 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 		}
 		if (offset)
 		{
-			partial_count = sorted_stride[0] * sorted_dim[0];
-			full_count = partial_count + offc;
+			partial_count = ccv_nnc_dimension_upper_bound(dim, stride);
+			NSInteger remaining_start = ccv_min(sorted_dim[0] * sorted_stride[0] - partial_count, offc);
+			assert(remaining_start <= offc);
+			full_count = offc - remaining_start + sorted_dim[0] * sorted_stride[0];
 			[shape addObject:@(full_count)];
 		} else
 			for (i = 0; i < nd; i++)
@@ -365,7 +461,7 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 			for (i = 0; i < nd; i++)
 				[shape addObject:@(dim[i])];
 	}
-	id<MTLBuffer> buffer = mpgetbuffer(tensor_view->data.u8, (ccv_nnc_tensor_t*)tensor_view);
+	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor_view);
 	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
 	[shape release];
 	return [data autorelease];
@@ -373,7 +469,7 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 
 void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command_buffer, ccv_nnc_tensor_view_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
-	id<MTLBuffer> buffer = mpgetbuffer(tensor->data.u8, (ccv_nnc_tensor_t*)tensor);
+	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor);
 	NSInteger rowStrides[CCV_NNC_MAX_DIM_ALLOC];
 	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
 	const int nd = ccv_nnc_tensor_nd(dim);
@@ -388,13 +484,13 @@ void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command
 	for (i = 0; i < nd; i++)
 		rowStrides[nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype) * dstride[i];
 	MPSNDArray* ndarray = data.mpsndarray;
-	off_t offset = mpgetoffset(tensor->data.u8);
+	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor);
 	[ndarray exportDataWithCommandBuffer:command_buffer toBuffer:buffer destinationDataType:ccv_nnc_mps_datatype(tensor->info.datatype) offset:offset rowStrides:rowStrides];
 }
 
 void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
-	off_t offset = mpgetoffset(data->data.u8);
+	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data);
 	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
 	{
 		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, dim, stride);

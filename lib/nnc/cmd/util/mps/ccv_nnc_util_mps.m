@@ -25,8 +25,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const off_t offset_a = (uintptr_t)a->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_a + 4095) & -4096);
 			id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
-			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, b);
-			const off_t offset_b = mpgetoffset(b->data.u8);
+			id<MTLBuffer> buffer_b = mpgetbuffer(b);
+			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
@@ -36,8 +36,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				[command_buffer waitUntilCompleted];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
-			id<MTLBuffer> buffer_a = mpgetbuffer(a->data.u8, a);
-			const off_t offset_a = mpgetoffset(a->data.u8);
+			id<MTLBuffer> buffer_a = mpgetbuffer(a);
+			const off_t offset_a = mpgetoffset(a);
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -4096);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_b + 4095) & -4096);
@@ -56,10 +56,10 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 			const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 			assert(device_a == device_b);
-			id<MTLBuffer> buffer_a = mpgetbuffer(a->data.u8, a);
-			id<MTLBuffer> buffer_b = mpgetbuffer(b->data.u8, b);
-			const off_t offset_a = mpgetoffset(a->data.u8);
-			const off_t offset_b = mpgetoffset(b->data.u8);
+			id<MTLBuffer> buffer_a = mpgetbuffer(a);
+			id<MTLBuffer> buffer_b = mpgetbuffer(b);
+			const off_t offset_a = mpgetoffset(a);
+			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];

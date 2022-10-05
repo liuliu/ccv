@@ -702,7 +702,8 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 			// Try to find the created tensor block pos in the array, just linear scan.
 			const int tv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 			ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, tv_pos);
-			*tv = ccv_nnc_tensor(graph_prep->tensor_arena->buffers[buffer_ref].ptr + offset, params, 0);
+			*tv = ccv_nnc_tensor(graph_prep->tensor_arena->buffers[buffer_ref].ptr, params, 0);
+			ccv_nnc_tensor_data_add(tv->info, offset, &tv->data, &tv->dataof);
 			return tv_pos;
 		}
 		p_ref = graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
@@ -996,6 +997,7 @@ static int _ccv_nnc_tensor_flat_if_multiview(ccv_array_t* const tensor_metadata,
 	const int new_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 	ccv_nnc_tensor_t* const new_tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, new_pos);
 	*new_tensor = ccv_nnc_tensor(tensor.data.u8, tensor.info, 0);
+	new_tensor->dataof = tensor.dataof;
 	ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
 	new_tensor->alias_ref = (uintptr_t)pos;
 	ccv_nnc_tensor_synchronize_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)new_pos);
@@ -1026,6 +1028,7 @@ static void _ccv_nnc_assign_vt_tensor_aliases(ccv_array_t* const tensor_metadata
 		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 		ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
 		*tensor = ccv_nnc_tensor(alias_tensor.data.u8, tensor_symbol_info[block_ref].info, 0);
+		tensor->dataof = alias_tensor.dataof;
 	} else {
 		pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
 		ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
@@ -1262,7 +1265,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
-				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[i].info, 0);
+				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr, tensor_symbol_info[i].info, 0);
+				ccv_nnc_tensor_data_add(tensor->info, offset, &tensor->data, &tensor->dataof);
 				assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
 				// If we need to force broadcast, we need to wrap it in a multiview.
 				if (graph_prep->tensor_blocks[i].p_refs[0] &&
@@ -1319,7 +1323,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			} else {
 				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_symbol_info[d].info, 0);
+				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.u8, tensor_symbol_info[d].info, 0);
+				tv->data = tensor_binds[i].tensor->data; // If there are offsets, copy it over.
+				tv->dataof = tensor_binds[i].tensor->dataof;
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 			}
 		}
@@ -1359,7 +1365,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			} else {
 				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_symbol_info[d].info, 0);
+				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.u8, tensor_symbol_info[d].info, 0);
+				tv->data = tensor_binds[i].tensor->data;
+				tv->dataof = tensor_binds[i].tensor->dataof;
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 			}
 		}
@@ -1491,7 +1499,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 						ccv_nnc_tensor_t* tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(CCV_NNC_MULTIVIEW_DATA(multiview)[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(multiview)[0]) : CCV_NNC_MULTIVIEW_DATA(multiview)[0]);
 						while (CCV_IS_TENSOR_MULTIVIEW(tv))
 							tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]) : CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]);
-						*ref_tensor = ccv_nnc_tensor(tv->data.ptr, tv->info, 0);
+						*ref_tensor = ccv_nnc_tensor(tv->data.u8, tv->info, 0);
+						ref_tensor->data = tv->data;
+						ref_tensor->dataof = tv->dataof;
 						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
 					} else
 						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, is_sub_arena_out_tensor ? vt_tensor : (ccv_nnc_tensor_t*)(intptr_t)vt_pos);
@@ -3993,9 +4003,11 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				break;
 			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
-				d_tensor->data.u8 = ccv_nnc_tensor_view_data(tensor->info, tensor->data.u8, ((ccv_nnc_tensor_view_t*)d_tensor)->off);
-			else
+				ccv_nnc_tensor_data(tensor->info, tensor->data.u8, ((ccv_nnc_tensor_view_t*)d_tensor)->off + tensor->dataof, &d_tensor->data, &d_tensor->dataof);
+			else {
 				d_tensor->data.u8 = tensor->data.u8;
+				d_tensor->dataof = tensor->dataof;
+			}
 		}
 }
 
@@ -4078,7 +4090,7 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->stride, symbol_info->ofs);
 				tensor->info = symbol_info->info;
 				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
-				tensor->data.u8 = ccv_nnc_tensor_view_data(tensor->info, tensor_arena->vt_tensors[alias_ref]->data.u8, off);
+				ccv_nnc_tensor_data(tensor->info, tensor_arena->vt_tensors[alias_ref]->data.u8, off + tensor_arena->vt_tensors[alias_ref]->dataof, &tensor->data, &tensor->dataof);
 				if (CCV_IS_TENSOR_VIEW(tensor))
 					((ccv_nnc_tensor_view_t*)tensor)->off = off;
 			}
