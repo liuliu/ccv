@@ -58,7 +58,7 @@ void __attribute__((weak)) __test_case_teardown(void);
 #define TEST_SETUP() void __test_case_setup(void)
 #define TEST_TEARDOWN() void __test_case_teardown(void)
 
-#ifdef __ELF__
+#if defined(__ELF__) || defined(__APPLE__)
 // in ELF object format, we can simply query custom section rather than scan through the whole binary memory
 // to find function pointer. We do this whenever possible because in this way, we don't have access error
 // when hooking up with memory checkers such as address sanitizer or valgrind
@@ -70,10 +70,17 @@ typedef struct {
 	uint64_t sig_tail;
 } case_t;
 
+#ifdef __ELF__
 #define TEST_CASE(desc) \
 static void __attribute__((used)) INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__); \
 static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used, section("case_data"), aligned(8))) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .sig_head = 0x883253372849284B, .name = desc, .dir = CASE_TEST_DIR, .sig_tail = 0x883253372849284B + 2 }; \
-static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__) 
+static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__)
+#else
+#define TEST_CASE(desc) \
+static void __attribute__((used)) INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__); \
+static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used, section("__DATA,case_data"), aligned(8))) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .sig_head = 0x883253372849284B, .name = desc, .dir = CASE_TEST_DIR, .sig_tail = 0x883253372849284B + 2 }; \
+static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__)
+#endif
 #else
 typedef struct {
 	uint64_t sig_head;

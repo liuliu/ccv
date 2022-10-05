@@ -104,23 +104,66 @@ static void case_conclude(int pass, int skip, int fail)
 	}
 }
 
-#ifdef __ELF__
+#if defined(__ELF__) || defined(__APPLE__)
 // in ELF object format, we can simply query custom section rather than scan through the whole binary memory
 // to find function pointer. We do this whenever possible because in this way, we don't have access error
 // when hooking up with memory checkers such as address sanitizer or valgrind
 
-static case_t __test_case_ctx_assessment__ __attribute__((used, section("case_data_assessment"), aligned(8))) = {0};
+#ifdef __ELF__
+static case_t __test_case_ctx_probe __attribute__((used, section("case_data_probe"), aligned(8))) = {0};
 
 extern case_t __start_case_data[];
 extern case_t __stop_case_data[];
 
-extern case_t __start_case_data_assessment[];
-extern case_t __stop_case_data_assessment[];
+extern case_t __start_case_data_probe[];
+extern case_t __stop_case_data_probe[];
+#else
+#include <mach-o/dyld.h>
+#include <mach-o/getsect.h>
+#ifdef __LP64__
+	typedef struct section_64 case_section;
+	typedef struct mach_header_64 case_header;
+#else
+	typedef struct section case_section;
+	typedef struct mach_header case_header;
+#endif
+static case_t __test_case_ctx_probe __attribute__((used, section("__DATA,case_data_probe"), aligned(8))) = {0};
+#endif
 
 int main(int argc, char** argv)
 {
-	int case_size = (intptr_t)__stop_case_data_assessment - (intptr_t)__start_case_data_assessment;
+#ifdef __ELF__
+	int case_size = (intptr_t)__stop_case_data_probe - (intptr_t)__start_case_data_probe;
 	int test_size = (intptr_t)__stop_case_data - (intptr_t)__start_case_data;
+	unsigned char* start_case_data = (unsigned char*)__start_case_data;
+	unsigned char* stop_case_data = (unsigned char*)__stop_case_data;
+#else
+	uint32_t image_count = _dyld_image_count();
+	int case_size = 0;
+	for (uint32_t image_index = 0; !case_size && image_index < image_count; image_index++)
+	{
+		const case_header* mach_header = (const case_header*)_dyld_get_image_header(image_index);
+		unsigned long size;
+		uint8_t *data = getsectiondata(mach_header, "__DATA", "case_data_probe", &size);
+		if (data)
+			case_size = (int)size;
+	}
+	int test_size = 0;
+	unsigned char* start_case_data = 0;
+	unsigned char* stop_case_data = 0;
+	for (uint32_t image_index = 0; image_index < image_count; image_index++)
+	{
+		const case_header* mach_header = (const case_header*)_dyld_get_image_header(image_index);
+		unsigned long size;
+		uint8_t *data = getsectiondata(mach_header, "__DATA", "case_data", &size);
+		if (!data)
+			continue;
+		start_case_data = data;
+		stop_case_data = data + size;
+		test_size = (int)size;
+		break;
+	}
+#endif
 	char buf[1024];
 	char* cur_dir = getcwd(buf, 1024);
 	static uint64_t the_sig = 0x883253372849284B;
@@ -131,7 +174,7 @@ int main(int argc, char** argv)
 		total = test_size / case_size;
 	for (i = 0; i < total; i++)
 	{
-		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
+		case_t* test_case = (case_t*)(start_case_data + i * case_size);
 		// If it doesn't match well, fallback to scan mode.
 		if (test_case->sig_head != the_sig || test_case->sig_tail != the_sig + 2)
 		{
@@ -144,10 +187,10 @@ int main(int argc, char** argv)
 	if (scan_mode)
 	{
 		total = 0;
-		len = (intptr_t)__stop_case_data - (intptr_t)__start_case_data - sizeof(case_t) + 1;
+		len = (intptr_t)stop_case_data - (intptr_t)start_case_data - sizeof(case_t) + 1;
 		for (i = 0; i < len; i++)
 		{
-			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
+			case_t* test_case = (case_t*)(start_case_data + i);
 			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
 				(!match_test || strstr(test_case->name, match_test)))
 				total++;
@@ -160,7 +203,7 @@ int main(int argc, char** argv)
 		int j = 0;
 		for (i = 0; i < len; i++)
 		{
-			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
+			case_t* test_case = (case_t*)(start_case_data + i);
 			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
 				(!match_test || strstr(test_case->name, match_test)))
 			{
@@ -173,7 +216,7 @@ int main(int argc, char** argv)
 		if (match_test)
 			for (i = 0; i < total; i++)
 			{
-				case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
+				case_t* test_case = (case_t*)(start_case_data + i * case_size);
 				if (strstr(test_case->name, match_test))
 					matched_total++;
 			}
@@ -181,7 +224,7 @@ int main(int argc, char** argv)
 		// Simple case, I don't need to scan the data section.
 		for (i = 0; i < total; i++)
 		{
-			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
+			case_t* test_case = (case_t*)(start_case_data + i * case_size);
 			if (!match_test || strstr(test_case->name, match_test))
 				case_run(test_case, match_test, j++, matched_total, &pass, &skip, &fail);
 			chdir(cur_dir);
