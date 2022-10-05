@@ -15,3 +15,4 @@ jobs:
           make -C site source
           make -C test
           make -C test test
+          make -C test/int/nnc test

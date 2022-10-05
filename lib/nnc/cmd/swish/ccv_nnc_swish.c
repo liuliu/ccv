@@ -22,7 +22,7 @@ static int _ccv_nnc_swish_back_bitmask(const int input_size, const int output_si
 }
 
 REGISTER_COMMAND(CCV_NNC_SWISH_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_swish_cpu_ref.c, gpu/ccv_nnc_swish_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_swish_cpu_ref.c, gpu/ccv_nnc_swish_gpu_ref.cu, mps/ccv_nnc_swish_mps.m)
 {
 	registry->bitmask = _ccv_nnc_swish_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -30,7 +30,7 @@ REGISTER_COMMAND(CCV_NNC_SWISH_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_SWISH_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_swish_cpu_ref.c, gpu/ccv_nnc_swish_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_swish_cpu_ref.c, gpu/ccv_nnc_swish_gpu_ref.cu, mps/ccv_nnc_swish_mps.m)
 {
 	registry->bitmask = _ccv_nnc_swish_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
