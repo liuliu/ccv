@@ -133,3 +133,69 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nn
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_transpose;
 }
+
+static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	int i, j;
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		for (i = 0; i < output_size; i++)
+		{
+			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
+			MPSGraph *graph = [MPSGraph new];
+			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+			const int nd = ccv_nnc_tensor_nd(a->info.dim);
+			for (j = 0; j < nd; j++)
+				[shape addObject:@(a->info.dim[j])];
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_result(graph, [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)], a);
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			[graph encodeToCommandBuffer:command_buffer feeds:@{} targetOperations:nil resultsDictionary:@{mps_a: data_a} executionDescriptor:nil];
+			[shape release];
+		}
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	int i, j;
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		for (i = 0; i < output_size; i++)
+		{
+			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
+			MPSGraph *graph = [MPSGraph new];
+			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+			const int nd = ccv_nnc_tensor_nd(a->info.dim);
+			for (j = 0; j < nd; j++)
+				[shape addObject:@(a->info.dim[j])];
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_result(graph, [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)], a);
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			[graph encodeToCommandBuffer:command_buffer feeds:@{} targetOperations:nil resultsDictionary:@{mps_a: data_a} executionDescriptor:nil];
+			[shape release];
+		}
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_set_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_SET_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_set_back;
+}
