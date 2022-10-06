@@ -19,6 +19,13 @@ config_setting(
     }
 )
 
+config_setting(
+    name = "have_mps",
+    values = {
+        "define": "enable_mps=true"
+    }
+)
+
 cc_library(
     name = "cuda_deps",
     visibility = ["//visibility:public"],
@@ -38,6 +45,9 @@ cc_library(
     }) + select({
         ":have_cuda": ["HAVE_CUDA"],
         "//conditions:default": []
-    })+ %{ccv_setting_defines},
+    }) + select({
+        ":have_mps": ["HAVE_MPS"],
+        "//conditions:default": []
+    }) + %{ccv_setting_defines},
     linkopts = ["-lm"] + %{ccv_setting_linkopts}
 )

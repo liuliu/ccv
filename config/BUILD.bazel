@@ -6,6 +6,13 @@ config_setting(
 )
 
 config_setting(
+	name = "have_mps",
+	values = {
+		"define": "enable_mps=true"
+	}
+)
+
+config_setting(
 	name = "arm_build",
 	values = {
 		"cpu": "arm"

@@ -39,8 +39,6 @@ ccv_setting(
 	have_libjpeg = True,
 	have_fftw3 = True,
 	have_pthread = True,
-	have_liblinear = True,
-	have_tesseract = True,
 	have_gsl = True,
 	have_cudnn = True,
 	have_nccl = True,

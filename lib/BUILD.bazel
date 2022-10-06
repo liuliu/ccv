@@ -349,6 +349,22 @@ cuda_library(
 	]
 )
 
+objc_library(
+	name = "nnc_mps_compat",
+	non_arc_srcs = [
+		"nnc/mps/ccv_nnc_mps.m",
+	],
+	hdrs = [
+		"nnc/mps/ccv_nnc_mps.h",
+	],
+	copts = ccv_default_copts(),
+	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph"],
+	deps = [
+		":nnc_headers",
+		":SFMT",
+	]
+)
+
 cuda_library(
 	name = "nnc_cuda_3rdparty_headers",
 	hdrs = glob(["nnc/3rdparty/**/*.h", "nnc/3rdparty/**/*.inl"]),
@@ -375,6 +391,23 @@ cuda_library(
 		":nnc_headers",
 		":nnc_cuda_compat",
 		":nnc_cuda_3rdparty_headers",
+	]
+)
+
+objc_library(
+	name = "cmd_mps",
+	srcs = glob(["nnc/cmd/**/*.h"]),
+	non_arc_srcs = glob(["nnc/cmd/**/*.m"]),
+	includes = [
+		"."
+	],
+	defines = [
+		"HAVE_MPS"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":nnc_headers",
+		":nnc_mps_compat",
 	]
 )
 
@@ -472,8 +505,13 @@ cc_library(
 		],
 		"//conditions:default": []
 	}) + select({
+		"//config:have_mps": [
+			":nnc_mps_compat",
+			":cmd_mps"
+		],
+		"//conditions:default": []
+	}) + select({
 		":linux_build": ["@sqlite3//:SQLite3"],
 		"//conditions:default": []
 	})
-
 )
