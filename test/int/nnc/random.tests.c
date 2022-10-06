@@ -13,7 +13,7 @@ TEST_SETUP()
 
 TEST_CASE("random normal distribution")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_NORMAL_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_NORMAL_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_RANDOM_NORMAL_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 100000), "x");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RANDOM_NORMAL_FORWARD(1, 0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(x), "random uniform");
@@ -48,7 +48,7 @@ TEST_CASE("random normal distribution")
 
 TEST_CASE("random uniform distribution")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 100000), "x");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RANDOM_UNIFORM_FORWARD(-8, 4), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(x), "random uniform");
@@ -85,7 +85,7 @@ TEST_CASE("random uniform distribution")
 
 TEST_CASE("random uniform distribution in half precision")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 16F, 100000), "x");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RANDOM_UNIFORM_FORWARD(-8, 4), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(x), "random uniform");

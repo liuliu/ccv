@@ -42,21 +42,21 @@ static int _ccv_nnc_random_normal(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	const int count = ccv_nnc_tensor_count(a->info);
 	const uint32_t seed = ccv_nnc_stream_context_genrand_uint32(stream_context);
-	const float l = cmd.info.blas.a[0];
-	const float u = cmd.info.blas.a[1];
+	const float std = cmd.info.blas.a[0];
+	const float mean = cmd.info.blas.a[1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (count % 4 == 0)
 	{
 		const int count_4 = count / 4;
 		if (a->info.datatype == CCV_32F)
-			_ccv_nnc_random_normal_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, l, u, a->data.f32);
+			_ccv_nnc_random_normal_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, std, mean, a->data.f32);
 		else if (a->info.datatype == CCV_16F)
-			_ccv_nnc_random_normal_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, l, u, (__half*)a->data.f16);
+			_ccv_nnc_random_normal_kernel_x4<<<CUDA_GET_BLOCKS(count_4), CUDA_NUM_THREADS, 0, stream>>>(count_4, seed, std, mean, (__half*)a->data.f16);
 	} else {
 		if (a->info.datatype == CCV_32F)
-			_ccv_nnc_random_normal_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
+			_ccv_nnc_random_normal_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, std, mean, a->data.f32);
 		else if (a->info.datatype == CCV_16F)
-			_ccv_nnc_random_normal_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, (__half*)a->data.f16);
+			_ccv_nnc_random_normal_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, std, mean, (__half*)a->data.f16);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

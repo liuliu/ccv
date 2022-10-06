@@ -42,19 +42,24 @@ cc_library(
 )
 
 cc_library(
-	name = "SFMT",
-	srcs = [
-		"3rdparty/sfmt/SFMT.c"
-	],
+	name = "SFMT_hdrs",
 	hdrs = [
 		"3rdparty/sfmt/SFMT.h",
 		"3rdparty/sfmt/SFMT-common.h",
 		"3rdparty/sfmt/SFMT-params.h",
 		"3rdparty/sfmt/SFMT-params19937.h"
 	],
+)
+
+cc_library(
+	name = "SFMT",
+	srcs = [
+		"3rdparty/sfmt/SFMT.c"
+	],
 	visibility = ["//visibility:public"],
 	copts = ccv_default_copts(),
-	tags = ["swift_module=C_sfmt"]
+	tags = ["swift_module=C_sfmt"],
+	deps = [":SFMT_hdrs"]
 )
 
 cc_library(
@@ -344,7 +349,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		":SFMT",
+		":SFMT_hdrs",
 		"@local_config_ccv//config:cuda_deps"
 	]
 )
@@ -361,7 +366,7 @@ objc_library(
 	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph"],
 	deps = [
 		":nnc_headers",
-		":SFMT",
+		":SFMT_hdrs",
 	]
 )
 
