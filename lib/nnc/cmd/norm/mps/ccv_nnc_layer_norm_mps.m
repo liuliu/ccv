@@ -9,43 +9,43 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 3);
 	assert(output_size == 3);
-	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	const ccv_nnc_tensor_view_t* const scale = (const ccv_nnc_tensor_view_t*)inputs[1];
-	const ccv_nnc_tensor_view_t* const bias = (const ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
-	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)outputs[1];
-	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)outputs[2];
-	int adim[CCV_NNC_MAX_DIM_ALLOC];
-	int rdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_dim(a, adim);
-	ccv_nnc_tensor_view_get_dim(saved_mean, rdim);
-	assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
-	assert(ccv_nnc_tensor_view_check_dim(b, adim));
+	ccv_nnc_tensor_view_t at = *(ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t scalet = *(ccv_nnc_tensor_view_t*)inputs[1];
+	ccv_nnc_tensor_view_t biast = *(ccv_nnc_tensor_view_t*)inputs[2];
+	ccv_nnc_tensor_view_t bt = *(ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t saved_meant = *(ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t saved_inv_stdt = *(ccv_nnc_tensor_view_t*)outputs[2];
+	ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
+		&at,
+		&saved_meant,
+		&saved_inv_stdt,
+		&bt
+	}, 4);
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 		MPSGraph *graph = [MPSGraph new];
 		MPSGraphTensor* mps_input_a;
-		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, &at, at.info.dim, at.stride, &mps_input_a);
 		MPSGraphTensor* mps_input_scale;
-		MPSGraphTensor* mps_scale = ccv_nnc_mps_graph_tensor_input(graph, scale, scale->info.dim, scale->stride, &mps_input_scale);
+		MPSGraphTensor* mps_scale = ccv_nnc_mps_graph_tensor_input(graph, &scalet, scalet.info.dim, scalet.stride, &mps_input_scale);
 		MPSGraphTensor* mps_input_bias;
-		MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, bias, bias->info.dim, bias->stride, &mps_input_bias);
+		MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, &biast, biast.info.dim, biast.stride, &mps_input_bias);
 		// I don't think that I want to implement saved_mean / saved_inv_std properly just yet.
-		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(scale, scale->info.dim, scale->stride);
-		MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, bias->info.dim, bias->stride);
+		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(&at, at.info.dim, at.stride);
+		MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(&scalet, scalet.info.dim, scalet.stride);
+		MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(&biast, biast.info.dim, biast.stride);
 		int i;
 		NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-		const int rnd = ccv_nnc_tensor_nd(rdim);
+		const int rnd = ccv_nnc_tensor_nd(saved_meant.info.dim);
 		for (i = 0; i < rnd; i++)
-			if (rdim[i] != adim[i])
+			if (at.info.dim[i] != saved_meant.info.dim[i])
 				[axes addObject:@(i)];
 		MPSGraphTensor* mps_saved_mean = [graph meanOfTensor:mps_a axes:axes name:nil];
 		MPSGraphTensor* mps_saved_inv_std = [graph varianceOfTensor:mps_a meanTensor:mps_saved_mean axes:axes name:nil];
 		[axes release];
 		const float epsilon = cmd.info.lnorm.epsilon;
 		MPSGraphTensor* mps_b = [graph normalizationWithTensor:mps_a meanTensor:mps_saved_mean varianceTensor:mps_saved_inv_std gammaTensor:mps_scale betaTensor:mps_bias epsilon:epsilon name:nil];
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_scale: data_scale, mps_input_bias: data_bias}, mps_b, b);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_scale: data_scale, mps_input_bias: data_bias}, mps_b, &bt);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
