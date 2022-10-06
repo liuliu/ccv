@@ -139,14 +139,14 @@ static void _ccv_nnc_layer_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, 
 }
 
 REGISTER_COMMAND(CCV_NNC_LAYER_NORM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_layer_norm_cpu_ref.c, gpu/ccv_nnc_layer_norm_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_layer_norm_cpu_ref.c, gpu/ccv_nnc_layer_norm_gpu_cudnn.cu, mps/ccv_nnc_layer_norm_mps.m)
 {
 	registry->bitmask = _ccv_nnc_layer_norm_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_layer_norm_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_LAYER_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_layer_norm_cpu_ref.c, gpu/ccv_nnc_layer_norm_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_layer_norm_cpu_ref.c, gpu/ccv_nnc_layer_norm_gpu_cudnn.cu, mps/ccv_nnc_layer_norm_mps.m)
 {
 	registry->bitmask = _ccv_nnc_layer_norm_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_layer_norm_tensor_auto_back;
@@ -213,14 +213,14 @@ static void _ccv_nnc_group_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, 
 }
 
 REGISTER_COMMAND(CCV_NNC_GROUP_NORM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu, mps/ccv_nnc_group_norm_mps.m)
 {
 	registry->bitmask = _ccv_nnc_group_norm_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_group_norm_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_GROUP_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_group_norm_cpu_ref.c, gpu/ccv_nnc_group_norm_gpu_cudnn.cu, mps/ccv_nnc_group_norm_mps.m)
 {
 	registry->bitmask = _ccv_nnc_group_norm_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_group_norm_tensor_auto_back;
