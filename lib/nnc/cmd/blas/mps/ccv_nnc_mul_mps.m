@@ -30,13 +30,13 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			if (p == 1)
 			{
 				if (mps_a != mps_input_a)
-					ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, c);
+					ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, c, c->info.dim, c->stride);
 				else
-					ccv_nnc_mps_export_data(data_a, command_buffer, c);
+					ccv_nnc_mps_export_data(data_a, command_buffer, c, c->info.dim, c->stride);
 			} else {
 				MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 				MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
-				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c);
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c, c->info.dim, c->stride);
 			}
 			[graph release];
 			[command_buffer commit];
@@ -60,7 +60,7 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_b);
 		MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
 		MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil];
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_b: data_b}, mps_c, c);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_b: data_b}, mps_c, c, c->info.dim, c->stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -91,13 +91,13 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		if (p == 1)
 		{
 			if (mps_a != mps_input_a)
-				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, c);
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, c, c->info.dim, c->stride);
 			else
-				ccv_nnc_mps_export_data(data_a, command_buffer, c);
+				ccv_nnc_mps_export_data(data_a, command_buffer, c, c->info.dim, c->stride);
 		} else {
 			MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_c, c, c->info.dim, c->stride);
 		}
 		[graph release];
 		[command_buffer commit];

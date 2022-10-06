@@ -26,7 +26,7 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			descriptor.max = u;
 			MPSGraphTensor* mps_a = [graph randomTensorWithShape:shape descriptor:descriptor seed:(NSUInteger)seed name:nil];
 			[shape release];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
 			[graph release];
 		}
 		[command_buffer commit];

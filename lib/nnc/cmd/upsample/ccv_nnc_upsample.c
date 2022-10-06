@@ -50,14 +50,14 @@ static int _ccv_nnc_upsample_back_bitmask(const int input_size, const int output
 }
 
 REGISTER_COMMAND(CCV_NNC_UPSAMPLE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu, mps/ccv_nnc_upsample_mps.m)
 {
 	registry->bitmask = _ccv_nnc_upsample_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_upsample_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_UPSAMPLE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_upsample_cpu_ref.c, gpu/ccv_nnc_upsample_gpu_ref.cu, mps/ccv_nnc_upsample_mps.m)
 {
 	registry->bitmask = _ccv_nnc_upsample_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;

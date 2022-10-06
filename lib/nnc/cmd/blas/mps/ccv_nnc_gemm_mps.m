@@ -73,9 +73,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// Add support broadcast directly.
 			mps_b = [graph additionWithPrimaryTensor:mps_b secondaryTensor:mps_bias name:nil];
 			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, bias->info.dim, bias->stride);
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias}, mps_b, b);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias}, mps_b, b, b->info.dim, b->stride);
 		} else
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w}, mps_b, b);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w}, mps_b, b, b->info.dim, b->stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

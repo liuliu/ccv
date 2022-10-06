@@ -76,7 +76,7 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		[axes release];
 		const float epsilon = cmd.info.gnorm.epsilon;
 		MPSGraphTensor* mps_b = [graph normalizationWithTensor:mps_a meanTensor:mps_saved_mean varianceTensor:mps_saved_inv_std gammaTensor:mps_scale betaTensor:mps_bias epsilon:epsilon name:nil];
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_scale: data_scale, mps_input_bias: data_bias}, mps_b, &bt);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_scale: data_scale, mps_input_bias: data_bias}, mps_b, &bt, bt.info.dim, bt.stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

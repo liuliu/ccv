@@ -106,7 +106,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensor* mps_b = [graph transposeTensor:mps_a dimension:cmd.info.transpose.axis[0] withDimension:cmd.info.transpose.axis[1] name:nil];
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b, b->info.dim, b->stride);
 			[graph release];
 		}
 		[command_buffer commit];
@@ -148,7 +148,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				[shape addObject:@(a->info.dim[j])];
 			MPSGraphTensor* mps_a = [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			[shape release];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
 			[graph release];
 		}
 		[command_buffer commit];
@@ -172,7 +172,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				[shape addObject:@(a->info.dim[j])];
 			MPSGraphTensor* mps_a = [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			[shape release];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a);
+			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
 			[graph release];
 		}
 		[command_buffer commit];
@@ -210,13 +210,93 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
 			MPSGraph *graph = [MPSGraph new];
+			int adim[CCV_NNC_MAX_DIM_ALLOC];
+			int astride[CCV_NNC_MAX_DIM_ALLOC];
+			int bdim[CCV_NNC_MAX_DIM_ALLOC];
+			int bstride[CCV_NNC_MAX_DIM_ALLOC];
+			if (a->info.format == b->info.format)
+			{
+				memcpy(adim, a->info.dim, sizeof(adim));
+				if (CCV_IS_TENSOR_VIEW(a))
+					memcpy(astride, a->stride, sizeof(astride));
+				memcpy(bdim, b->info.dim, sizeof(bdim));
+				if (CCV_IS_TENSOR_VIEW(b))
+					memcpy(bstride, b->stride, sizeof(bstride));
+			} else {
+				ccv_nnc_tensor_view_get_dim(a, adim);
+				ccv_nnc_tensor_view_get_stride(a, astride);
+				ccv_nnc_tensor_view_get_dim(b, bdim);
+				ccv_nnc_tensor_view_get_stride(b, bstride);
+				if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
+				{
+					if (b->info.format == CCV_TENSOR_FORMAT_NCHW)
+					{
+						int c = bdim[1];
+						bdim[1] = bdim[2];
+						bdim[2] = bdim[3];
+						bdim[3] = c;
+						c = bstride[1];
+						bstride[1] = bstride[2];
+						bstride[2] = bstride[3];
+						bstride[3] = c;
+					} else {
+						assert(b->info.format == CCV_TENSOR_FORMAT_CHWN);
+						int t;
+						CCV_SWAP(bdim[0], bdim[3], t);
+						CCV_SWAP(bstride[0], bstride[3], t);
+					}
+				} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
+					if (b->info.format == CCV_TENSOR_FORMAT_NHWC)
+					{
+						int c = bdim[3];
+						bdim[3] = bdim[2];
+						bdim[2] = bdim[1];
+						bdim[1] = c;
+						c = bstride[3];
+						bstride[3] = bstride[2];
+						bstride[2] = bstride[1];
+						bstride[1] = c;
+					} else {
+						assert(b->info.format == CCV_TENSOR_FORMAT_CHWN);
+						int n = bdim[3];
+						bdim[3] = bdim[2];
+						bdim[2] = bdim[1];
+						bdim[1] = bdim[0];
+						bdim[0] = n;
+						n = bstride[3];
+						bstride[3] = bstride[2];
+						bstride[2] = bstride[1];
+						bstride[1] = bstride[0];
+						bstride[0] = n;
+					}
+				} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN) {
+					if (b->info.format == CCV_TENSOR_FORMAT_NCHW)
+					{
+						int n = bdim[0];
+						bdim[0] = bdim[1];
+						bdim[1] = bdim[2];
+						bdim[2] = bdim[3];
+						bdim[3] = n;
+						n = bstride[0];
+						bstride[0] = bstride[1];
+						bstride[1] = bstride[2];
+						bstride[2] = bstride[3];
+						bstride[3] = n;
+					} else {
+						assert(b->info.format == CCV_TENSOR_FORMAT_NHWC);
+						int t;
+						CCV_SWAP(bdim[0], bdim[3], t);
+						CCV_SWAP(bstride[0], bstride[3], t);
+					}
+				}
+			}
 			MPSGraphTensor* mps_input_a;
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim, astride, &mps_input_a);
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			if (mps_a != mps_input_a)
-				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b);
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, bdim, bstride);
 			else
-				ccv_nnc_mps_export_data(data_a, command_buffer, b);
+				ccv_nnc_mps_export_data(data_a, command_buffer, b, bdim, bstride);
 			[graph release];
 		}
 		[command_buffer commit];

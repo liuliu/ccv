@@ -13,7 +13,7 @@ TEST_SETUP()
 
 TEST_CASE("upsample bilinear NHWC in float")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_dense_matrix_t* image = 0;
 	ccv_read("../../../samples/chessbox.png", &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 	ccv_dense_matrix_t* fimage = 0;
@@ -34,7 +34,7 @@ TEST_CASE("upsample bilinear NHWC in float")
 
 TEST_CASE("upsample bilinear NCHW in float")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_dense_matrix_t* image = 0;
 	ccv_read("../../../samples/chessbox.png", &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 	ccv_dense_matrix_t* fimage = 0;
@@ -109,7 +109,7 @@ TEST_CASE("downsample bilinear NCHW in float")
 
 TEST_CASE("upsample nearest NHWC in float")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 15, 15, 5), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 30, 30, 5), 0);
 	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 15, 15, 5), 0);
@@ -134,7 +134,7 @@ TEST_CASE("upsample nearest NHWC in float")
 
 TEST_CASE("upsample nearest NCHW in float")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 15, 15, 5), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 15, 30, 10), 0);
 	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 15, 15, 5), 0);

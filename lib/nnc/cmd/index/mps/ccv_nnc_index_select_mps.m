@@ -54,7 +54,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 			[shape release];
 		}
 		MPSGraphTensor* mps_b = [graph gatherAlongAxis:0 withUpdatesTensor:mps_a indicesTensor:mps_indices name:nil];
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_indices: data_indices}, mps_b, b);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_indices: data_indices}, mps_b, b, b->info.dim, b->stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

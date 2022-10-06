@@ -349,37 +349,37 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 	return [data autorelease];
 }
 
-void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command_buffer, ccv_nnc_tensor_view_t* const tensor)
+void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command_buffer, ccv_nnc_tensor_view_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	id<MTLBuffer> buffer = mpgetbuffer(tensor->data.u8, (ccv_nnc_tensor_t*)tensor);
 	NSInteger rowStrides[CCV_NNC_MAX_DIM_ALLOC];
 	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
-	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
-	int* stride;
+	const int nd = ccv_nnc_tensor_nd(dim);
+	const int* dstride;
 	if (!CCV_IS_TENSOR_VIEW(data))
 	{
-		ccv_nnc_tensor_get_stride(tensor->info.dim, stride_from_dim);
-		stride = stride_from_dim;
+		ccv_nnc_tensor_get_stride(dim, stride_from_dim);
+		dstride = stride_from_dim;
 	} else
-		stride = tensor->stride;
+		dstride = stride;
 	int i;
 	for (i = 0; i < nd; i++)
-		rowStrides[nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype) * stride[i];
+		rowStrides[nd - 1 - i] = CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype) * dstride[i];
 	MPSNDArray* ndarray = data.mpsndarray;
 	off_t offset = mpgetoffset(tensor->data.u8);
 	[ndarray exportDataWithCommandBuffer:command_buffer toBuffer:buffer destinationDataType:ccv_nnc_mps_datatype(tensor->info.datatype) offset:offset rowStrides:rowStrides];
 }
 
-void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data)
+void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	off_t offset = mpgetoffset(data->data.u8);
 	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
 	{
-		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, data->info.dim, data->stride);
+		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, dim, stride);
 		[graph encodeToCommandBuffer:command_buffer feeds:feeds targetOperations:nil resultsDictionary:@{output: tensor_data} executionDescriptor:nil];
 		return;
 	}
 	MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:feeds targetTensors:@[output] targetOperations:nil executionDescriptor:nil];
 	MPSGraphTensorData* tensor_data = result[output];
-	ccv_nnc_mps_export_data(tensor_data, command_buffer, data);
+	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
 }

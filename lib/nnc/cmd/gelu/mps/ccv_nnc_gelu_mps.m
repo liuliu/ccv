@@ -40,7 +40,7 @@ static int _ccv_nnc_gelu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			mps_b = [graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_sum secondaryTensor:mps_a name:nil] secondaryTensor:mps_half name:nil];
 		}
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b, b->info.dim, b->stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

@@ -18,7 +18,7 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 		MPSGraphTensor* mps_b = [graph softMaxWithTensor:mps_a axis:-1 name:nil];
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b);
+		ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b, b->info.dim, b->stride);
 		[graph release];
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
