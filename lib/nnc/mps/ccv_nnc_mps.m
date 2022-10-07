@@ -174,6 +174,20 @@ MPSDataType ccv_nnc_mps_datatype(const int datatype)
 	return MPSDataTypeFloat32;
 }
 
+MPSGraphTensorNamedDataLayout ccv_nnc_mps_tensor_data_layout(const int format)
+{
+	switch (format)
+	{
+		case CCV_TENSOR_FORMAT_NCHW:
+			return MPSGraphTensorNamedDataLayoutNCHW;
+		case CCV_TENSOR_FORMAT_NHWC:
+			return MPSGraphTensorNamedDataLayoutNHWC;
+		case CCV_TENSOR_FORMAT_CHWN:
+			assert(0 && "doesn't support CHWN");
+	}
+	return MPSGraphTensorNamedDataLayoutNCHW;
+}
+
 MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input)
 {
 	const off_t offset = mpgetoffset(tensor_view->data.u8);
@@ -253,15 +267,23 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			flag = (sorted_idx[i] != i);
 		if (flag) // If we need to permute this tensor.
 		{
+			int reverse_idx[CCV_NNC_MAX_DIM_ALLOC]; // This is on the new order, which old axis we are pointing to.
+			for (i = 0; i < nd; i++)
+				reverse_idx[sorted_idx[i]] = i;
 			NSMutableArray<NSNumber*>* permutation = [NSMutableArray new];
 			for (i = 0; i < nd; i++)
-				[permutation addObject:@(sorted_idx[i])];
+				[permutation addObject:@(reverse_idx[i])];
 			desc = [graph transposeTensor:desc permutation:permutation name:nil];
 			[permutation release];
 		} */
 		for (i = 0; i < nd - 1; i++)
-			if (sorted_idx[i] != i && sorted_idx[i] > i)
+			while (sorted_idx[i] != i)
+			{
 				desc = [graph transposeTensor:desc dimension:i withDimension:sorted_idx[i] name:nil];
+				int t = sorted_idx[i];
+				sorted_idx[i] = sorted_idx[t];
+				sorted_idx[t] = t;
+			}
 		return desc;
 	} else {
 		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];

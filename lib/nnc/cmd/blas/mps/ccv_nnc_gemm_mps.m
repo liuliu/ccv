@@ -68,11 +68,46 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 		if (bias)
 		{
+			const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+			const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+			// Align bias to this.
+			assert(bias_nd <= 2 || bias_nd == b_nd);
+			int biasdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
+			int biasstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+			int i;
+			if (bias_nd == b_nd)
+			{
+				memcpy(biasdim, bias->info.dim, sizeof(biasdim));
+				if (CCV_IS_TENSOR_VIEW(bias))
+					memcpy(biasstride, bias->stride, sizeof(biasstride));
+			} else if (bias_nd == 2) {
+				biasdim[0] = bias->info.dim[0];
+				for (i = 1; i < b_nd - 1; i++)
+					biasdim[i] = 1;
+				biasdim[b_nd - 1] = bias->info.dim[1];
+				if (CCV_IS_TENSOR_VIEW(bias))
+				{
+					biasstride[0] = bias->stride[0];
+					for (i = 1; i < b_nd - 1; i++)
+						biasstride[i] = biasstride[0];
+					biasstride[b_nd - 1] = bias->stride[1];
+				}
+			} else {
+				for (i = 0; i < b_nd - 1; i++)
+					biasdim[i] = 1;
+				biasdim[b_nd - 1] = bias->info.dim[0];
+				if (CCV_IS_TENSOR_VIEW(bias))
+				{
+					for (i = 0; i < b_nd - 1; i++)
+						biasstride[i] = bias->info.dim[0] * bias->stride[0];
+					biasstride[b_nd - 1] = bias->stride[0];
+				}
+			}
 			MPSGraphTensor* mps_input_bias;
-			MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, bias, bias->info.dim, bias->stride, &mps_input_bias);
+			MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, bias, biasdim, biasstride, &mps_input_bias);
 			// Add support broadcast directly.
 			mps_b = [graph additionWithPrimaryTensor:mps_b secondaryTensor:mps_bias name:nil];
-			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, bias->info.dim, bias->stride);
+			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, biasdim, biasstride);
 			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w, mps_input_bias: data_bias}, mps_b, b, b->info.dim, b->stride);
 		} else
 			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a, mps_input_w: data_w}, mps_b, b, b->info.dim, b->stride);
