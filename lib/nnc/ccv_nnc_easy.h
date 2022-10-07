@@ -392,10 +392,10 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	*cols_inc_ref = cols_inc;
 }
 
-static inline CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_get_tensor_view(ccv_nnc_tensor_t* const tensor)
+static inline CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_get_tensor_view(const ccv_nnc_tensor_t* const tensor)
 {
 	if (CCV_IS_TENSOR_VIEW(tensor))
-		return (ccv_nnc_tensor_view_t)*(ccv_nnc_tensor_view_t*)tensor;
+		return (ccv_nnc_tensor_view_t)*(const ccv_nnc_tensor_view_t*)tensor;
 	ccv_nnc_tensor_view_t tv;
 	memcpy(&tv, tensor, sizeof(ccv_nnc_tensor_t));
 	return tv;
