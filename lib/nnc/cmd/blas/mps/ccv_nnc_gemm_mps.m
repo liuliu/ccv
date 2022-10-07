@@ -44,13 +44,21 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	memcpy(adim, a->info.dim, sizeof(adim));
 	if (CCV_IS_TENSOR_VIEW(a))
 		memcpy(astride, a->stride, sizeof(astride));
-	if (ccv_nnc_tensor_nd(adim) < 2)
-	{
-		adim[1] = 1;
-		astride[1] = 1;
-	}
 	assert(ccv_nnc_tensor_nd(w->info.dim) >= 2);
 	const int is_transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
+	if (ccv_nnc_tensor_nd(adim) < 2)
+	{
+		if (is_transpose_a)
+		{
+			adim[1] = 1;
+			astride[1] = astride[0];
+		} else {
+			adim[1] = adim[0];
+			astride[1] = astride[0];
+			adim[0] = 1;
+			astride[0] = astride[1];
+		}
+	}
 	const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 	@autoreleasepool {
 		MPSGraph *graph = [MPSGraph new];
