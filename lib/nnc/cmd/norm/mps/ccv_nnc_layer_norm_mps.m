@@ -9,12 +9,12 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 3);
 	assert(output_size == 3);
-	ccv_nnc_tensor_view_t at = *(ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_t scalet = *(ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_view_t biast = *(ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t bt = *(ccv_nnc_tensor_view_t*)outputs[0];
-	ccv_nnc_tensor_view_t saved_meant = *(ccv_nnc_tensor_view_t*)outputs[1];
-	ccv_nnc_tensor_view_t saved_inv_stdt = *(ccv_nnc_tensor_view_t*)outputs[2];
+	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
+	ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[1]);
+	ccv_nnc_tensor_view_t biast = ccv_nnc_get_tensor_view(inputs[2]);
+	ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[0]);
+	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(outputs[1]);
+	ccv_nnc_tensor_view_t saved_inv_stdt = ccv_nnc_get_tensor_view(outputs[2]);
 	ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
 		&at,
 		&saved_meant,

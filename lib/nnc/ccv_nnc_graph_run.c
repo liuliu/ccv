@@ -284,6 +284,39 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 		}
 		if (ccv_nnc_tensor_count(tensor->info) > 3)
 			PRINT(CCV_CLI_VERBOSE, " ..");
+#elif defined(HAVE_MPS)
+		switch (tensor->info.datatype)
+		{
+			case CCV_16F: {
+				float fp32[len];
+				ccv_half_precision_to_float((uint16_t*)tensor->data.f16, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
+			case CCV_32F:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
+				break;
+			case CCV_64F:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f64[i]);
+				break;
+			case CCV_32S:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", tensor->data.i32[i]);
+				break;
+			case CCV_64S:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %lld", (long long)tensor->data.i64[i]);
+				break;
+			case CCV_8U:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", (int)tensor->data.u8[i]);
+				break;
+		}
+		if (ccv_nnc_tensor_count(tensor->info) > 3)
+			PRINT(CCV_CLI_VERBOSE, " ..");
 #endif
 	} else if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY) {
 		switch (tensor->info.datatype)

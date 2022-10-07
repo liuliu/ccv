@@ -32,19 +32,19 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 3);
 	assert(output_size == 3);
-	ccv_nnc_tensor_view_t at = *(ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	_ccv_break_axis_to_groups(&at, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, at.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
 	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
-	ccv_nnc_tensor_view_t scalet = *(ccv_nnc_tensor_view_t*)inputs[1];
+	ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[1]);
 	_ccv_break_axis_to_groups(&scalet, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, scalet.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
 	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
-	ccv_nnc_tensor_view_t biast = *(ccv_nnc_tensor_view_t*)inputs[2];
+	ccv_nnc_tensor_view_t biast = ccv_nnc_get_tensor_view(inputs[2]);
 	_ccv_break_axis_to_groups(&biast, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, biast.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
-	ccv_nnc_tensor_view_t bt = *(ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[0]);
 	_ccv_break_axis_to_groups(&bt, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, bt.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
-	ccv_nnc_tensor_view_t saved_meant = *(ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(outputs[1]);
 	_ccv_break_axis_to_groups(&saved_meant, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, 1);
-	ccv_nnc_tensor_view_t saved_inv_stdt = *(ccv_nnc_tensor_view_t*)outputs[2];
+	ccv_nnc_tensor_view_t saved_inv_stdt = ccv_nnc_get_tensor_view(outputs[2]);
 	_ccv_break_axis_to_groups(&saved_inv_stdt, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, 1);
 	ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
 		&at,
