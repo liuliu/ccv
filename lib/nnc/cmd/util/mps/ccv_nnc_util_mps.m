@@ -326,3 +326,50 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, CCV_NNC_BACKEND_MPS)
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_format_transform;
 }
+
+static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(output_size <= input_size);
+	int i;
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		for (i = 0; i < output_size; i++)
+		{
+			const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
+			ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
+			assert(a != b); // Cannot do inplace transform.
+			assert(a->info.format == b->info.format);
+			assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
+			MPSGraph *graph = [MPSGraph new];
+			MPSGraphTensor* mps_input_a;
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			if (mps_a != mps_input_a)
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, b->info.dim, b->stride);
+			else
+				ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
+			[graph release];
+		}
+		[command_buffer commit];
+		[command_buffer waitUntilCompleted];
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_datatype_conversion;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_datatype_conversion;
+}
