@@ -343,4 +343,31 @@ TEST_CASE("format transform to fill for mps")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("format transform to new strides for mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 10, 9, 3), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 3, 10, 9), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 3, 10, 9), 0);
+	ccv_nnc_tensor_view_t* const btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NCHW(32F, 1, 10, 9, 3), DIM_ALLOC(), DIM_ALLOC(3 * 10 * 9, 9, 1, 10 * 9));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 1, 10, 9, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 1, 3, 10, 9), 0);
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, GPU_TENSOR_NCHW(000, 32F, 1, 10, 9, 3), DIM_ALLOC(), DIM_ALLOC(3 * 10 * 9, 9, 1, 10 * 9));
+	int i;
+	for (i = 0; i < 10 * 9 * 3; i++)
+		ha->data.f32[i] = i;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST((ccv_nnc_tensor_t*)bv), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "cpu and gpu result should be the same");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_view_free(bv);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

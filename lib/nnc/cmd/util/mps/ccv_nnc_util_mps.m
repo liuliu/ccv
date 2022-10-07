@@ -208,28 +208,28 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
-			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
+			ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[i]);
 			MPSGraph *graph = [MPSGraph new];
 			int adim[CCV_NNC_MAX_DIM_ALLOC];
 			int astride[CCV_NNC_MAX_DIM_ALLOC];
 			int bdim[CCV_NNC_MAX_DIM_ALLOC];
 			int bstride[CCV_NNC_MAX_DIM_ALLOC];
-			if (a->info.format == b->info.format)
+			if (a->info.format == bt.info.format)
 			{
 				memcpy(adim, a->info.dim, sizeof(adim));
 				if (CCV_IS_TENSOR_VIEW(a))
 					memcpy(astride, a->stride, sizeof(astride));
-				memcpy(bdim, b->info.dim, sizeof(bdim));
-				if (CCV_IS_TENSOR_VIEW(b))
-					memcpy(bstride, b->stride, sizeof(bstride));
+				memcpy(bdim, bt.info.dim, sizeof(bdim));
+				if (CCV_IS_TENSOR_VIEW(&bt))
+					memcpy(bstride, bt.stride, sizeof(bstride));
 			} else {
 				ccv_nnc_tensor_view_get_dim(a, adim);
 				ccv_nnc_tensor_view_get_stride(a, astride);
-				ccv_nnc_tensor_view_get_dim(b, bdim);
-				ccv_nnc_tensor_view_get_stride(b, bstride);
+				ccv_nnc_tensor_view_get_dim(&bt, bdim);
+				ccv_nnc_tensor_view_get_stride(&bt, bstride);
 				if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
 				{
-					if (b->info.format == CCV_TENSOR_FORMAT_NCHW)
+					if (bt.info.format == CCV_TENSOR_FORMAT_NCHW)
 					{
 						int c = bdim[1];
 						bdim[1] = bdim[2];
@@ -240,13 +240,13 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						bstride[2] = bstride[3];
 						bstride[3] = c;
 					} else {
-						assert(b->info.format == CCV_TENSOR_FORMAT_CHWN);
+						assert(bt.info.format == CCV_TENSOR_FORMAT_CHWN);
 						int t;
 						CCV_SWAP(bdim[0], bdim[3], t);
 						CCV_SWAP(bstride[0], bstride[3], t);
 					}
 				} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
-					if (b->info.format == CCV_TENSOR_FORMAT_NHWC)
+					if (bt.info.format == CCV_TENSOR_FORMAT_NHWC)
 					{
 						int c = bdim[3];
 						bdim[3] = bdim[2];
@@ -257,7 +257,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						bstride[2] = bstride[1];
 						bstride[1] = c;
 					} else {
-						assert(b->info.format == CCV_TENSOR_FORMAT_CHWN);
+						assert(bt.info.format == CCV_TENSOR_FORMAT_CHWN);
 						int n = bdim[3];
 						bdim[3] = bdim[2];
 						bdim[2] = bdim[1];
@@ -270,7 +270,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						bstride[0] = n;
 					}
 				} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN) {
-					if (b->info.format == CCV_TENSOR_FORMAT_NCHW)
+					if (bt.info.format == CCV_TENSOR_FORMAT_NCHW)
 					{
 						int n = bdim[0];
 						bdim[0] = bdim[1];
@@ -283,20 +283,24 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						bstride[2] = bstride[3];
 						bstride[3] = n;
 					} else {
-						assert(b->info.format == CCV_TENSOR_FORMAT_NHWC);
+						assert(bt.info.format == CCV_TENSOR_FORMAT_NHWC);
 						int t;
 						CCV_SWAP(bdim[0], bdim[3], t);
 						CCV_SWAP(bstride[0], bstride[3], t);
 					}
 				}
+				// Mark this as tensor view as we changed its stride and dim.
+				bt.type |= CCV_TENSOR_VIEW;
+				memcpy(bt.info.dim, bdim, sizeof(bdim));
+				memcpy(bt.stride, bstride, sizeof(bstride));
 			}
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim, astride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			if (mps_a != mps_input_a)
-				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, bdim, bstride);
+				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, &bt, bdim, bstride);
 			else
-				ccv_nnc_mps_export_data(data_a, command_buffer, b, bdim, bstride);
+				ccv_nnc_mps_export_data(data_a, command_buffer, &bt, bdim, bstride);
 			[graph release];
 		}
 		[command_buffer commit];
