@@ -1,6 +1,6 @@
 #include "ccv_nnc.h"
-#include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
+#include "ccv_nnc_easy.h"
 #include "ccv_internal.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
@@ -1063,6 +1063,33 @@ static void _ccv_nnc_recursively_assign_vt_tensor_aliases(const ccv_nnc_tensor_b
 	_ccv_nnc_assign_vt_tensor_aliases(tensor_metadata, tensor_symbol_info, block_ref, vt_tensors);
 }
 
+// Turn a linear pointer to an object storage (such as MTLBuffer).
+#ifdef HAVE_MPS
+static void _ccv_nnc_tensor_arena_obj_dispose(void* ptr, void* userdata)
+{
+	mpobjfree(0, ptr);
+}
+#endif
+static inline void* _ccv_nnc_tensor_arena_obj_create(void* ptr, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_arena_t* tensor_arena)
+{
+#ifdef HAVE_MPS
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		void* obj = mpobjcreate(ptr, CCV_GET_DATA_TYPE_SIZE(params.datatype) * ccv_nnc_tensor_count(params));
+		if (!tensor_arena->disposers)
+			tensor_arena->disposers = ccv_array_new(sizeof(ccv_nnc_arena_disposer_t), 1, 0);
+		ccv_nnc_arena_disposer_t disposer = {
+			.ptr = obj,
+			.userdata = 0,
+			.dispose = _ccv_nnc_tensor_arena_obj_dispose
+		};
+		ccv_array_push(tensor_arena->disposers, &disposer);
+		return obj;
+	}
+#endif
+	return ptr;
+}
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_compile_allocator_t allocator, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
@@ -1101,6 +1128,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
 	tensor_arena->allocator.context.free = allocator.context.free;
 	tensor_arena->allocator.isa = allocator.isa;
+	tensor_arena->disposers = 0;
 	// Copy alias_ref info back to the tensor arena.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		tensor_arena->vt_alias_refs[i] = tensor_symbol_info[i].alias_ref;
@@ -1184,10 +1212,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			if (memory_type == CCV_TENSOR_GPU_MEMORY)
 			{
 				const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
-				if (allocator.isa && allocator.isa->alloc)
-					tensor_arena->buffers[i].ptr = (uint8_t*)allocator.isa->alloc(buffer_type, 0, tensor_arena->buffers[i].size, allocator.context.alloc);
-				else
-					tensor_arena->buffers[i].ptr = (uint8_t*)mpmalloc(device_id, tensor_arena->buffers[i].size);
+				// if (allocator.isa && allocator.isa->alloc)
+				// 	tensor_arena->buffers[i].ptr = (uint8_t*)allocator.isa->alloc(buffer_type, 0, tensor_arena->buffers[i].size, allocator.context.alloc);
+				// else
+				tensor_arena->buffers[i].ptr = (uint8_t*)mpmalloc(device_id, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			} else {
 				assert(memory_type == CCV_TENSOR_CPU_MEMORY);
@@ -1265,8 +1293,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
-				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr, tensor_symbol_info[i].info, 0);
-				ccv_nnc_tensor_data_add(tensor->info, offset, &tensor->data, &tensor->dataof);
+				void* obj = _ccv_nnc_tensor_arena_obj_create(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[i].info, tensor_arena);
+				*tensor = ccv_nnc_tensor(obj, tensor_symbol_info[i].info, 0);
 				assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
 				// If we need to force broadcast, we need to wrap it in a multiview.
 				if (graph_prep->tensor_blocks[i].p_refs[0] &&
@@ -4149,10 +4177,10 @@ void ccv_nnc_tensor_arena_buffer_free(ccv_nnc_tensor_arena_t* const tensor_arena
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
 		if (memory_type == CCV_TENSOR_GPU_MEMORY)
 		{
-			if (tensor_arena->allocator.isa && tensor_arena->allocator.isa->free)
-				tensor_arena->allocator.isa->free(tensor_arena->buffers[i].ptr, tensor_arena->allocator.context.free);
-			else
-				mpfree(device_id, tensor_arena->buffers[i].ptr);
+			// if (tensor_arena->allocator.isa && tensor_arena->allocator.isa->free)
+			// 	tensor_arena->allocator.isa->free(tensor_arena->buffers[i].ptr, tensor_arena->allocator.context.free);
+			// else
+			mpfree(device_id, tensor_arena->buffers[i].ptr);
 		} else {
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			ccfree(tensor_arena->buffers[i].ptr);
@@ -4162,6 +4190,17 @@ void ccv_nnc_tensor_arena_buffer_free(ccv_nnc_tensor_arena_t* const tensor_arena
 		ccfree(tensor_arena->buffers[i].ptr);
 #endif
 		tensor_arena->buffers[i].ptr = 0;
+	}
+	// For now, the life-cycle of the disposers lives with the buffer. It may ends before the tensor arena deallocates.
+	if (tensor_arena->disposers)
+	{
+		for (i = 0; i < tensor_arena->disposers->rnum; i++)
+		{
+			ccv_nnc_arena_disposer_t* const disposer = (ccv_nnc_arena_disposer_t*)ccv_array_get(tensor_arena->disposers, i);
+			disposer->dispose(disposer->ptr, disposer->userdata);
+		}
+		ccv_array_free(tensor_arena->disposers);
+		tensor_arena->disposers = 0;
 	}
 }
 

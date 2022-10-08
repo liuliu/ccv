@@ -26,7 +26,7 @@ static void _ccv_nnc_xpu_metadata_free(dy_alloc_metadata_t* node, void* arg)
 #ifdef HAVE_CUDA
 		cufree(node->device, node->ptr);
 #elif defined(HAVE_MPS)
-		mpfree(node->device, node->ptr);
+		mpobjfree(node->device, node->ptr);
 #endif
 		ccfree(node);
 		node = next;
@@ -122,7 +122,7 @@ void* ccv_nnc_xpu_alloc(ccv_nnc_xpu_alloc_t* const xpu_alloc, const int device, 
 #elif defined(HAVE_MPS)
 		if (xpu_alloc->mp_hdr < 0)
 			xpu_alloc->mp_hdr = mpregmp(device, (mpmp_f)ccv_nnc_xpu_gc, xpu_alloc);
-		node->ptr = mpmalloc(device, size);
+		node->ptr = mpobjmalloc(device, size);
 #endif
 		if (!node->ptr) // If cannot allocate, drain the pool first and then allocate.
 		{
@@ -162,7 +162,7 @@ void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
 #ifdef HAVE_CUDA
 		cufree(node->device, node->ptr);
 #elif defined(HAVE_MPS)
-		mpfree(node->device, node->ptr);
+		mpobjfree(node->device, node->ptr);
 #endif
 		ccfree(node);
 		return;

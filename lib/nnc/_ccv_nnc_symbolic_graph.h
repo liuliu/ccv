@@ -125,6 +125,13 @@ struct ccv_nnc_symbolic_graph_s {
 	} hooks;
 };
 
+typedef void(*ccv_nnc_arena_dispose_f)(void* ptr, void* userdata);
+typedef struct {
+	void* ptr;
+	void* userdata;
+	ccv_nnc_arena_dispose_f dispose;
+} ccv_nnc_arena_disposer_t;
+
 struct ccv_nnc_tensor_arena_s {
 	intptr_t graph_ref; // A value contains the pointer name of the graph.
 	int sub_arena_size;
@@ -155,6 +162,7 @@ struct ccv_nnc_tensor_arena_s {
 	// ccv_tensor_multiview_t, thus, it is aligned to a 16-byte boundary).
 	ccv_array_t* tensor_metadata;
 	ccv_array_t* m_tensor_idx; // The index into multi-view tensors in tensor_metadata.
+	ccv_array_t* disposers; // Generic dispose structure that shares life-cycle with the arena.
 };
 
 struct ccv_nnc_graph_exec_arena_s {

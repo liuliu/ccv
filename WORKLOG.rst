@@ -1,3 +1,26 @@
+2022-10-08
+----------
+Implementing MPS backend is mostly straightforward. The MPSGraph design is pretty much inspired by TensorFlow / XLA. Things such as generic batched matrix multiplication works out of box without tuning. It is forgiven enough that often times, just pass what I received on NNC side and do a boring translation to MPSGraph would work. However, there are some challenges require code changes on bigger magnitude and I am still not very happy about it.
+
+ 1. MTLBuffer is an object storage, not a linear memory storage. While underneath, it is shared memory between CPU / GPU in a flat memory space, Apple does go out of their way to hide that. If you use BytesNoCopy, besides the pointer has to be page aligned, the pointer later you get of from contents method would be different from the one you passed in. I do have strong linear memory assumption up until even tensor allocation step, where I try to co-locate tensors in the same linear space if possible. Tensor views don't store their offsets explicitly but rather offset the underneath pointer directly. These require some refactoring.
+ 
+ 2. MPSGraph is pretty opinionated about tensor layouts. You cannot really do strided tensors within MPSGraph. If you want to slice a tensor, it has to be explicit slice, the same with permutation. I just went through a big refactoring to do strided tensors properly (thus, efficient permutation with CUDA).
+
+The above two means I spend a lot of time struggling to see how to fit an object allocation model, with limited strided tensor support as a potent backend for ccv. I did some profilings to validate the choices, but it is far from done.
+
+For static graph compilation, I still use linear memory model, but initialize the object storage upon tensor creation time from the linear memory. This is easiest to fit in. Anything else (using offset + MTLBuffer trick) would actually have performance penalties (due to reasons how offset + MTLBuffer supported on my end). Everything else, including allocations on dynamic graph, are object-based. That means we maintain a pair of (obj, offset) throughout to facilitate pointer math we don't previously. That means one more additional field on ``ccv_nnc_tensor_t`` unfortunately.
+
+On MPSGraph end, we will insert necessary tensor slicing / reshape ops to make sure for input, the correct tensor start (offset and strides) can be used. These are not without cost, it doesn't seem like MPSGraph backend was able to optimize away these inefficiencies at the moment.
+
+For output, we use ``[MPSNDArray exportDataWithCommandBuffer:toBuffer:destinationDataType:offset:rowStrides]`` to export the data to MTLBuffer with correct strides and offset. It took me a while to figure these parameters. In particular, rowStrides starts from innermost to outermost, unlike everywhere else, including how MPSShape works. Again, this can be a performance bottleneck, but ensured the correctness of our backend.
+
+The more hairy work is actually to make sure the above slicing / reshape works because certain information lost when we only maintain one offset. For example, with offset [0, 32, 0, 0] on [2, 64, 10, 10] tensor, we will end up with a tensor of [2, 32, 10, 10]. However, if you compute the size of the later with strides, it will be 2 * 64 * 10 * 10, including the offset, it will be larger than what we allocated! This is OK in both CUDA and CPU because we don't really access on nor beyond [1, 32, 0, 0]. With MTLBuffer, it is not the case and you have to declare the buffer size upfront. If we declare our buffer size to 2 * 64 * 10 * 10 + offset, it will be larger than our allocation. If we declare anything less, we cannot reshape the tensor to [2, 64, 10, 10] and slicing it. Thus, previously, we only need to maintain the offset of 3,200 (32 * 10 * 10), now we need to recover where the offset is from which axis, otherwise we cannot slice / reshape correctly. We cannot slice always from 0 because although technically correct, our MTLBuffer size is not large enough.
+
+Thus, we did our best guess on permutations and slices, including where the offsets start, to pass all our tests. These are not exhaustive (certain strided tensors cannot recover its permutation / slices / reshape ops), but should cover simple usages.
+
+Initially, we started work with page aligned memory allocations and create MTLBuffer on-demand. That simplified a lot of work and made my initial MPSGraph backend implementation easier, it is slightly slower than having MTLBuffer upfront (1,500s v.s. 1,560s on Intel Mac Mini). The same slicing / reshape / permutation thing still haunts and now we need to use naked pointer to do offset recovery, which is more dangerous and error-prune.
+
+
 2022-09-30
 ----------
 With the recent interests in Textual Inversion, it seems implementing model freeze (such that, not only parameters are not updating, but we don't allocate space and do gradient computations for these at all) are beneficial. Textual Inversion only cares about the input guidance and use gradient descent to find better input vector, the model itself not updating. Thus, by "freeze" the model, we can potentially saving quite a bit of memory usage that way.
