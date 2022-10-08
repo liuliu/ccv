@@ -5,7 +5,7 @@ extern "C" {
 #include "3rdparty/khash/khash.h"
 }
 
-void cutrigmp(void);
+static void cutrigmp(void);
 
 #ifdef HAVE_CUDNN
 struct cudnn_free_list_s {
