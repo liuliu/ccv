@@ -377,6 +377,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	ccv_nnc_tensor_t** const allocated_outputs = allocated_inputs + input_size;
 	ccv_nnc_tensor_view_t** const allocated_input_views = (ccv_nnc_tensor_view_t**)(allocated_outputs + output_size);
 	ccv_nnc_tensor_view_t** const allocated_output_views = allocated_input_views + input_size;
+	int stride[CCV_NNC_MAX_DIM_ALLOC];
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
 		{
@@ -389,8 +390,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 						{
 							allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
 							if (CCV_IS_TENSOR_VIEW(inputs[j]))
-								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), inputs[j]->info.dim));
-							else
+							{
+								ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
+								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
+							} else
 								copy_inputs[j] = allocated_inputs[j];
 						}
 						copy_outputs[i] = copy_inputs[j];
@@ -401,14 +404,18 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 						{
 							allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
 							if (CCV_IS_TENSOR_VIEW(inputs[j]))
-								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), inputs[j]->info.dim));
-							else
+							{
+								ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
+								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
+							} else
 								copy_inputs[j] = allocated_inputs[j];
 						}
 						allocated_outputs[i] = ccv_nnc_tensor_new(copy_inputs[j]->data.u8, outputs[i]->info, 0);
 						if (CCV_IS_TENSOR_VIEW(outputs[i]))
-							copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), outputs[i]->info.dim));
-						else
+						{
+								ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
+							copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
+						} else
 							copy_outputs[i] = allocated_outputs[i];
 						break;
 					}
@@ -417,8 +424,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			{
 				allocated_outputs[i] = ccv_nnc_tensor_new(0, outputs[i]->info, 0);
 				if (CCV_IS_TENSOR_VIEW(outputs[i]))
-					copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), outputs[i]->info.dim));
-				else
+				{
+					ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
+					copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
+				} else
 					copy_outputs[i] = allocated_outputs[i];
 			}
 		}

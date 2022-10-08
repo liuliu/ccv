@@ -222,6 +222,7 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	uint8_t* const p = tensor->data.u8;
 	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv->info.datatype, stride, ofs);
 	tv->contiguous = ccv_nnc_tensor_view_is_contiguous(dim, stride, ofs);
+	assert(off + CCV_GET_DATA_TYPE_SIZE(tv->info.datatype) * ccv_nnc_dimension_upper_bound(tv->info.dim, tv->stride) <= CCV_GET_DATA_TYPE_SIZE(tensor->info.datatype) * ccv_nnc_tensor_count(tensor->info));
 	tv->data.u8 = ccv_nnc_tensor_view_data(tv->info, p, off);
 }
 

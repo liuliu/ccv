@@ -175,9 +175,20 @@ static inline size_t ccv_nnc_dimension_count(const int dim[CCV_NNC_MAX_DIM_ALLOC
 	if (dim[0] == 0)
 		return 0;
 	int i;
-	size_t count = 1;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0; i++)
+	size_t count = dim[0];
+	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0; i++)
 		count *= dim[i];
+	return count;
+}
+
+static inline size_t ccv_nnc_dimension_upper_bound(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	if (dim[0] == 0 || stride[0] == 0)
+		return 0;
+	int i;
+	size_t count = 1 + (dim[0] - 1) * stride[0];
+	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0 && stride[i] > 0; i++)
+		count += (dim[i] - 1) * stride[i];
 	return count;
 }
 
