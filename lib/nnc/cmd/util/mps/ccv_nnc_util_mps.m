@@ -101,13 +101,19 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
-			MPSGraph *graph = [MPSGraph new];
-			MPSGraphTensor* mps_input_a;
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-			MPSGraphTensor* mps_b = [graph transposeTensor:mps_a dimension:cmd.info.transpose.axis[0] withDimension:cmd.info.transpose.axis[1] name:nil];
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs + i, 1, outputs + i, 1);
+			int indices[1];
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				[inputTensors addObject:mps_input_a];
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				[inputShapedTypes addObject:mps_a_shape];
+				MPSGraphTensor* mps_b = [graph transposeTensor:mps_a dimension:cmd.info.transpose.axis[0] withDimension:cmd.info.transpose.axis[1] name:nil];
+				[resultTensors addObject:mps_b];
+			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_b, b, b->info.dim, b->stride);
-			[graph release];
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], b, b->info.dim, b->stride);
 		}
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -141,15 +147,17 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
-			MPSGraph *graph = [MPSGraph new];
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)
 				[shape addObject:@(a->info.dim[j])];
-			MPSGraphTensor* mps_a = [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, 0, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_a = [graph constantWithScalar:cmd.info.blas.a[0] shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+				[resultTensors addObject:mps_a];
+			});
 			[shape release];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
-			[graph release];
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], a, a->info.dim, a->stride);
 		}
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];
@@ -165,15 +173,17 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
-			MPSGraph *graph = [MPSGraph new];
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)
 				[shape addObject:@(a->info.dim[j])];
-			MPSGraphTensor* mps_a = [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, 0, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_a = [graph constantWithScalar:0 shape:shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+				[resultTensors addObject:mps_a];
+			});
 			[shape release];
-			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
-			[graph release];
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], a, a->info.dim, a->stride);
 		}
 		[command_buffer commit];
 		[command_buffer waitUntilCompleted];

@@ -2,6 +2,7 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/ccv_nnc_easy.h"
+#include "3rdparty/khash/khash.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
@@ -78,6 +79,8 @@ void mpunregmp(const int slot)
 	pthread_mutex_unlock(&g_mp_mutex);
 }
 
+static void mps_graph_cache_pressure(void);
+
 static void mptrigmp(void)
 {
 	pthread_mutex_lock(&g_mp_mutex);
@@ -89,6 +92,7 @@ static void mptrigmp(void)
 			mp->func(0, mp->ctx);
 	}
 	pthread_mutex_unlock(&g_mp_mutex);
+	mps_graph_cache_pressure();
 }
 
 void* mpmalloc(int device, size_t size)
@@ -183,6 +187,217 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 	} else {
 		assert(0 && "can only copy from GPU to CPU or vice versa");
 	}
+}
+
+// MPSGraphExecutable cache.
+static inline uint32_t twang_32from64(uint64_t key)
+{
+	key = (~key) + (key << 18);
+	key = key ^ (key >> 31);
+	key = key * 21;
+	key = key ^ (key >> 11);
+	key = key + (key << 6);
+	key = key ^ (key >> 22);
+	return (uint32_t)(key);
+}
+
+static inline khint32_t _kh_graph_key_executable_hash_func(const ccv_nnc_mps_graph_key_t key)
+{
+	uint32_t h = key.cmd;
+	int i, j;
+	uint32_t* data = (uint32_t*)&key.params;
+	for (i = 0; i < sizeof(key.params) / sizeof(uint32_t); i++)
+		h = twang_32from64(((uint64_t)h << 32) | data[i]);
+	data = (uint32_t*)&key.hint;
+	for (i = 0; i < sizeof(key.hint) / sizeof(uint32_t); i++)
+		h = twang_32from64(((uint64_t)h << 32) | data[i]);
+	h = twang_32from64(((uint64_t)h << 32) | key.input_size);
+	h = twang_32from64(((uint64_t)h << 32) | key.output_size);
+	for (i = 0; i < key.input_size; i++)
+	{
+		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].datatype);
+		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].dataof);
+		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].nd);
+		for (j = 0; j < key.inputs[i].nd; j++)
+		{
+			h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].dim[j]);
+			h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].stride[j]);
+		}
+	}
+	for (i = 0; i < key.output_size; i++)
+	{
+		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].datatype);
+		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].dataof);
+		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].nd);
+		for (j = 0; j < key.outputs[i].nd; j++)
+		{
+			h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].dim[j]);
+			h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].stride[j]);
+		}
+	}
+	return (khint32_t)h;
+}
+
+static inline int _kh_graph_key_executable_hash_equal(const ccv_nnc_mps_graph_key_t a, const ccv_nnc_mps_graph_key_t b)
+{
+	if (a.cmd != b.cmd || a.flags != b.flags || a.input_size != b.input_size || a.output_size != b.output_size)
+		return 0;
+	if (memcmp(&a.params, &b.params, sizeof(a.params)) != 0)
+		return 0;
+	if (memcmp(&a.hint, &b.hint, sizeof(a.hint)) != 0)
+		return 0;
+	int i, j;
+	for (i = 0; i < a.input_size; i++)
+	{
+		if (a.inputs[i].datatype != b.inputs[i].datatype || a.inputs[i].nd != b.inputs[i].nd || a.inputs[i].dataof != b.inputs[i].dataof)
+			return 0;
+		for (j = 0; j < a.inputs[i].nd; j++)
+			if (a.inputs[i].dim[j] != b.inputs[i].dim[j] || a.inputs[i].stride[j] != b.inputs[i].stride[j])
+				return 0;
+	}
+	for (i = 0; i < a.output_size; i++)
+	{
+		if (a.outputs[i].datatype != b.outputs[i].datatype || a.outputs[i].nd != b.outputs[i].nd || a.outputs[i].dataof != b.outputs[i].dataof)
+			return 0;
+		for (j = 0; j < a.outputs[i].nd; j++)
+			if (a.outputs[i].dim[j] != b.outputs[i].dim[j] || a.outputs[i].stride[j] != b.outputs[i].stride[j])
+				return 0;
+	}
+	return 1;
+}
+
+typedef struct {
+	int indice_size;
+	int* indices;
+	MPSGraphExecutable* exec;
+} ccv_nnc_graph_val_t;
+
+KHASH_INIT(graph_executable_cache, ccv_nnc_mps_graph_key_t, ccv_nnc_graph_val_t, 1, _kh_graph_key_executable_hash_func, _kh_graph_key_executable_hash_equal)
+
+static khash_t(graph_executable_cache)* g_graph_executable_cache = 0;
+
+static inline void ccv_nnc_mps_graph_key_free(ccv_nnc_mps_graph_key_t key)
+{
+	if (key.inputs)
+		ccfree(key.inputs);
+}
+
+static void mps_graph_cache_pressure(void)
+{
+	if (!g_graph_executable_cache)
+		return;
+	khiter_t k;
+	for (k = kh_begin(g_graph_executable_cache); k < kh_end(g_graph_executable_cache); k++)
+	{
+		if (!kh_exist(g_graph_executable_cache, k))
+			continue;
+		ccv_nnc_mps_graph_key_free(kh_key(g_graph_executable_cache, k));
+		if (kh_val(g_graph_executable_cache, k).indices)
+			ccfree(kh_val(g_graph_executable_cache, k).indices);
+		kh_del(graph_executable_cache, g_graph_executable_cache, k);
+	}
+}
+
+MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors))
+{
+	if (!g_graph_executable_cache)
+		g_graph_executable_cache = kh_init(graph_executable_cache);
+	int ret = 0;
+	khiter_t k = kh_put(graph_executable_cache, g_graph_executable_cache, key, &ret);
+	if (ret != 0)
+	{
+		MPSGraph* graph = [MPSGraph new];
+		NSMutableArray<MPSGraphTensor*> *inputTensors = [NSMutableArray new];
+		NSMutableArray<MPSGraphShapedType*>* inputShapedTypes = [NSMutableArray new];
+		NSMutableArray<MPSGraphTensor*>* targetTensors = [NSMutableArray new];
+		block(graph, inputTensors, inputShapedTypes, targetTensors);
+		assert(inputTensors.count == inputShapedTypes.count);
+		MPSGraphCompilationDescriptor* compilationDescriptor = [MPSGraphCompilationDescriptor new];
+		// Need more investigation into what this does.
+		// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel1;
+		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
+		MPSGraphExecutable* executable = [[graph compileWithDevice:ccv_nnc_default_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
+		[compilationDescriptor release];
+		[graph release];
+		kh_val(g_graph_executable_cache, k).exec = executable;
+		kh_val(g_graph_executable_cache, k).indice_size = (int)inputTensors.count;
+		kh_val(g_graph_executable_cache, k).indices = inputTensors.count > 0 ? (int*)ccmalloc(sizeof(int) * inputTensors.count) : 0;
+		assert(inputTensors.count == executable.feedTensors.count);
+		int i;
+		for (i = 0; i < executable.feedTensors.count; i++)
+			indices[i] = kh_val(g_graph_executable_cache, k).indices[i] = (int)[inputTensors indexOfObject:executable.feedTensors[i]];
+		[inputTensors release];
+		[inputShapedTypes release];
+		[targetTensors release];
+	} else {
+		ccv_nnc_mps_graph_key_free(key);
+		int i;
+		for (i = 0; i < kh_val(g_graph_executable_cache, k).indice_size; i++)
+			indices[i] = kh_val(g_graph_executable_cache, k).indices[i];
+	}
+	return kh_val(g_graph_executable_cache, k).exec;
+}
+
+ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+	ccv_nnc_mps_graph_key_t key = {
+		.cmd = cmd.cmd,
+		.hint = hint,
+		.params = cmd.info,
+		.inputs = 0,
+		.input_size = 0,
+		.outputs = 0,
+		.output_size = 0
+	};
+	if (input_size == 0 && output_size == 0)
+		return key;
+	assert(input_size >= 0 && output_size >= 0);
+	key.input_size = input_size;
+	key.output_size = output_size;
+	key.inputs = (ccv_nnc_mps_graph_tensor_shape_t*)ccmalloc(sizeof(ccv_nnc_mps_graph_tensor_shape_t) * (input_size + output_size));
+	key.outputs = key.inputs + input_size;
+	int i, j;
+	for (i = 0; i < input_size; i++)
+	{
+		memset(key.inputs[i].dim, 0, sizeof(key.inputs[i].dim));
+		memset(key.inputs[i].stride, 0, sizeof(key.inputs[i].stride));
+		if (!inputs[i])
+		{
+			key.inputs[i].datatype = 0;
+			key.inputs[i].dataof = 0;
+			key.inputs[i].nd = 0;
+			continue;
+		}
+		key.inputs[i].datatype = inputs[i]->info.datatype;
+		key.inputs[i].dataof = inputs[i]->dataof;
+		const int nd = key.inputs[i].nd = ccv_nnc_tensor_nd(inputs[i]->info.dim);
+		for (j = 0; j < nd; j++)
+			key.inputs[i].dim[j] = inputs[i]->info.dim[j];
+		if (CCV_IS_TENSOR_VIEW(inputs[i]))
+			for (j = 0; j < nd; j++)
+				key.inputs[i].stride[j] = ((ccv_nnc_tensor_view_t*)inputs[i])->stride[j];
+	}
+	for (i = 0; i < output_size; i++)
+	{
+		key.outputs[i].datatype = outputs[i]->info.datatype;
+		key.outputs[i].dataof = outputs[i]->dataof;
+		if (!outputs[i])
+		{
+			key.outputs[i].datatype = 0;
+			key.outputs[i].dataof = 0;
+			key.outputs[i].nd = 0;
+			continue;
+		}
+		const int nd = key.outputs[i].nd = ccv_nnc_tensor_nd(outputs[i]->info.dim);
+		memset(key.outputs[i].dim, 0, sizeof(key.outputs[i].dim));
+		memset(key.outputs[i].stride, 0, sizeof(key.outputs[i].stride));
+		for (j = 0; j < nd; j++)
+			key.outputs[i].dim[j] = outputs[i]->info.dim[j];
+		if (CCV_IS_TENSOR_VIEW(outputs[i]))
+			for (j = 0; j < nd; j++)
+				key.outputs[i].stride[j] = ((ccv_nnc_tensor_view_t*)outputs[i])->stride[j];
+	}
+	return key;
 }
 
 // Stream context
@@ -359,9 +574,9 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			desc = [graph reshapeTensor:desc withShape:shape name:nil];
 		} else {
 			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
-			[shape release];
 			*input = desc;
 		}
+		[shape release];
 		if (flag) // If we sliced this tensor before.
 		{
 			NSMutableArray<NSNumber*>* starts = [NSMutableArray new];
@@ -426,10 +641,85 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			desc = [graph reshapeTensor:desc withShape:shape name:nil];
 		} else {
 			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
-			[shape release];
 			*input = desc;
 		}
+		[shape release];
 		return desc;
+	}
+}
+
+CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
+	const int nd = ccv_nnc_tensor_nd(dim);
+	int i;
+	NSInteger full_count, partial_count;
+	if (CCV_IS_TENSOR_VIEW(tensor_view))
+	{
+		// Figure out if there are permutations based on strides, if there are, find the permutation and apply to the tensor.
+		// Use the found permutation to alter strides and check whether we have the contiguous tensor, if not, we cannot proceed.
+		int sorted_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int sorted_stride[CCV_NNC_MAX_DIM_ALLOC];
+		for (i = 0; i < nd; i++)
+			sorted_dim[i] = dim[i], sorted_stride[i] = stride[i];
+		int j, t;
+		for (i = 0; i < nd - 1; i++)
+		{
+			int idx = i;
+			for (j = i + 1; j < nd; j++)
+				if (sorted_stride[idx] < sorted_stride[j])
+					idx = j;
+			if (idx == i)
+				continue;
+			CCV_SWAP(sorted_stride[i], sorted_stride[idx], t);
+			CCV_SWAP(sorted_dim[i], sorted_dim[idx], t);
+		}
+		int full_dim[CCV_NNC_MAX_DIM_ALLOC];
+		full_dim[0] = sorted_dim[0];
+		int flag = 0;
+		for (i = 1; i < nd; i++)
+		{
+			assert(sorted_stride[i - 1] % sorted_stride[i] == 0);
+			full_dim[i] = sorted_stride[i - 1] / sorted_stride[i];
+			if (!flag)
+				flag = (full_dim[i] != sorted_dim[i]);
+		}
+		MPSGraphShapedType* shapedType;
+		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+		for (i = 0; i < nd; i++)
+			[shape addObject:@(full_dim[i])];
+		NSInteger remaining_start = 0;
+		if (offset)
+		{
+			partial_count = ccv_nnc_dimension_upper_bound(dim, stride);
+			remaining_start = ccv_min(sorted_dim[0] * sorted_stride[0] - partial_count, offc);
+			assert(remaining_start <= offc);
+			full_count = offc - remaining_start + sorted_dim[0] * sorted_stride[0];
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+		} else {
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+		}
+		[shape release];
+		return [shapedType autorelease];
+	} else {
+		NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+		for (i = 0; i < nd; i++)
+			[shape addObject:@(dim[i])];
+		MPSGraphShapedType* shapedType;
+		if (offset)
+		{
+			partial_count = dim[0];
+			for (i = 1; i < nd; i++)
+				partial_count *= dim[i];
+			full_count = offc + partial_count;
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+		} else {
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+		}
+		[shape release];
+		return [shapedType autorelease];
 	}
 }
 
@@ -527,5 +817,19 @@ void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer,
 	}
 	MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:feeds targetTensors:@[output] targetOperations:nil executionDescriptor:nil];
 	MPSGraphTensorData* tensor_data = result[output];
+	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
+}
+
+void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data);
+	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
+	{
+		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, dim, stride);
+		[executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:@[tensor_data] executionDescriptor:nil];
+		return;
+	}
+	NSArray<MPSGraphTensorData*>* result = [executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:nil executionDescriptor:nil];
+	MPSGraphTensorData* tensor_data = result[0];
 	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
 }
