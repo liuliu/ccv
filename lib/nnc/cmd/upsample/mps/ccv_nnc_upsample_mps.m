@@ -52,7 +52,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], b, bdim, bstride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
 		}
@@ -72,7 +72,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], b, bdim, bstride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
 		}
@@ -119,7 +119,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], b, bdim, bstride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
 		}
@@ -139,7 +139,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], b, bdim, bstride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
 		}

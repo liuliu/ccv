@@ -67,7 +67,7 @@ CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const 
 CCV_WARN_UNUSED(MPSGraphTensorData*) ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
 void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command_buffer, ccv_nnc_tensor_view_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
 void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
-void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC]);
+void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const* const data, int* dim[CCV_NNC_MAX_DIM_ALLOC], int* stride[CCV_NNC_MAX_DIM_ALLOC], const int size);
 
 #endif
 

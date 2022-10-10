@@ -820,16 +820,27 @@ void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer,
 	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
 }
 
-void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const* const data, int* dim[CCV_NNC_MAX_DIM_ALLOC], int* stride[CCV_NNC_MAX_DIM_ALLOC], const int size)
 {
-	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data);
-	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
+	int i, flag = 0;
+	for (i = 0; !flag && i < size; i++)
 	{
-		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, dim, stride);
-		[executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:@[tensor_data] executionDescriptor:nil];
+		off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data[i]);
+		flag = !(CCV_IS_TENSOR_CONTIGUOUS(data[i]) && offset == 0);
+	}
+	if (!flag)
+	{
+		NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray new];
+		for (i = 0; i < size; i++)
+			[results addObject:ccv_nnc_mps_graph_tensor_data(data[i], dim[i], stride[i])];
+		[executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:results executionDescriptor:nil];
+		[results release];
 		return;
 	}
 	NSArray<MPSGraphTensorData*>* result = [executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:nil executionDescriptor:nil];
-	MPSGraphTensorData* tensor_data = result[0];
-	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
+	for (i = 0; i < size; i++)
+	{
+		MPSGraphTensorData* tensor_data = result[i];
+		ccv_nnc_mps_export_data(tensor_data, command_buffer, data[i], dim[i], stride[i]);
+	}
 }
