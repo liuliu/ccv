@@ -3,6 +3,8 @@
 #include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 #include <time.h>
 #include <sys/time.h>
@@ -685,5 +687,13 @@ void ccv_nnc_set_profiler(int state)
 {
 #ifdef HAVE_CUDA
 	cusetprofiler(state);
+#endif
+}
+
+void ccv_nnc_set_memory_efficient(int state)
+{
+#ifdef HAVE_MPS
+	// If we need to be memory efficient, we need to bound how many in-flight command buffers there are.
+	ccv_nnc_mps_unbounded_command_buffers(!state);
 #endif
 }

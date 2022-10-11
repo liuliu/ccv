@@ -28,6 +28,7 @@ void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const str
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
+void ccv_nnc_mps_unbounded_command_buffers(int state);
 
 #ifdef __OBJC__
 

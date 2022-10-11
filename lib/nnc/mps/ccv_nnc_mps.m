@@ -19,6 +19,8 @@ id<MTLDevice> ccv_nnc_default_device(void)
 }
 
 static os_unfair_lock queue_lock; 
+#define OLD_COMMAND_BUFFER_SIZE (8)
+static id<MTLCommandBuffer> old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE];
 static id<MTLCommandBuffer> last_command_buffer;
 
 static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
@@ -416,7 +418,14 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	os_unfair_lock_lock(&queue_lock);
-	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	id<MTLCommandBuffer> command_buffer = last_command_buffer;
+	last_command_buffer = nil;
+	int i;
+	for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+	{
+		[old_last_command_buffers[i] release];
+		old_last_command_buffers[i] = nil;
+	}
 	os_unfair_lock_unlock(&queue_lock);
 	[command_buffer waitUntilCompleted];
 	[command_buffer release];
@@ -541,29 +550,61 @@ MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_conte
 	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 }
 
+static int enable_unbounded_command_buffers;
+
+void ccv_nnc_mps_unbounded_command_buffers(int state)
+{
+	enable_unbounded_command_buffers = state;
+}
+
 void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer)
 {
+	int i;
 	if (!stream_context)
 	{
 		[command_buffer commit];
 		os_unfair_lock_lock(&queue_lock);
 		[last_command_buffer release];
 		last_command_buffer = nil;
+		for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+		{
+			[old_last_command_buffers[i] release];
+			old_last_command_buffers[i] = nil;
+		}
 		os_unfair_lock_unlock(&queue_lock);
 		[command_buffer waitUntilCompleted];
 		return;
 	}
-	last_command_buffer = [command_buffer retain];
-	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+	os_unfair_lock_lock(&queue_lock);
+	id<MTLCommandBuffer> old_last_command_buffer = old_last_command_buffers[0];
+	for (i = 0; i < OLD_COMMAND_BUFFER_SIZE - 1; i++)
+		old_last_command_buffers[i] = old_last_command_buffers[i + 1];
+	old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE - 1] = last_command_buffer;
+	last_command_buffer = [command_buffer.commandBuffer retain];
+	os_unfair_lock_unlock(&queue_lock);
+	[command_buffer.commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		os_unfair_lock_lock(&queue_lock);
 		if (buffer == last_command_buffer)
 		{
 			[last_command_buffer release];
 			last_command_buffer = nil;
+		} else {
+			int i;
+			for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+				if (buffer == old_last_command_buffers[i])
+				{
+					[old_last_command_buffers[i] release];
+					old_last_command_buffers[i] = nil;
+					break;
+				}
 		}
 		os_unfair_lock_unlock(&queue_lock);
 	}];
 	[command_buffer commit];
+	// Wait if we need to bound how many in-flight command buffers there are. This helps memory usage.
+	if (!enable_unbounded_command_buffers)
+		[old_last_command_buffer waitUntilCompleted];
+	[old_last_command_buffer release];
 }
 
 MPSDataType ccv_nnc_mps_datatype(const int datatype)

@@ -759,6 +759,11 @@ CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const 
  * @param state 1 is on, 0 is off.
  */
 void ccv_nnc_set_profiler(int state);
+/**
+ * When have choices between doing things, prefer to be more memory efficient and take performance hit. This is relevant to MPSGraph because if we dispatch all command buffers at full speed, we risk of holding a lot of resources up until all of them executed. Alternatively, we can wait previous one done before proceed, with obvious performance penalties.
+ * @param state 1 is on, 0 is off. Default to off.
+ */
+void ccv_nnc_set_memory_efficient(int state);
 
 /** @} */
 
