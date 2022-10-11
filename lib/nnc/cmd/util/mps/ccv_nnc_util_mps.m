@@ -24,16 +24,17 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -4096);
 			const off_t offset_a = (uintptr_t)a->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_a + 4095) & -4096);
-			id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLBuffer> buffer_b = mpgetbuffer(b);
 			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
+				id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
 				[command_buffer commit];
 				[command_buffer waitUntilCompleted];
+				[buffer_a release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
 			id<MTLBuffer> buffer_a = mpgetbuffer(a);
@@ -41,14 +42,15 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -4096);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_b + 4095) & -4096);
-			id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			@autoreleasepool {
+				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
 				[command_buffer commit];
 				[command_buffer waitUntilCompleted];
+				[buffer_b release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
 			memcpy(b->data.u8, a->data.u8, size);

@@ -158,16 +158,17 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)src & -PAGE_SIZE);
 		const off_t offset_a = (uintptr_t)src - (uintptr_t)aligned_ptr + src_off;
 		const size_t aligned_size = ((n + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
-		id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 		id<MTLBuffer> buffer_b = (id<MTLBuffer>)dest;
 		const off_t offset_b = dest_off;
 		@autoreleasepool {
+			id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
+			[buffer_a release];
 		}
 	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
 		id<MTLBuffer> buffer_a = (id<MTLBuffer>)src;
@@ -175,14 +176,15 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)dest & -PAGE_SIZE);
 		const off_t offset_b = (uintptr_t)dest - (uintptr_t)aligned_ptr;
 		const size_t aligned_size = ((n + offset_b + PAGE_SIZE - 1) & -PAGE_SIZE);
-		id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 		@autoreleasepool {
+			id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
+			[buffer_b release];
 		}
 	} else {
 		assert(0 && "can only copy from GPU to CPU or vice versa");
