@@ -21,9 +21,9 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		const size_t size = (ssize_t)ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 		if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
 		{
-			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -4096);
+			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -PAGE_SIZE);
 			const off_t offset_a = (uintptr_t)a->data.u8 - (uintptr_t)aligned_ptr;
-			const size_t aligned_size = ((size + offset_a + 4095) & -4096);
+			const size_t aligned_size = ((size + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
 			id<MTLBuffer> buffer_b = mpgetbuffer(b);
 			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
@@ -39,9 +39,9 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
 			id<MTLBuffer> buffer_a = mpgetbuffer(a);
 			const off_t offset_a = mpgetoffset(a);
-			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -4096);
+			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -PAGE_SIZE);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
-			const size_t aligned_size = ((size + offset_b + 4095) & -4096);
+			const size_t aligned_size = ((size + offset_b + PAGE_SIZE - 1) & -PAGE_SIZE);
 			@autoreleasepool {
 				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
