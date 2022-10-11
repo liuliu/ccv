@@ -550,7 +550,7 @@ MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_conte
 	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 }
 
-static int enable_unbounded_command_buffers;
+static int enable_unbounded_command_buffers = 1;
 
 void ccv_nnc_mps_unbounded_command_buffers(int state)
 {
