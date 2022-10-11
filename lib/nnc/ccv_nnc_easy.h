@@ -13,6 +13,9 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
+#ifdef HAVE_MPS
+#include <mach/mach_vm.h>
+#endif
 
 /**
  * Convenience API
@@ -203,9 +206,9 @@ static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t param
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 127) & -128);
 	else
-#elif defined(HAVE_MPS) // For MPS, we have to align to PAGE_SIZE (4096).
+#elif defined(HAVE_MPS) // For MPS, we have to align to PAGE_SIZE.
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
-		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 4095) & -4096);
+		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + PAGE_SIZE - 1) & -PAGE_SIZE);
 	else
 #endif
 	return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 63) & -64);
