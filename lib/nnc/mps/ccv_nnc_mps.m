@@ -110,11 +110,11 @@ void mpfree(int device, void* ptr)
 
 void* mpobjmalloc(int device, size_t size)
 {
-	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModePrivate];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+		buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModePrivate];
 		assert(buffer != nil);
 	}
 	return (void*)buffer;
@@ -131,11 +131,11 @@ void* mpobjcreate(void* ptr, size_t size)
 	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -PAGE_SIZE);
 	const off_t offset = (uintptr_t)ptr - (uintptr_t)aligned_ptr;
 	const size_t aligned_size = ((size + offset + PAGE_SIZE - 1) & -PAGE_SIZE);
-	id<MTLBuffer> buffer = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil] autorelease];
+	id<MTLBuffer> buffer = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModeShared deallocator:nil] autorelease];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil] autorelease];
+		buffer = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModeShared deallocator:nil] autorelease];
 		assert(buffer != nil);
 	}
 	return buffer;
