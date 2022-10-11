@@ -8,6 +8,7 @@
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
+#import <os/lock.h>
 
 id<MTLDevice> ccv_nnc_default_device(void)
 {
@@ -16,6 +17,9 @@ id<MTLDevice> ccv_nnc_default_device(void)
 		device = MTLCreateSystemDefaultDevice();
 	return device;
 }
+
+static os_unfair_lock queue_lock; 
+static id<MTLCommandBuffer> last_command_buffer;
 
 static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
 {
@@ -83,6 +87,7 @@ static void mps_graph_cache_pressure(void);
 
 static void mptrigmp(void)
 {
+	ccv_nnc_synchronize_stream_context(0);
 	pthread_mutex_lock(&g_mp_mutex);
 	int i;
 	for (i = 0; i < g_mp_h->rnum; i++)
@@ -410,19 +415,53 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
+	os_unfair_lock_lock(&queue_lock);
+	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	os_unfair_lock_unlock(&queue_lock);
+	[command_buffer waitUntilCompleted];
+	[command_buffer release];
 }
 
 void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_callback_f callback, const ccv_nnc_async_callback_f async_callback, void* const callback_context)
 {
+	os_unfair_lock_lock(&queue_lock);
+	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	os_unfair_lock_unlock(&queue_lock);
+	if (command_buffer == nil)
+	{
+		callback(callback_context);
+		return;
+	}
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		ccv_nnc_async_callback_t async = {
+			.callback_context = callback_context,
+			.fn = callback
+		};
+		async_callback(&async);
+	}];
+	[command_buffer release];
 }
 
 int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream)
 {
+	os_unfair_lock_lock(&queue_lock);
+	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	os_unfair_lock_unlock(&queue_lock);
+	if (command_buffer == nil)
+		return 1;
+	co_scheduler_t* const scheduler = self->scheduler;
+	pthread_mutex_lock(&scheduler->mutex);
+	++scheduler->stream_await_count;
+	pthread_mutex_unlock(&scheduler->mutex);
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		pthread_mutex_lock(&scheduler->mutex);
+		_co_prepend_task(scheduler, self);
+		--scheduler->stream_await_count;
+		pthread_cond_signal(&scheduler->wait);
+		pthread_mutex_unlock(&scheduler->mutex);
+	}];
+	[command_buffer release];
 	return 0;
-}
-
-void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
-{
 }
 
 typedef struct {
@@ -437,6 +476,13 @@ static __thread ccv_nnc_stream_mps_t ccv_nnc_per_thread_stream_mps = {
 		.type = CCV_STREAM_CONTEXT_CPU,
 	},
 };
+
+void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_nnc_stream_mps_t* stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	if (stream_mps->workspace)
+		ccfree(stream_mps->workspace);
+}
 
 void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
@@ -456,8 +502,18 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 
 void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 {
+	ccv_nnc_stream_mps_t* stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	if (!stream_mps)
+		stream_mps = &ccv_nnc_per_thread_stream_mps;
+	if (stream_mps->workspace)
+	{
+		ccfree(stream_mps->workspace);
+		stream_mps->workspace = 0;
+		stream_mps->workspace_size = 0;
+	}
 }
 
+// We don't need to support signal as of now because we share one queue. When we multiplex on multiple queues, we need to have a signal implementation.
 ccv_nnc_stream_signal_t* ccv_nnc_init_stream_signal(ccv_nnc_stream_signal_t* const signal)
 {
 	return signal;
@@ -483,6 +539,31 @@ int ccv_nnc_gpu_device_count(void)
 MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
 	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
+}
+
+void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer)
+{
+	if (!stream_context)
+	{
+		[command_buffer commit];
+		os_unfair_lock_lock(&queue_lock);
+		[last_command_buffer release];
+		last_command_buffer = nil;
+		os_unfair_lock_unlock(&queue_lock);
+		[command_buffer waitUntilCompleted];
+		return;
+	}
+	last_command_buffer = [command_buffer retain];
+	[command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		os_unfair_lock_lock(&queue_lock);
+		if (buffer == last_command_buffer)
+		{
+			[last_command_buffer release];
+			last_command_buffer = nil;
+		}
+		os_unfair_lock_unlock(&queue_lock);
+	}];
+	[command_buffer commit];
 }
 
 MPSDataType ccv_nnc_mps_datatype(const int datatype)

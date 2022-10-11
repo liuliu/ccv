@@ -32,8 +32,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				[command_buffer commit];
-				[command_buffer waitUntilCompleted];
+				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 				[buffer_a release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
@@ -48,8 +47,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				[command_buffer commit];
-				[command_buffer waitUntilCompleted];
+				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 				[buffer_b release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
@@ -67,8 +65,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				[command_buffer commit];
-				[command_buffer waitUntilCompleted];
+				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 			}
 		}
 	}
@@ -117,8 +114,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1);
 		}
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -161,8 +157,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			[shape release];
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], &a, (int*[]){ a->info.dim }, (int*[]){ a->stride }, 1);
 		}
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -187,8 +182,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			[shape release];
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], &a, (int*[]){ a->info.dim }, (int*[]){ a->stride }, 1);
 		}
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -315,8 +309,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				ccv_nnc_mps_export_data(data_a, command_buffer, &bt, bdim, bstride);
 			[graph release];
 		}
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -362,8 +355,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
 			[graph release];
 		}
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

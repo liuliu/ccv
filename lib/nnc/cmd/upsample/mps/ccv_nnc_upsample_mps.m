@@ -53,8 +53,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
-			[command_buffer commit];
-			[command_buffer waitUntilCompleted];
+			ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 		}
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
@@ -73,8 +72,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
-			[command_buffer commit];
-			[command_buffer waitUntilCompleted];
+			ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -120,8 +118,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
-			[command_buffer commit];
-			[command_buffer waitUntilCompleted];
+			ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 		}
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
@@ -140,8 +137,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
-			[command_buffer commit];
-			[command_buffer waitUntilCompleted];
+			ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

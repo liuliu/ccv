@@ -58,6 +58,7 @@ off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
 CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 CCV_WARN_UNUSED(MPSDataType) ccv_nnc_mps_datatype(const int datatype); // Get the datatype corresponding to MPS datatype.
