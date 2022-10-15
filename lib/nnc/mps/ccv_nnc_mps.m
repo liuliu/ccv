@@ -12,9 +12,11 @@
 
 id<MTLDevice> ccv_nnc_default_device(void)
 {
-	static __thread id<MTLDevice> device;
-	if (device == nil)
+	static dispatch_once_t once;
+	static id<MTLDevice> device;
+	dispatch_once(&once, ^{
 		device = MTLCreateSystemDefaultDevice();
+	});
 	return device;
 }
 
@@ -25,9 +27,11 @@ static id<MTLCommandBuffer> last_command_buffer;
 
 static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
 {
-	static __thread id<MTLCommandQueue> queue;
-	if (queue == nil)
+	static dispatch_once_t once;
+	static id<MTLCommandQueue> queue;
+	dispatch_once(&once, ^{
 		queue = [ccv_nnc_default_device() newCommandQueue];
+	});
 	return queue;
 }
 
