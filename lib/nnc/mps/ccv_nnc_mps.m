@@ -625,6 +625,8 @@ MPSDataType ccv_nnc_mps_datatype(const int datatype)
 			return MPSDataTypeFloat16;
 		case CCV_32F:
 			return MPSDataTypeFloat32;
+		case CCV_8S:
+			return MPSDataTypeInt8;
 		case CCV_64F:
 			assert(0 && "doesn't support double precision");
 	}
