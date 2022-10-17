@@ -670,6 +670,7 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 	int i;
 	const int nd = CCV_NNC_MAX_DIM + 2;
 	ccv_nnc_tensor_param_t weights_params = params;
+	weights_params.format = CCV_TENSOR_FORMAT_NCHW;
 	ccv_nnc_tensor_set_n(&weights_params, self->filters);
 	assert(ccv_nnc_tensor_get_c(params) % self->groups == 0);
 	ccv_nnc_tensor_set_c(&weights_params, nd, ccv_nnc_tensor_get_c(params) / self->groups);
@@ -681,6 +682,7 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
 	assert(self->weights.graph == graph);
 	ccv_nnc_tensor_param_t bias_params = params;
+	bias_params.format = CCV_TENSOR_FORMAT_NCHW;
 	memset(bias_params.dim, 0, sizeof(bias_params.dim));
 	bias_params.dim[0] = self->filters;
 	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(self->groups, self->filters);
