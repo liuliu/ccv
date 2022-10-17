@@ -228,6 +228,7 @@ static inline khint32_t _kh_graph_key_executable_hash_func(const ccv_nnc_mps_gra
 	h = twang_32from64(((uint64_t)h << 32) | key.output_size);
 	for (i = 0; i < key.input_size; i++)
 	{
+		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].format);
 		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].datatype);
 		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].dataof);
 		h = twang_32from64(((uint64_t)h << 32) | key.inputs[i].nd);
@@ -239,6 +240,7 @@ static inline khint32_t _kh_graph_key_executable_hash_func(const ccv_nnc_mps_gra
 	}
 	for (i = 0; i < key.output_size; i++)
 	{
+		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].format);
 		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].datatype);
 		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].dataof);
 		h = twang_32from64(((uint64_t)h << 32) | key.outputs[i].nd);
@@ -262,7 +264,7 @@ static inline int _kh_graph_key_executable_hash_equal(const ccv_nnc_mps_graph_ke
 	int i, j;
 	for (i = 0; i < a.input_size; i++)
 	{
-		if (a.inputs[i].datatype != b.inputs[i].datatype || a.inputs[i].nd != b.inputs[i].nd || a.inputs[i].dataof != b.inputs[i].dataof)
+		if (a.inputs[i].format != b.inputs[i].format || a.inputs[i].datatype != b.inputs[i].datatype || a.inputs[i].nd != b.inputs[i].nd || a.inputs[i].dataof != b.inputs[i].dataof)
 			return 0;
 		for (j = 0; j < a.inputs[i].nd; j++)
 			if (a.inputs[i].dim[j] != b.inputs[i].dim[j] || a.inputs[i].stride[j] != b.inputs[i].stride[j])
@@ -270,7 +272,7 @@ static inline int _kh_graph_key_executable_hash_equal(const ccv_nnc_mps_graph_ke
 	}
 	for (i = 0; i < a.output_size; i++)
 	{
-		if (a.outputs[i].datatype != b.outputs[i].datatype || a.outputs[i].nd != b.outputs[i].nd || a.outputs[i].dataof != b.outputs[i].dataof)
+		if (a.outputs[i].format != b.outputs[i].format || a.outputs[i].datatype != b.outputs[i].datatype || a.outputs[i].nd != b.outputs[i].nd || a.outputs[i].dataof != b.outputs[i].dataof)
 			return 0;
 		for (j = 0; j < a.outputs[i].nd; j++)
 			if (a.outputs[i].dim[j] != b.outputs[i].dim[j] || a.outputs[i].stride[j] != b.outputs[i].stride[j])
@@ -376,11 +378,13 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 		memset(key.inputs[i].stride, 0, sizeof(key.inputs[i].stride));
 		if (!inputs[i])
 		{
+			key.inputs[i].format = 0;
 			key.inputs[i].datatype = 0;
 			key.inputs[i].dataof = 0;
 			key.inputs[i].nd = 0;
 			continue;
 		}
+		key.inputs[i].format = inputs[i]->info.format;
 		key.inputs[i].datatype = inputs[i]->info.datatype;
 		key.inputs[i].dataof = inputs[i]->dataof;
 		const int nd = key.inputs[i].nd = ccv_nnc_tensor_nd(inputs[i]->info.dim);
@@ -392,18 +396,20 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 	}
 	for (i = 0; i < output_size; i++)
 	{
-		key.outputs[i].datatype = outputs[i]->info.datatype;
-		key.outputs[i].dataof = outputs[i]->dataof;
+		memset(key.outputs[i].dim, 0, sizeof(key.outputs[i].dim));
+		memset(key.outputs[i].stride, 0, sizeof(key.outputs[i].stride));
 		if (!outputs[i])
 		{
+			key.outputs[i].format = 0;
 			key.outputs[i].datatype = 0;
 			key.outputs[i].dataof = 0;
 			key.outputs[i].nd = 0;
 			continue;
 		}
+		key.outputs[i].format = outputs[i]->info.format;
+		key.outputs[i].datatype = outputs[i]->info.datatype;
+		key.outputs[i].dataof = outputs[i]->dataof;
 		const int nd = key.outputs[i].nd = ccv_nnc_tensor_nd(outputs[i]->info.dim);
-		memset(key.outputs[i].dim, 0, sizeof(key.outputs[i].dim));
-		memset(key.outputs[i].stride, 0, sizeof(key.outputs[i].stride));
 		for (j = 0; j < nd; j++)
 			key.outputs[i].dim[j] = outputs[i]->info.dim[j];
 		if (CCV_IS_TENSOR_VIEW(outputs[i]))

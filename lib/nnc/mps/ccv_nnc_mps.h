@@ -37,6 +37,7 @@ void ccv_nnc_mps_unbounded_command_buffers(int state);
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 
 typedef struct {
+	int format;
 	int datatype;
 	int nd;
 	off_t dataof;
