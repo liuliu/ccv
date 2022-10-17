@@ -62,6 +62,7 @@ typedef struct {
 } ccv_float16_t; // In this way, you cannot perform any operations on float16.
 
 typedef union ccv_numeric_data_u {
+	char* i8;
 	unsigned char* u8;
 	int* i32;
 	ccv_float16_t* f16;
