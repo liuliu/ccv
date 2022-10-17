@@ -3881,10 +3881,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const int axis, const char* c
  * @param kdim The dimensions of the kernel.
  * @param no_bias Whether has bias term or not.
  * @param hint The hint for alignment.
+ * @param format The format for weights. If 0, it will have the same format as the input.
  * @param name The unique name of the model.
  * @return A convolution model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const char* const name);
 /**
  * A dense layer model.
  * @param count The output dimension.
