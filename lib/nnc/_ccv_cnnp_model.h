@@ -266,12 +266,16 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
 	assert(self->data);
 	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
-	ccv_cnnp_model_push(self, build_data->model_sequence);
-	build_data->model_sequence->it = 0;
-	ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter);
-	build_data->model_sequence->it = 0;
-	ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);
-	ccv_cnnp_model_pop(self, build_data->model_sequence);
+	// Skip if there is none. This helps to load parameters to a different model when only changes non-parameterized settings (add reshapes, permutations etc).
+	if (self->isa->add_to_parameter || self->isa->add_to_output)
+	{
+		ccv_cnnp_model_push(self, build_data->model_sequence);
+		build_data->model_sequence->it = 0;
+		ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter);
+		build_data->model_sequence->it = 0;
+		ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);
+		ccv_cnnp_model_pop(self, build_data->model_sequence);
+	}
 }
 
 static inline void ccv_cnnp_model_init_states(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
