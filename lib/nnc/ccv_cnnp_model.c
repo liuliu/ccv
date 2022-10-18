@@ -194,7 +194,8 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
 	model->data = 0;
 	kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
-	ccv_array_free(model_sequence.sequences);
+	if (model_sequence.sequences)
+		ccv_array_free(model_sequence.sequences);
 	// Assert no parameter is alias.
 	for (i = 0; i < parameters->rnum; i++)
 	{
