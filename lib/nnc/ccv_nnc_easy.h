@@ -14,7 +14,14 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
 #ifdef HAVE_MPS
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#if !TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
 #include <mach/mach_vm.h>
+#else
+#define PAGE_SIZE (16384)
+#endif
+#endif
 #endif
 
 /**

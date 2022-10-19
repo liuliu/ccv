@@ -20,6 +20,16 @@ id<MTLDevice> ccv_nnc_default_device(void)
 	return device;
 }
 
+MPSGraphDevice* _ccv_nnc_default_mps_device(void)
+{
+	static dispatch_once_t once;
+	static MPSGraphDevice* device;
+	dispatch_once(&once, ^{
+		device = [[MPSGraphDevice deviceWithMTLDevice:ccv_nnc_default_device()] retain];
+	});
+	return device;
+}
+
 static os_unfair_lock queue_lock; 
 #define OLD_COMMAND_BUFFER_SIZE (8)
 static id<MTLCommandBuffer> old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE];
@@ -331,7 +341,7 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		// Need more investigation into what this does.
 		// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel1;
 		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
-		MPSGraphExecutable* executable = [[graph compileWithDevice:ccv_nnc_default_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
+		MPSGraphExecutable* executable = [[graph compileWithDevice:_ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
 		[compilationDescriptor release];
 		[graph release];
 		kh_val(g_graph_executable_cache, k).exec = executable;
@@ -586,10 +596,15 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 		return;
 	}
 	os_unfair_lock_lock(&queue_lock);
-	id<MTLCommandBuffer> old_last_command_buffer = old_last_command_buffers[0];
-	for (i = 0; i < OLD_COMMAND_BUFFER_SIZE - 1; i++)
-		old_last_command_buffers[i] = old_last_command_buffers[i + 1];
-	old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE - 1] = last_command_buffer;
+	id<MTLCommandBuffer> old_last_command_buffer;
+	if (OLD_COMMAND_BUFFER_SIZE > 0)
+	{
+		old_last_command_buffer = old_last_command_buffers[0];
+		for (i = 0; i < OLD_COMMAND_BUFFER_SIZE - 1; i++)
+			old_last_command_buffers[i] = old_last_command_buffers[i + 1];
+		old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE - 1] = last_command_buffer;
+	} else
+		old_last_command_buffer = [command_buffer.commandBuffer retain];
 	last_command_buffer = [command_buffer.commandBuffer retain];
 	os_unfair_lock_unlock(&queue_lock);
 	[command_buffer.commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
