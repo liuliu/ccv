@@ -115,7 +115,7 @@ static inline void ccv_nnc_tensor_get_stride(const int dim[CCV_NNC_MAX_DIM_ALLOC
 	}
 }
 
-static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC])
+static inline int ccv_nnc_tensor_view_is_contiguous(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	// Check if a tensor view is contiguous.
 	const int nd = ccv_nnc_tensor_nd(dim);

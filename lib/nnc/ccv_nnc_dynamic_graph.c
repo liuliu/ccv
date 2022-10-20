@@ -231,7 +231,7 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 			to_stride = tensor_variable->stride;
 		// If we provide stride, or reshape to a different size, assert the tensor variable itself is contiguous (otherwise we cannot satisfy the reshape requirements).
 		if (ccv_nnc_tensor_nd(info.dim) != ccv_nnc_tensor_nd(tensor_variable->info.dim) || (stride[0] != 0 && memcmp(stride, to_stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0))
-			{ assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, to_stride, tensor_variable->ofs)); }
+			{ assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, to_stride)); }
 		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
 		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, to_stride, tensor_variable->ofs);
 		variable_alias->alias_off = tensor_variable->alias_off + off;
@@ -347,7 +347,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	assert(CCV_GET_DATA_TYPE_SIZE(tensor_variable->info.datatype) * ccv_nnc_tensor_count(tensor_variable->info) + tensor_variable->alias_off <= CCV_GET_DATA_TYPE_SIZE(variable_to->info.datatype) * ccv_nnc_tensor_count(variable_to->info));
 	// Allowing vector type to be normal tensor, rather than a tensor view. We cannot have any offset though.
 	if (no_ofs && !stride_is_packed)
-		stride_is_packed = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->stride, tensor_variable->ofs);
+		stride_is_packed = ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, tensor_variable->stride);
 	if (no_ofs && stride_is_packed)
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(CCV_NNC_TENSOR_VIEW(variable_to->tensor_view)->data.u8, tensor_variable->info, 0);
 	else {

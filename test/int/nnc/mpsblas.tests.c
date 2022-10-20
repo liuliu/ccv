@@ -209,7 +209,7 @@ TEST_CASE("gemm no transpose with bias")
 	ccv_nnc_tensor_free(gd);
 }
 
-TEST_CASE("gemm no transpose batch 2")
+TEST_CASE("gemm no transpose batch 2, no batch b")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	float ap[] = {
@@ -255,7 +255,55 @@ TEST_CASE("gemm no transpose batch 2")
 	ccv_nnc_tensor_free(gc);
 }
 
-TEST_CASE("gemm transpose a batch 2")
+TEST_CASE("gemm no transpose batch 2")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	float ap[] = {
+		1, 2,
+		3, 4,
+		5, 6,
+		7, 8,
+		2, 3,
+		4, 5,
+		6, 7,
+		8, 9
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 2, 4, 2), 0);
+	float bp[] = {
+		7, 8, 9,
+		10, 11, 12,
+		8, 9, 10,
+		11, 12, 13,
+	};
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4, 2), 0);
+	ccv_nnc_tensor_t* gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(gc), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	float ctp[] = {
+		1 * 7 + 2 * 10, 1 * 8 + 2 * 11, 1 * 9 + 2 * 12,
+		3 * 7 + 4 * 10, 3 * 8 + 4 * 11, 3 * 9 + 4 * 12,
+		5 * 7 + 6 * 10, 5 * 8 + 6 * 11, 5 * 9 + 6 * 12,
+		7 * 7 + 8 * 10, 7 * 8 + 8 * 11, 7 * 9 + 8 * 12,
+		2 * 8 + 3 * 11, 2 * 9 + 3 * 12, 2 * 10 + 3 * 13,
+		4 * 8 + 5 * 11, 4 * 9 + 5 * 12, 4 * 10 + 5 * 13,
+		6 * 8 + 7 * 11, 6 * 9 + 7 * 12, 6 * 10 + 7 * 13,
+		8 * 8 + 9 * 11, 8 * 9 + 9 * 12, 8 * 10 + 9 * 13,
+	};
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+}
+
+TEST_CASE("gemm transpose a batch 2, no batch b, with bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	float ap[] = {
@@ -304,7 +352,51 @@ TEST_CASE("gemm transpose a batch 2")
 	ccv_nnc_tensor_free(gd);
 }
 
-TEST_CASE("gemm transpose b batch 2")
+TEST_CASE("gemm transpose a batch 2, with bias")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	float ap[] = {
+		1, 3, 5, 7,
+		2, 4, 6, 8,
+		2, 4, 6, 8,
+		3, 5, 7, 9,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 2, 2, 4), 0);
+	float bp[] = {
+		7, 8, 9,
+		10, 11, 12,
+		8, 9, 10,
+		11, 12, 13,
+	};
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 2, 4), 0);
+	ccv_nnc_tensor_t* gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 2, 3), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(gc), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	float ctp[] = {
+		1 * 7 + 2 * 10, 1 * 8 + 2 * 11, 1 * 9 + 2 * 12,
+		3 * 7 + 4 * 10, 3 * 8 + 4 * 11, 3 * 9 + 4 * 12,
+		5 * 7 + 6 * 10, 5 * 8 + 6 * 11, 5 * 9 + 6 * 12,
+		7 * 7 + 8 * 10, 7 * 8 + 8 * 11, 7 * 9 + 8 * 12,
+		2 * 8 + 3 * 11, 2 * 9 + 3 * 12, 2 * 10 + 3 * 13,
+		4 * 8 + 5 * 11, 4 * 9 + 5 * 12, 4 * 10 + 5 * 13,
+		6 * 8 + 7 * 11, 6 * 9 + 7 * 12, 6 * 10 + 7 * 13,
+		8 * 8 + 9 * 11, 8 * 9 + 9 * 12, 8 * 10 + 9 * 13,
+	};
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+}
+
+TEST_CASE("gemm transpose b batch 2, with bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	float ap[] = {
@@ -360,6 +452,56 @@ TEST_CASE("gemm transpose b batch 2")
 	ccv_nnc_tensor_free(gb);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(gd);
+}
+
+TEST_CASE("gemm transpose b batch 2")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	float ap[] = {
+		1, 2,
+		3, 4,
+		5, 6,
+		7, 8,
+		2, 3,
+		4, 5,
+		6, 7,
+		8, 9
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 2, 4, 2), 0);
+	float bp[] = {
+		7, 10,
+		8, 11,
+		9, 12,
+		80, 110,
+		90, 120,
+		10, 13,
+	};
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 3, 2), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4, 2), 0);
+	ccv_nnc_tensor_t* gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3, 2), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 4, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ga, gb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(gc), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	float ctp[] = {
+		1 * 7 + 2 * 10, 1 * 8 + 2 * 11, 1 * 9 + 2 * 12,
+		3 * 7 + 4 * 10, 3 * 8 + 4 * 11, 3 * 9 + 4 * 12,
+		5 * 7 + 6 * 10, 5 * 8 + 6 * 11, 5 * 9 + 6 * 12,
+		7 * 7 + 8 * 10, 7 * 8 + 8 * 11, 7 * 9 + 8 * 12,
+		2 * 80 + 3 * 110, 2 * 90 + 3 * 120, 2 * 10 + 3 * 13,
+		4 * 80 + 5 * 110, 4 * 90 + 5 * 120, 4 * 10 + 5 * 13,
+		6 * 80 + 7 * 110, 6 * 90 + 7 * 120, 6 * 10 + 7 * 13,
+		8 * 80 + 9 * 110, 8 * 90 + 9 * 120, 8 * 10 + 9 * 13,
+	};
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 2, 4, 3), 0);
+	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
 }
 
 TEST_CASE("mps forward gemm")
