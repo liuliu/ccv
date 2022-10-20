@@ -357,7 +357,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	int64_t best_measured = -1;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
-	int flag = 0;
+	int flag = 0, autotune_available_1 = 0; // This is only applicable if we have only one backend.
 	for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
 	{
 		const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
@@ -366,76 +366,89 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
 			(api_registry.tensor_formats & tensor_formats) == tensor_formats &&
 			(api_registry.tensor_datatypes & tensor_datatypes) == tensor_datatypes)
+		{
+			if (api_registry.autotune)
+				autotune_available_1 = 1;
 			if ((++flag) >= 2) // If we have more than 2 suitable backend, we can do this now.
 				break;
+		}
 	}
 	if (flag == 0)
 		return cmd;
 	_ccv_nnc_cmd_set_device_id(inputs, input_size, outputs, output_size, stream_context);
 	// Allocate inputs / outputs and fill them in.
-	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)cccalloc((input_size + output_size) * 3, sizeof(ccv_nnc_tensor_t*));
-	ccv_nnc_tensor_t** const copy_outputs = copy_inputs + input_size;
-	ccv_nnc_tensor_t** const allocated_inputs = copy_outputs + output_size;
-	ccv_nnc_tensor_t** const allocated_outputs = allocated_inputs + input_size;
-	ccv_nnc_tensor_view_t** const allocated_input_views = (ccv_nnc_tensor_view_t**)(allocated_outputs + output_size);
-	ccv_nnc_tensor_view_t** const allocated_output_views = allocated_input_views + input_size;
-	int stride[CCV_NNC_MAX_DIM_ALLOC];
-	for (i = 0; i < output_size; i++)
-		if (outputs[i])
-		{
-			for (j = 0; j < input_size; j++)
-				if (inputs[j])
-				{
-					if (outputs[i] == inputs[j])
-					{
-						if (!copy_inputs[j])
-						{
-							allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
-							if (CCV_IS_TENSOR_VIEW(inputs[j]))
-							{
-								ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
-								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
-							} else
-								copy_inputs[j] = allocated_inputs[j];
-						}
-						copy_outputs[i] = copy_inputs[j];
-						break;
-					} else if (outputs[i]->data.u8 == inputs[j]->data.u8 &&
-						ccv_nnc_tensor_count(outputs[i]->info) == ccv_nnc_tensor_count(inputs[j]->info)) {
-						if (!copy_inputs[j])
-						{
-							allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
-							if (CCV_IS_TENSOR_VIEW(inputs[j]))
-							{
-								ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
-								copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
-							} else
-								copy_inputs[j] = allocated_inputs[j];
-						}
-						allocated_outputs[i] = ccv_nnc_tensor_new(copy_inputs[j]->data.u8, outputs[i]->info, 0);
-						if (CCV_IS_TENSOR_VIEW(outputs[i]))
-						{
-								ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
-							copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
-						} else
-							copy_outputs[i] = allocated_outputs[i];
-						break;
-					}
-				}
-			if (!copy_outputs[i])
+	ccv_nnc_tensor_t** copy_inputs;
+	ccv_nnc_tensor_t** copy_outputs;
+	ccv_nnc_tensor_t** allocated_inputs;
+	ccv_nnc_tensor_t** allocated_outputs;
+	ccv_nnc_tensor_view_t** allocated_input_views;
+	ccv_nnc_tensor_view_t** allocated_output_views;
+	if (flag > 1 || autotune_available_1)
+	{
+		copy_inputs = (ccv_nnc_tensor_t**)cccalloc((input_size + output_size) * 3, sizeof(ccv_nnc_tensor_t*));
+		copy_outputs = copy_inputs + input_size;
+		allocated_inputs = copy_outputs + output_size;
+		allocated_outputs = allocated_inputs + input_size;
+		allocated_input_views = (ccv_nnc_tensor_view_t**)(allocated_outputs + output_size);
+		allocated_output_views = allocated_input_views + input_size;
+		int stride[CCV_NNC_MAX_DIM_ALLOC];
+		for (i = 0; i < output_size; i++)
+			if (outputs[i])
 			{
-				allocated_outputs[i] = ccv_nnc_tensor_new(0, outputs[i]->info, 0);
-				if (CCV_IS_TENSOR_VIEW(outputs[i]))
+				for (j = 0; j < input_size; j++)
+					if (inputs[j])
+					{
+						if (outputs[i] == inputs[j])
+						{
+							if (!copy_inputs[j])
+							{
+								allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
+								if (CCV_IS_TENSOR_VIEW(inputs[j]))
+								{
+									ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
+									copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
+								} else
+									copy_inputs[j] = allocated_inputs[j];
+							}
+							copy_outputs[i] = copy_inputs[j];
+							break;
+						} else if (outputs[i]->data.u8 == inputs[j]->data.u8 &&
+							ccv_nnc_tensor_count(outputs[i]->info) == ccv_nnc_tensor_count(inputs[j]->info)) {
+							if (!copy_inputs[j])
+							{
+								allocated_inputs[j] = ccv_nnc_tensor_new(0, inputs[j]->info, 0);
+								if (CCV_IS_TENSOR_VIEW(inputs[j]))
+								{
+									ccv_nnc_tensor_get_stride(inputs[j]->info.dim, stride);
+									copy_inputs[j] = (ccv_nnc_tensor_t*)(allocated_input_views[j] = ccv_nnc_tensor_view_new(allocated_inputs[j], inputs[j]->info, DIM_ALLOC(), stride));
+								} else
+									copy_inputs[j] = allocated_inputs[j];
+							}
+							allocated_outputs[i] = ccv_nnc_tensor_new(copy_inputs[j]->data.u8, outputs[i]->info, 0);
+							if (CCV_IS_TENSOR_VIEW(outputs[i]))
+							{
+									ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
+								copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
+							} else
+								copy_outputs[i] = allocated_outputs[i];
+							break;
+						}
+					}
+				if (!copy_outputs[i])
 				{
-					ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
-					copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
-				} else
-					copy_outputs[i] = allocated_outputs[i];
+					allocated_outputs[i] = ccv_nnc_tensor_new(0, outputs[i]->info, 0);
+					if (CCV_IS_TENSOR_VIEW(outputs[i]))
+					{
+						ccv_nnc_tensor_get_stride(outputs[i]->info.dim, stride);
+						copy_outputs[i] = (ccv_nnc_tensor_t*)(allocated_output_views[i] = ccv_nnc_tensor_view_new(allocated_outputs[i], outputs[i]->info, DIM_ALLOC(), stride));
+					} else
+						copy_outputs[i] = allocated_outputs[i];
+				}
 			}
-		}
-	for (i = 0; i < input_size; i++)
-		if (inputs[i] && !copy_inputs[i])
-			copy_inputs[i] = inputs[i];
+		for (i = 0; i < input_size; i++)
+			if (inputs[i] && !copy_inputs[i])
+				copy_inputs[i] = inputs[i];
+	}
 	if (flag == 1)
 	{
 		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
@@ -460,21 +473,24 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 				break;
 			}
 		}
-		for (i = 0; i < input_size; i++)
+		if (autotune_available_1)
 		{
-			if (allocated_inputs[i])
-				ccv_nnc_tensor_free(allocated_inputs[i]);
-			if (allocated_input_views[i])
-				ccv_nnc_tensor_view_free(allocated_input_views[i]);
+			for (i = 0; i < input_size; i++)
+			{
+				if (allocated_inputs[i])
+					ccv_nnc_tensor_free(allocated_inputs[i]);
+				if (allocated_input_views[i])
+					ccv_nnc_tensor_view_free(allocated_input_views[i]);
+			}
+			for (i = 0; i < output_size; i++)
+			{
+				if (allocated_outputs[i])
+					ccv_nnc_tensor_free(allocated_outputs[i]);
+				if (allocated_output_views[i])
+					ccv_nnc_tensor_view_free(allocated_output_views[i]);
+			}
+			ccfree(copy_inputs);
 		}
-		for (i = 0; i < output_size; i++)
-		{
-			if (allocated_outputs[i])
-				ccv_nnc_tensor_free(allocated_outputs[i]);
-			if (allocated_output_views[i])
-				ccv_nnc_tensor_view_free(allocated_output_views[i]);
-		}
-		ccfree(copy_inputs);
 		return tuned_cmd;
 	}
 	// We need to have trial loop through all the data.
