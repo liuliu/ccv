@@ -99,8 +99,6 @@ void mpunregmp(const int slot)
 	pthread_mutex_unlock(&g_mp_mutex);
 }
 
-static void mps_graph_cache_pressure(void);
-
 static void mptrigmp(void)
 {
 	ccv_nnc_synchronize_stream_context(0);
@@ -113,7 +111,7 @@ static void mptrigmp(void)
 			mp->func(0, mp->ctx);
 	}
 	pthread_mutex_unlock(&g_mp_mutex);
-	mps_graph_cache_pressure();
+	ccv_nnc_mps_clear_graph_executable_cache();
 }
 
 void* mpmalloc(int device, size_t size)
@@ -307,7 +305,7 @@ static inline void ccv_nnc_mps_graph_key_free(ccv_nnc_mps_graph_key_t key)
 		ccfree(key.inputs);
 }
 
-static void mps_graph_cache_pressure(void)
+void ccv_nnc_mps_clear_graph_executable_cache(void)
 {
 	if (!g_graph_executable_cache)
 		return;
@@ -319,6 +317,7 @@ static void mps_graph_cache_pressure(void)
 		ccv_nnc_mps_graph_key_free(kh_key(g_graph_executable_cache, k));
 		if (kh_val(g_graph_executable_cache, k).indices)
 			ccfree(kh_val(g_graph_executable_cache, k).indices);
+		[kh_val(g_graph_executable_cache, k).exec release];
 		kh_del(graph_executable_cache, g_graph_executable_cache, k);
 	}
 }
