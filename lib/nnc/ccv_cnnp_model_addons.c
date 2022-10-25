@@ -794,7 +794,12 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	ccv_nnc_tensor_param_t bias_params = params;
 	memset(bias_params.dim, 0, sizeof(bias_params.dim));
 	bias_params.dim[0] = self->count;
-	const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	ccv_nnc_cmd_t cmd = {0};
+	cmd.cmd = CCV_NNC_GEMM_FORWARD;
+	cmd.info.blas.a[0] = 1;
+	cmd.info.blas.a[1] = 1;
+	cmd.info.blas.transpose_b[0] = 0;
+	cmd.info.blas.transpose_b[1] = 1;
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 			params,
@@ -1526,7 +1531,7 @@ ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NN
 	model_layer_norm->bias.graph = 0;
 	model_layer_norm->params.lnorm.epsilon = epsilon;
 	model_layer_norm->params.lnorm.count = axis_count;
-	memcpy(model_layer_norm->params.lnorm.axis, axis, sizeof(model_layer_norm->params.lnorm.axis));
+	memcpy(model_layer_norm->params.lnorm.axis, axis, sizeof(int) * axis_count);
 	return (ccv_cnnp_model_t*)model_layer_norm;
 }
 
@@ -1620,7 +1625,7 @@ ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, co
 	model_group_norm->params.gnorm.groups = groups;
 	model_group_norm->params.gnorm.epsilon = epsilon;
 	model_group_norm->params.gnorm.reduce_count = axis_count;
-	memcpy(model_group_norm->params.gnorm.reduce_axis, reduce_axis, sizeof(model_group_norm->params.gnorm.reduce_axis));
+	memcpy(model_group_norm->params.gnorm.reduce_axis, reduce_axis, sizeof(int) * axis_count);
 	return (ccv_cnnp_model_t*)model_group_norm;
 }
 
