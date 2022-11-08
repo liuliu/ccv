@@ -31,8 +31,9 @@ MPSGraphDevice* _ccv_nnc_default_mps_device(void)
 }
 
 static os_unfair_lock queue_lock; 
-#define OLD_COMMAND_BUFFER_SIZE (8)
-static id<MTLCommandBuffer> old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE];
+#define OLD_MAX_COMMAND_BUFFER_SIZE (32)
+#define OLD_LIMITED_COMMAND_BUFFER_SIZE (8)
+static id<MTLCommandBuffer> old_last_command_buffers[OLD_MAX_COMMAND_BUFFER_SIZE];
 static id<MTLCommandBuffer> last_command_buffer;
 
 static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
@@ -434,13 +435,16 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	return stream_context;
 }
 
+static int enable_unbounded_command_buffers = 1;
+
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	os_unfair_lock_lock(&queue_lock);
 	id<MTLCommandBuffer> command_buffer = last_command_buffer;
 	last_command_buffer = nil;
 	int i;
-	for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+	const int buffer_size = enable_unbounded_command_buffers ? OLD_MAX_COMMAND_BUFFER_SIZE : OLD_LIMITED_COMMAND_BUFFER_SIZE;
+	for (i = 0; i < buffer_size; i++)
 	{
 		[old_last_command_buffers[i] release];
 		old_last_command_buffers[i] = nil;
@@ -569,8 +573,6 @@ MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_conte
 	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 }
 
-static int enable_unbounded_command_buffers = 1;
-
 void ccv_nnc_mps_unbounded_command_buffers(int state)
 {
 	enable_unbounded_command_buffers = state;
@@ -579,13 +581,14 @@ void ccv_nnc_mps_unbounded_command_buffers(int state)
 void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer)
 {
 	int i;
+	const int buffer_size = enable_unbounded_command_buffers ? OLD_MAX_COMMAND_BUFFER_SIZE : OLD_LIMITED_COMMAND_BUFFER_SIZE;
 	if (!stream_context)
 	{
 		[command_buffer commit];
 		os_unfair_lock_lock(&queue_lock);
 		[last_command_buffer release];
 		last_command_buffer = nil;
-		for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+		for (i = 0; i < buffer_size; i++)
 		{
 			[old_last_command_buffers[i] release];
 			old_last_command_buffers[i] = nil;
@@ -596,12 +599,12 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 	}
 	os_unfair_lock_lock(&queue_lock);
 	id<MTLCommandBuffer> old_last_command_buffer;
-	if (OLD_COMMAND_BUFFER_SIZE > 0)
+	if (buffer_size > 0)
 	{
 		old_last_command_buffer = old_last_command_buffers[0];
-		for (i = 0; i < OLD_COMMAND_BUFFER_SIZE - 1; i++)
+		for (i = 0; i < buffer_size - 1; i++)
 			old_last_command_buffers[i] = old_last_command_buffers[i + 1];
-		old_last_command_buffers[OLD_COMMAND_BUFFER_SIZE - 1] = last_command_buffer;
+		old_last_command_buffers[buffer_size - 1] = last_command_buffer;
 	} else
 		old_last_command_buffer = [command_buffer.commandBuffer retain];
 	last_command_buffer = [command_buffer.commandBuffer retain];
@@ -614,7 +617,7 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 			last_command_buffer = nil;
 		} else {
 			int i;
-			for (i = 0; i < OLD_COMMAND_BUFFER_SIZE; i++)
+			for (i = 0; i < buffer_size; i++)
 				if (buffer == old_last_command_buffers[i])
 				{
 					[old_last_command_buffers[i] release];
