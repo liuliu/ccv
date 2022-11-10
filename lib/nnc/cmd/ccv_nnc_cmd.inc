@@ -529,6 +529,7 @@ void _register_command_CCV_NNC_TRANSPOSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv
 void _register_command_CCV_NNC_TRANSPOSE_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_DATATYPE_CONVERSION_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_DATATYPE_CONVERSION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_EWDIV_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_EWEXP_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -913,6 +914,7 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_TRANSPOSE_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[25].backends[6]));
 	_register_command_CCV_NNC_DATATYPE_CONVERSION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[108].backends[6]));
 	_register_command_CCV_NNC_DATATYPE_CONVERSION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[109].backends[6]));
+	_register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[100].backends[6]));
 	_register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[78].backends[6]));
 	_register_command_CCV_NNC_EWDIV_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[112].backends[6]));
 	_register_command_CCV_NNC_EWEXP_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[72].backends[6]));

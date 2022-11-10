@@ -88,7 +88,7 @@ TEST_CASE("reduce sum backward")
 
 TEST_CASE("reduce mean forward")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
 	ha->data.f32[0] = 1;
@@ -114,7 +114,7 @@ TEST_CASE("reduce mean forward")
 
 TEST_CASE("reduce mean forward noop")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 1), 0);
 	ha->data.f32[0] = 1;
