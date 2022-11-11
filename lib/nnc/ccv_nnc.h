@@ -205,6 +205,9 @@ typedef struct {
 			float max; /**< [histogram.min] The maximal number, for even or logarithmic. */
 			float rate; /**< [histogram.ratio] The rate from min to max, only applied to logarithmic. */
 		} histogram;
+		struct {
+			float negative_slope; /**< [leaky_relu.negative_slop] The negative slope to be applied when activation < 0. */
+		} leaky_relu;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
