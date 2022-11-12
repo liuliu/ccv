@@ -38,5 +38,5 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_LEAKY_RELU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nn
 	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_relu_forw;
+	registry->exec = _ccv_nnc_leaky_relu_forw;
 }
