@@ -25,6 +25,7 @@ static int _ccv_nnc_reduce_mean_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		if (noop)
 		{
 			MPSGraph* graph = [MPSGraph new];
+			graph.options = MPSGraphOptionsSynchronizeResults;
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, &atv, atv.info.dim, atv.stride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(&atv, atv.info.dim, atv.stride);

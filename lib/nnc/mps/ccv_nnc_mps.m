@@ -332,6 +332,7 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 	if (ret != 0)
 	{
 		MPSGraph* graph = [MPSGraph new];
+		graph.options = MPSGraphOptionsSynchronizeResults;
 		NSMutableArray<MPSGraphTensor*> *inputTensors = [NSMutableArray new];
 		NSMutableArray<MPSGraphShapedType*>* inputShapedTypes = [NSMutableArray new];
 		NSMutableArray<MPSGraphTensor*>* targetTensors = [NSMutableArray new];
@@ -342,6 +343,7 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel1;
 		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
 		MPSGraphExecutable* executable = [[graph compileWithDevice:_ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
+		executable.options = MPSGraphOptionsSynchronizeResults;
 		[compilationDescriptor release];
 		[graph release];
 		kh_val(g_graph_executable_cache, k).exec = executable;
@@ -629,8 +631,7 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 	}];
 	[command_buffer commit];
 	// Wait if we need to bound how many in-flight command buffers there are. This helps memory usage.
-	if (!enable_unbounded_command_buffers)
-		[old_last_command_buffer waitUntilCompleted];
+	[old_last_command_buffer waitUntilCompleted];
 	[old_last_command_buffer release];
 }
 

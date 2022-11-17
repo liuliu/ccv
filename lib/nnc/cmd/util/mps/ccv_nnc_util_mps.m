@@ -216,6 +216,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[i]);
 			MPSGraph *graph = [MPSGraph new];
+			graph.options = MPSGraphOptionsSynchronizeResults;
 			int adim[CCV_NNC_MAX_DIM_ALLOC];
 			int astride[CCV_NNC_MAX_DIM_ALLOC];
 			int bdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -346,6 +347,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			assert(a->info.format == b->info.format);
 			assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
 			MPSGraph *graph = [MPSGraph new];
+			graph.options = MPSGraphOptionsSynchronizeResults;
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);

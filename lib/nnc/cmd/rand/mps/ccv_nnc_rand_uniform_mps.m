@@ -17,6 +17,7 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
 			MPSGraph *graph = [MPSGraph new];
+			graph.options = MPSGraphOptionsSynchronizeResults;
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)

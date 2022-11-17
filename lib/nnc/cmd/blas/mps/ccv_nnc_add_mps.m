@@ -27,6 +27,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			if (p == 1)
 			{
 				MPSGraph* graph = [MPSGraph new];
+				graph.options = MPSGraphOptionsSynchronizeResults;
 				MPSGraphTensor* mps_input_a;
 				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
