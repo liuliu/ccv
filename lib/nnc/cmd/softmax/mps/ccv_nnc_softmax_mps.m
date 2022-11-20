@@ -30,7 +30,6 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			const size_t b_row_bytes = (CCV_IS_TENSOR_VIEW(b) && b_nd == 2) ? b->stride[0] : CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * b_cols;
 			MPSMatrix* resultMatrix = [[MPSMatrix alloc] initWithBuffer:b_buffer offset:b->dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:b_rows columns:b_cols rowBytes:b_row_bytes dataType:ccv_nnc_mps_datatype(b->info.datatype)]];
 			MPSMatrixSoftMax* softmax = [[MPSMatrixSoftMax alloc] initWithDevice:ccv_nnc_default_device()];
-			softmax.options = MPSKernelOptionsAllowReducedPrecision;
 			[inputMatrix synchronizeOnCommandBuffer:command_buffer];
 			[softmax encodeToCommandBuffer:command_buffer inputMatrix:inputMatrix resultMatrix:resultMatrix];
 			[resultMatrix synchronizeOnCommandBuffer:command_buffer];

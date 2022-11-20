@@ -130,7 +130,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			id<MTLBuffer> b_buffer = mpgetbuffer((ccv_nnc_tensor_t*)b);
 			MPSMatrix* resultMatrix = [[MPSMatrix alloc] initWithBuffer:b_buffer offset:b->dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:b_rows columns:b_cols matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * b_rows_inc matrixBytes:CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * b_batch_inc dataType:ccv_nnc_mps_datatype(b->info.datatype)]];
 			MPSMatrixMultiplication* matrixMultiplication = [[MPSMatrixMultiplication alloc] initWithDevice:ccv_nnc_default_device() transposeLeft:(is_transpose_a ? YES : NO) transposeRight:(is_transpose_w ? YES : NO) resultRows:b_rows resultColumns:b_cols interiorColumns:a_cols alpha:1 beta:0];
-			matrixMultiplication.options = MPSKernelOptionsAllowReducedPrecision;
 			[leftMatrix synchronizeOnCommandBuffer:command_buffer];
 			[rightMatrix synchronizeOnCommandBuffer:command_buffer];
 			[matrixMultiplication encodeToCommandBuffer:command_buffer leftMatrix:leftMatrix rightMatrix:rightMatrix resultMatrix:resultMatrix];
