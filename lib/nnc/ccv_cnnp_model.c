@@ -17,6 +17,8 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	model_io->visit = 0;
 	model_io->model = model;
 	model_io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
+	model_io->dependencies = 0;
+	model_io->dependents = 0;
 	model_io->outgoings = 0;
 	model_io->outputs = (ccv_nnc_tensor_symbol_t*)(model_io + 1);
 	ccv_array_push(model->io, &model_io);
@@ -30,6 +32,26 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 		ccv_array_push(inputs[i]->outgoings, &model_io);
 	}
 	return model_io;
+}
+
+void ccv_cnnp_model_add_dependencies(ccv_cnnp_model_io_t model_io, const ccv_cnnp_model_io_t* const dependencies, const int dependency_size)
+{
+	assert(dependency_size > 0);
+	if (!model_io->dependencies)
+		model_io->dependencies = ccv_array_new(sizeof(ccv_cnnp_model_io_t), dependency_size, 0);
+	int i, j;
+	for (i = 0; i < dependency_size; i++)
+	{
+		int flag = 0;
+		// Check if it is already exist or not.
+		for (j = 0; !flag && j < model_io->dependencies->rnum; j++)
+			if (*(ccv_cnnp_model_io_t*)ccv_array_get(model_io->dependencies, j) == dependencies[i])
+				flag = 1;
+		if (flag)
+			continue;
+		ccv_array_push(model_io->dependencies, dependencies + i);
+		++dependencies[i]->dependents;
+	}
 }
 
 int ccv_cnnp_model_output_size(const ccv_cnnp_model_t* const model)
@@ -47,6 +69,8 @@ ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, con
 	model_io->visit = 0;
 	model_io->model = model;
 	model_io->outputs = 0;
+	model_io->dependencies = 0;
+	model_io->dependents = 0;
 	model_io->incomings = 0;
 	model_io->outgoings = 0;
 	ccv_array_push(model->io, &model_io);
@@ -2515,6 +2539,8 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 				ccv_array_free(model_io->outgoings);
 			if (model_io->incomings)
 				ccv_array_free(model_io->incomings);
+			if (model_io->dependencies)
+				ccv_array_free(model_io->dependencies);
 			ccfree(model_io);
 		}
 		ccv_array_free(model->io);

@@ -179,6 +179,14 @@ static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 		ccv_cnnp_model_free((ccv_cnnp_model_t*)self->sequence[i]);
 }
 
+KHASH_MAP_INIT_INT64(io_node, ccv_array_t*)
+
+static void _ccv_cnnp_functional_model_build_node_new(void* context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
+{
+		ccv_array_t* const nodes = (ccv_array_t*)context;
+		ccv_array_push(nodes, &symbol);
+}
+
 static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
@@ -189,6 +197,7 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 		self->sequence[i]->outputs[0] = self->sequence[i]->model->outputs[0] = inputs[i]; // Assigning the output symbol of input layer to be the input symbol.
 	ccv_array_t* input_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 1, 0);
 	ccv_array_t* parameter_indices = 0;
+	khash_t(io_node)* io_node_map = kh_init(io_node);
 	for (i = self->super.input_size; i < self->sequence_size; i++)
 	{
 		ccv_cnnp_model_t* const sub_model = self->sequence[i]->model;
@@ -226,10 +235,48 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 			}
 		}
 		// Go through each sub model to build the graph.
+		ccv_array_t* nodes;
+		const ccv_array_t* const dependencies = self->sequence[i]->dependencies;
+		if ((dependencies && dependencies->rnum > 0) || self->sequence[i]->dependents > 0)
+		{
+			int ret;
+			khiter_t k = kh_put(io_node, io_node_map, (uint64_t)(uintptr_t)self->sequence[i], &ret);
+			if (ret != 0)
+				nodes = kh_val(io_node_map, k) = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
+			else
+				nodes = kh_val(io_node_map, k);
+			ccv_nnc_graph_exec_symbol_new_hook(graph, _ccv_cnnp_functional_model_build_node_new, nodes);
+		}
 		sub_model->data = self->super.data;
 		ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, self->sequence[i]->outputs, sub_model->output_size);
+		if ((dependencies && dependencies->rnum > 0) || self->sequence[i]->dependents > 0)
+		{
+			ccv_nnc_graph_exec_symbol_new_hook(graph, 0, 0);
+			if (dependencies)
+				for (j = 0; j < dependencies->rnum; j++)
+				{
+					const ccv_cnnp_model_io_t dependency = *(ccv_cnnp_model_io_t*)ccv_array_get(dependencies, j);
+					khiter_t k = kh_get(io_node, io_node_map, (uint64_t)(uintptr_t)dependency);
+					if (k == kh_end(io_node_map))
+						continue;
+					const ccv_array_t* const dependency_nodes = kh_val(io_node_map, k);
+					int x, y;
+					for (y = 0; y < dependency_nodes->rnum; y++)
+						for (x = 0; x < nodes->rnum; x++)
+							ccv_nnc_graph_exec_symbol_concat(graph, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dependency_nodes, y), *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(nodes, x));
+				}
+		}
 		sub_model->data = 0;
 	}
+	khiter_t it;
+	for (it = kh_begin(io_node_map); it != kh_end(io_node_map); ++it)
+	{
+		if (!kh_exist(io_node_map, it))
+			continue;
+		ccv_array_t* const nodes = kh_val(io_node_map, it);
+		ccv_array_free(nodes);
+	}
+	kh_destroy(io_node, io_node_map);
 	ccv_array_free(input_symbols);
 	if (parameter_indices)
 		ccv_array_free(parameter_indices);
@@ -324,6 +371,8 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 		model_io->param_sel = 0;
 		model_io->visit = 0;
 		model_io->model = model_copy;
+		model_io->dependencies = 0;
+		model_io->dependents = 0;
 		model_io->incomings = 0;
 		model_io->outgoings = 0;
 		model_io->outputs = (ccv_nnc_tensor_symbol_t*)(model_io + 1);
@@ -355,6 +404,8 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 						model_io->visit = 0;
 						model_io->model = model_copy;
 						model_io->incomings = 0;
+						model_io->dependencies = 0;
+						model_io->dependents = 0;
 						model_io->outgoings = 0;
 						model_io->outputs = 0;
 						if (!model_copy->io)
@@ -396,6 +447,18 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 				ccv_array_push(model_io_copy->incomings, &input_io);
 			}
 		}
+		if (model_io->dependencies)
+		{
+			model_io_copy->dependencies = ccv_array_new(sizeof(ccv_cnnp_model_io_t), model_io->dependencies->rnum, 0);
+			for (j = 0; j < model_io->dependencies->rnum; j++)
+			{
+				khiter_t k = kh_get(model_io, model_io_map, (uint64_t)(uintptr_t)(*(ccv_cnnp_model_io_t*)ccv_array_get(model_io->dependencies, j)));
+				assert(k != kh_end(model_io_map));
+				ccv_cnnp_model_io_t input_io = kh_val(model_io_map, k);
+				ccv_array_push(model_io_copy->dependencies, &input_io);
+			}
+		}
+		model_io_copy->dependents = model_io->dependents;
 		if (model_io->outgoings)
 		{
 			model_io_copy->outgoings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), model_io->outgoings->rnum, 0);
@@ -448,6 +511,20 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 					input->visit = input->visit == 2 ? 3 : 1;
 					ccv_array_push(reverse_top, &input);
 				}
+			// Similar for dependencies.
+			if (output->dependencies && !CCV_CNNP_IS_MODEL_PARAMETER(output))
+				for (k = 0; k < output->dependencies->rnum; k++)
+				{
+					const ccv_cnnp_model_io_t dependency = *(ccv_cnnp_model_io_t*)ccv_array_get(output->dependencies, k);
+					// If it is an input or parameter, skip.
+					if (CCV_CNNP_IS_MODEL_INPUT(dependency->model) || CCV_CNNP_IS_MODEL_PARAMETER(dependency))
+						continue;
+					if (dependency->visit == 1 || dependency->visit == 3) // Visited, skip.
+						continue;
+					// If this is an output, we need to remove it from the output array. Otherwise mark it as visited.
+					dependency->visit = dependency->visit == 2 ? 3 : 1;
+					ccv_array_push(reverse_top, &dependency);
+				}
 		}
 		for (j = 1; j < reverse_top->rnum; j++)
 		{
@@ -480,13 +557,30 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 			{
 				const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(output->incomings, j);
 				++input->visit; // Mark it as visited.
-				if (input->visit != input->outgoings->rnum) // Not all dependencies visited.
+				if (input->visit != input->outgoings->rnum + input->dependents) // Not all dependencies visited.
 					continue;
 				if (!CCV_CNNP_IS_MODEL_INPUT(input->model) && !CCV_CNNP_IS_MODEL_PARAMETER(input))
 					ccv_array_push(reverse_top, &input);
 				else if (CCV_CNNP_IS_MODEL_INPUT(input->model)) {
 					for (k = 0; k < input_size; k++)
 						if (input == inputs[k])
+							break;
+					assert(k < input_size);
+					input_bitmask[k >> 6] |= ((uint64_t)1 << (k & 63));
+				}
+			}
+		if (output->dependencies && !CCV_CNNP_IS_MODEL_PARAMETER(output))
+			for (j = 0; j < output->dependencies->rnum; j++)
+			{
+				const ccv_cnnp_model_io_t dependency = *(ccv_cnnp_model_io_t*)ccv_array_get(output->dependencies, j);
+				++dependency->visit; // Mark it as visited.
+				if (dependency->visit != dependency->outgoings->rnum + dependency->dependents) // Not all dependencies visited.
+					continue;
+				if (!CCV_CNNP_IS_MODEL_INPUT(dependency->model) && !CCV_CNNP_IS_MODEL_PARAMETER(dependency))
+					ccv_array_push(reverse_top, &dependency);
+				else if (CCV_CNNP_IS_MODEL_INPUT(dependency->model)) {
+					for (k = 0; k < input_size; k++)
+						if (dependency == inputs[k])
 							break;
 					assert(k < input_size);
 					input_bitmask[k >> 6] |= ((uint64_t)1 << (k & 63));
@@ -551,6 +645,8 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	input_io->param_sel = 0;
 	input_io->visit = 0;
 	input_io->incomings = 0;
+	input_io->dependencies = 0;
+	input_io->dependents = 0;
 	input_io->outgoings = 0;
 	input_io->model = input;
 	input_io->outputs = (ccv_nnc_tensor_symbol_t*)(input_io + 1);

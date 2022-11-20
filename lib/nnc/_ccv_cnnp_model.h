@@ -38,6 +38,8 @@ struct ccv_cnnp_model_io_s {
 	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
+	ccv_array_t* dependencies; // Array of ccv_cnnp_model_io_t.
+	int dependents; // Number of dependents.
 	ccv_array_t* outgoings; // Array of ccv_cnnp_model_io_t.
 	ccv_nnc_tensor_symbol_t* outputs; // This is different from the outputs from a model. A model could be reused, causing the outputs on that model to be the most recent one. This keeps the outputs of each.
 };

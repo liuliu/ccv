@@ -3373,6 +3373,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(void);
  * @return A ccv_cnnp_model_io_t that represents the output of the given model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
+/**
+ * This method adds non-functional dependencies for a model IO. "Non-functional dependencies" means
+ * their outputs are not used for this IO, however, their existence establishes a partial ordering
+ * for the execution. In that way, they act as "inputs" but not functional.
+ * @param model_io A model IO for which we will add additional non-functional dependencies.
+ * @param dependencies The set of dependencies.
+ * @param dependency_size The size of dependencies array.
+ */
+void ccv_cnnp_model_add_dependencies(ccv_cnnp_model_io_t model_io, const ccv_cnnp_model_io_t* const dependencies, const int dependency_size);
 enum {
 	/* Select only weights, no bias terms. */
 	CCV_CNNP_PARAMETER_SELECT_WEIGHT = 0,
