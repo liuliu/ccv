@@ -586,6 +586,7 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 	const int buffer_size = enable_unbounded_command_buffers ? OLD_MAX_COMMAND_BUFFER_SIZE : OLD_LIMITED_COMMAND_BUFFER_SIZE;
 	if (!stream_context)
 	{
+		id<MTLCommandBuffer> committed_command_buffer = [command_buffer.commandBuffer retain];
 		[command_buffer commit];
 		os_unfair_lock_lock(&queue_lock);
 		[last_command_buffer release];
@@ -596,7 +597,8 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 			old_last_command_buffers[i] = nil;
 		}
 		os_unfair_lock_unlock(&queue_lock);
-		[command_buffer waitUntilCompleted];
+		[committed_command_buffer waitUntilCompleted];
+		[committed_command_buffer release];
 		return;
 	}
 	os_unfair_lock_lock(&queue_lock);
