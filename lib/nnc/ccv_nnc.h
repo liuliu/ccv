@@ -3937,6 +3937,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gelu(const int tanh, const char* const name);
 /**
+ * A leaky ReLU activation layer model.
+ * @param negative_slope The coefficient to be applied when it is negative.
+ * @param name The unique name of the model.
+ * @return A leaky ReLU activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_leaky_relu(const float negative_slope, const char* const name);
+/**
  * A softmax activation layer model.
  * @param name The unique name of the model.
  * @return A softmax activation layer model.
