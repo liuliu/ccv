@@ -171,7 +171,7 @@ void* mpobjcreate(void* ptr, off_t offset, size_t size)
 
 void mpobjmakealiasable(void* ptr)
 {
-	id<MTLBuffer> buffer = (id<MTLBuffer>)buffer;
+	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
 	[buffer makeAliasable];
 }
 

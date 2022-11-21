@@ -1132,6 +1132,7 @@ static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_m
 				.obj = obj
 			};
 			ccv_array_push(objs, &obj_track);
+			return obj;
 		}
 	}
 #endif
