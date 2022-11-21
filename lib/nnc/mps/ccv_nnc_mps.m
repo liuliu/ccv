@@ -115,17 +115,27 @@ static void mptrigmp(void)
 	ccv_nnc_mps_clear_graph_executable_cache();
 }
 
-void* mpmalloc(int device, size_t size)
+void* mpheapalloc(int device, size_t size)
 {
-	size_t aligned_size = ((size + PAGE_SIZE - 1) & -PAGE_SIZE);
-	void* ptr;
-	ccmemalign(&ptr, PAGE_SIZE, aligned_size);
-	return ptr;
+	MTLHeapDescriptor* descriptor = [MTLHeapDescriptor new];
+	descriptor.size = size;
+	descriptor.type = MTLHeapTypePlacement;
+	descriptor.cpuCacheMode = MTLCPUCacheModeWriteCombined;
+	id<MTLHeap> heap = [ccv_nnc_default_device() newHeapWithDescriptor:descriptor];
+	if (heap == nil)
+	{
+		mptrigmp();
+		heap = [ccv_nnc_default_device() newHeapWithDescriptor:descriptor];
+		assert(heap != nil);
+	}
+	[descriptor release];
+	return (void*)heap;
 }
 
-void mpfree(int device, void* ptr)
+void mpheapfree(int device, void* ptr)
 {
-	ccfree(ptr);
+	id<MTLHeap> heap = (id<MTLHeap>)ptr;
+	[heap release];
 }
 
 void* mpobjmalloc(int device, size_t size)
@@ -146,19 +156,23 @@ void mpobjfree(int device, void* ptr)
 	[buffer release];
 }
 
-void* mpobjcreate(void* ptr, size_t size)
+void* mpobjcreate(void* ptr, off_t offset, size_t size)
 {
-	unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)ptr & -PAGE_SIZE);
-	const off_t offset = (uintptr_t)ptr - (uintptr_t)aligned_ptr;
-	const size_t aligned_size = ((size + offset + PAGE_SIZE - 1) & -PAGE_SIZE);
-	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModeShared deallocator:nil];
+	id<MTLHeap> heap = (id<MTLHeap>)ptr;
+	id<MTLBuffer> buffer = [heap newBufferWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModeShared deallocator:nil];
+		buffer = [heap newBufferWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
 		assert(buffer != nil);
 	}
 	return buffer;
+}
+
+void mpobjmakealiasable(void* ptr)
+{
+	id<MTLBuffer> buffer = (id<MTLBuffer>)buffer;
+	[buffer makeAliasable];
 }
 
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
