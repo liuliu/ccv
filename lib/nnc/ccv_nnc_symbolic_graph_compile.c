@@ -1076,16 +1076,37 @@ typedef struct {
 	void* obj;
 } tensor_arena_obj_track_t;
 
-KHASH_MAP_INIT_INT64(obj_ptr, ccv_array_t*)
+typedef struct {
+	void* ptr;
+	off_t offset;
+	size_t size;
+} obj_ptr_key_t;
 
-static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_map, void* ptr, const off_t offset, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_arena_t* tensor_arena)
+static inline khint32_t _kh_obj_ptr_hash_func(const obj_ptr_key_t key)
+{
+	return ((uint64_t)(uintptr_t)key.ptr >> 4) + key.offset + key.size;
+}
+
+static inline int _kh_obj_ptr_hash_equal(const obj_ptr_key_t a, const obj_ptr_key_t b)
+{
+	return (a.ptr == b.ptr && a.offset == b.offset && a.size == b.size);
+}
+
+KHASH_INIT(obj_ptr, obj_ptr_key_t, void*, 1, _kh_obj_ptr_hash_func, _kh_obj_ptr_hash_equal)
+
+static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_map, void* ptr, const size_t total_size, const off_t offset, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_arena_t* tensor_arena)
 {
 #ifdef HAVE_MPS
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
 		int ret;
-		khiter_t k = kh_put(obj_ptr, obj_ptr_map, (uint64_t)(uintptr_t)ptr, &ret);
 		const size_t size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * ccv_nnc_tensor_count(params);
+		const obj_ptr_key_t key = {
+			.ptr = ptr,
+			.offset = offset,
+			.size = size,
+		};
+		khiter_t k = kh_put(obj_ptr, obj_ptr_map, key, &ret);
 		if (ret != 0)
 		{
 			void* obj = mpobjcreate(ptr, offset, size);
@@ -1097,43 +1118,10 @@ static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_m
 				.dispose = _ccv_nnc_tensor_arena_obj_dispose
 			};
 			ccv_array_push(tensor_arena->disposers, &disposer);
-			ccv_array_t* objs = ccv_array_new(sizeof(tensor_arena_obj_track_t), 1, 0);
-			tensor_arena_obj_track_t obj_track = {
-				.size = size,
-				.obj = obj
-			};
-			ccv_array_push(objs, &obj_track);
-			kh_val(obj_ptr_map, k) = objs;
+			kh_val(obj_ptr_map, k) = obj;
 			return obj;
-		} else {
-			int i;
-			ccv_array_t* objs = kh_val(obj_ptr_map, k);
-			for (i = 0; i < objs->rnum; i++)
-			{
-				const tensor_arena_obj_track_t* const obj_track = (const tensor_arena_obj_track_t*)ccv_array_get(objs, i);
-				if (obj_track->size == size)
-					return obj_track->obj;
-			}
-			if (objs->rnum == 1) // If we only have one, we haven't marked it as aliasable yet, do so.
-				mpobjmakealiasable(((tensor_arena_obj_track_t*)ccv_array_get(objs, 0))->obj);
-			// Cannot find any matching the size, create.
-			void* obj = mpobjcreate(ptr, offset, size);
-			mpobjmakealiasable(obj);
-			if (!tensor_arena->disposers)
-				tensor_arena->disposers = ccv_array_new(sizeof(ccv_nnc_arena_disposer_t), 1, 0);
-			ccv_nnc_arena_disposer_t disposer = {
-				.ptr = obj,
-				.userdata = 0,
-				.dispose = _ccv_nnc_tensor_arena_obj_dispose
-			};
-			ccv_array_push(tensor_arena->disposers, &disposer);
-			tensor_arena_obj_track_t obj_track = {
-				.size = size,
-				.obj = obj
-			};
-			ccv_array_push(objs, &obj_track);
-			return obj;
-		}
+		} else
+			return kh_val(obj_ptr_map, k);
 	}
 #endif
 	return ptr + offset;
@@ -1347,7 +1335,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
-				void* obj = _ccv_nnc_tensor_arena_obj_create(obj_ptr_map, tensor_arena->buffers[buffer_ref].ptr, offset, tensor_symbol_info[i].info, tensor_arena);
+				void* obj = _ccv_nnc_tensor_arena_obj_create(obj_ptr_map, tensor_arena->buffers[buffer_ref].ptr, tensor_arena->buffers[buffer_ref].size, offset, tensor_symbol_info[i].info, tensor_arena);
 				*tensor = ccv_nnc_tensor(obj, tensor_symbol_info[i].info, 0);
 				assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
 				// If we need to force broadcast, we need to wrap it in a multiview.
@@ -1368,14 +1356,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			}
 		}
 #ifdef HAVE_MPS
-	khiter_t it;
-	for (it = kh_begin(obj_ptr_map); it != kh_end(obj_ptr_map); ++it)
-	{
-		if (!kh_exist(obj_ptr_map, it))
-			continue;
-		ccv_array_t* const objs = kh_val(obj_ptr_map, it);
-		ccv_array_free(objs);
-	}
 	kh_destroy(obj_ptr, obj_ptr_map);
 #endif
 	// Handle binded tensors. First handle cases without aliases.

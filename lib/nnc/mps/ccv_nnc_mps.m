@@ -121,6 +121,7 @@ void* mpheapalloc(int device, size_t size)
 	descriptor.size = size;
 	descriptor.type = MTLHeapTypePlacement;
 	descriptor.cpuCacheMode = MTLCPUCacheModeWriteCombined;
+	descriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
 	id<MTLHeap> heap = [ccv_nnc_default_device() newHeapWithDescriptor:descriptor];
 	if (heap == nil)
 	{
@@ -159,20 +160,17 @@ void mpobjfree(int device, void* ptr)
 void* mpobjcreate(void* ptr, off_t offset, size_t size)
 {
 	id<MTLHeap> heap = (id<MTLHeap>)ptr;
-	id<MTLBuffer> buffer = [heap newBufferWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
+	MTLSizeAndAlign sizeAndAlign = [ccv_nnc_default_device() heapBufferSizeAndAlignWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate];
+	assert(offset % sizeAndAlign.align == 0);
+	id<MTLBuffer> buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [heap newBufferWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
+		buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
 		assert(buffer != nil);
 	}
-	return buffer;
-}
-
-void mpobjmakealiasable(void* ptr)
-{
-	id<MTLBuffer> buffer = (id<MTLBuffer>)ptr;
 	[buffer makeAliasable];
+	return buffer;
 }
 
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
