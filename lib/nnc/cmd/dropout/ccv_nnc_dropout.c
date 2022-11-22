@@ -11,7 +11,7 @@ static int _ccv_nnc_dropout_forw_bitmask(const int input_size, const int output_
 	return 0;
 }
 
-static int _ccv_nnc_xy_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_xy_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (input_idx == 0 && output_idx == 0)
 		return 1;

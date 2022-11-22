@@ -16,7 +16,7 @@ static int _ccv_nnc_batch_norm_forw_bitmask(const int input_size, const int outp
 	return 0;
 }
 
-static int _ccv_nnc_batch_norm_enforce_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_batch_norm_enforce_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (input_idx == 3 && output_idx == 1)
 		return 1;

@@ -4,7 +4,7 @@
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/ccv_nnc_easy.h"
 
-static int _ccv_nnc_same_pos_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_same_pos_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	// For cudnnOpTensor: "If the input tensor B is the same tensor as the destination tensor C, then the input tensor A also must be the same tensor as the destination tensor C."
 	return input_idx == output_idx;

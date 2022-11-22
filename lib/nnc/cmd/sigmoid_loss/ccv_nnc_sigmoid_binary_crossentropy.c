@@ -14,7 +14,7 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_forw_bitmask(const int input_siz
 	return 0;
 }
 
-static int _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_forw(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_forw(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return (input_idx == 0 && output_idx == 1);
 }
@@ -28,7 +28,7 @@ static int _ccv_nnc_sigmoid_binary_crossentropy_back_bitmask(const int input_siz
 	return 0;
 }
 
-static int _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_back(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_sigmoid_binary_crossentropy_allow_inplace_back(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (input_idx == 1 && output_idx == 0)
 		return 1;

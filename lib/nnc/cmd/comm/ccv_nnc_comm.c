@@ -2,7 +2,7 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_internal.h"
 
-static int _ccv_nnc_allreduce_allow_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_allreduce_allow_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return input_idx == output_idx;
 }
@@ -114,7 +114,7 @@ REGISTER_COMMAND(CCV_NNC_COMM_ALLREDUCE_BACKWARD)(ccv_nnc_cmd_registry_t* const 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_COMM_ALLREDUCE_BACKWARD)
 #define CMD_COMM_ALLREDUCE_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMM_ALLREDUCE_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 
-static int _ccv_nnc_arbitary_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_arbitary_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return 1;
 }
@@ -226,7 +226,7 @@ REGISTER_COMMAND(CCV_NNC_COMM_BROADCAST_BACKWARD)(ccv_nnc_cmd_registry_t* const 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_COMM_ALLREDUCE_BACKWARD)
 #define CMD_COMM_BROADCAST_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMM_BROADCAST_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 
-static int _ccv_nnc_first_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_first_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return input_idx == output_idx && input_idx == 0;
 }

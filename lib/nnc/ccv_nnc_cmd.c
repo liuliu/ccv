@@ -269,7 +269,7 @@ int ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, cons
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.allow_inplace)
-		return registry.allow_inplace(input_idx, input_size, output_idx, output_size);
+		return registry.allow_inplace(cmd.info, input_idx, input_size, output_idx, output_size);
 	return 0;
 }
 
@@ -280,7 +280,7 @@ int ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, co
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.enforce_inplace)
-		return registry.enforce_inplace(input_idx, input_size, output_idx, output_size);
+		return registry.enforce_inplace(cmd.info, input_idx, input_size, output_idx, output_size);
 	return 0;
 }
 
