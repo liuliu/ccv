@@ -57,6 +57,7 @@ typedef struct {
 	ccv_nnc_mps_graph_tensor_shape_t* outputs;
 } ccv_nnc_mps_graph_key_t;
 
+int ccv_nnc_is_a13_and_below(void);
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);

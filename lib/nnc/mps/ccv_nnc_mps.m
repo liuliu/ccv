@@ -3,12 +3,41 @@
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "3rdparty/khash/khash.h"
+#include <string.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
+#import <sys/utsname.h>
+
+int ccv_nnc_is_a13_and_below(void)
+{
+	static dispatch_once_t once;
+	static int is_a13_and_below;
+	dispatch_once(&once, ^{
+		struct utsname info;
+		uname(&info);
+		const size_t len = strnlen(info.machine, sizeof(info.machine));
+		if (len >= 9) // Compare against iPhone model.
+		{
+			if (memcmp(info.machine, "iPhone10,", 9) == 0 ||
+				memcmp(info.machine, "iPhone11,", 9) == 0 ||
+				memcmp(info.machine, "iPhone12,", 9) == 0)
+				is_a13_and_below = 1;
+		} else if (len >= 6) {
+			if (memcmp(info.machine, "iPad7,", 6) == 0 ||
+				memcmp(info.machine, "iPad8,", 6) == 0)
+				is_a13_and_below = 1;
+		} else if (len >= 7) {
+			if (memcmp(info.machine, "iPad11,", 7) == 0 ||
+				memcmp(info.machine, "iPad12,", 7) == 0)
+				is_a13_and_below = 1;
+		}
+	});
+	return is_a13_and_below;
+}
 
 id<MTLDevice> ccv_nnc_default_device(void)
 {

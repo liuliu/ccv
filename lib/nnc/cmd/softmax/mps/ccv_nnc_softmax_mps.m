@@ -15,7 +15,7 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
 		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 		const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
-		if (a_nd <= 2 && b_nd <= 2) // Simple case, we use MPS directly.
+		if (a_nd <= 2 && b_nd <= 2 && !ccv_nnc_is_a13_and_below()) // Simple case, we use MPS directly.
 		{
 			assert(a_nd > 0);
 			assert(b_nd > 0);
