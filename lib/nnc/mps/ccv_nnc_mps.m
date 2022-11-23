@@ -487,14 +487,18 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 	last_command_buffer = nil;
 	int i;
 	const int buffer_size = enable_unbounded_command_buffers ? OLD_MAX_COMMAND_BUFFER_SIZE : OLD_LIMITED_COMMAND_BUFFER_SIZE;
+	id<MTLCommandBuffer> old_buffers[buffer_size];
 	for (i = 0; i < buffer_size; i++)
 	{
-		[old_last_command_buffers[i] release];
+		old_buffers[i] = old_last_command_buffers[i];
 		old_last_command_buffers[i] = nil;
 	}
 	os_unfair_lock_unlock(&queue_lock);
 	[command_buffer waitUntilCompleted];
 	[command_buffer release];
+	for (i = 0; i < buffer_size; i++)
+		if (old_buffers[i])
+			[old_buffers[i] release];
 }
 
 void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_callback_f callback, const ccv_nnc_async_callback_f async_callback, void* const callback_context)
@@ -629,17 +633,23 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 	{
 		id<MTLCommandBuffer> committed_command_buffer = [command_buffer.commandBuffer retain];
 		[command_buffer commit];
+		id<MTLCommandBuffer> last_buffer;
+		id<MTLCommandBuffer> old_buffers[buffer_size];
 		os_unfair_lock_lock(&queue_lock);
-		[last_command_buffer release];
+		last_buffer = last_command_buffer;
 		last_command_buffer = nil;
 		for (i = 0; i < buffer_size; i++)
 		{
-			[old_last_command_buffers[i] release];
+			old_buffers[i] = old_last_command_buffers[i];
 			old_last_command_buffers[i] = nil;
 		}
 		os_unfair_lock_unlock(&queue_lock);
 		[committed_command_buffer waitUntilCompleted];
 		[committed_command_buffer release];
+		[last_buffer release];
+		for (i = 0; i < buffer_size; i++)
+			if (old_buffers[i])
+				[old_buffers[i] release];
 		return;
 	}
 	os_unfair_lock_lock(&queue_lock);
@@ -655,22 +665,24 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 	last_command_buffer = [command_buffer.commandBuffer retain];
 	os_unfair_lock_unlock(&queue_lock);
 	[command_buffer.commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		id<MTLCommandBuffer> found_buffer = nil;
 		os_unfair_lock_lock(&queue_lock);
 		if (buffer == last_command_buffer)
 		{
-			[last_command_buffer release];
+			found_buffer = last_command_buffer;
 			last_command_buffer = nil;
 		} else {
 			int i;
 			for (i = 0; i < buffer_size; i++)
 				if (buffer == old_last_command_buffers[i])
 				{
-					[old_last_command_buffers[i] release];
+					found_buffer = old_last_command_buffers[i];
 					old_last_command_buffers[i] = nil;
 					break;
 				}
 		}
 		os_unfair_lock_unlock(&queue_lock);
+		[found_buffer release];
 	}];
 	[command_buffer commit];
 	// Wait if we need to bound how many in-flight command buffers there are. This helps memory usage.
