@@ -48,10 +48,27 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				if (at.info.dim[i] != saved_meant.info.dim[i])
 					[axes addObject:@(i)];
 			MPSGraphTensor* mps_saved_mean = [graph meanOfTensor:mps_a axes:axes name:nil];
-			MPSGraphTensor* mps_saved_inv_std = [graph varianceOfTensor:mps_a meanTensor:mps_saved_mean axes:axes name:nil];
-			[axes release];
-			const float epsilon = cmd.info.lnorm.epsilon;
-			MPSGraphTensor* mps_b = [graph normalizationWithTensor:mps_a meanTensor:mps_saved_mean varianceTensor:mps_saved_inv_std gammaTensor:mps_scale betaTensor:mps_bias epsilon:epsilon name:nil];
+			MPSGraphTensor* mps_a_subtract_mean = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_saved_mean name:nil];
+			MPSGraphTensor* mps_saved_inv_std;
+			const double epsilon = cmd.info.lnorm.epsilon;
+			if (at.info.datatype == CCV_32F)
+			{
+				MPSGraphTensor* mps_square = [graph squareWithTensor:mps_a_subtract_mean name:nil];
+				MPSGraphTensor* mps_variance = [graph meanOfTensor:mps_square axes:axes name:nil];
+				[axes release];
+				MPSGraphTensor* mps_epsilon = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
+				mps_saved_inv_std = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance secondaryTensor:mps_epsilon name:nil] name:nil] name:nil];
+			} else {
+				// Compute variance at higher resolution.
+				MPSGraphTensor* mps_a_subtract_mean_f32 = [graph castTensor:mps_a_subtract_mean toType:MPSDataTypeFloat32 name:@"float"];
+				MPSGraphTensor* mps_square_f32 = [graph squareWithTensor:mps_a_subtract_mean_f32 name:nil];
+				MPSGraphTensor* mps_variance_f32 = [graph meanOfTensor:mps_square_f32 axes:axes name:nil];
+				[axes release];
+				MPSGraphTensor* mps_epsilon_f32 = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
+				mps_saved_inv_std = [graph castTensor:mps_inv_std_f32 toType:MPSDataTypeFloat16 name:@"inv_std"];
+			}
+			MPSGraphTensor* mps_b = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_subtract_mean secondaryTensor:mps_saved_inv_std name:nil] secondaryTensor:mps_scale name:nil] secondaryTensor:mps_bias name:nil];
 			[resultTensors addObject:mps_b];
 			[resultTensors addObject:mps_saved_mean];
 			[resultTensors addObject:mps_saved_inv_std];
