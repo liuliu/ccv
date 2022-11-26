@@ -34,6 +34,23 @@ void ccv_nnc_init(void)
 	_ccv_nnc_cmd_init();
 }
 
+static uint64_t _ccv_nnc_flags = 0;
+
+uint64_t ccv_nnc_flags(void)
+{
+	return _ccv_nnc_flags;
+}
+
+void ccv_nnc_enable_flag(uint64_t flag)
+{
+	_ccv_nnc_flags |= flag;
+}
+
+void ccv_nnc_disable_flag(uint64_t flag)
+{
+	_ccv_nnc_flags &= ~flag;
+}
+
 const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
 	switch (cmd)

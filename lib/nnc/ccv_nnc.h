@@ -27,6 +27,23 @@
  */
 void ccv_nnc_init(void);
 
+enum {
+	CCV_NNC_DISABLE_MIXED_MPS_GEMM = 0x1,
+	CCV_NNC_DISABLE_MIXED_MPS_SOFTMAX = 0x2,
+};
+/**
+ * Enable system-wide specific flag.
+ */
+void ccv_nnc_enable_flag(uint64_t flag);
+/**
+ * Disable system-wide specific flag.
+ */
+void ccv_nnc_disable_flag(uint64_t flag);
+/**
+ * Get system-wide specific flag to check.
+ */
+uint64_t ccv_nnc_flags(void);
+
 /** @} */
 
 /**

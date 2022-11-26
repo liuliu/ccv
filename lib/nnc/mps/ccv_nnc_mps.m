@@ -12,33 +12,6 @@
 #import <os/lock.h>
 #import <sys/utsname.h>
 
-int ccv_nnc_is_a13_and_below(void)
-{
-	static dispatch_once_t once;
-	static int is_a13_and_below;
-	dispatch_once(&once, ^{
-		struct utsname info;
-		uname(&info);
-		const size_t len = strnlen(info.machine, sizeof(info.machine));
-		if (len >= 9) // Compare against iPhone model.
-		{
-			if (memcmp(info.machine, "iPhone10,", 9) == 0 ||
-				memcmp(info.machine, "iPhone11,", 9) == 0 ||
-				memcmp(info.machine, "iPhone12,", 9) == 0)
-				is_a13_and_below = 1;
-		} else if (len >= 6) {
-			if (memcmp(info.machine, "iPad7,", 6) == 0 ||
-				memcmp(info.machine, "iPad8,", 6) == 0)
-				is_a13_and_below = 1;
-		} else if (len >= 7) {
-			if (memcmp(info.machine, "iPad11,", 7) == 0 ||
-				memcmp(info.machine, "iPad12,", 7) == 0)
-				is_a13_and_below = 1;
-		}
-	});
-	return is_a13_and_below;
-}
-
 id<MTLDevice> ccv_nnc_default_device(void)
 {
 	static dispatch_once_t once;
@@ -149,7 +122,8 @@ void* mpheapalloc(int device, size_t size)
 	MTLHeapDescriptor* descriptor = [MTLHeapDescriptor new];
 	descriptor.size = size;
 	descriptor.type = MTLHeapTypePlacement;
-	descriptor.cpuCacheMode = MTLCPUCacheModeWriteCombined;
+	descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
+	descriptor.storageMode = MTLStorageModeShared;
 	descriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
 	id<MTLHeap> heap = [ccv_nnc_default_device() newHeapWithDescriptor:descriptor];
 	if (heap == nil)
@@ -170,11 +144,11 @@ void mpheapfree(int device, void* ptr)
 
 void* mpobjmalloc(int device, size_t size)
 {
-	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModePrivate];
+	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModePrivate];
+		buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
 		assert(buffer != nil);
 	}
 	return (void*)buffer;
@@ -189,13 +163,13 @@ void mpobjfree(int device, void* ptr)
 void* mpobjcreate(void* ptr, off_t offset, size_t size)
 {
 	id<MTLHeap> heap = (id<MTLHeap>)ptr;
-	MTLSizeAndAlign sizeAndAlign = [ccv_nnc_default_device() heapBufferSizeAndAlignWithLength:size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate];
+	MTLSizeAndAlign sizeAndAlign = [ccv_nnc_default_device() heapBufferSizeAndAlignWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
 	assert(offset % sizeAndAlign.align == 0);
-	id<MTLBuffer> buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
+	id<MTLBuffer> buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared offset:offset];
 	if (buffer == nil)
 	{
 		mptrigmp();
-		buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeWriteCombined | MTLResourceStorageModePrivate offset:offset];
+		buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared offset:offset];
 		assert(buffer != nil);
 	}
 	[buffer makeAliasable];

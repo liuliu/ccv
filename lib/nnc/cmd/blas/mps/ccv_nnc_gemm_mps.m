@@ -120,7 +120,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
 			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
 			a->info.datatype == w->info.datatype && a->info.datatype == b->info.datatype &&
-			a_batch_size == w_batch_size && a_batch_size == b_batch_size &&
+			a_batch_size == w_batch_size && a_batch_size == b_batch_size && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) &&
 			!bias)
 		{
 			id<MTLBuffer> a_buffer = mpgetbuffer((ccv_nnc_tensor_t*)a);
