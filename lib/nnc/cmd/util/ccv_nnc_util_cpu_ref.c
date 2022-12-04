@@ -740,6 +740,110 @@ static void _ccv_nnc_tensor_nchw_nhwc_f64(const ccv_nnc_tensor_view_t* a, ccv_nn
 	}
 }
 
+static void _ccv_nnc_tensor_nhwc_nchw_f16(const ccv_nnc_tensor_view_t* a, ccv_nnc_tensor_view_t* b)
+{
+	// Assuming this is float 32.
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int k;
+	// In case it is Toll-free bridged matrix object (NHWC format is possible).
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
+	assert(a_offset == 0 || a_offset == 1);
+	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
+	assert(b_offset == 0 || b_offset == 1);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	// Comparing N
+	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
+	const int n = (a_offset == 0 ? a->info.dim[0] : 1);
+	// Comparing C
+	assert(a->info.dim[a_nd - 1] == b->info.dim[1 - b_offset]);
+	const int c = a->info.dim[a_nd - 1];
+	// Comparing HW
+	int hw[CCV_NNC_MAX_DIM];
+	for (k = 0; k < CCV_NNC_MAX_DIM; k++)
+	{
+		assert(a->info.dim[k + 1 - a_offset] == b->info.dim[k + 2 - b_offset]);
+		hw[k] = a->info.dim[k + 1 - a_offset];
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int i[CCV_NNC_MAX_DIM + 2];
+	ccv_float16_t* const ap = a->data.f16;
+	ccv_float16_t* const bp = b->data.f16;
+	// Non-optimal case, need to do skip copy.
+	for (i[0] = 0; i[0] < n; i[0]++)
+	{
+		ccv_float16_t* ap0 = ap + i[0] * astride[0];
+		ccv_float16_t* const bp0 = bp + i[0] * bstride[0];
+		for (i[3] = 0; i[3] < c; i[3]++)
+		{
+			ccv_float16_t* apu = ap0 + i[3];
+			ccv_float16_t* bp1 = bp0 + i[3] * bstride[1];
+			for (i[1] = 0; i[1] < hw[0]; i[1]++)
+			{
+				for (i[2] = 0; i[2] < hw[1]; i[2]++)
+					bp1[i[2]] = apu[i[2] * astride[2]];
+				apu += astride[1];
+				bp1 += bstride[2];
+			}
+		}
+	}
+}
+
+static void _ccv_nnc_tensor_nchw_nhwc_f16(const ccv_nnc_tensor_view_t* a, ccv_nnc_tensor_view_t* b)
+{
+	// Assuming this is float 32.
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int k;
+	// In case it is Toll-free bridged matrix object (NHWC format is possible).
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
+	assert(a_offset == 0 || a_offset == 1);
+	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
+	assert(b_offset == 0 || b_offset == 1);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	// Comparing N
+	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
+	const int n = (a_offset == 0 ? a->info.dim[0] : 1);
+	// Comparing C
+	assert(a->info.dim[1 - a_offset] == b->info.dim[b_nd - 1]);
+	const int c = a->info.dim[1 - a_offset];
+	// Comparing HW
+	int hw[CCV_NNC_MAX_DIM];
+	for (k = 0; k < CCV_NNC_MAX_DIM; k++)
+	{
+		assert(a->info.dim[k + 2 - a_offset] == b->info.dim[k + 1 - b_offset]);
+		hw[k] = a->info.dim[k + 2 - a_offset];
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int i[CCV_NNC_MAX_DIM + 2];
+	ccv_float16_t* const ap = a->data.f16;
+	ccv_float16_t* const bp = b->data.f16;
+	// Non-optimal case, need to do skip copy.
+	for (i[0] = 0; i[0] < n; i[0]++)
+	{
+		ccv_float16_t* const ap0 = ap + i[0] * astride[0];
+		ccv_float16_t* const bp0 = bp + i[0] * bstride[0];
+		for (i[3] = 0; i[3] < c; i[3]++)
+		{
+			ccv_float16_t* bpu = bp0 + i[3];
+			ccv_float16_t* ap1 = ap0 + i[3] * astride[1];
+			for (i[1] = 0; i[1] < hw[0]; i[1]++)
+			{
+				for (i[2] = 0; i[2] < hw[1]; i[2]++)
+					bpu[i[2] * bstride[2]] = ap1[i[2]];
+				ap1 += astride[2];
+				bpu += bstride[1];
+			}
+		}
+	}
+}
+
 static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size <= input_size);
@@ -783,6 +887,22 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
 				assert(0);
 			}
+		} else if (a->info.datatype == CCV_16F) {
+			if (a->info.format == b->info.format) {
+				// If it is the same, just do a normal data transfer.
+				_ccv_nnc_tensor_transfer_cpu_ref_f16(a, b);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
+				_ccv_nnc_tensor_nhwc_nchw_f16(a, b);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
+				_ccv_nnc_tensor_nchw_nhwc_f16(a, b);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
+				assert(0);
+			}
 		} else {
 			assert(0);
 		}
@@ -793,7 +913,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_32S;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_32S | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_format_transform;
@@ -802,7 +922,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_CPU_R
 REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_32S;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_32S | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_format_transform;
