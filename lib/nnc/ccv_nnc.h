@@ -4170,6 +4170,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max(const char* const name);
  * @return A LSTM model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const char* const name);
+/**
+ * Perform datatype conversion for input tensors.
+ * @param datatype The desired datatype.
+ * @param ref_to_last If there are two inputs to the model, use the last one as a datatype reference.
+ * @param name The unique name of the model.
+ * @return A model that does data conversion.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_datatype_conversion(const int datatype, const int ref_to_last, const char* const name);
 
 /** @} */
 

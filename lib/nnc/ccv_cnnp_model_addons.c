@@ -2460,3 +2460,54 @@ static ccv_cnnp_model_t* _ccv_cnnp_lstm_copy(const ccv_cnnp_model_t* const super
 	const ccv_cnnp_model_lstm_t* const self = (const ccv_cnnp_model_lstm_t*)super;
 	return ccv_cnnp_lstm(self->masked, self->params.rnn.hidden_size, self->params.rnn.proj_size, self->params.rnn.num_layers, self->params.rnn.bias, self->params.rnn.batch_first, self->params.rnn.bidirectional, self->params.rnn.dropout, self->super.name);
 }
+
+/// MARK - Datatype conversion layer.
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	int datatype;
+	int ref_to_last;
+} ccv_cnnp_model_datatype_conversion_t;
+
+static void _ccv_cnnp_datatype_conversion_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_datatype_conversion_t* const self = (ccv_cnnp_model_datatype_conversion_t*)super;
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (self->ref_to_last)
+	{
+		assert(input_size > 1);
+		const ccv_nnc_tensor_param_t last_params = ccv_nnc_tensor_symbol_params(graph, inputs[input_size - 1]);
+		params.datatype = last_params.datatype;
+	} else
+		params.datatype = self->datatype;
+	assert(output_size == 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_DATATYPE_CONVERSION_FORWARD(), inputs, output_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_datatype_conversion_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_datatype_conversion_isa = {
+	.build = _ccv_cnnp_datatype_conversion_build,
+	.copy = _ccv_cnnp_datatype_conversion_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_datatype_conversion(const int datatype, const int ref_to_last, const char* const name)
+{
+	ccv_cnnp_model_datatype_conversion_t* const model_datatype_conversion = (ccv_cnnp_model_datatype_conversion_t*)cccalloc(1, sizeof(ccv_cnnp_model_datatype_conversion_t));
+	model_datatype_conversion->super.isa = &ccv_cnnp_datatype_conversion_isa;
+	model_datatype_conversion->super.input_size = 0;
+	model_datatype_conversion->super.outputs = &model_datatype_conversion->output;
+	model_datatype_conversion->super.output_size = 1;
+	model_datatype_conversion->datatype = datatype;
+	model_datatype_conversion->ref_to_last = ref_to_last;
+	ccv_cnnp_model_copy_name(&model_datatype_conversion->super, name);
+	return (ccv_cnnp_model_t*)model_datatype_conversion;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_datatype_conversion_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	ccv_cnnp_model_datatype_conversion_t* const self = (ccv_cnnp_model_datatype_conversion_t*)super;
+	return ccv_cnnp_datatype_conversion(self->datatype, self->ref_to_last, self->super.name);
+}
