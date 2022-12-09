@@ -2511,3 +2511,47 @@ static ccv_cnnp_model_t* _ccv_cnnp_datatype_conversion_copy(const ccv_cnnp_model
 	ccv_cnnp_model_datatype_conversion_t* const self = (ccv_cnnp_model_datatype_conversion_t*)super;
 	return ccv_cnnp_datatype_conversion(self->datatype, self->ref_to_last, self->super.name);
 }
+
+/// MARK - Clamp layer.
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float min;
+	float max;
+} ccv_cnnp_model_clamp_t;
+
+static void _ccv_cnnp_clamp_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_clamp_t* const self = (ccv_cnnp_model_clamp_t*)super;
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	assert(output_size == 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_CLAMP_FORWARD(self->min, self->max), inputs, output_size, outputs, output_size, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_clamp_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_clamp_isa = {
+	.build = _ccv_cnnp_clamp_build,
+	.copy = _ccv_cnnp_clamp_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_clamp(const float min, const float max, const char* const name)
+{
+	ccv_cnnp_model_clamp_t* const model_clamp = (ccv_cnnp_model_clamp_t*)cccalloc(1, sizeof(ccv_cnnp_model_clamp_t));
+	model_clamp->super.isa = &ccv_cnnp_clamp_isa;
+	model_clamp->super.input_size = 0;
+	model_clamp->super.outputs = &model_clamp->output;
+	model_clamp->super.output_size = 1;
+	model_clamp->min = min;
+	model_clamp->max = max;
+	ccv_cnnp_model_copy_name(&model_clamp->super, name);
+	return (ccv_cnnp_model_t*)model_clamp;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_clamp_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	ccv_cnnp_model_clamp_t* const self = (ccv_cnnp_model_clamp_t*)super;
+	return ccv_cnnp_clamp(self->min, self->max, self->super.name);
+}

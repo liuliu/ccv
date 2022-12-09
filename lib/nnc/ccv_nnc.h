@@ -4178,6 +4178,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_lstm(const int masked, const int hid
  * @return A model that does data conversion.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_datatype_conversion(const int datatype, const int ref_to_last, const char* const name);
+/**
+ * Clamp input tensor to a range.
+ * @param min NAN will ignore this.
+ * @param max NAN will ignore this.
+ * @param name The unique name of the model.
+ * @return A model that does clamp.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_clamp(const float min, const float max, const char* const name);
 
 /** @} */
 
