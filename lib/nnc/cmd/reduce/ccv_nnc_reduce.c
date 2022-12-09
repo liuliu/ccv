@@ -81,7 +81,7 @@ static int _ccv_nnc_reduce_max_back_bitmask(const int input_size, const int outp
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_MAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_max_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_reduce_max_cpu_ref.c, mps/ccv_nnc_reduce_max_mps.m)
 {
 	registry->bitmask = _ccv_nnc_reduce_max_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
