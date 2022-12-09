@@ -346,16 +346,20 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			assert(a != b); // Cannot do inplace transform.
 			assert(a->info.format == b->info.format);
 			assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
-			MPSGraph *graph = [MPSGraph new];
-			graph.options = MPSGraphOptionsSynchronizeResults;
-			MPSGraphTensor* mps_input_a;
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			if (mps_a != mps_input_a)
-				ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, b->info.dim, b->stride);
-			else
+			if (CCV_IS_TENSOR_VIEW(a)) // Only allocate on-demand MPSGraph if a is a tensor view.
+			{
+				MPSGraph *graph = [MPSGraph new];
+				graph.options = MPSGraphOptionsSynchronizeResults;
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				if (mps_a != mps_input_a)
+					ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, b->info.dim, b->stride);
+				else
+					ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
+				[graph release];
+			} else
 				ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
-			[graph release];
 		}
 		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
