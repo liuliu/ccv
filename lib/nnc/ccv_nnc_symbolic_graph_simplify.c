@@ -456,8 +456,14 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 				{
 					assert(node->inputs[i] < simplify->tensor_symbol_info_size);
 					assert(node->outputs[i] < simplify->tensor_symbol_info_size);
-					const ccv_nnc_tensor_symbol_info_t* const input = tensor_symbol_info + node->inputs[i];
-					const ccv_nnc_tensor_symbol_info_t* const output = tensor_symbol_info + node->outputs[i];
+					int input_ref = node->inputs[i];
+					while (refs[input_ref] >= 0)
+						input_ref = refs[input_ref];
+					int output_ref = node->outputs[i];
+					while (refs[output_ref] >= 0)
+						output_ref = refs[output_ref];
+					const ccv_nnc_tensor_symbol_info_t* const input = tensor_symbol_info + input_ref;
+					const ccv_nnc_tensor_symbol_info_t* const output = tensor_symbol_info + output_ref;
 					// If they are not the same data type, skip. (Likely data conversion op).
 					if (input->info.datatype != output->info.datatype)
 						continue;
@@ -471,10 +477,10 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					if (input->alias_ref && output->alias_ref)
 						continue;
 					// If input is alias, and output has alias reference to it, output cannot be the same as input.
-					if (input->alias_ref && (has_alias[node->outputs[i] >> 5] & (1u << (node->outputs[i] & 0x1f))))
+					if (input->alias_ref && (has_alias[output_ref >> 5] & (1u << (output_ref & 0x1f))))
 						continue;
 					// If output is alias, and input has alias reference to it, input cannot be the same as output.
-					if (output->alias_ref && (has_alias[node->inputs[i] >> 5] & (1u << (node->inputs[i] & 0x1f))))
+					if (output->alias_ref && (has_alias[input_ref >> 5] & (1u << (input_ref & 0x1f))))
 						continue;
 					// If either are carry overs (for while), we cannot do anything.
 					if (input->assign_ref || output->assign_ref ||
@@ -489,18 +495,18 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 						continue;
 					int flag = 0;
 					for (j = 0; !flag && j < bind_size; j++)
-						flag = (binds[j].d == node->inputs[i] || binds[j].d == node->outputs[i]);
+						flag = (binds[j].d == input_ref || binds[j].d == output_ref);
 					for (j = 0; !flag && j < output_size; j++)
-						flag = (outputs[j].d == node->inputs[i] || outputs[j].d == node->outputs[i]);
+						flag = (outputs[j].d == input_ref || outputs[j].d == output_ref);
 					// Either input or output cannot be in the outputs nor the binds.
 					if (flag)
 						continue;
 					// If the type is the same, check which one is the alias.
 					// We always prefer alias.
 					if (output->alias_ref)
-						refs[node->inputs[i]] = node->outputs[i];
-					else // if (input->alias_ref), else
-						refs[node->outputs[i]] = node->inputs[i];
+						refs[input_ref] = output_ref;
+					 else // if (input->alias_ref), else
+						refs[output_ref] = input_ref;
 				}
 		} ccv_nnc_graph_visit_endfor
 		// Make sure refs reference to the end.
@@ -509,7 +515,7 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 			{
 				int ref = refs[i];
 				while (refs[ref] >= 0)
-					ref = refs[i];
+					ref = refs[ref];
 				refs[i] = ref;
 			}
 		updated_refs = _ccv_nnc_symbolic_graph_update_refs(simplify, outputs, output_size, refs, 0 /* We still need these exec that generates the refs. */);
