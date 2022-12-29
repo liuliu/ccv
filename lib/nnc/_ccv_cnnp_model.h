@@ -159,6 +159,7 @@ struct ccv_cnnp_model_s {
 	int parallel_count; // How many parallel devices.
 	int memory_compression; // Whether to enable memory compression for training phase.
 	size_t workspace_size; // Set the default workspace size.
+	char* file_backed_dir; // The directory for parameters if it is backed on disk.
 	void* data; // Temporary storage for some internal functions.
 };
 

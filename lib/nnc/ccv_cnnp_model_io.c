@@ -63,6 +63,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_cn
 	const int parameter_size = compiled_data->parameters->rnum;
 	const int internal_size = compiled_data->internals->rnum;
 	char internal_name[2048 + 16];
+	char* file_backed_dir = model_out->file_backed_dir;
 	for (i = 0; i < parameter_size; i++)
 	{
 		const char* const id = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
@@ -70,7 +71,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_cn
 			snprintf(internal_name, 2048 + 16, "__%s__[%s]", name, id);
 		else
 			snprintf(internal_name, 2048 + 16, "%s", id);
-		if (ccv_nnc_tensor_read(conn, internal_name, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
+		if (ccv_nnc_tensor_read(conn, internal_name, file_backed_dir, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
 		{
 			const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
 			compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
@@ -84,7 +85,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_cn
 				snprintf(internal_name, 2048 + 16, "__%s__[%s(%d)]", name, id, i);
 			else
 				snprintf(internal_name, 2048 + 16, "%s(%d)", id, i);
-			if (ccv_nnc_tensor_read(conn, internal_name, compiled_data->tensors.internals + i * internal_size + j) == CCV_IO_FINAL)
+			if (ccv_nnc_tensor_read(conn, internal_name, file_backed_dir, compiled_data->tensors.internals + i * internal_size + j) == CCV_IO_FINAL)
 			{
 				const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, i))->d;
 				compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));

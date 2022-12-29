@@ -11,6 +11,7 @@
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <sys/utsname.h>
+#import <sys/mman.h>
 
 id<MTLDevice> ccv_nnc_default_device(void)
 {
@@ -176,14 +177,53 @@ void* mpobjcreate(void* ptr, off_t offset, size_t size)
 	return buffer;
 }
 
+@interface MTLFileBackedBuffer: NSObject
+@property (nonatomic, copy) NSString* path;
+@property (nonatomic, assign) NSUInteger size;
+@end
+@implementation MTLFileBackedBuffer
+@end
+
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 {
-	return (id<MTLBuffer>)tensor->data.u8;
+	id obj = (id)tensor->data.u8;
+	if ([obj isKindOfClass:[MTLFileBackedBuffer class]])
+	{
+		MTLFileBackedBuffer* fileBackedBuffer = (MTLFileBackedBuffer*)obj;
+		int fd = open(fileBackedBuffer.path.UTF8String, O_RDONLY, 0);
+		size_t size = fileBackedBuffer.size;
+		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+		close(fd);
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -PAGE_SIZE);
+		assert(aligned_ptr == bufptr);
+		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+		obj = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:^(void *ptr, NSUInteger len) {
+			munmap(ptr, len);
+		}] autorelease];
+	}
+	return (id<MTLBuffer>)obj;
 }
 
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
 	return tensor->dataof;
+}
+
+void* mpmemmap(void* dest, const void* src, size_t n, size_t expected_n, const char* dir, const char* name)
+{
+	@autoreleasepool {
+		NSString* path = [@(dir) stringByAppendingPathComponent:@(name)];
+		FILE* w = fopen(path.UTF8String, "w+");
+		fwrite(src, 1, n, w);
+		fclose(w);
+		id<MTLBuffer> buffer_b = (id<MTLBuffer>)dest;
+		[buffer_b release];
+		MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
+		fileBackedBuffer.path = path;
+		fileBackedBuffer.size = expected_n;
+		dest = (void*)fileBackedBuffer;
+	}
+	return dest;
 }
 
 void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n)

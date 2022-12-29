@@ -137,9 +137,9 @@ TEST_CASE("tensor persistence")
 	handle = 0;
 	sqlite3_open("tensors.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = 0;
-	ccv_nnc_tensor_read(handle, "x", &tensor1);
+	ccv_nnc_tensor_read(handle, "x", 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "x", &tensor2);
+	ccv_nnc_tensor_read(handle, "x", 0, &tensor2);
 	sqlite3_close(handle);
 	REQUIRE_TENSOR_EQ(tensor1, tensor, "the first tensor should equal to the second");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensor2->data.f32, tensor->data.f32, 10, 1e-5, "the first 10 element should be equal");

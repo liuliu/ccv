@@ -70,7 +70,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	return CCV_IO_FINAL;
 }
 
-int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tensor_t** const tensor_out)
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out)
 {
 	assert(name);
 	sqlite3* conn = (sqlite3*)handle;
@@ -131,7 +131,13 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 			else
 				ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
 			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
-				mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, workspace, 0, CCV_TENSOR_CPU_MEMORY, data_size);
+			{
+				assert(tensor->dataof == 0);
+				if (dir)
+					tensor->data.u8 = mpmemmap(tensor->data.u8, workspace, data_size, data_size, dir, name);
+				else
+					mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, workspace, 0, CCV_TENSOR_CPU_MEMORY, data_size);
+			}
 			ccfree(workspace);
 		} else {
 			if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
@@ -154,8 +160,13 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 #elif defined(HAVE_MPS)
 		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
-			mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, data, 0, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
-		else
+		{
+			assert(tensor->dataof == 0);
+			if (dir)
+				tensor->data.u8 = mpmemmap(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)), data_size, dir, name);
+			else
+				mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, data, 0, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
+		} else
 			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 #else
 		memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));

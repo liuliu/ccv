@@ -611,10 +611,11 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
  * Read a tensor from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensor in the database.
+ * @param dir If the dir is provided, the tensor we read will be backed by a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
  * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tensor_t** const tensor_out);
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out);
 
 /** @} */
 
@@ -3651,6 +3652,14 @@ void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int p
  * @param memory_compression Whether to enable the memory compression (1 - enable, 0 - disable (default))
  */
 void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
+/**
+ * Use file backed read-only parameters for model parameter loading. The model parameters if eligible
+ * will be backed by a just-in-time allocated mmap buffer, thus, saving VRAM usage on devices. Right
+ * now, this is only supported for MPS backend and it is read-only.
+ * @param model The composed model.
+ * @param dir The directory. If set to 0, this feature is disabled.
+ */
+void ccv_cnnp_model_set_file_backed_parameters(ccv_cnnp_model_t* const model, const char* const dir);
 /**
  * Set compile parameters on the model so it compiles the graph with the said parameters.
  * @param model The composed model.
