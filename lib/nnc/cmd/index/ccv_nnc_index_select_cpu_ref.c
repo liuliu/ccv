@@ -30,17 +30,36 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const int b_rows = b->info.dim[0];
 	assert(b_rows == indices->info.dim[0]);
 	assert(a_cols == b_cols);
-	assert(indices->info.datatype == CCV_32S);
 	assert(a->info.datatype == b->info.datatype);
-	assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F);
 	const size_t data_size = CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
-	parallel_for(i, b_rows) {
-		const int index = indices->data.i32[i];
-		assert(index < a_rows);
-		uint8_t* const bp = b->data.u8 + data_size * b_cols_inc * i;
-		uint8_t* const ap = a->data.u8 + data_size * a_cols_inc * index;
-		memcpy(bp, ap, data_size * a_cols);
-	} parallel_endfor
+	if (indices->info.datatype == CCV_32S)
+	{
+		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F);
+		parallel_for(i, b_rows) {
+			const int index = indices->data.i32[i];
+			assert(index < a_rows);
+			uint8_t* const bp = b->data.u8 + data_size * b_cols_inc * i;
+			uint8_t* const ap = a->data.u8 + data_size * a_cols_inc * index;
+			memcpy(bp, ap, data_size * a_cols);
+		} parallel_endfor
+	} else {
+		assert(indices->info.datatype == CCV_32F);
+		assert(a->info.datatype == CCV_32F);
+		parallel_for(i, b_rows) {
+			const int j0 = (int)indices->data.f32[i];
+			const int j1 = j0 + 1;
+			const float w1 = indices->data.f32[i] - j0;
+			const float w0 = 1 - w1;
+			assert(j0 >= 0);
+			assert(j0 < a_rows);
+			float* const bp = b->data.f32 + b_cols_inc * i;
+			float* const ap0 = a->data.f32 + a_cols_inc * j0;
+			float* const ap1 = a->data.f32 + a_cols_inc * ccv_min(j1, a_rows - 1);
+			int j;
+			for (j = 0; j < a_cols; j++)
+				bp[j] = ap0[j] * w0 + ap1[j] * w1;
+		} parallel_endfor
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
