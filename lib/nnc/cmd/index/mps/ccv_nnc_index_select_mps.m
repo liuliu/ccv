@@ -47,22 +47,56 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 			[inputTensors addObject:mps_input_a];
 			MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 			[inputShapedTypes addObject:mps_a_shape];
-			MPSGraphTensor* mps_input_indices;
-			MPSGraphTensor* mps_indices = ccv_nnc_mps_graph_tensor_input(graph, indices, indices_dim_r, indices_stride_r, &mps_input_indices);
-			[inputTensors addObject:mps_input_indices];
-			MPSGraphShapedType* mps_indices_shape = ccv_nnc_mps_graph_tensor_input_shape(indices, indices_dim_r, indices_stride_r);
-			[inputShapedTypes addObject:mps_indices_shape];
-			if (nd == 2) // Only need to broadcast when we have 2-d vector.
+			if (indices->info.datatype == CCV_32S)
 			{
-				int i;
-				NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
-				for (i = 0; i < nd; i++)
-					[shape addObject:@(b->info.dim[i])];
-				mps_indices = [graph broadcastTensor:mps_indices toShape:shape name:nil];
-				[shape release];
+				MPSGraphTensor* mps_input_indices;
+				MPSGraphTensor* mps_indices = ccv_nnc_mps_graph_tensor_input(graph, indices, indices_dim_r, indices_stride_r, &mps_input_indices);
+				[inputTensors addObject:mps_input_indices];
+				MPSGraphShapedType* mps_indices_shape = ccv_nnc_mps_graph_tensor_input_shape(indices, indices_dim_r, indices_stride_r);
+				[inputShapedTypes addObject:mps_indices_shape];
+				if (nd == 2) // Only need to broadcast when we have 2-d vector.
+				{
+					int i;
+					NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+					for (i = 0; i < nd; i++)
+						[shape addObject:@(b->info.dim[i])];
+					mps_indices = [graph broadcastTensor:mps_indices toShape:shape name:nil];
+					[shape release];
+				}
+				MPSGraphTensor* mps_b = [graph gatherAlongAxis:0 withUpdatesTensor:mps_a indicesTensor:mps_indices name:nil];
+				[resultTensors addObject:mps_b];
+			} else {
+				assert(indices->info.datatype == CCV_32F);
+				MPSGraphTensor* mps_input_indices;
+				MPSGraphTensor* mps_indices = ccv_nnc_mps_graph_tensor_input(graph, indices, indices_dim_r, indices_stride_r, &mps_input_indices);
+				[inputTensors addObject:mps_input_indices];
+				MPSGraphShapedType* mps_indices_shape = ccv_nnc_mps_graph_tensor_input_shape(indices, indices_dim_r, indices_stride_r);
+				[inputShapedTypes addObject:mps_indices_shape];
+				MPSGraphTensor* mps_indices_0 = [graph castTensor:mps_indices toType:MPSDataTypeInt32 name:nil];
+				MPSGraphTensor* mps_1 = [graph constantWithScalar:1 dataType:MPSDataTypeInt32];
+				MPSGraphTensor* mps_a_rows_1 = [graph constantWithScalar:(a->info.dim[0] - 1) dataType:MPSDataTypeInt32];
+				MPSGraphTensor* mps_indices_1 = [graph minimumWithPrimaryTensor:[graph additionWithPrimaryTensor:mps_indices_0 secondaryTensor:mps_1 name:nil] secondaryTensor:mps_a_rows_1 name:nil];
+				MPSGraphTensor* mps_indices_f0 = [graph castTensor:mps_indices_0 toType:MPSDataTypeFloat32 name:nil];
+				MPSGraphTensor* mps_w1 = [graph subtractionWithPrimaryTensor:mps_indices secondaryTensor:mps_indices_f0 name:nil];
+				MPSGraphTensor* mps_f1 = [graph constantWithScalar:1 dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* mps_w0 = [graph subtractionWithPrimaryTensor:mps_f1 secondaryTensor:mps_w1 name:nil];
+				mps_w1 = [graph castTensor:mps_w1 toType:ccv_nnc_mps_datatype(a->info.datatype) name:nil];
+				mps_w0 = [graph castTensor:mps_w0 toType:ccv_nnc_mps_datatype(a->info.datatype) name:nil];
+				if (nd == 2) // Only need to broadcast when we have 2-d vector.
+				{
+					int i;
+					NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+					for (i = 0; i < nd; i++)
+						[shape addObject:@(b->info.dim[i])];
+					mps_indices_0 = [graph broadcastTensor:mps_indices_0 toShape:shape name:nil];
+					mps_indices_1 = [graph broadcastTensor:mps_indices_1 toShape:shape name:nil];
+					[shape release];
+				}
+				MPSGraphTensor* mps_b_0 = [graph gatherAlongAxis:0 withUpdatesTensor:mps_a indicesTensor:mps_indices_0 name:nil];
+				MPSGraphTensor* mps_b_1 = [graph gatherAlongAxis:0 withUpdatesTensor:mps_a indicesTensor:mps_indices_1 name:nil];
+				MPSGraphTensor* mps_b = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_b_0 secondaryTensor:mps_w0 name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_b_1 secondaryTensor:mps_w1 name:nil] name:nil];
+				[resultTensors addObject:mps_b];
 			}
-			MPSGraphTensor* mps_b = [graph gatherAlongAxis:0 withUpdatesTensor:mps_a indicesTensor:mps_indices name:nil];
-			[resultTensors addObject:mps_b];
 		});
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		MPSGraphTensorData* data_indices = ccv_nnc_mps_graph_tensor_data(indices, indices_dim, indices_stride);
