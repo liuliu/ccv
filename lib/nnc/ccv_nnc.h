@@ -30,6 +30,7 @@ void ccv_nnc_init(void);
 enum {
 	CCV_NNC_DISABLE_MIXED_MPS_GEMM = 0x1,
 	CCV_NNC_DISABLE_MIXED_MPS_SOFTMAX = 0x2,
+	CCV_NNC_DISABLE_MMAP_MTL_BUFFER = 0x4,
 };
 /**
  * Enable system-wide specific flag.

@@ -197,9 +197,14 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -PAGE_SIZE);
 		assert(aligned_ptr == bufptr);
 		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
-		obj = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:^(void *ptr, NSUInteger len) {
-			munmap(ptr, len);
-		}] autorelease];
+		if (ccv_nnc_flags() & CCV_NNC_DISABLE_MMAP_MTL_BUFFER)
+		{
+			obj = [[ccv_nnc_default_device() newBufferWithBytes:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared] autorelease];
+			munmap(bufptr, size);
+		} else
+			obj = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:^(void *ptr, NSUInteger len) {
+				munmap(ptr, len);
+			}] autorelease];
 	}
 	return (id<MTLBuffer>)obj;
 }
