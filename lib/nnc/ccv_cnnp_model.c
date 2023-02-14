@@ -1984,6 +1984,26 @@ ccv_nnc_tensor_param_t ccv_cnnp_model_parameter_tensor_params(ccv_cnnp_model_t* 
 	return tensor->info;
 }
 
+const char* ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
+	assert(parameter->param_sel != 0);
+	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
+	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
+	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
+	if (param_ref < 0)
+		{ assert(parameter_indices->rnum == 1); }
+	else
+		{ assert(param_ref < parameter_indices->rnum); }
+	const int d = *(int*)ccv_array_get(parameter_indices, param_ref >= 0 ? param_ref : 0);
+	ccv_array_free(parameter_indices);
+	const int parameter_size = compiled_data->parameters->rnum;
+	assert(d >= 0);
+	assert(d < parameter_size);
+	return *(char**)ccv_array_get(compiled_data->ids.parameters, d);
+}
+
 static ccv_array_t* _ccv_cnnp_model_parameter_indices(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int* const param_ref)
 {
 	const int to_param_sel = parameters->param_sel > 0 ? parameters->param_sel - 1 : parameters->param_sel;

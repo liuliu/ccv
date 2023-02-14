@@ -3631,6 +3631,28 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
  */
 int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name);
 /**
+ * The prototype for the writer function when exporting parameters out.
+ * @param tensor The tensor to be written to disk.
+ * @param handle The custom handle that you passed in from ``ccv_cnnp_model_write`` method.
+ * @param name The name give to a particular parameter.
+ */
+typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name);
+/**
+ * The prototype for the reader function to load parameters.
+ * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.
+ * @param name The name give to a particular parameter.
+ * @param dir The directory for a particular parameter if it is file-backed.
+ * @param tensor_out The tensor to be loaded.
+ */
+typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out);
+/**
+ * Set IO interceptor for loading weights from / to the model to replace the default SQLite reader / writer.
+ * @param model The model.
+ * @param reader The reader function for loading weights.
+ * @param writer The writer function for exporting weights out.
+ */
+void ccv_cnnp_model_set_io(ccv_cnnp_model_t* const model, ccv_cnnp_model_io_reader_f reader, ccv_cnnp_model_io_writer_f writer);
+/**
  * Read model's tensors from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensors related to the model in the database.
@@ -3705,6 +3727,13 @@ void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp
  * @return The ccv_nnc_tensor_param_t structure that specifies a tensor shape.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_cnnp_model_parameter_tensor_params(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter);
+/**
+ * Get the internal name for a particular parameter of a model.
+ * @param model The composed model.
+ * @param parameter The parameter that is used to specify which parameter to retrieve ccv_nnc_tensor_param_t.
+ * @return The name string for internal name, its life-cycle is managed by the model, and valid until the next invocation of the model either another call or free.
+ */
+CCV_WARN_UNUSED(const char*) ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter);
 /**
  * Set parameters from another model. This will override whatever values in these parameters. The
  * given parameters from another model should match the dimension of the parameter. It doesn't matter

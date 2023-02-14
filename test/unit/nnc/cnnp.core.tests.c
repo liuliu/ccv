@@ -1344,6 +1344,23 @@ TEST_CASE("embedding model can generate vector embedding")
 	ccv_cnnp_model_free(embedding);
 }
 
+TEST_CASE("model to get the internal name for parameters")
+{
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 0);
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	const char* linear1p = "t-linear-0-0";
+	REQUIRE(memcmp(linear1p, ccv_cnnp_model_parameter_name(multi_layer, ccv_cnnp_model_parameters(linear1, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)), strlen(linear1p) + 1) == 0, "should be equal");
+	const char* linear2p = "t-0-0";
+	REQUIRE(memcmp(linear2p, ccv_cnnp_model_parameter_name(multi_layer, ccv_cnnp_model_parameters(linear2, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)), strlen(linear2p) + 1) == 0, "should be equal");
+	ccv_cnnp_model_free(multi_layer);
+}
+
 static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
