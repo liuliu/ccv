@@ -65,8 +65,7 @@ TEST_CASE("index select a tensor with float")
 		2.5, 3.5,
 		1.4, 2.4,
 	};
-	ccv_nnc_tensor_t const bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 2, 2), 0);
-	REQUIRE_TENSOR_EQ(b, &bt, "should be equal");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, btp, 4, 1e-5, "should be equal");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(indices);
 	ccv_nnc_tensor_free(b);

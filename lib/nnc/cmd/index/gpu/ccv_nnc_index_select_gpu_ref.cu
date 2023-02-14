@@ -28,7 +28,7 @@ __global__ void _ccv_nnc_index_select_forw_kernel(const int n, const int d, cons
 		const int src0 = (int)src;
 		const int src1 = min(src0 + 1, a_rows - 1);
 		const float w1 = src - src0;
-		const float w0 = 1 - src1;
+		const float w0 = 1 - w1;
 		b[dest * b_inc + j] = (NUM)((float)a[src0 * a_inc + j] * w0 + (float)a[src1 * a_inc + j] * w1);
 	}
 }
