@@ -150,6 +150,22 @@ TEST_CASE("tensor persistence")
 	ccv_nnc_tensor_free(tensor);
 }
 
+TEST_CASE("tensor swap")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
+	int i;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 10 * 20 * 30; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_swap(b, 0, 0, a->data.f32, 10 * 20 * 30 * sizeof(float));
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, a->data.f32, 10, 1e-5, "the first 10 element should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+
+}
+
 TEST_CASE("resize tensor")
 {
 	ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 12, 12, 3), 0);

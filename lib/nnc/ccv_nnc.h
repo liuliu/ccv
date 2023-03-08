@@ -617,6 +617,16 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
  * @return CCV_IO_FINAL for success, otherwise error.
  */
 int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out);
+/**
+ * Swap a tensor to be backed by a file instead. Currently, once swapped, there is no way to swap back.
+ * @param tensor The tensor.
+ * @param name The name for the tensor when swapping to disk.
+ * @param dir The directory for the tensor to be swapped on a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
+ * @param data If provided, the content of the tensor will be filled with the data pointer.
+ * @param data_size The size of the data content.
+ * @return 0 for success.
+ */
+int ccv_nnc_tensor_swap(ccv_nnc_tensor_t* const tensor, const char* const name, const char* const dir, const void* const data, const size_t data_size);
 
 /** @} */
 
