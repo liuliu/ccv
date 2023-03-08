@@ -443,9 +443,12 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_exchange_new(ccv_nnc_dynamic_g
 	return new_variable;
 }
 
-void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad)
+int ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad)
 {
+	if (dynamic_graph->no_grad == no_grad)
+		return -1;
 	dynamic_graph->no_grad = no_grad;
+	return 0;
 }
 
 static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_graph_get_stream(ccv_nnc_dynamic_graph_t* const graph, const int type)

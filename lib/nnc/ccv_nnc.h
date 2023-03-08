@@ -2808,8 +2808,9 @@ void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph
  * Enable or disable gradient computation on a dynamic graph.
  * @param dynamic_graph The dynamic graph.
  * @param no_grad If it is 1, disable gradient computation on the dynamic graph.
+ * @param return 0 if it turned, otherwise it is not turned.
  */
-void ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad);
+int ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad);
 /**
  * Dynamic graph will retain a memory it allocated for efficient reuse. Triggering this method
  * intentionally will force these memory to be collected. This is helpful if you know the existing
