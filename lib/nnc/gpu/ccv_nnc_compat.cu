@@ -1033,7 +1033,11 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 					}
 					break;
 				default:
-					assert(0);
+					memcpy(dim, tensor->info.dim, sizeof(dim));
+					stride[axis_count - 1] = 1;
+					for (i = axis_count - 2; i >= 0; i--)
+						stride[i] = stride[i + 1] * inc[i + 1];
+
 			}
 		} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 			switch (axis_count)
@@ -1166,7 +1170,8 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 					}
 					break;
 				default:
-					assert(0);
+					memcpy(dim, tensor->info.dim, sizeof(dim));
+					memcpy(stride, tensor_stride, sizeof(stride));
 			}
 		} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 			switch (axis_count)
@@ -1256,11 +1261,11 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 			}
 		}
 	}
-	if (CCV_NNC_MAX_DIM == 2)
+	if (CCV_NNC_MAX_DIM == 2 && axis_count <= CCV_NNC_MAX_DIM + 2)
 	{
 		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
 	} else {
-		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CCV_NNC_MAX_DIM + 2, dim, stride));
+		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), ccv_max(CCV_NNC_MAX_DIM + 2, axis_count), dim, stride));
 	}
 	return tensor_desc;
 }
