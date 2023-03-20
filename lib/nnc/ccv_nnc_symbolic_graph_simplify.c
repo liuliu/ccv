@@ -462,6 +462,8 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					int output_ref = node->outputs[i];
 					while (refs[output_ref] >= 0)
 						output_ref = refs[output_ref];
+					if (input_ref == output_ref)
+						continue;
 					const ccv_nnc_tensor_symbol_info_t* const input = tensor_symbol_info + input_ref;
 					const ccv_nnc_tensor_symbol_info_t* const output = tensor_symbol_info + output_ref;
 					// If they are not the same data type, skip. (Likely data conversion op).
