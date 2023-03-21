@@ -102,7 +102,7 @@ TEST_CASE("garbage collector 47\% hit rate")
 {
 	int i;
 	// deliberately let only cache size fits 45% of data
-	ccv_enable_cache(ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) * N * 45 / 100);
+	ccv_enable_cache((size_t)((int64_t)ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) * N * 45 / 100));
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
