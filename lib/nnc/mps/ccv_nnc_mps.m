@@ -12,6 +12,7 @@
 #import <os/lock.h>
 #import <sys/utsname.h>
 #import <sys/mman.h>
+#import <mach/vm_page_size.h>
 
 id<MTLDevice> ccv_nnc_default_device(void)
 {
@@ -124,7 +125,11 @@ void* mpheapalloc(int device, size_t size)
 	descriptor.size = size;
 	descriptor.type = MTLHeapTypePlacement;
 	descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
+#ifdef __x86_64__
+	descriptor.storageMode = MTLStorageModePrivate;
+#else
 	descriptor.storageMode = MTLStorageModeShared;
+#endif
 	descriptor.hazardTrackingMode = MTLHazardTrackingModeTracked;
 	id<MTLHeap> heap = [ccv_nnc_default_device() newHeapWithDescriptor:descriptor];
 	if (heap == nil)
@@ -145,7 +150,11 @@ void mpheapfree(int device, void* ptr)
 
 void* mpobjmalloc(int device, size_t size)
 {
+#ifdef __x86_64__
+	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModePrivate];
+#else
 	id<MTLBuffer> buffer = [ccv_nnc_default_device() newBufferWithLength:size options:MTLResourceStorageModeShared];
+#endif
 	if (buffer == nil)
 	{
 		mptrigmp();
@@ -164,13 +173,23 @@ void mpobjfree(int device, void* ptr)
 void* mpobjcreate(void* ptr, off_t offset, size_t size)
 {
 	id<MTLHeap> heap = (id<MTLHeap>)ptr;
+#ifdef __x86_64__
+	MTLSizeAndAlign sizeAndAlign = [ccv_nnc_default_device() heapBufferSizeAndAlignWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate];
+	assert(offset % sizeAndAlign.align == 0);
+	id<MTLBuffer> buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate offset:offset];
+#else
 	MTLSizeAndAlign sizeAndAlign = [ccv_nnc_default_device() heapBufferSizeAndAlignWithLength:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
 	assert(offset % sizeAndAlign.align == 0);
 	id<MTLBuffer> buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared offset:offset];
+#endif
 	if (buffer == nil)
 	{
 		mptrigmp();
+#ifdef __x86_64__
+		buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate offset:offset];
+#else
 		buffer = [heap newBufferWithLength:sizeAndAlign.size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared offset:offset];
+#endif
 		assert(buffer != nil);
 	}
 	[buffer makeAliasable];
@@ -194,12 +213,16 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 		size_t size = fileBackedBuffer.size;
 		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
 		close(fd);
-		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -PAGE_SIZE);
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -vm_page_size);
 		assert(aligned_ptr == bufptr);
 		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
 		if (ccv_nnc_flags() & CCV_NNC_DISABLE_MMAP_MTL_BUFFER)
 		{
+#ifdef __x86_64__
+			obj = [[ccv_nnc_default_device() newBufferWithBytes:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate] autorelease];
+#else
 			obj = [[ccv_nnc_default_device() newBufferWithBytes:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared] autorelease];
+#endif
 			munmap(bufptr, size);
 		} else
 			obj = [[ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:^(void *ptr, NSUInteger len) {
@@ -235,9 +258,9 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 {
 	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY)
 	{
-		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)src & -PAGE_SIZE);
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)src & -vm_page_size);
 		const off_t offset_a = (uintptr_t)src - (uintptr_t)aligned_ptr + src_off;
-		const size_t aligned_size = ((n + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
+		const size_t aligned_size = ((n + offset_a + vm_page_size - 1) & -vm_page_size);
 		id<MTLBuffer> buffer_b = (id<MTLBuffer>)dest;
 		const off_t offset_b = dest_off;
 		@autoreleasepool {
@@ -253,9 +276,9 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
 		id<MTLBuffer> buffer_a = (id<MTLBuffer>)src;
 		const off_t offset_a = src_off;
-		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)dest & -PAGE_SIZE);
+		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)dest & -vm_page_size);
 		const off_t offset_b = (uintptr_t)dest - (uintptr_t)aligned_ptr;
-		const size_t aligned_size = ((n + offset_b + PAGE_SIZE - 1) & -PAGE_SIZE);
+		const size_t aligned_size = ((n + offset_b + vm_page_size - 1) & -vm_page_size);
 		@autoreleasepool {
 			id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];

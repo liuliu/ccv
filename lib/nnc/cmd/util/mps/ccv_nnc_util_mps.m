@@ -4,6 +4,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
+#import <mach/vm_page_size.h>
 
 static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -21,9 +22,9 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		const size_t size = (ssize_t)ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 		if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
 		{
-			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -PAGE_SIZE);
+			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -vm_page_size);
 			const off_t offset_a = (uintptr_t)a->data.u8 - (uintptr_t)aligned_ptr;
-			const size_t aligned_size = ((size + offset_a + PAGE_SIZE - 1) & -PAGE_SIZE);
+			const size_t aligned_size = ((size + offset_a + vm_page_size - 1) & -vm_page_size);
 			id<MTLBuffer> buffer_b = mpgetbuffer(b);
 			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
@@ -38,9 +39,9 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
 			id<MTLBuffer> buffer_a = mpgetbuffer(a);
 			const off_t offset_a = mpgetoffset(a);
-			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -PAGE_SIZE);
+			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -vm_page_size);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
-			const size_t aligned_size = ((size + offset_b + PAGE_SIZE - 1) & -PAGE_SIZE);
+			const size_t aligned_size = ((size + offset_b + vm_page_size - 1) & -vm_page_size);
 			@autoreleasepool {
 				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
