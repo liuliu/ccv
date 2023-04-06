@@ -321,6 +321,62 @@ TEST_CASE("reduce min for [[1, 2, 3], [4, 5, 6]] on axis 0 with model")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("argmax for [[1, 2, 3], [4, 5, 2]] on axis 0 with model")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	a->data.f32[4] = 5;
+	a->data.f32[5] = 2;
+	ccv_cnnp_model_t* const argmax = ccv_cnnp_argmax(0, 0);
+	const ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, 2, 3);
+	ccv_cnnp_model_compile(argmax, TENSOR_PARAM_LIST(a_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(argmax, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+		.is_test = 0,
+		.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL
+	}, TENSOR_LIST(a), TENSOR_LIST(b), 0, 0);
+	int btp[] = {
+		1, 1, 0
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 3), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "result should be equal");
+	ccv_cnnp_model_free(argmax);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("argmin for [[1, 2, 3], [4, 5, 2]] on axis 0 with model")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	a->data.f32[4] = 5;
+	a->data.f32[5] = 2;
+	ccv_cnnp_model_t* const argmin = ccv_cnnp_argmin(0, 0);
+	const ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, 2, 3);
+	ccv_cnnp_model_compile(argmin, TENSOR_PARAM_LIST(a_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(argmin, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+		.is_test = 0,
+		.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL
+	}, TENSOR_LIST(a), TENSOR_LIST(b), 0, 0);
+	int btp[] = {
+		0, 0, 1
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 3), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "result should be equal");
+	ccv_cnnp_model_free(argmin);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 TEST_CASE("reduce mean for [[1, 2, 3], [4, 5, 6]] on axis 1 with model")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);

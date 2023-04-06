@@ -2212,19 +2212,19 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_min_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
-	const ccv_cnnp_model_reduce_max_t* const self = (const ccv_cnnp_model_reduce_max_t*)super;
+	const ccv_cnnp_model_reduce_min_t* const self = (const ccv_cnnp_model_reduce_min_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t output_params;
-	ccv_nnc_cmd_t reduce_max = CMD_REDUCE_MIN_FORWARD();
+	ccv_nnc_cmd_t reduce_min = CMD_REDUCE_MIN_FORWARD();
 	int i;
 	for (i = 0; i < self->count; i++)
-		reduce_max.info.reduce.axis[i] = self->axis[i];
-	reduce_max.info.reduce.count = self->count;
-	ccv_nnc_hint_tensor_auto(reduce_max, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+		reduce_min.info.reduce.axis[i] = self->axis[i];
+	reduce_min.info.reduce.count = self->count;
+	ccv_nnc_hint_tensor_auto(reduce_min, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, reduce_max, inputs, input_size, outputs, output_size, "reduce_max");
+	ccv_nnc_graph_exec_symbol_new(graph, reduce_min, inputs, input_size, outputs, output_size, "reduce_min");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_reduce_min_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -2309,6 +2309,102 @@ static ccv_cnnp_model_t* _ccv_cnnp_reduce_norm2_copy(const ccv_cnnp_model_t* con
 {
 	const ccv_cnnp_model_reduce_norm2_t* const self = (const ccv_cnnp_model_reduce_norm2_t*)super;
 	return ccv_cnnp_reduce_norm2(self->axis, self->count, self->super.name);
+}
+
+// MARK - Argmax Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_argmax_t;
+
+static void _ccv_cnnp_argmax_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_argmax_t* const self = (const ccv_cnnp_model_argmax_t*)super;
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t argmax = CMD_ARGMAX_FORWARD();
+	argmax.info.reduce.axis[0] = self->axis;
+	argmax.info.reduce.count = 1;
+	ccv_nnc_hint_tensor_auto(argmax, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, argmax, inputs, input_size, outputs, output_size, "argmax");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_argmax_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_argmax_isa = {
+	.build = _ccv_cnnp_argmax_build,
+	.copy = _ccv_cnnp_argmax_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_argmax(const int axis, const char* const name)
+{
+	ccv_cnnp_model_argmax_t* const model_argmax = (ccv_cnnp_model_argmax_t*)cccalloc(1, sizeof(ccv_cnnp_model_argmax_t));
+	model_argmax->super.isa = &ccv_cnnp_argmax_isa;
+	model_argmax->super.input_size = 1;
+	model_argmax->super.outputs = &model_argmax->output;
+	model_argmax->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_argmax->super, name);
+	model_argmax->axis = axis;
+	return (ccv_cnnp_model_t*)model_argmax;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_argmax_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_argmax_t* const self = (const ccv_cnnp_model_argmax_t*)super;
+	return ccv_cnnp_argmax(self->axis, self->super.name);
+}
+
+// MARK - Argmin Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_argmin_t;
+
+static void _ccv_cnnp_argmin_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_argmin_t* const self = (const ccv_cnnp_model_argmin_t*)super;
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t argmin = CMD_ARGMIN_FORWARD();
+	argmin.info.reduce.axis[0] = self->axis;
+	argmin.info.reduce.count = 1;
+	ccv_nnc_hint_tensor_auto(argmin, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, argmin, inputs, input_size, outputs, output_size, "argmin");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_argmin_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_argmin_isa = {
+	.build = _ccv_cnnp_argmin_build,
+	.copy = _ccv_cnnp_argmin_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_argmin(const int axis, const char* const name)
+{
+	ccv_cnnp_model_argmin_t* const model_argmin = (ccv_cnnp_model_argmin_t*)cccalloc(1, sizeof(ccv_cnnp_model_argmin_t));
+	model_argmin->super.isa = &ccv_cnnp_argmin_isa;
+	model_argmin->super.input_size = 1;
+	model_argmin->super.outputs = &model_argmin->output;
+	model_argmin->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_argmin->super, name);
+	model_argmin->axis = axis;
+	return (ccv_cnnp_model_t*)model_argmin;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_argmin_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_argmin_t* const self = (const ccv_cnnp_model_argmin_t*)super;
+	return ccv_cnnp_argmin(self->axis, self->super.name);
 }
 
 // MARK - Min Layer

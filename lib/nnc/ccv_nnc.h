@@ -4203,6 +4203,21 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_min(const int* const axis, co
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_norm2(const int* const axis, const int axis_count, const char* const name);
 /**
+ * A argmax model.
+ * @param axis The axis to be reduced.
+ * @param name The unique name of the model.
+ * @return A max indices model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_argmax(const int axis, const char* const name);
+/**
+ * A argmin model.
+ * @param axis The axis to be reduced.
+ * @param axis_count The size of the axis array.
+ * @param name The unique name of the model.
+ * @return A min indices model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_argmin(const int axis, const char* const name);
+/**
  * A element-wise min model.
  * @param name The unique name of the model.
  * @return A element-wise min model.
