@@ -4187,6 +4187,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_mean(const int* const axis, c
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_max(const int* const axis, const int axis_count, const char* const name);
 /**
+ * A min value reducer model.
+ * @param axis The axis to be reduced.
+ * @param axis_count The size of the axis array.
+ * @param name The unique name of the model.
+ * @return A min value reducer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_min(const int* const axis, const int axis_count, const char* const name);
+/**
  * A norm2 value reducer model.
  * @param axis The axis to be reduced.
  * @param axis_count The size of the axis array.
