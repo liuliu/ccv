@@ -458,6 +458,43 @@ static ccv_cnnp_model_t* _ccv_cnnp_permute_copy(const ccv_cnnp_model_t* const su
 
 typedef struct {
 	ccv_cnnp_model_t super;
+	int index;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_extract_t;
+
+static void _ccv_cnnp_extract_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(output_size == 1);
+	ccv_cnnp_model_extract_t* const self = (ccv_cnnp_model_extract_t*)super;
+	outputs[0] = inputs[self->index];
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_extract_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_extract_isa = {
+	.build = _ccv_cnnp_extract_build,
+	.copy = _ccv_cnnp_extract_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_extract(const int index, const char* const name)
+{
+	ccv_cnnp_model_extract_t* const model_extract = (ccv_cnnp_model_extract_t*)cccalloc(1, sizeof(ccv_cnnp_model_extract_t));
+	model_extract->super.isa = &ccv_cnnp_extract_isa;
+	model_extract->super.input_size = 0;
+	model_extract->super.outputs = &model_extract->output;
+	model_extract->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_extract->super, name);
+	return (ccv_cnnp_model_t*)model_extract;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_extract_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	ccv_cnnp_model_extract_t* const self = (ccv_cnnp_model_extract_t*)super;
+	return ccv_cnnp_extract(self->index, self->super.name);
+}
+
+typedef struct {
+	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
 } ccv_cnnp_model_flatten_t;
 

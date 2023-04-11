@@ -601,22 +601,58 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const cc
  */
 CCV_WARN_UNUSED(char*) ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a);
 /**
+ * Method to decode tensor into a give buffer.
+ * @param data The encoded data that needs to be decoded.
+ * @param data_size The size of the encoded data.
+ * @param datatype The expected data type of the encoded data.
+ * @param identifier The identifier saved along the encoder (non-zero) that used to identify this decoder.
+ * @param context The context associated with this decoder.
+ * @param decoded The buffer for data to be decoded.
+ * @param decoded_size The size of the buffer to be decoded.
+ * @return 1 if it is processed, 0 otherwise.
+ */
+typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const size_t data_size, const int datatype, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size);
+/**
+ * Method to encode tensor into a give buffer.
+ * @param data The data that needs to be encoded.
+ * @param data_size The size of the data to be encoded.
+ * @param datatype The expected data type of the data to be encoded.
+ * @param context The context associated with this encoder.
+ * @param encoded The buffer for encoded data.
+ * @param encoded_size The size of the buffer.
+ * @param identifier The identifier identifies this encoder (non-zero).
+ * @return 1 if it is processed, 0 otherwise.
+ */
+typedef int (*ccv_nnc_tensor_io_option_encode_f)(const void* const data, const size_t data_size, const int datatype, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier);
+/**
+ * Additional options to regulate tensor write / read behavior. For example, you can pass
+ * encryptor / compressor to encrypt / compress the data prior to write to disk. You can
+ * also only store reference, and use external storage for tensors.
+ */
+typedef struct {
+	ccv_nnc_tensor_io_option_decode_f decode;
+	ccv_nnc_tensor_io_option_encode_f encode;
+	void* context;
+} ccv_nnc_tensor_io_option_t;
+/**
  * Write tensor to a SQLite database with a given name.
  * @param tensor The tensor.
  * @param handle The SQLite handle.
  * @param name The name to find the tensor in the database.
+ * @param options If provided, we will use this to encode tensor data.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name);
+int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * Read a tensor from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensor in the database.
  * @param dir If the dir is provided, the tensor we read will be backed by a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
+ * @param options If provided, we will use this to decode any data that identifier != 0.
  * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out);
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Swap a tensor to be backed by a file instead. Currently, once swapped, there is no way to swap back.
  * @param tensor The tensor.
@@ -3627,8 +3663,9 @@ enum {
  * @param model The composed model.
  * @param fn The file name.
  * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
+ * @param options The IO options that can do data encode / decode before persistence.
  */
-void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
+void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * Write model's tensors to a SQLite database with a given name. Note that we specifically say
  * "model's tensors" because it doesn't persist the model's structure. Hence, you shouldn't
@@ -3638,9 +3675,10 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
  * @param model The model.
  * @param handle The SQLite handle.
  * @param name The name to find the tensors related to the model in the database.
+ * @param options The IO options that can do data encode / decode before persistence.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name);
+int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * The prototype for the writer function when exporting parameters out.
  * @param tensor The tensor to be written to disk.
@@ -3667,11 +3705,12 @@ void ccv_cnnp_model_set_io(ccv_cnnp_model_t* const model, ccv_cnnp_model_io_read
  * Read model's tensors from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensors related to the model in the database.
+ * @param options The IO options that can do data encode / decode before persistence.
  * @param model_out The model which you want to restore the tensors. It should have the same
  *                  structure as the one in write to.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_cnnp_model_t* const model_out);
+int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model_out);
 /**
  * Apply data parallel to the composed model. This method has to be called before we call either
  * evaluate or fit and after the model is compiled.
@@ -4057,6 +4096,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DI
  * @return A permute layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_permute(const int index[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+/**
+ * Extract one of the multi-outputs. This is useful because ccv_cnnp_model_io_t can contain multiple outputs, this
+ * helps to extract one of them out to be used later.
+ * @param index The index to the output you want to extract.
+ * @param name The unique name of the model.
+ * @return A model that can extract one output.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_extract(const int index, const char* const name);
 /**
  * Flatten an input tensor into a one dimensional array.
  * @param name The unique name of the model.
