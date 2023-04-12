@@ -378,7 +378,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 				}
 				ccfree(workspace);
 			} else {
-				int decoded_size = data_size;
+				size_t decoded_size = data_size;
 				if (!options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, identifier, options->context, tensor->data.u8, &decoded_size))
 					memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 			}
@@ -405,7 +405,7 @@ int ccv_nnc_tensor_swap(ccv_nnc_tensor_t* const tensor, const char* const name, 
 #ifdef HAVE_MPS
 	if (!data || !data_size)
 	{
-		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY && dir && name)
 		{
 			assert(tensor->dataof == 0);
 			size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
@@ -429,8 +429,10 @@ int ccv_nnc_tensor_swap(ccv_nnc_tensor_t* const tensor, const char* const name, 
 	{
 		assert(tensor->dataof == 0);
 		if (dir && name)
+		{
+			ccv_nnc_synchronize_stream_context(0); // To avoid if the data is coming from GPU and haven't finish writing.
 			tensor->data.u8 = mpmemmap(tensor->data.u8, data, ccv_min(expected_size, expected_size), expected_size, dir, name);
-		else
+		} else
 			mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, data, 0, CCV_TENSOR_CPU_MEMORY, ccv_min(expected_size, data_size));
 	} else
 		memcpy(tensor->data.u8, data, ccv_min(expected_size, data_size));

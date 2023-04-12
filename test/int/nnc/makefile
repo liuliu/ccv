@@ -3,7 +3,7 @@ include ../../../lib/config.mk
 export LSAN_OPTIONS=suppressions=known-leaks.txt
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
-TARGETS = cudnn.tests cublas.tests schedule.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests parallel.tests nccl.tests compression.tests index.tests dynamic.graph.tests cifar.tests imdb.tests loss.tests random.tests swish.tests sgd.tests rmsprop.tests adam.tests upsample.tests smooth_l1.tests roi_align.tests nms.tests compare.tests transform.tests cnnp.core.tests concat.tests lamb.tests reduce.tests lstm.tests gelu.tests mpsblas.tests mpsdnn.tests leaky_relu.tests datatype.tests
+TARGETS = cudnn.tests cublas.tests schedule.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests parallel.tests nccl.tests compression.tests index.tests dynamic.graph.tests cifar.tests imdb.tests loss.tests random.tests swish.tests sgd.tests rmsprop.tests adam.tests upsample.tests smooth_l1.tests roi_align.tests nms.tests compare.tests transform.tests cnnp.core.tests concat.tests lamb.tests reduce.tests lstm.tests gelu.tests mpsblas.tests mpsdnn.tests leaky_relu.tests datatype.tests tensor.tests
 
 ifeq ($(shell uname 2>/dev/null || echo Unknown),Darwin)
 	LDFLAGS += -Wl,-U,___test_case_setup,-U,___test_case_teardown
