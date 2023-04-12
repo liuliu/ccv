@@ -142,18 +142,17 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 	if (!tensor) // If the tensor is not provided, we need to create one.
 	{
 		ccv_nnc_tensor_param_t info;
-		info.type = sqlite3_column_int(tensor_select_stmt, 1);
+		const sqlite_int64 type = sqlite3_column_int64(tensor_select_stmt, 1);
+		identifier = (type >> 32) & 0xffffffff;
+		info.type = (type & 0xffffffff);
 		info.format = sqlite3_column_int(tensor_select_stmt, 2);
-		sqlite_int64 dt = sqlite3_column_int64(tensor_select_stmt, 3);
-		identifier = (dt >> 32) & 0xffffffff;
-		datatype = info.datatype = (dt & 0xffffffff);
+		datatype = info.datatype = sqlite3_column_int(tensor_select_stmt, 3);
 		const void* const dim = sqlite3_column_blob(tensor_select_stmt, 4);
 		memcpy(info.dim, dim, ccv_min(sizeof(info.dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
 		*tensor_out = tensor = ccv_nnc_tensor_new(0, info, 0);
 	} else {
-		sqlite_int64 dt = sqlite3_column_int64(tensor_select_stmt, 3);
-		identifier = (dt >> 32) & 0xffffffff;
-		datatype = (dt & 0xffffffff);
+		identifier = (sqlite3_column_int64(tensor_select_stmt, 1) >> 32) & 0xffffffff;
+		datatype = sqlite3_column_int(tensor_select_stmt, 3);
 	}
 	const void* const data = sqlite3_column_blob(tensor_select_stmt, 0);
 	if (datatype != tensor->info.datatype)
@@ -173,11 +172,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			{
 				workspace = ccmalloc(data_size);
 				if (datatype == CCV_16F && tensor->info.datatype == CCV_32F)
-				{
 					ccv_half_precision_to_float((uint16_t*)data, (float*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
-				} else if (datatype == CCV_32F && tensor->info.datatype == CCV_16F) {
+				else if (datatype == CCV_32F && tensor->info.datatype == CCV_16F)
 					ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
-				} else
+				else
 					{ assert(0); }
 			} else {
 				workspace = ccmalloc(data_size + source_data_size);

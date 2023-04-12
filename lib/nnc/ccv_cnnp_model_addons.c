@@ -479,6 +479,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_extract_isa = {
 ccv_cnnp_model_t* ccv_cnnp_extract(const int index, const char* const name)
 {
 	ccv_cnnp_model_extract_t* const model_extract = (ccv_cnnp_model_extract_t*)cccalloc(1, sizeof(ccv_cnnp_model_extract_t));
+	model_extract->index = index;
 	model_extract->super.isa = &ccv_cnnp_extract_isa;
 	model_extract->super.input_size = 0;
 	model_extract->super.outputs = &model_extract->output;

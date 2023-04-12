@@ -1482,4 +1482,43 @@ TEST_CASE("FPN-RPN use cnnp model with multiple outputs")
 	ccv_cnnp_model_free(rpn);
 }
 
+TEST_CASE("extract one output each feed into different feed-forward")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
+	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
+	ccv_cnnp_model_t* tiny = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), "tiny");
+	const ccv_cnnp_model_io_t i0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t o0 = ccv_cnnp_model_apply(tiny, MODEL_IO_LIST(i0));
+	ccv_cnnp_model_io_t o00 = ccv_cnnp_model_apply(ccv_cnnp_extract(0, "index0"), MODEL_IO_LIST(o0));
+	ccv_cnnp_model_io_t o01 = ccv_cnnp_model_apply(ccv_cnnp_extract(1, "index1"), MODEL_IO_LIST(o0));
+	ccv_cnnp_model_t* const l0 = ccv_cnnp_dense(1, 1, "l0");
+	ccv_cnnp_model_io_t o10 = ccv_cnnp_model_apply(l0, MODEL_IO_LIST(o00));
+	ccv_cnnp_model_t* const l1 = ccv_cnnp_dense(1, 1, "l1");
+	ccv_cnnp_model_io_t o11 = ccv_cnnp_model_apply(l1, MODEL_IO_LIST(o01));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(i0), MODEL_IO_LIST(o10, o11), "final");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	t->data.f32[0] = 2.4;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear, ALL_PARAMETERS, 0), t);
+	t->data.f32[0] = -1.5;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(l0, ALL_PARAMETERS, 0), t);
+	t->data.f32[0] = 1.7;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(l1, ALL_PARAMETERS, 0), t);
+	x->data.f32[0] = 10;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(t, y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(t->data.f32[0], 10 * 2.4 * -1.5, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[0], 1 / (1 + exp(-10 * 2.4)) * 1.7, 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(t);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

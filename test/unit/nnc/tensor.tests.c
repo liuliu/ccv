@@ -150,6 +150,64 @@ TEST_CASE("tensor persistence")
 	ccv_nnc_tensor_free(tensor);
 }
 
+static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier)
+{
+	unsigned char* const u8 = (unsigned char*)data;
+	unsigned char* const u8enc = (unsigned char*)encoded;
+	int i;
+	for (i = 0; i < data_size; i++)
+		u8enc[i] = u8[i] ^ 0x13;
+	*encoded_size = data_size;
+	*identifier = 1;
+	return 1;
+}
+
+static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+{
+	if (identifier != 1)
+		return 0;
+	unsigned char* const u8 = (unsigned char*)data;
+	unsigned char* const u8dec = (unsigned char*)decoded;
+	const size_t expected_size = *decoded_size;
+	int i;
+	for (i = 0; i < ccv_min(expected_size, data_size); i++)
+		u8dec[i] = u8[i] ^ 0x13;
+	*decoded_size = ccv_min(expected_size, data_size);
+	return 1;
+}
+
+TEST_CASE("tensor persistence with encoder / decoder")
+{
+	sqlite3* handle;
+	sqlite3_open("tensors_de.sqlite3", &handle);
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
+	int i;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 10 * 20 * 30; i++)
+		tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_io_option_t options = {
+		.encode = _tensor_xor_encode,
+		.decode = _tensor_xor_decode
+	};
+	ccv_nnc_tensor_write(tensor, handle, "y", &options);
+	sqlite3_close(handle);
+	handle = 0;
+	sqlite3_open("tensors_de.sqlite3", &handle);
+	ccv_nnc_tensor_t* tensor1 = 0;
+	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor1);
+	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor2);
+	sqlite3_close(handle);
+	REQUIRE_TENSOR_EQ(tensor1, tensor, "the first tensor should equal to the second");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensor2->data.f32, tensor->data.f32, 10, 1e-5, "the first 10 element should be equal");
+	REQUIRE(ccv_nnc_tensor_nd(tensor2->info.dim) == 1, "should be 1-d tensor");
+	REQUIRE_EQ(tensor2->info.dim[0], 10, "should be 1-d tensor with 10-element");
+	ccv_nnc_tensor_free(tensor1);
+	ccv_nnc_tensor_free(tensor2);
+	ccv_nnc_tensor_free(tensor);
+}
+
 TEST_CASE("tensor swap")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
