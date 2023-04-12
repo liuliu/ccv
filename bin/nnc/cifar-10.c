@@ -298,7 +298,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			ccv_nnc_stream_context_wait(stream_contexts[p]);
 			ccv_nnc_stream_context_wait(stream_contexts[q]);
 			unsigned int elapsed_time = get_current_time() - current_time;
-			ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0);
+			ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0, 0);
 			int correct = 0;
 			p = 0, q = 1;
 			for (j = 0; j < test_set->rnum; j += batch_size * device_count)

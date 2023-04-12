@@ -302,7 +302,7 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 	inputs[2] = GPU_TENSOR_NCHW(000, 32S, 1, max_length, max_length);
 	inputs[3] = GPU_TENSOR_NCHW(000, 32S, 1, max_length, max_length);
 	ccv_cnnp_model_compile(wmt, inputs, 4, adam, CMD_NOOP());
-	ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY);
+	ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY, 0);
 	ccv_nnc_tensor_t* const seq_vec_ = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, max_length, embedding_size), 0);
 	int i;
 	for (i = 0; i < max_length; i++)
@@ -326,10 +326,10 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 	if (SQLITE_OK == sqlite3_open("wmt.checkpoint", &conn))
 	{
 		ccv_nnc_tensor_t* src_vocab_vec_ = ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec);
-		ccv_nnc_tensor_read(conn, "src_vocab", 0, &src_vocab_vec_);
+		ccv_nnc_tensor_read(conn, "src_vocab", 0, 0, &src_vocab_vec_);
 		assert(src_vocab_vec_ == ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec));
 		ccv_nnc_tensor_t* tgt_vocab_vec_ = ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec);
-		ccv_nnc_tensor_read(conn, "tgt_vocab", 0, &tgt_vocab_vec_);
+		ccv_nnc_tensor_read(conn, "tgt_vocab", 0, 0, &tgt_vocab_vec_);
 		assert(tgt_vocab_vec_ == ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec));
 		sqlite3_close(conn);
 	}
@@ -761,12 +761,12 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			const double accuracy = (double)correct / overall;
 			overall_accuracy = overall_accuracy * 0.9 + accuracy * 0.1;
 			printf("epoch %d (%d/%d), batch accuracy %lf, overall accuracy %lf, tokens per sec %.2lf\n", epoch, (i + 1) - epoch * epoch_end, epoch_end, accuracy, overall_accuracy, token_per_sec);
-			ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", 0);
+			ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", 0, 0);
 			sqlite3* conn = 0;
 			if (SQLITE_OK == sqlite3_open("wmt.checkpoint", &conn))
 			{
-				ccv_nnc_tensor_write(ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec[0]), conn, "src_vocab");
-				ccv_nnc_tensor_write(ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec[0]), conn, "tgt_vocab");
+				ccv_nnc_tensor_write(ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec[0]), conn, "src_vocab", 0);
+				ccv_nnc_tensor_write(ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec[0]), conn, "tgt_vocab", 0);
 				sqlite3_close(conn);
 			}
 			current_time = get_current_time();

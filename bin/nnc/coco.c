@@ -508,7 +508,7 @@ static void train_coco(const int batch_size, ccv_cnnp_dataframe_t* const train_d
 	const float wd = 0.0005;
 	const ccv_nnc_tensor_param_t imagenet_params = GPU_TENSOR_NCHW(000, 32F, 64, 3, 224, 224);
 	ccv_cnnp_model_compile(resnet50_v1d, TENSOR_PARAM_LIST(imagenet_params), _resnet_optimizer(0.0001, 64, wd), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
-	ccv_cnnp_model_checkpoint(resnet50_v1d, "imagenet.checkpoint", 0);
+	ccv_cnnp_model_checkpoint(resnet50_v1d, "imagenet.checkpoint", 0, 0);
 	_init_backbone_from_imagenet(rpn_bones, resnet50_v1d_bones);
 	ccv_cnnp_model_free(resnet50_v1d);
 	ccv_array_free(resnet50_v1d_bones);

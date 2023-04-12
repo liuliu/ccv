@@ -449,7 +449,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	int p = 0, q = 1;
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size * device_count - 1) / (batch_size * device_count);
 	ccv_cnnp_model_set_data_parallel(imagenet, device_count);
-	ccv_cnnp_model_checkpoint(imagenet, "imagenet.checkpoint", 0);
+	ccv_cnnp_model_checkpoint(imagenet, "imagenet.checkpoint", 0, 0);
 	unsigned int current_time = get_current_time();
 	unsigned int batch_start_time = current_time;
 	ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[p]);
@@ -501,7 +501,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			ccv_nnc_stream_context_wait(stream_contexts[q]);
 			char checkpoint[256];
 			snprintf(checkpoint, 256, "imagenet.checkpoint.%d", epoch);
-			ccv_cnnp_model_checkpoint(imagenet, checkpoint, 0);
+			ccv_cnnp_model_checkpoint(imagenet, checkpoint, 0, 0);
 			int correct = 0;
 			p = 0, q = 1;
 			for (i = 0; i < ccv_cnnp_dataframe_row_count(test_data); i += batch_size * device_count)
