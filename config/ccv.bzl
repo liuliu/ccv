@@ -98,8 +98,8 @@ def ccv_deps():
         git_repository,
         name = "build_bazel_rules_cuda",
         remote = "https://github.com/liuliu/rules_cuda.git",
-        commit = "734c6864efc811e5e0bc203213c505dee56491ce",
-        shallow_since = "1660159117 -0400"
+        commit = "be346d4d12883469878edd693097f87723400c5b",
+        shallow_since = "1681409802 -0400"
     )
     _maybe(
         http_archive,
