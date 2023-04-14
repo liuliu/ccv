@@ -197,14 +197,14 @@ static void _ccv_nnc_argmax_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, cons
 }
 
 REGISTER_COMMAND(CCV_NNC_ARGMAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_argmax_cpu_ref.c, gpu/ccv_nnc_argmax_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_argmax_cpu_ref.c, gpu/ccv_nnc_argmax_gpu_ref.cu, mps/ccv_nnc_argmax_mps.m)
 {
 	registry->bitmask = _ccv_nnc_argmax_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_argmax_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_ARGMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_argmax_cpu_ref.c, gpu/ccv_nnc_argmax_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_argmax_cpu_ref.c, gpu/ccv_nnc_argmax_gpu_ref.cu, mps/ccv_nnc_argmax_mps.m)
 {
 	registry->bitmask = _ccv_nnc_argmax_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_argmax_tensor_auto_back;
@@ -245,14 +245,14 @@ static void _ccv_nnc_argmin_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, cons
 }
 
 REGISTER_COMMAND(CCV_NNC_ARGMIN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_argmin_cpu_ref.c, gpu/ccv_nnc_argmin_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_argmin_cpu_ref.c, gpu/ccv_nnc_argmin_gpu_ref.cu, mps/ccv_nnc_argmin_mps.m)
 {
 	registry->bitmask = _ccv_nnc_argmin_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_argmin_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_ARGMIN_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_argmin_cpu_ref.c, gpu/ccv_nnc_argmin_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_argmin_cpu_ref.c, gpu/ccv_nnc_argmin_gpu_ref.cu, mps/ccv_nnc_argmin_mps.m)
 {
 	registry->bitmask = _ccv_nnc_argmin_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_argmin_tensor_auto_back;
