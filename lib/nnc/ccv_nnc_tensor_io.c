@@ -431,7 +431,7 @@ int ccv_nnc_tensor_swap(ccv_nnc_tensor_t* const tensor, const char* const name, 
 		if (dir && name)
 		{
 			ccv_nnc_synchronize_stream_context(0); // To avoid if the data is coming from GPU and haven't finish writing.
-			tensor->data.u8 = mpmemmap(tensor->data.u8, data, ccv_min(expected_size, expected_size), expected_size, dir, name);
+			tensor->data.u8 = mpmemmap(tensor->data.u8, data, ccv_min(expected_size, data_size), expected_size, dir, name);
 		} else
 			mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, data, 0, CCV_TENSOR_CPU_MEMORY, ccv_min(expected_size, data_size));
 	} else
