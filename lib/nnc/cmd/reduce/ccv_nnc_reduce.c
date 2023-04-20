@@ -28,14 +28,14 @@ static int _ccv_nnc_reduce_sum_or_mean_back_bitmask(const int input_size, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu, mps/ccv_nnc_reduce_sum_mps.m)
 {
 	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_reduce_sum_cpu_ref.c, gpu/ccv_nnc_reduce_sum_gpu_cudnn.cu, mps/ccv_nnc_reduce_sum_mps.m)
 {
 	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
