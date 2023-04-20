@@ -11,25 +11,25 @@ static void _ccv_nnc_upsample_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, co
 	const int nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	if (nd == 2)
 	{
-		outputs[0].dim[0] = (int)(inputs[0].dim[0] * cmd.upsample.height_scale);
-		outputs[0].dim[1] = (int)(inputs[0].dim[1] * cmd.upsample.width_scale);
+		outputs[0].dim[0] = (int)(inputs[0].dim[0] * cmd.upsample.height_scale + 0.5);
+		outputs[0].dim[1] = (int)(inputs[0].dim[1] * cmd.upsample.width_scale + 0.5);
 	} else if (nd == 3) {
 		if (inputs[0].format == CCV_TENSOR_FORMAT_NCHW || inputs[0].format == CCV_TENSOR_FORMAT_CHWN)
 		{
-			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.height_scale);
-			outputs[0].dim[nd - 1] = (int)(inputs[0].dim[nd - 1] * cmd.upsample.width_scale);
+			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.height_scale + 0.5);
+			outputs[0].dim[nd - 1] = (int)(inputs[0].dim[nd - 1] * cmd.upsample.width_scale + 0.5);
 		} else {
-			outputs[0].dim[0] = (int)(inputs[0].dim[0] * cmd.upsample.height_scale);
-			outputs[0].dim[1] = (int)(inputs[0].dim[1] * cmd.upsample.width_scale);
+			outputs[0].dim[0] = (int)(inputs[0].dim[0] * cmd.upsample.height_scale + 0.5);
+			outputs[0].dim[1] = (int)(inputs[0].dim[1] * cmd.upsample.width_scale + 0.5);
 		}
 	} else if (nd == 4) {
 		if (inputs[0].format == CCV_TENSOR_FORMAT_NCHW)
 		{
-			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.height_scale);
-			outputs[0].dim[nd - 1] = (int)(inputs[0].dim[nd - 1] * cmd.upsample.width_scale);
+			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.height_scale + 0.5);
+			outputs[0].dim[nd - 1] = (int)(inputs[0].dim[nd - 1] * cmd.upsample.width_scale + 0.5);
 		} else {
-			outputs[0].dim[nd - 3] = (int)(inputs[0].dim[nd - 3] * cmd.upsample.height_scale);
-			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.width_scale);
+			outputs[0].dim[nd - 3] = (int)(inputs[0].dim[nd - 3] * cmd.upsample.height_scale + 0.5);
+			outputs[0].dim[nd - 2] = (int)(inputs[0].dim[nd - 2] * cmd.upsample.width_scale + 0.5);
 		}
 	}
 }
