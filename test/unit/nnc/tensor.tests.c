@@ -150,7 +150,7 @@ TEST_CASE("tensor persistence")
 	ccv_nnc_tensor_free(tensor);
 }
 
-static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier)
+static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier)
 {
 	unsigned char* const u8 = (unsigned char*)data;
 	unsigned char* const u8enc = (unsigned char*)encoded;
@@ -162,7 +162,7 @@ static int _tensor_xor_encode(const void* const data, const size_t data_size, co
 	return 1;
 }
 
-static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
 {
 	if (identifier != 1)
 		return 0;
@@ -176,12 +176,12 @@ static int _tensor_xor_decode(const void* const data, const size_t data_size, co
 	return 1;
 }
 
-static int _tensor_noop_encode(const void* const data, const size_t data_size, const int datatype, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier)
+static int _tensor_noop_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier)
 {
 	return 0;
 }
 
-static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
 {
 	return 0;
 }
