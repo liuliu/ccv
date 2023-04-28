@@ -17,7 +17,7 @@
 static inline int _model_tensor_write(const ccv_cnnp_model_t* const self, const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
 	if (self->rw.writer)
-		return self->rw.writer(tensor, handle, name);
+		return self->rw.writer(tensor, handle, name, options);
 	return ccv_nnc_tensor_write(tensor, handle, name, options);
 }
 
@@ -59,7 +59,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 static inline int _model_tensor_read(const ccv_cnnp_model_t* const self, void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out)
 {
 	if (self->rw.reader)
-		return self->rw.reader(handle, name, dir, tensor_out);
+		return self->rw.reader(handle, name, dir, options, tensor_out);
 	return ccv_nnc_tensor_read(handle, name, dir, options, tensor_out);
 }
 

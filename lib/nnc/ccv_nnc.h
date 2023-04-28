@@ -3689,7 +3689,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_write`` method.
  * @param name The name give to a particular parameter.
  */
-typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name);
+typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * The prototype for the reader function to load parameters.
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.
@@ -3697,7 +3697,7 @@ typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, 
  * @param dir The directory for a particular parameter if it is file-backed.
  * @param tensor_out The tensor to be loaded.
  */
-typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, ccv_nnc_tensor_t** const tensor_out);
+typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Set IO interceptor for loading weights from / to the model to replace the default SQLite reader / writer.
  * @param model The model.
