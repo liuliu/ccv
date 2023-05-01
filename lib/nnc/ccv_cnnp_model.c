@@ -8,7 +8,6 @@
 
 ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size)
 {
-	assert(input_size > 0);
 	if (!model->io)
 		model->io = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	ccv_cnnp_model_io_t model_io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s) + sizeof(ccv_nnc_tensor_symbol_t) * model->output_size);
@@ -16,20 +15,25 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	model_io->param_sel = 0;
 	model_io->visit = 0;
 	model_io->model = model;
-	model_io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 	model_io->dependencies = 0;
 	model_io->dependents = 0;
 	model_io->outgoings = 0;
 	model_io->outputs = (ccv_nnc_tensor_symbol_t*)(model_io + 1);
 	ccv_array_push(model->io, &model_io);
-	int i;
-	ccv_array_resize(model_io->incomings, input_size);
-	memcpy(ccv_array_get(model_io->incomings, 0), inputs, sizeof(ccv_cnnp_model_io_t) * input_size);
-	for (i = 0; i < input_size; i++)
+	if (input_size > 0)
 	{
-		if (!inputs[i]->outgoings)
-			inputs[i]->outgoings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
-		ccv_array_push(inputs[i]->outgoings, &model_io);
+		model_io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), input_size, 0);
+		ccv_array_resize(model_io->incomings, input_size);
+		int i;
+		memcpy(ccv_array_get(model_io->incomings, 0), inputs, sizeof(ccv_cnnp_model_io_t) * input_size);
+		for (i = 0; i < input_size; i++)
+		{
+			if (!inputs[i]->outgoings)
+				inputs[i]->outgoings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
+			ccv_array_push(inputs[i]->outgoings, &model_io);
+		}
+	} else {
+		model_io->incomings = 0;
 	}
 	return model_io;
 }

@@ -2744,3 +2744,129 @@ static ccv_cnnp_model_t* _ccv_cnnp_clamp_copy(const ccv_cnnp_model_t* const supe
 	ccv_cnnp_model_clamp_t* const self = (ccv_cnnp_model_clamp_t*)super;
 	return ccv_cnnp_clamp(self->min, self->max, self->super.name);
 }
+
+// MARK - Parameter Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	float init_bound;
+	ccv_nnc_tensor_symbol_t weights;
+	ccv_nnc_tensor_param_t weights_params;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_parameter_t;
+
+static void _ccv_cnnp_parameter_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(output_size == 1);
+	ccv_cnnp_model_parameter_t* const self = (ccv_cnnp_model_parameter_t*)super;
+	if (!self->weights.graph)
+		self->weights = ccv_nnc_tensor_symbol_new(graph, self->weights_params, "weights");
+	assert(self->weights.graph == graph);
+	outputs[0] = self->weights;
+}
+
+static void _ccv_cnnp_parameter_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_parameter_t* const self = (ccv_cnnp_model_parameter_t*)super;
+	if (self->init_bound > 0)
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-self->init_bound, self->init_bound), ccv_nnc_no_hint, 0, 0, self->weights);
+	else
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->weights);
+}
+
+static void _ccv_cnnp_parameter_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+{
+	ccv_cnnp_model_parameter_t* const self = (ccv_cnnp_model_parameter_t*)super;
+	add_to_array(parameters, self->weights);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_parameter_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_parameter_isa = {
+	.build = _ccv_cnnp_parameter_build,
+	.init_states = _ccv_cnnp_parameter_init_states,
+	.add_to_parameter = _ccv_cnnp_parameter_add_to_parameter,
+	.copy = _ccv_cnnp_parameter_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const char* const name)
+{
+	ccv_cnnp_model_parameter_t* const model_parameter = (ccv_cnnp_model_parameter_t*)cccalloc(1, sizeof(ccv_cnnp_model_parameter_t));
+	model_parameter->super.isa = &ccv_cnnp_parameter_isa;
+	model_parameter->super.input_size = 0;
+	model_parameter->super.outputs = &model_parameter->output;
+	model_parameter->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_parameter->super, name);
+	model_parameter->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_parameter->weights.graph = 0;
+	model_parameter->weights_params = params;
+	return (ccv_cnnp_model_t*)model_parameter;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_parameter_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_parameter_t* const self = (const ccv_cnnp_model_parameter_t*)super;
+	return ccv_cnnp_parameter(self->weights_params, self->init_bound, self->super.name);
+}
+
+// MARK - Scalar Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int type;
+	int format;
+	int datatype;
+	float value;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_scalar_t;
+
+static void _ccv_cnnp_scalar_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(output_size == 1);
+	ccv_cnnp_model_scalar_t* const self = (ccv_cnnp_model_scalar_t*)super;
+	ccv_nnc_tensor_param_t params = {
+		.type = self->type,
+		.format = self->format,
+		.datatype = self->datatype,
+		.dim = {
+			1
+		}
+	};
+	if (input_size > 0)
+	{
+		ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+		params.type = input_params.type;
+		params.format = input_params.format;
+		params.datatype = input_params.datatype;
+	}
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SET_FORWARD(self->value), 0, 0, outputs, 1, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_scalar_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_scalar_isa = {
+	.build = _ccv_cnnp_scalar_build,
+	.copy = _ccv_cnnp_scalar_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_scalar(const int type, const int format, const int datatype, const float value, const char* const name)
+{
+	ccv_cnnp_model_scalar_t* const model_scalar = (ccv_cnnp_model_scalar_t*)cccalloc(1, sizeof(ccv_cnnp_model_scalar_t));
+	model_scalar->super.isa = &ccv_cnnp_scalar_isa;
+	model_scalar->super.input_size = 0;
+	model_scalar->super.outputs = &model_scalar->output;
+	model_scalar->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_scalar->super, name);
+	model_scalar->type = type;
+	model_scalar->format = format;
+	model_scalar->datatype = datatype;
+	model_scalar->value = value;
+	return (ccv_cnnp_model_t*)model_scalar;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_scalar_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_scalar_t* const self = (const ccv_cnnp_model_scalar_t*)super;
+	return ccv_cnnp_scalar(self->type, self->format, self->datatype, self->value, self->super.name);
+}

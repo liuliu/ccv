@@ -203,37 +203,38 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 		ccv_cnnp_model_t* const sub_model = self->sequence[i]->model;
 		ccv_array_clear(input_symbols);
 		const ccv_array_t* const incomings = self->sequence[i]->incomings;
-		for (j = 0; j < incomings->rnum; j++)
-		{
-			const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(incomings, j);
-			if (CCV_CNNP_IS_MODEL_PARAMETER(input))
+		if (incomings)
+			for (j = 0; j < incomings->rnum; j++)
 			{
-				if (!parameter_indices)
-					parameter_indices = ccv_array_new(sizeof(int), 0, 0);
-				else
-					ccv_array_clear(parameter_indices);
-				const int param_sel = input->param_sel > 0 ? input->param_sel - 1 : input->param_sel;
-				assert(input->param_sel != 0);
-				ccv_cnnp_model_add_to_parameter_indices(input->model, param_sel, parameter_indices);
-				assert(parameter_indices->rnum > 0);
-				const int param_ref = input->param_ref > 0 ? input->param_ref - 1 : input->param_ref;
-				assert(input->param_ref != 0);
-				if (param_ref >= 0)
+				const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(incomings, j);
+				if (CCV_CNNP_IS_MODEL_PARAMETER(input))
 				{
-					assert(param_ref < parameter_indices->rnum);
-					const ccv_nnc_tensor_symbol_t parameter = ccv_cnnp_parameter_from_indice(super, *(int*)ccv_array_get(parameter_indices, param_ref));
-					ccv_array_push(input_symbols, &parameter);
-				} else // Otherwise, all of them.
-					for (k = 0; k < parameter_indices->rnum; k++)
+					if (!parameter_indices)
+						parameter_indices = ccv_array_new(sizeof(int), 0, 0);
+					else
+						ccv_array_clear(parameter_indices);
+					const int param_sel = input->param_sel > 0 ? input->param_sel - 1 : input->param_sel;
+					assert(input->param_sel != 0);
+					ccv_cnnp_model_add_to_parameter_indices(input->model, param_sel, parameter_indices);
+					assert(parameter_indices->rnum > 0);
+					const int param_ref = input->param_ref > 0 ? input->param_ref - 1 : input->param_ref;
+					assert(input->param_ref != 0);
+					if (param_ref >= 0)
 					{
-						const ccv_nnc_tensor_symbol_t parameter = ccv_cnnp_parameter_from_indice(super, *(int*)ccv_array_get(parameter_indices, k));
+						assert(param_ref < parameter_indices->rnum);
+						const ccv_nnc_tensor_symbol_t parameter = ccv_cnnp_parameter_from_indice(super, *(int*)ccv_array_get(parameter_indices, param_ref));
 						ccv_array_push(input_symbols, &parameter);
-					}
-			} else {
-				for (k = 0; k < input->model->output_size; k++)
-					ccv_array_push(input_symbols, &input->outputs[k]);
+					} else // Otherwise, all of them.
+						for (k = 0; k < parameter_indices->rnum; k++)
+						{
+							const ccv_nnc_tensor_symbol_t parameter = ccv_cnnp_parameter_from_indice(super, *(int*)ccv_array_get(parameter_indices, k));
+							ccv_array_push(input_symbols, &parameter);
+						}
+				} else {
+					for (k = 0; k < input->model->output_size; k++)
+						ccv_array_push(input_symbols, &input->outputs[k]);
+				}
 			}
-		}
 		// Go through each sub model to build the graph.
 		ccv_array_t* nodes;
 		const ccv_array_t* const dependencies = self->sequence[i]->dependencies;

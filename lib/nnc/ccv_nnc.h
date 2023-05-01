@@ -4310,6 +4310,24 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_datatype_conversion(const int dataty
  * @return A model that does clamp.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_clamp(const float min, const float max, const char* const name);
+/**
+ * A parameter that can be initialized / loaded.
+ * @param params The tensor shape / information about this parameter.
+ * @param init_bound The bound for the initial values, in uniform distribution.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and return the weight.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const char* const name);
+/**
+ * A scalar value that can be used.
+ * @param type The type of this scalar.
+ * @param format The format of this scalar.
+ * @param datatype The datatype of this scalar.
+ * @param value The value in float.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and return the scalar.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar(const int type, const int format, const int datatype, const float value, const char* const name);
 
 /** @} */
 
