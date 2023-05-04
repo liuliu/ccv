@@ -230,15 +230,20 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 		} else
 			to_stride = tensor_variable->stride;
 		// If we provide stride, or reshape to a different size, assert the tensor variable itself is contiguous (otherwise we cannot satisfy the reshape requirements).
-		if (ccv_nnc_tensor_nd(info.dim) != ccv_nnc_tensor_nd(tensor_variable->info.dim) || (stride[0] != 0 && memcmp(stride, to_stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0))
+		const int different_dim = ccv_nnc_tensor_nd(info.dim) != ccv_nnc_tensor_nd(tensor_variable->info.dim);
+		if (different_dim || (stride[0] != 0 && memcmp(stride, to_stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0))
 			{ assert(ccv_nnc_tensor_view_is_contiguous(tensor_variable->info.dim, to_stride)); }
 		// Need to compute alias off, that is the alias off of the tensor variable plus its ofs.
 		const off_t off = ccv_nnc_tensor_view_offset(tensor_variable->info.datatype, to_stride, tensor_variable->ofs);
 		variable_alias->alias_off = tensor_variable->alias_off + off;
 		// If we don't provide stride, copy the stride from previous variable.
 		if (stride[0] == 0)
-			memcpy(variable_alias->stride, tensor_variable->stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-		else
+		{
+			if (different_dim)
+				ccv_nnc_tensor_get_stride(info.dim, variable_alias->stride);
+			else
+				memcpy(variable_alias->stride, to_stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+		} else
 			memcpy(variable_alias->stride, stride, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	} else {
 		variable_alias->alias_index_ref = tensor_variable->index + 1;
