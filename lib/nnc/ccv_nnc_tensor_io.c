@@ -135,7 +135,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 		return CCV_IO_ERROR;
 	sqlite3_bind_text(tensor_select_stmt, 1, name, -1, 0);
 	if (SQLITE_ROW != sqlite3_step(tensor_select_stmt))
+	{
+		sqlite3_finalize(tensor_select_stmt);
 		return CCV_IO_ERROR;
+	}
 	ccv_nnc_tensor_t* tensor = *tensor_out;
 	int datatype = 0;
 	unsigned int identifier = 0;
