@@ -41,7 +41,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref_u8(const ccv_nnc_tensor_view_t* const a, c
 			unsigned char* bp0 = bp + i[0] * bstride[0];
 			for (i[1] = 0; i[1] < dim[1]; i[1]++)
 			{
-				memcpy(bp0, ap0, dim[2] * dim[3] * sizeof(ccv_float16_t));
+				memcpy(bp0, ap0, dim[2] * dim[3] * sizeof(unsigned char));
 				ap0 += astride[1];
 				bp0 += bstride[1];
 			}
@@ -59,7 +59,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref_u8(const ccv_nnc_tensor_view_t* const a, c
 				unsigned char* bp1 = bp0 + i[1] * bstride[1];
 				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
-					memcpy(bp1, ap1, dim[3] * sizeof(ccv_float16_t));
+					memcpy(bp1, ap1, dim[3] * sizeof(unsigned char));
 					ap1 += astride[2];
 					bp1 += bstride[2];
 				}
