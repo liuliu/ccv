@@ -340,9 +340,9 @@ static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const
 		if (sliced->rows >= resize_rows && sliced->cols >= resize_cols)
 		{
 			// If we can fill in the whole view, we can first crop and then scale down / up.
-			ccv_resample(sliced, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_AREA);
+			ccv_resample(sliced, &resized, CCV_32F, (double)resize_rows / (double)sliced->rows, (double)resize_cols / (double)sliced->cols, CCV_INTER_AREA);
 		} else if (sliced->rows != resize_rows || sliced->cols != resize_cols) {
-			ccv_resample(sliced, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_CUBIC);
+			ccv_resample(sliced, &resized, CCV_32F, (double)resize_rows / (double)sliced->rows, (double)resize_cols / (double)sliced->cols, CCV_INTER_CUBIC);
 		} else {
 			ccv_shift(sliced, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
 		}

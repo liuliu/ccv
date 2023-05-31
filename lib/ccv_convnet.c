@@ -749,7 +749,7 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		ccv_slice(a[i], (ccv_matrix_t**)&slice, CCV_32F, (a[i]->rows - rows) / 2, (a[i]->cols - cols) / 2, rows, cols);
 		ccv_dense_matrix_t* mean_activity = 0;
 		// scale mean activity up to be substractable (from this one, the CPU implementation is an approximation of GPU implementation)
-		ccv_resample(convnet->mean_activity, &mean_activity, 0, rows, cols, CCV_INTER_CUBIC);
+		ccv_resample(convnet->mean_activity, &mean_activity, 0, (double)rows / (double)convnet->mean_activity->rows, (double)cols / (double)convnet->mean_activity->cols, CCV_INTER_CUBIC);
 		ccv_subtract(slice, mean_activity, (ccv_matrix_t**)b, CCV_32F);
 		ccv_matrix_free(mean_activity);
 		ccv_matrix_free(slice);
@@ -1685,9 +1685,9 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 void ccv_convnet_input_formation(ccv_size_t input, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	if (a->rows > input.height && a->cols > input.width)
-		ccv_resample(a, b, CCV_32F, ccv_max(input.height, (int)(a->rows * (float)input.height / a->cols + 0.5)), ccv_max(input.width, (int)(a->cols * (float)input.width / a->rows + 0.5)), CCV_INTER_AREA);
+		ccv_resample(a, b, CCV_32F, (double)ccv_max(input.height, (int)(a->rows * (float)input.height / a->cols + 0.5)) / (double)a->rows, (double)ccv_max(input.width, (int)(a->cols * (float)input.width / a->rows + 0.5)) / (double)a->cols, CCV_INTER_AREA);
 	else if (a->rows < input.height || a->cols < input.width)
-		ccv_resample(a, b, CCV_32F, ccv_max(input.height, (int)(a->rows * (float)input.height / a->cols + 0.5)), ccv_max(input.width, (int)(a->cols * (float)input.width / a->rows + 0.5)), CCV_INTER_CUBIC);
+		ccv_resample(a, b, CCV_32F, (double)ccv_max(input.height, (int)(a->rows * (float)input.height / a->cols + 0.5)) / (double)a->rows, (double)ccv_max(input.width, (int)(a->cols * (float)input.width / a->rows + 0.5)) / (double)a->cols, CCV_INTER_CUBIC);
 	else
 		ccv_shift(a, (ccv_matrix_t**)b, CCV_32F, 0, 0); // converting to 32f
 }

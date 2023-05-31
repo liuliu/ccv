@@ -220,7 +220,7 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 				ccv_dense_matrix_t* imgs1 = 0;
 				ccv_dense_matrix_t* imgs2 = 0;
 				ccv_slice(image, (ccv_matrix_t**)&temp, 0, rect->y, rect->x, rect->height, rect->width);
-				ccv_resample(temp, &imgs0, 0, imgsz.height, imgsz.width, CCV_INTER_AREA);
+				ccv_resample(temp, &imgs0, 0, (double)imgsz.height / (double)temp->rows, (double)imgsz.width / (double)temp->cols, CCV_INTER_AREA);
 				assert(imgs0->step == steps[0]);
 				ccv_matrix_free(temp);
 				ccv_sample_down(imgs0, &imgs1, 0, 0, 0);
@@ -1195,12 +1195,12 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * 4 * sizeof(ccv_dense_matrix_t*));
 	memset(pyr, 0, (scale_upto + next * 2) * 4 * sizeof(ccv_dense_matrix_t*));
 	if (params.size.height != _cascade[0]->size.height || params.size.width != _cascade[0]->size.width)
-		ccv_resample(a, &pyr[0], 0, a->rows * _cascade[0]->size.height / params.size.height, a->cols * _cascade[0]->size.width / params.size.width, CCV_INTER_AREA);
+		ccv_resample(a, &pyr[0], 0, (double)(a->rows * _cascade[0]->size.height / params.size.height) / (double)a->rows, (double)(a->cols * _cascade[0]->size.width / params.size.width) / (double)a->cols, CCV_INTER_AREA);
 	else
 		pyr[0] = a;
 	int i, j, k, t, x, y, q;
 	for (i = 1; i < ccv_min(params.interval + 1, scale_upto + next * 2); i++)
-		ccv_resample(pyr[0], &pyr[i * 4], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
+		ccv_resample(pyr[0], &pyr[i * 4], 0, (double)(int)(pyr[0]->rows / pow(scale, i)) / (double)pyr[0]->rows, (double)(int)(pyr[0]->cols / pow(scale, i)) / (double)pyr[0]->cols, CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4], 0, 0, 0);
 	if (params.accurate)

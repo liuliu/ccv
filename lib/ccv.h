@@ -1252,11 +1252,11 @@ enum {
  * @param a The input matrix.
  * @param b The output matrix.
  * @param btype The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * @param rows The new row.
- * @param cols The new column.
+ * @param rows_scale The scale factor for rows. The number of rows, if not provided, will be computed as round(rows * rows_scale)
+ * @param cols_scale The scale factor for columns. The number of columns, if not provided, will be computed as round(columns * columns_scale)
  * @param type For now, ccv supports CCV_INTER_AREA, which is an extension to [bilinear resampling](https://en.wikipedia.org/wiki/Bilinear_filtering) for downsampling and CCV_INTER_CUBIC [bicubic resampling](https://en.wikipedia.org/wiki/Bicubic_interpolation) for upsampling.
  */
-void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
+void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, double rows_scale, double cols_scale, int type);
 /**
  * Downsample a given matrix to exactly half size with a [Gaussian filter](https://en.wikipedia.org/wiki/Gaussian_filter). The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).
  * @param a The input matrix.

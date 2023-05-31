@@ -46,7 +46,7 @@ TEST_CASE("resample operation of CCV_INTER_AREA")
 	ccv_dense_matrix_t* image = 0;
 	ccv_read("../../samples/chessbox.png", &image, CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* x = 0;
-	ccv_resample(image, &x, 0, image->rows / 5, image->cols / 5, CCV_INTER_AREA);
+	ccv_resample(image, &x, 0, 1.0 / 5.0, 1.0 / 5.0, CCV_INTER_AREA);
 	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.resample.bin", "should be a image of color dot");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);

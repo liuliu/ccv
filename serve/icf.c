@@ -167,7 +167,7 @@ int uri_icf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 	ccv_dense_matrix_t* resize = 0;
 	if (parser->params.max_dimension > 0 && (image->rows > parser->params.max_dimension || image->cols > parser->params.max_dimension))
 	{
-		ccv_resample(image, &resize, 0, ccv_min(parser->params.max_dimension, (int)(image->rows * (float)parser->params.max_dimension / image->cols + 0.5)), ccv_min(parser->params.max_dimension, (int)(image->cols * (float)parser->params.max_dimension / image->rows + 0.5)), CCV_INTER_AREA);
+		ccv_resample(image, &resize, 0, (double)ccv_min(parser->params.max_dimension, (int)(image->rows * (float)parser->params.max_dimension / image->cols + 0.5)) / (double)image->rows, (double)ccv_min(parser->params.max_dimension, (int)(image->cols * (float)parser->params.max_dimension / image->rows + 0.5)) / (double)image->cols, CCV_INTER_AREA);
 		ccv_matrix_free(image);
 	} else
 		resize = image;

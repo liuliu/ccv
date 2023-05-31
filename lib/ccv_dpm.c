@@ -50,7 +50,7 @@ static void _ccv_dpm_feature_pyramid(ccv_dense_matrix_t* a, ccv_dense_matrix_t**
 	pyr[next] = a;
 	int i;
 	for (i = 1; i <= interval; i++)
-		ccv_resample(pyr[next], &pyr[next + i], 0, (int)(pyr[next]->rows / pow(scale, i)), (int)(pyr[next]->cols / pow(scale, i)), CCV_INTER_AREA);
+		ccv_resample(pyr[next], &pyr[next + i], 0, (double)(int)(pyr[next]->rows / pow(scale, i)) / (double)pyr[next]->rows, (double)(int)(pyr[next]->cols / pow(scale, i)) / (double)pyr[next]->cols, CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next; i++)
 		ccv_sample_down(pyr[i], &pyr[i + next], 0, 0, 0);
 	ccv_dense_matrix_t* hog;
@@ -417,7 +417,7 @@ static ccv_array_t* _ccv_dpm_summon_examples_by_rectangle(char** posfiles, ccv_r
 		ccv_slice(up2x, (ccv_matrix_t**)&slice, 0, bbox.y * 2, bbox.x * 2, bbox.height * 2, bbox.width * 2);
 		ccv_matrix_free(up2x);
 		ccv_dense_matrix_t* resize = 0;
-		ccv_resample(slice, &resize, 0, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE, CCV_INTER_AREA);
+		ccv_resample(slice, &resize, 0, (double)(rows * CCV_DPM_WINDOW_SIZE) / (double)slice->rows, (double)(cols * CCV_DPM_WINDOW_SIZE) / (double)slice->cols, CCV_INTER_AREA);
 		ccv_matrix_free(slice);
 		ccv_dense_matrix_t* hog = 0;
 		ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);

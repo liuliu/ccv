@@ -302,9 +302,9 @@ int main(int argc, char** argv)
 		ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 		ccv_dense_matrix_t* b = 0;
 		if (image->rows > 225 && image->cols > 225)
-			ccv_resample(image, &b, 0, ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)), ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)), CCV_INTER_AREA);
+			ccv_resample(image, &b, 0, (double)ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)) / (double)image->rows, (double)ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)) / (double)image->cols, CCV_INTER_AREA);
 		else if (image->rows < 225 || image->cols < 225)
-			ccv_resample(image, &b, 0, ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)), ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)), CCV_INTER_CUBIC);
+			ccv_resample(image, &b, 0, (double)ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)) / (double)image->rows, (double)ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)) / (double)image->cols, CCV_INTER_CUBIC);
 		else
 			b = image;
 		if (b != image)

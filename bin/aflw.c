@@ -22,9 +22,9 @@ static ccv_dense_matrix_t* _ccv_aflw_slice_with_rect(gsl_rng* rng, ccv_dense_mat
 	rect.y += offset.y;
 	ccv_dense_matrix_t* b = 0;
 	if (size.width > rect.width)
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_CUBIC);
+		ccv_resample(resize, &b, 0, (double)(size.height + margin.top + margin.bottom) / (double)resize->rows, (double)(size.width + margin.left + margin.right) / (double)resize->cols, CCV_INTER_CUBIC);
 	else
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_AREA);
+		ccv_resample(resize, &b, 0, (double)(size.height + margin.top + margin.bottom) / (double)resize->rows, (double)(size.width + margin.left + margin.right) / (double)resize->cols, CCV_INTER_AREA);
 	ccv_matrix_free(resize);
 	return b;
 }

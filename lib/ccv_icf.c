@@ -488,9 +488,9 @@ static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matr
 	ccv_matrix_free(b);
 	b = 0;
 	if (scale_ratio > 1)
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom + 2, size.width + margin.left + margin.right + 2, CCV_INTER_CUBIC);
+		ccv_resample(resize, &b, 0, (double)(size.height + margin.top + margin.bottom + 2) / (double)resize->rows, (double)(size.width + margin.left + margin.right + 2) / (double)resize->cols, CCV_INTER_CUBIC);
 	else
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom + 2, size.width + margin.left + margin.right + 2, CCV_INTER_AREA);
+		ccv_resample(resize, &b, 0, (double)(size.height + margin.top + margin.bottom + 2) / (double)resize->rows, (double)(size.width + margin.left + margin.right + 2) / (double)resize->cols, CCV_INTER_AREA);
 	ccv_matrix_free(resize);
 	return b;
 }
@@ -1357,7 +1357,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 				ccv_flip(image, 0, 0, CCV_FLIP_Y);
 			pyr[0] = image;
 			for (q = 1; q < ccv_min(params.interval + 1, scale_upto); q++)
-				ccv_resample(pyr[0], &pyr[q], 0, (int)(pyr[0]->rows / pow(scale, q)), (int)(pyr[0]->cols / pow(scale, q)), CCV_INTER_AREA);
+				ccv_resample(pyr[0], &pyr[q], 0, (double)(int)(pyr[0]->rows / pow(scale, q)) / (double)pyr[0]->rows, (double)(int)(pyr[0]->cols / pow(scale, q)) / (double)pyr[0]->cols, CCV_INTER_AREA);
 			for (q = next; q < scale_upto; q++)
 				ccv_sample_down(pyr[q - next], &pyr[q], 0, 0, 0);
 			for (q = 0; q < scale_upto; q++)
@@ -1994,7 +1994,7 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 					break;
 				ccv_dense_matrix_t* image = k == 0 ? pyr[i] : 0;
 				if (k > 0)
-					ccv_resample(pyr[i], &image, 0, rows, cols, CCV_INTER_AREA);
+					ccv_resample(pyr[i], &image, 0, (double)rows / (double)pyr[i]->rows, (double)cols / (double)pyr[i]->cols, CCV_INTER_AREA);
 				ccv_dense_matrix_t* bordered = 0;
 				ccv_border(image, (ccv_matrix_t**)&bordered, 0, cascade->margin);
 				if (k > 0)

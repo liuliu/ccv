@@ -566,9 +566,9 @@ static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 					ccv_slice(image, (ccv_matrix_t**)&sliced, 0, rect.y, rect.x, rect.height, rect.width);
 					ccv_dense_matrix_t* b = 0;
 					if (size.width > rect.width)
-						ccv_resample(sliced, &b, 0, size.height, size.width, CCV_INTER_CUBIC);
+						ccv_resample(sliced, &b, 0, (double)size.height / (double)sliced->rows, (double)size.width / (double)sliced->cols, CCV_INTER_CUBIC);
 					else
-						ccv_resample(sliced, &b, 0, size.height, size.width, CCV_INTER_AREA);
+						ccv_resample(sliced, &b, 0, (double)size.height / (double)sliced->rows, (double)size.width / (double)sliced->cols, CCV_INTER_AREA);
 					ccv_matrix_free(sliced);
 					b->sig = 0;
 					// this leveraged the fact that because I know the ccv_dense_matrix_t is continuous in memory
@@ -1095,7 +1095,7 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 					assert(sliced->rows >= cascade->size.height && sliced->cols >= cascade->size.width);
 					if (sliced->rows > cascade->size.height || sliced->cols > cascade->size.width)
 					{
-						ccv_resample(sliced, &resized, 0, cascade->size.height, cascade->size.width, CCV_INTER_CUBIC);
+						ccv_resample(sliced, &resized, 0, (double)cascade->size.height / (double)sliced->rows, (double)cascade->size.width / (double)sliced->cols, CCV_INTER_CUBIC);
 						ccv_matrix_free(sliced);
 					} else {
 						resized = sliced;
@@ -1660,7 +1660,7 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 	if (up_ratio - 1.0 > 1e-4)
 	{
 		ccv_dense_matrix_t* resized = 0;
-		ccv_resample(a, &resized, 0, (int)(a->rows * up_ratio + 0.5), (int)(a->cols * up_ratio + 0.5), CCV_INTER_CUBIC);
+		ccv_resample(a, &resized, 0, up_ratio, up_ratio, CCV_INTER_CUBIC);
 		a = resized;
 	}
 	for (i = 0; i < count; i++)
@@ -1696,7 +1696,7 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 					break;
 				ccv_dense_matrix_t* image = k == 0 ? pyr[i] : 0;
 				if (k > 0)
-					ccv_resample(pyr[i], &image, 0, rows, cols, CCV_INTER_AREA);
+					ccv_resample(pyr[i], &image, 0, (double)rows / (double)pyr[i]->rows, (double)cols / (double)pyr[i]->cols, CCV_INTER_AREA);
 				ccv_dense_matrix_t* scd = 0;
 				if (cascade->margin.left == 0 && cascade->margin.top == 0 && cascade->margin.right == 0 && cascade->margin.bottom == 0)
 				{
