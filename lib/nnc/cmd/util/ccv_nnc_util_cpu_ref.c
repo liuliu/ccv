@@ -11,6 +11,82 @@
 #endif
 #include "../_ccv_nnc_cpu_ref.h"
 
+void _ccv_nnc_tensor_transfer_cpu_ref_u8(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b)
+{
+	// Assuming this is float 32.
+	assert(a->info.datatype == b->info.datatype);
+	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
+	{
+		// Super optimal case, just do memcpy.
+		memcpy(b->data.u8, a->data.u8, ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype));
+		return;
+	}
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	assert(ccv_nnc_tensor_view_check_dim(b, dim));
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(b, bstride);
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int i[CCV_NNC_MAX_DIM + 2];
+	unsigned char* const ap = a->data.u8;
+	unsigned char* const bp = b->data.u8;
+	if (astride[2] == dim[3] && bstride[3] == dim[3])
+	{
+		// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			unsigned char* ap0 = ap + i[0] * astride[0];
+			unsigned char* bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				memcpy(bp0, ap0, dim[2] * dim[3] * sizeof(ccv_float16_t));
+				ap0 += astride[1];
+				bp0 += bstride[1];
+			}
+		}
+		return;
+	} else if (astride[3] == 1 && bstride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			unsigned char* const ap0 = ap + i[0] * astride[0];
+			unsigned char* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				unsigned char* ap1 = ap0 + i[1] * astride[1];
+				unsigned char* bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					memcpy(bp1, ap1, dim[3] * sizeof(ccv_float16_t));
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
+			}
+		}
+		return;
+	}
+	// Non-optimal case, need to do skip copy.
+	for (i[0] = 0; i[0] < dim[0]; i[0]++)
+	{
+		unsigned char* const ap0 = ap + i[0] * astride[0];
+		unsigned char* const bp0 = bp + i[0] * bstride[0];
+		for (i[1] = 0; i[1] < dim[1]; i[1]++)
+		{
+			unsigned char* ap1 = ap0 + i[1] * astride[1];
+			unsigned char* bp1 = bp0 + i[1] * bstride[1];
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			{
+				for (i[3] = 0; i[3] < dim[3]; i[3]++)
+					bp1[i[3] * bstride[3]] = ap1[i[3] * astride[3]];
+				ap1 += astride[2];
+				bp1 += bstride[2];
+			}
+		}
+	}
+}
+
 void _ccv_nnc_tensor_transfer_cpu_ref_f16(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b)
 {
 	// Assuming this is float 32.
@@ -464,6 +540,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				_ccv_nnc_tensor_transfer_cpu_ref_f32(a, b);
 			else if (a->info.datatype == CCV_64F)
 				_ccv_nnc_tensor_transfer_cpu_ref_f64(a, b);
+			else if (a->info.datatype == CCV_8U)
+				_ccv_nnc_tensor_transfer_cpu_ref_u8(a, b);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -862,6 +940,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
 				_ccv_nnc_tensor_nhwc_nchw_f32(a, b);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
 				_ccv_nnc_tensor_nchw_nhwc_f32(a, b);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
@@ -878,6 +957,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
 				_ccv_nnc_tensor_nhwc_nchw_f64(a, b);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
 				_ccv_nnc_tensor_nchw_nhwc_f64(a, b);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
@@ -894,8 +974,26 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
 				_ccv_nnc_tensor_nhwc_nchw_f16(a, b);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
 				_ccv_nnc_tensor_nchw_nhwc_f16(a, b);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
+				assert(0);
+			}
+		} else if (a->info.datatype == CCV_8U) {
+			if (a->info.format == b->info.format) {
+				// If it is the same, just do a normal data transfer.
+				_ccv_nnc_tensor_transfer_cpu_ref_u8(a, b);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
+				assert(0);
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
+				assert(0);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
 				assert(0);
 			} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
