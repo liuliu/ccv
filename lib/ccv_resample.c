@@ -22,27 +22,25 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 	{
 		double fsx1 = dx * scale_x, fsx2 = fsx1 + scale_x;
 		int sx1 = (int)(fsx1 + 1.0 - 1e-6), sx2 = (int)(fsx2);
-		sx1 = ccv_min(sx1, a->cols - 1);
-		sx2 = ccv_min(sx2, a->cols - 1);
 
 		if (sx1 > fsx1)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = (sx1 - 1) * ch;
+			xofs[k].si = ccv_min(sx1 - 1, a->cols - 1) * ch;
 			xofs[k++].alpha = (unsigned int)((sx1 - fsx1) * 0x100);
 		}
 
 		for (sx = sx1; sx < sx2; sx++)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = sx * ch;
+			xofs[k].si = ccv_min(sx, a->cols - 1) * ch;
 			xofs[k++].alpha = 256;
 		}
 
 		if (fsx2 - sx2 > 1e-3)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = sx2 * ch;
+			xofs[k].si = ccv_min(sx2, a->cols - 1) * ch;
 			xofs[k++].alpha = (unsigned int)((fsx2 - sx2) * 256);
 		}
 	}
@@ -62,11 +60,13 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 			for (i = 0; i < ch; i++)
 				buf[dxn + i] += a_ptr[xofs[k].si + i] * alpha;
 		}
-		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1)
+		if ((dy + 1) * scale_y <= sy + 1)
 		{
 			unsigned int beta = (int)(ccv_max(sy + 1 - (dy + 1) * scale_y, 0.f) * 256);
 			unsigned int beta1 = 256 - beta;
 			unsigned char* b_ptr = b->data.u8 + b->step * dy;
+			if (sy == a->rows - 1)
+				beta = (int)(scale_y * 256);
 			if (beta <= 0)
 			{
 				for (dx = 0; dx < b->cols * ch; dx++)
@@ -83,15 +83,19 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 				}
 			}
 			dy++;
-		}
-		else
-		{
+		} else {
 			for(dx = 0; dx < b->cols * ch; dx++)
 			{
 				sum[dx] += buf[dx] * 256;
 				buf[dx] = 0;
 			}
 		}
+	}
+	for (; dy < b->rows; dy++)
+	{
+		unsigned char* b_ptr = b->data.u8 + b->step * dy;
+		for (dx = 0; dx < b->cols * ch; dx++)
+			b_ptr[dx] = ccv_clamp(sum[dx] / inv_scale_256, 0, 255);
 	}
 }
 
@@ -113,27 +117,25 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 	{
 		double fsx1 = dx * scale_x, fsx2 = fsx1 + scale_x;
 		int sx1 = (int)(fsx1 + 1.0 - 1e-6), sx2 = (int)(fsx2);
-		sx1 = ccv_min(sx1, a->cols - 1);
-		sx2 = ccv_min(sx2, a->cols - 1);
 
 		if (sx1 > fsx1)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = (sx1 - 1) * ch;
+			xofs[k].si = ccv_min(sx1 - 1, a->cols - 1) * ch;
 			xofs[k++].alpha = (float)((sx1 - fsx1) * scale);
 		}
 
 		for (sx = sx1; sx < sx2; sx++)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = sx * ch;
+			xofs[k].si = ccv_min(sx, a->cols - 1) * ch;
 			xofs[k++].alpha = (float)scale;
 		}
 
 		if (fsx2 - sx2 > 1e-3)
 		{
 			xofs[k].di = dx * ch;
-			xofs[k].si = sx2 * ch;
+			xofs[k].si = ccv_min(sx2, a->cols - 1) * ch;
 			xofs[k++].alpha = (float)((fsx2 - sx2) * scale);
 		}
 	}
@@ -154,11 +156,13 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 			for (i = 0; i < ch; i++) \
 				buf[dxn + i] += _for_get(a_ptr, xofs[k].si + i) * alpha; \
 		} \
-		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1) \
+		if ((dy + 1) * scale_y <= sy + 1) \
 		{ \
 			float beta = ccv_max(sy + 1 - (dy + 1) * scale_y, 0.f); \
 			float beta1 = 1 - beta; \
 			unsigned char* b_ptr = b->data.u8 + b->step * dy; \
+			if (sy == a->rows - 1) \
+				beta = scale_y; /* Such that if there are any residue, we will scale it up. */ \
 			if (fabs(beta) < 1e-3) \
 			{ \
 				for (dx = 0; dx < b->cols * ch; dx++) \
@@ -175,15 +179,19 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 				} \
 			} \
 			dy++; \
-		} \
-		else \
-		{ \
+		} else { \
 			for(dx = 0; dx < b->cols * ch; dx++) \
 			{ \
 				sum[dx] += buf[dx]; \
 				buf[dx] = 0; \
 			} \
 		} \
+	} \
+	for (; dy < b->rows; dy++) \
+	{ \
+		unsigned char* b_ptr = b->data.u8 + b->step * dy; \
+		for (dx = 0; dx < b->cols * ch; dx++) \
+			_for_set(b_ptr, dx, sum[dx]); \
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter, b->type, for_block);
 #undef for_block
