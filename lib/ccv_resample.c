@@ -50,6 +50,7 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 	for (dx = 0; dx < b->cols * ch; dx++)
 		buf[dx] = sum[dx] = 0;
 	dy = 0;
+	int dy_weight_256 = 0;
 	for (sy = 0; sy < a->rows; sy++)
 	{
 		unsigned char* a_ptr = a->data.u8 + a->step * sy;
@@ -67,6 +68,8 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 			unsigned char* b_ptr = b->data.u8 + b->step * dy;
 			if (sy == a->rows - 1)
 				beta = (int)(scale_y * 256);
+			else
+				dy_weight_256 = beta;
 			if (beta <= 0)
 			{
 				for (dx = 0; dx < b->cols * ch; dx++)
@@ -84,10 +87,21 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 			}
 			dy++;
 		} else {
-			for(dx = 0; dx < b->cols * ch; dx++)
+			if (sy == a->rows - 1)
 			{
-				sum[dx] += buf[dx] * 256;
-				buf[dx] = 0;
+				dy_weight_256 = (int)(scale_y * 256) - dy_weight_256;
+				for(dx = 0; dx < b->cols * ch; dx++)
+				{
+					sum[dx] += buf[dx] * dy_weight_256;
+					buf[dx] = 0;
+				}
+			} else {
+				dy_weight_256 += 256;
+				for(dx = 0; dx < b->cols * ch; dx++)
+				{
+					sum[dx] += buf[dx] * 256;
+					buf[dx] = 0;
+				}
 			}
 		}
 	}
@@ -145,6 +159,7 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 	for (dx = 0; dx < b->cols * ch; dx++)
 		buf[dx] = sum[dx] = 0;
 	dy = 0;
+	float dy_weight = 0;
 #define for_block(_for_get, _for_set) \
 	for (sy = 0; sy < a->rows; sy++) \
 	{ \
@@ -163,6 +178,8 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 			unsigned char* b_ptr = b->data.u8 + b->step * dy; \
 			if (sy == a->rows - 1) \
 				beta = scale_y; /* Such that if there are any residue, we will scale it up. */ \
+			else \
+				dy_weight = beta; \
 			if (fabs(beta) < 1e-3) \
 			{ \
 				for (dx = 0; dx < b->cols * ch; dx++) \
@@ -180,10 +197,21 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 			} \
 			dy++; \
 		} else { \
-			for(dx = 0; dx < b->cols * ch; dx++) \
+			if (sy == a->rows - 1) \
 			{ \
-				sum[dx] += buf[dx]; \
-				buf[dx] = 0; \
+				dy_weight = scale_y - dy_weight; \
+				for(dx = 0; dx < b->cols * ch; dx++) \
+				{ \
+					sum[dx] += buf[dx] * dy_weight; \
+					buf[dx] = 0; \
+				} \
+			} else { \
+				dy_weight += 1; \
+				for(dx = 0; dx < b->cols * ch; dx++) \
+				{ \
+					sum[dx] += buf[dx]; \
+					buf[dx] = 0; \
+				} \
 			} \
 		} \
 	} \
