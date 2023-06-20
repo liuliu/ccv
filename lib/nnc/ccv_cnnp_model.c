@@ -538,16 +538,18 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 	} else {
 		// Now, finally fill in this part. If the graph is already compiled, we make a copy of the model.
 		// And then absorb the "new model" to the old one.
-		ccv_cnnp_model_t* const init = ccv_cnnp_model_copy(model);
+		ccv_cnnp_model_t* const init = ccv_cnnp_model_copy(model, model->is_trainable);
 		ccv_cnnp_model_absorb(model, init, inputs, input_size);
 		// Reset minimizer.
 		ccv_cnnp_model_set_minimizer(model, minimizer, 1, 0, 0);
 	}
 }
 
-ccv_cnnp_model_t* ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model)
+ccv_cnnp_model_t* ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model, const int is_trainable)
 {
-	return _ccv_cnnp_model_copy(model, 0);
+	ccv_cnnp_model_t* const new_model = _ccv_cnnp_model_copy(model, 0);
+	new_model->is_trainable = is_trainable;
+	return new_model;
 }
 
 void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_param_t* const outputs, const int output_size)

@@ -39,7 +39,7 @@ TEST_CASE("datatype conversion model can reference to the last parameter for the
 	const ccv_cnnp_model_io_t input2 = ccv_cnnp_input();
 	output = ccv_cnnp_model_apply(ccv_cnnp_datatype_conversion(0, 1, 0), MODEL_IO_LIST(output, input2));
 	output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output, input2));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input1, input2, input3), MODEL_IO_LIST(output), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input1, input2, input3), MODEL_IO_LIST(output), 1, 0);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a1_params, a2_params, a3_params), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, a1_params, 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);

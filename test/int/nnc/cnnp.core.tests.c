@@ -13,7 +13,7 @@ TEST_SETUP()
 
 ccv_cnnp_model_t* _math_2_x_10()
 {
-	ccv_cnnp_model_t* mul = ccv_cnnp_dense(1, 1, "mul");
+	ccv_cnnp_model_t* mul = ccv_cnnp_dense(1, 1, 1, "mul");
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(mul, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
@@ -28,7 +28,7 @@ ccv_cnnp_model_t* _math_2_x_10()
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 }
 
 TEST_CASE("train a simple math 2 * x = 10, x = 5 and copy parameter to a new model entirely")
@@ -114,7 +114,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and copy parameter to a new mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], 100, 1e-5, "should match the output when x is 0");
 	}
-	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final);
+	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final, 1);
 	ccv_cnnp_model_set_data_parallel(final3, device_count);
 	ccv_cnnp_model_set_parameters(final3, ccv_cnnp_model_parameters(final3, ALL_PARAMETERS, ALL_PARAMETERS), final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	for (i = 0; i < device_count; i++)
@@ -226,7 +226,7 @@ TEST_CASE("train a simple math 2 * x = 10, x = 5 and copy parameter to a new mod
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(o_tensor[i]), TENSOR_LIST(ho), 0);
 		REQUIRE_EQ_WITH_TOLERANCE(ho->data.f32[0], 100, 1e-5, "should match the output when x is 0");
 	}
-	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final);
+	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final, 1);
 	ccv_cnnp_model_set_data_parallel(final3, device_count);
 	ccv_cnnp_model_set_parameters(final3, ccv_cnnp_model_parameters(final3, ALL_PARAMETERS, ALL_PARAMETERS), final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	for (i = 0; i < device_count; i++)

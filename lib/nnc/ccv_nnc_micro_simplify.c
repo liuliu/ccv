@@ -958,8 +958,8 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 				_ccv_nnc_same_index_term(left_binary_terms[i].term, left_binary_terms[j].term, groups, axis_id_groups) &&
 				left_binary_terms[i].sign != left_binary_terms[j].sign)
 			{
-				left_binary_terms[i].ignore = 1;
-				left_binary_terms[j].ignore = 1;
+				left_binary_terms[i].ignore = -1;
+				left_binary_terms[j].ignore = -1;
 			}
 	// Matching signs in right terms.
 	for (i = 0; i < right_binary_size - 1; i++)
@@ -968,8 +968,8 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 				_ccv_nnc_same_index_term(right_binary_terms[i].term, right_binary_terms[j].term, groups, axis_id_groups) &&
 				right_binary_terms[i].sign != right_binary_terms[j].sign)
 			{
-				right_binary_terms[i].ignore = 1;
-				right_binary_terms[j].ignore = 1;
+				right_binary_terms[i].ignore = -1;
+				right_binary_terms[j].ignore = -1;
 			}
 	// Matching left to right.
 	for (i = 0; i < left_binary_size; i++)
@@ -979,8 +979,8 @@ static int _ccv_nnc_index_less_than_or_equal_to(const ccv_nnc_micro_loop_index_t
 				_ccv_nnc_same_index_term(left_binary_terms[i].term, right_binary_terms[j].term, groups, axis_id_groups) &&
 				left_binary_terms[i].sign == right_binary_terms[j].sign)
 			{
-				left_binary_terms[i].ignore = 1;
-				right_binary_terms[j].ignore = 1;
+				left_binary_terms[i].ignore = -1;
+				right_binary_terms[j].ignore = -1;
 			}
 	// After reduced, we should only have immediate values left, otherwise we cannot progress.
 	int left_val = 0;

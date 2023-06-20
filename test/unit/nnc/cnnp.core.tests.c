@@ -14,27 +14,27 @@ TEST_SETUP()
 static ccv_cnnp_model_t* simple_cifar_10(void)
 {
 	return ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(256, 0, 0),
+		ccv_cnnp_dense(256, 0, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_dense(10, 0, 0),
+		ccv_cnnp_dense(10, 0, 1, 0),
 		ccv_cnnp_softmax(0)
-	), 0);
+	), 1, 0);
 }
 
 TEST_CASE("compile simple cifar-10 model")
 {
 	ccv_cnnp_model_t* const sequential0 = simple_cifar_10();
-	ccv_cnnp_model_t* const sequential = ccv_cnnp_model_copy(sequential0);
+	ccv_cnnp_model_t* const sequential = ccv_cnnp_model_copy(sequential0, 1);
 	ccv_cnnp_model_free(sequential0);
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
@@ -109,30 +109,30 @@ TEST_CASE("inception layer for model")
 {
 	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
 	_ccv_cnnp_model_notified = 0;
-	ccv_cnnp_model_t* const conv_1 = ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0);
+	ccv_cnnp_model_t* const conv_1 = ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0);
 	ccv_cnnp_model_notify_hook(conv_1, _ccv_cnnp_model_hook, 0);
 	ccv_cnnp_model_io_t tower_1 = ccv_cnnp_model_apply(conv_1, MODEL_IO_LIST(x));
 	ccv_cnnp_model_t* const relu_1 = ccv_cnnp_relu(0);
 	ccv_cnnp_model_notify_hook(relu_1, _ccv_cnnp_model_hook, 0);
 	tower_1 = ccv_cnnp_model_apply(relu_1, MODEL_IO_LIST(tower_1));
-	tower_1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, 0), MODEL_IO_LIST(tower_1));
+	tower_1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, 1, 0), MODEL_IO_LIST(tower_1));
 	tower_1 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_1));
 
-	ccv_cnnp_model_io_t tower_2 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0), MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t tower_2 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(x));
 	tower_2 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_2));
-	tower_2 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0), MODEL_IO_LIST(tower_2));
+	tower_2 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0), MODEL_IO_LIST(tower_2));
 	tower_2 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_2));
 
 	ccv_cnnp_model_io_t tower_3 = ccv_cnnp_model_apply(ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((1, 1), (1, 1)), 0), MODEL_IO_LIST(x));
-	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0), MODEL_IO_LIST(tower_3));
+	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(tower_3));
 	tower_3 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(tower_3));
 	ccv_cnnp_model_t* const add_1 = ccv_cnnp_sum(0);
 	ccv_cnnp_model_notify_hook(add_1, _ccv_cnnp_model_hook, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(add_1, MODEL_IO_LIST(tower_1, tower_2, tower_3));
 	REQUIRE_EQ(0, _ccv_cnnp_model_notified, "haven't notified");
-	ccv_cnnp_model_t* const inception0 = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output), 0);
+	ccv_cnnp_model_t* const inception0 = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output), 1, 0);
 	ccv_cnnp_model_notify(inception0, 0, inception0);
-	ccv_cnnp_model_t* const inception = ccv_cnnp_model_copy(inception0);
+	ccv_cnnp_model_t* const inception = ccv_cnnp_model_copy(inception0, 1);
 	REQUIRE_EQ(3, _ccv_cnnp_model_notified, "3 models changed owner");
 	ccv_cnnp_model_free(inception0);
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
@@ -145,24 +145,24 @@ static ccv_cnnp_model_t* _ccv_multiple_outputs_functional_model(const ccv_nnc_te
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0), MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(input0));
 	output0 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(output0));
-	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, 0), MODEL_IO_LIST(input1));
+	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, 1, 0), MODEL_IO_LIST(input1));
 	output1 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(output1));
-	ccv_cnnp_model_t* model0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(output0, output1), 0);
+	ccv_cnnp_model_t* model0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(output0, output1), 1, 0);
 	input0 = ccv_cnnp_input();
 	input1 = ccv_cnnp_input();
 	output0 = ccv_cnnp_model_apply(model0, MODEL_IO_LIST(input0, input1));
 	ccv_cnnp_model_io_t input2 = ccv_cnnp_input();
-	output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0), MODEL_IO_LIST(input2));
+	output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0), MODEL_IO_LIST(input2));
 	output1 = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(output1));
-	ccv_cnnp_model_t* interim = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0, output1), 0);
+	ccv_cnnp_model_t* interim = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0, output1), 1, 0);
 	input0 = ccv_cnnp_input();
 	input1 = ccv_cnnp_input();
 	input2 = ccv_cnnp_input();
 	output0 = ccv_cnnp_model_apply(interim, MODEL_IO_LIST(input0, input1, input2));
 	output0 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0), 1, 0);
 }
 
 TEST_CASE("functional model's IO can represent multiple outputs")
@@ -185,7 +185,7 @@ TEST_CASE("functional model's IO outputs can be non-terminal")
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(input0, input1));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(ccv_cnnp_mul(1, 0), MODEL_IO_LIST(output0, input2));
 	output1 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output1, input3));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2, input3), MODEL_IO_LIST(output0, output1), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2, input3), MODEL_IO_LIST(output0, output1), 1, 0);
 	const ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t a2 = CPU_TENSOR_NCHW(32F, 1);
@@ -227,7 +227,7 @@ TEST_CASE("functional model's IO can introduce non-functional dependencies")
 	// non-functional dependency.
 	ccv_cnnp_model_add_dependencies(output1, MODEL_IO_LIST(output0));
 	output1 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0, output1));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2, input3), MODEL_IO_LIST(output0, output1), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2, input3), MODEL_IO_LIST(output0, output1), 1, 0);
 	const ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t a2 = CPU_TENSOR_NCHW(32F, 1);
@@ -262,11 +262,11 @@ TEST_CASE("make sure reuse model enables share weights")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0, output1));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(final_output), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(final_output), 1, 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1), CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
@@ -278,7 +278,7 @@ TEST_CASE("train model with share weights and L2 loss")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t fit0 = ccv_cnnp_input();
@@ -305,7 +305,7 @@ TEST_CASE("train model with share weights and L2 loss")
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(sqr0, sqr1));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 1, 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(32F, 1, 1);
@@ -349,20 +349,20 @@ TEST_CASE("train model with share weights and L2 loss")
 static ccv_cnnp_model_t* simple_cifar_10_no_softmax(void)
 {
 	return ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), 0, HINT((1, 1), (2, 2)), 0, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(256, 0, 0),
+		ccv_cnnp_dense(256, 0, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_dense(10, 0, 0)
-	), 0);
+		ccv_cnnp_dense(10, 0, 1, 0)
+	), 1, 0);
 }
 
 TEST_CASE("evaluate cifar-10 model in multi-stage mode")
@@ -495,7 +495,7 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t fit0 = ccv_cnnp_input();
@@ -522,7 +522,7 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(sqr0, sqr1));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 1, 0);
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(32F, 1, 1);
@@ -624,7 +624,7 @@ TEST_CASE("apply functional model as forward pass")
 			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_copy(b))),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), "final");
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, "final");
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
@@ -654,7 +654,7 @@ TEST_CASE("apply sequential model as forward pass")
 		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
 			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_copy(b))),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
-	ccv_cnnp_model_t* const final = ccv_cnnp_sequential_new(MODEL_LIST(mul, mul, add), "seq");
+	ccv_cnnp_model_t* const final = ccv_cnnp_sequential_new(MODEL_LIST(mul, mul, add), 1, "seq");
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
@@ -684,7 +684,7 @@ ccv_cnnp_model_t* _math_2_x_1_1_10(const ccv_nnc_tensor_t* const b)
 		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
 			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_copy(b))),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
-	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add, add), "seq");
+	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add, add), 1, "seq");
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(left, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
@@ -699,7 +699,7 @@ ccv_cnnp_model_t* _math_2_x_1_1_10(const ccv_nnc_tensor_t* const b)
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 }
 
 TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
@@ -905,7 +905,7 @@ TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4 and copy parameter to a
 	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
 	ccv_cnnp_model_evaluate(final2, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 64, 1e-5, "should match the output when x is 0");
-	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final);
+	ccv_cnnp_model_t* const final3 = ccv_cnnp_model_copy(final, 1);
 	ccv_cnnp_model_set_parameters(final3, ccv_cnnp_model_parameters(final3, ALL_PARAMETERS, ALL_PARAMETERS), final, ccv_cnnp_model_parameters(final, ALL_PARAMETERS, ALL_PARAMETERS));
 	ccv_cnnp_model_evaluate(final3, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], o_final, 1e-5, "should match the previous output");
@@ -989,7 +989,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate conve
 		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
 			KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_copy(y))),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
-	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add), "seq");
+	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add), 1, "seq");
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(left, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
@@ -1004,7 +1004,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate conve
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
@@ -1075,7 +1075,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
 			KV(CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, ccv_cnnp_cmd_exec_io_copy(y))),
 		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
-	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add), "seq");
+	ccv_cnnp_model_t* const left = ccv_cnnp_sequential_new(MODEL_LIST(mul, add), 1, "seq");
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(left, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
@@ -1090,7 +1090,7 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
 	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
@@ -1144,10 +1144,10 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 TEST_CASE("a compiled model absorbs a new model with slightly different configuration")
 {
 	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(1, 0, 0)
-	), "multi_layer");
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 1, 0)
+	), 1, "multi_layer");
 	ccv_nnc_tensor_param_t x = CPU_TENSOR_NHWC(32F, 2, 2);
 	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(x), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, x, 0);
@@ -1161,10 +1161,10 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 		.requires_grad = 1,
 	}, TENSOR_LIST(x_tensor), TENSOR_LIST(y_tensor), 0, 0);
 	ccv_cnnp_model_t* const small_model = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(1, 0, 0)
-	), "multi_layer");
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 1, 0)
+	), 1, "multi_layer");
 	x = CPU_TENSOR_NHWC(32F, 1, 2);
 	ccv_cnnp_model_absorb(multi_layer, small_model, TENSOR_PARAM_LIST(x));
 	ccv_nnc_tensor_t* const small_x = ccv_nnc_tensor_new(0, x, 0);
@@ -1175,10 +1175,10 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 	}, TENSOR_LIST(small_x), TENSOR_LIST(small_y), 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(small_y->data.f32[0], y_tensor->data.f32[0], 1e-5, "the parameters retained, the value should be too");
 	ccv_cnnp_model_t* const large_model = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(2, 0, 0),
-		ccv_cnnp_dense(1, 0, 0)
-	), "multi_layer");
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 1, 0)
+	), 1, "multi_layer");
 	x = CPU_TENSOR_NHWC(32F, 4, 2);
 	ccv_cnnp_model_absorb(multi_layer, large_model, TENSOR_PARAM_LIST(x));
 	ccv_nnc_tensor_t* const large_x = ccv_nnc_tensor_new(0, x, 0);
@@ -1201,10 +1201,10 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 
 TEST_CASE("use linear model's parameter as the input for more computation")
 {
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 0, 0);
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 0, 1, 0);
 	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
 		linear,
-	), "multi_layer");
+	), 1, "multi_layer");
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(multi_layer, MODEL_IO_LIST(input));
 	out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0), MODEL_IO_LIST(out, ccv_cnnp_model_parameters(linear, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)));
@@ -1220,11 +1220,11 @@ TEST_CASE("use linear model's parameter as the input for more computation")
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
 			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff, diff));
-	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 0);
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32F, 1);
 	const ccv_nnc_tensor_param_t t_params = CPU_TENSOR_NHWC(32F, 1);
 	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(x_params, t_params), CMD_SGD_FORWARD(0, 0.05, 1, 0, 0, 0), CMD_NOOP());
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_copy(model);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_copy(model, 1);
 	ccv_cnnp_model_free(model);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(x_params, t_params), CMD_SGD_FORWARD(0, 0.05, 1, 0, 0, 0), CMD_NOOP());
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1270,12 +1270,12 @@ TEST_CASE("use linear model's parameter as the input for more computation")
 
 TEST_CASE("model can have multiple outputs and some of them can be used in the computation")
 {
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 0);
-	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 0);
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, 0);
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 1, 0);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
-	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 0);
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 1, 0);
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1324,7 +1324,7 @@ TEST_CASE("index select model can select a part from vocabulary")
 
 TEST_CASE("embedding model can generate vector embedding")
 {
-	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32F, 10, 8, 0);
+	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32F, 10, 8, 1, 0);
 	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32S, 3);
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, x_params, 0);
 	ccv_cnnp_model_compile(embedding, TENSOR_PARAM_LIST(x_params), CMD_NOOP(), CMD_NOOP());
@@ -1346,12 +1346,12 @@ TEST_CASE("embedding model can generate vector embedding")
 
 TEST_CASE("model to get the internal name for parameters")
 {
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, "linear");
-	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 0);
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 1, 0);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
-	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 0);
+	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 1, 0);
 	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 1);
 	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	const char* linear1p = "t-linear-0-0";
@@ -1369,31 +1369,31 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 	{
 		ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), HINT((strides, strides), (0, 0)), 0);
 		shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
-		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0, 0);
+		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0, 1, 0);
 		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(shortcut));
 	}
 	ccv_cnnp_model_t* const conv1 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0)
-	), 0);
+	), 1, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const conv2 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), 0, HINT((strides, strides), (1, 1)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), 0, HINT((strides, strides), (1, 1)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0)
-	), 0);
+	), 1, 0);
 	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const conv3 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0)
-	), 0);
+		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0)
+	), 1, 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const add = ccv_cnnp_sum(0);
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	ccv_cnnp_model_t* const relu = ccv_cnnp_relu(0);
 	output = ccv_cnnp_model_apply(relu, MODEL_IO_LIST(output));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }
 
 static ccv_cnnp_model_t* _resnet_block_layer_new(const int filters, const int expansion, const int strides, const int blocks)
@@ -1407,20 +1407,20 @@ static ccv_cnnp_model_t* _resnet_block_layer_new(const int filters, const int ex
 		ccv_cnnp_model_t* block = _resnet_block_new(filters, expansion, 1, 0);
 		output = ccv_cnnp_model_apply(block, MODEL_IO_LIST(output));
 	}
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }
 
 static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_size, ccv_cnnp_model_io_t* const p)
 {
 	int i;
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0), MODEL_IO_LIST(c[c_size - 1]));
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[c_size - 1]));
 	p[c_size - 1] = output;
 	for (i = c_size - 2; i >= 0; i--)
 	{
-		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 0), MODEL_IO_LIST(c[i]));
+		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[i]));
 		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 0), MODEL_IO_LIST(output));
 		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(lateral, up));
-		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 0), MODEL_IO_LIST(sum));
+		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0), MODEL_IO_LIST(sum));
 		p[i] = output;
 	}
 }
@@ -1429,17 +1429,17 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 0),
-		ccv_cnnp_batch_norm(0.9, 1e-4, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0)
-	), 0);
+	), 1, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
 	const ccv_cnnp_model_io_t c2 = output;
@@ -1454,12 +1454,12 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d_fpn(void)
 	_fpn(256, c, 4, p);
 	p[4] = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(2, 2), HINT((2, 2), (0, 0)), 0), MODEL_IO_LIST(p[3]));
 	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 2 (x, y, w, h, object, non-object), total 18.
-	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 18, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, "rpn");
+	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 18, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, "rpn");
 	ccv_cnnp_model_io_t proposals[5];
 	int i;
 	for (i = 0; i < 5; i++)
 		proposals[i] = ccv_cnnp_model_apply(rpn_proposals, MODEL_IO_LIST(p[i]));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 0);
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), proposals, 5, 1, 0);
 }
 
 TEST_CASE("FPN-RPN use cnnp model with multiple outputs")
@@ -1485,20 +1485,20 @@ TEST_CASE("FPN-RPN use cnnp model with multiple outputs")
 TEST_CASE("extract one output each feed into different feed-forward")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
-	ccv_cnnp_model_t* tiny = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), "tiny");
+	ccv_cnnp_model_t* tiny = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out1, out2), 1, "tiny");
 	const ccv_cnnp_model_io_t i0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t o0 = ccv_cnnp_model_apply(tiny, MODEL_IO_LIST(i0));
 	ccv_cnnp_model_io_t o00 = ccv_cnnp_model_apply(ccv_cnnp_extract(0, "index0"), MODEL_IO_LIST(o0));
 	ccv_cnnp_model_io_t o01 = ccv_cnnp_model_apply(ccv_cnnp_extract(1, "index1"), MODEL_IO_LIST(o0));
-	ccv_cnnp_model_t* const l0 = ccv_cnnp_dense(1, 1, "l0");
+	ccv_cnnp_model_t* const l0 = ccv_cnnp_dense(1, 1, 1, "l0");
 	ccv_cnnp_model_io_t o10 = ccv_cnnp_model_apply(l0, MODEL_IO_LIST(o00));
-	ccv_cnnp_model_t* const l1 = ccv_cnnp_dense(1, 1, "l1");
+	ccv_cnnp_model_t* const l1 = ccv_cnnp_dense(1, 1, 1, "l1");
 	ccv_cnnp_model_io_t o11 = ccv_cnnp_model_apply(l1, MODEL_IO_LIST(o01));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(i0), MODEL_IO_LIST(o10, o11), "final");
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(i0), MODEL_IO_LIST(o10, o11), 1, "final");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1524,15 +1524,15 @@ TEST_CASE("extract one output each feed into different feed-forward")
 TEST_CASE("use parameter for values")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
-	ccv_cnnp_model_t* const value = ccv_cnnp_parameter(CPU_TENSOR_NCHW(32F, 1), 0, "value");
+	ccv_cnnp_model_t* const value = ccv_cnnp_parameter(CPU_TENSOR_NCHW(32F, 1), 0, 1, "value");
 	ccv_cnnp_model_io_t out3 = ccv_cnnp_model_apply(value, 0, 0);
 	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
 	ccv_cnnp_model_io_t out4 = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out2, out3));
-	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), "tiny");
+	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), 1, "tiny");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1555,14 +1555,14 @@ TEST_CASE("use parameter for values")
 TEST_CASE("use scalar for values")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
 	ccv_cnnp_model_io_t value = ccv_cnnp_model_apply(ccv_cnnp_scalar(CCV_TENSOR_CPU_MEMORY, CCV_TENSOR_FORMAT_NHWC, CCV_32F, 1.5, "value"), 0, 0);
 	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
 	ccv_cnnp_model_io_t out4 = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out2, value));
-	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), "tiny");
+	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), 1, "tiny");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1583,14 +1583,14 @@ TEST_CASE("use scalar for values")
 TEST_CASE("use scalar for values and copy types from other inputs")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
 	ccv_cnnp_model_io_t value = ccv_cnnp_model_apply(ccv_cnnp_scalar(0, 0, 0, 1.5, "value"), MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
 	ccv_cnnp_model_io_t out4 = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out2, value));
-	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), "tiny");
+	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out4), 1, "tiny");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);

@@ -3494,18 +3494,20 @@ void ccv_cnnp_model_notify(const ccv_cnnp_model_t* const model, const int tag, v
  * @param input_size The size of inputs array.
  * @param outputs The set of outputs.
  * @param output_size The size of outputs array.
+ * @param is_trainable Whether the parameters of this model can be trained. -1 means inherent from parent.
  * @param name The unique name of the model.
  * @return A composed model that takes inputs, and generate the outputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const int is_trainable, const char* const name);
 /**
  * This method returns a sequential model, which composed from a sequence of models.
  * @param models The list of models, that takes one input, and emit one output, feeding into the subsequent one.
  * @param model_size The size of the list.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A composed model that applies these models one by one in sequence.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const int is_trainable, const char* const name);
 /**
  * A model generation function to be called for dynamic models.
  */
@@ -3547,9 +3549,10 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 /**
  * Create a copy of an existing model.
  * @param model The existing model.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @return The new model that is exactly the same copy of the old one.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model, const int is_trainable);
 /**
  * Get the output size of the model.
  * @param model The existing model.
@@ -3979,10 +3982,11 @@ typedef struct {
  * @param input_size The size of the input list.
  * @param outputs The outputs from this graph. We can figure out which ones are outputs, but this gives us the order.
  * @param output_size The size of the output list.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A model based on the given symbolic graph.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const int is_trainable, const char* const name);
 /**
  * Sum multiple input tensors together.
  * @param name The unique name of the model.
@@ -4004,26 +4008,29 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const int axis, const char* c
  * @param no_bias Whether has bias term or not.
  * @param hint The hint for alignment.
  * @param format The format for weights. If 0, it will have the same format as the input.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A convolution model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name);
 /**
  * A dense layer model.
  * @param count The output dimension.
  * @param no_bias Whether has a bias term or not.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_bias, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_bias, const int is_trainable, const char* const name);
 /**
  * A batch norm layer model.
  * @param momentum The momentum in batch norm parameter.
  * @param epsilon The epsilon in batch norm parameter.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A batch norm layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_batch_norm(const float momentum, const float epsilon, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_batch_norm(const float momentum, const float epsilon, const int is_trainable, const char* const name);
 /**
  * A RELU activation layer model.
  * @param name The unique name of the model.
@@ -4119,10 +4126,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
  * @param epsilon The epsilon in layer norm parameter.
  * @param axis The axis are the feature axis to compute norm.
  * @param axis_count How many axis we count as feature.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A layer norm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name);
 /**
  * A group norm model.
  * @param group_axis The axis are the feature axis to compute norm.
@@ -4130,10 +4138,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_layer_norm(const float epsilon, cons
  * @param epsilon The epsilon in layer norm parameter.
  * @param reduce_axis The other axes to be reduced.
  * @param axis_count The number of other axes to be reduced.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A group norm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name);
 /**
  * Add two input tensors together. Different from sum because this support broadcasting.
  * @param p The weight for the first input.
@@ -4200,10 +4209,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const char* const name)
  * @param datatype The data type of the vocabulary.
  * @param vocab_size The size of the vocabulary.
  * @param embed_size The size of the embedding.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A index select model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const int is_trainable, const char* const name);
 /**
  * A upsample model.
  * @param type The type of upsample, whether nearest or bilinear.
@@ -4290,10 +4300,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max(const char* const name);
  * @param batch_first If 1, will batch before sequence.
  * @param bidirectional Enable bidirectional mode of RNN.
  * @param dropout If non-zero, enable dropout at each layer of RNN.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A LSTM model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const int is_trainable, const char* const name);
 /**
  * Perform datatype conversion for input tensors.
  * @param datatype The desired datatype.
@@ -4315,9 +4326,10 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_clamp(const float min, const float m
  * @param params The tensor shape / information about this parameter.
  * @param init_bound The bound for the initial values, in uniform distribution.
  * @param name The unique name of the model.
+ * @param is_trainable Whether the parameters of this model can be trained.
  * @return A model that can be applied and return the weight.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const int is_trainable, const char* const name);
 /**
  * A scalar value that can be used.
  * @param type The type of this scalar.

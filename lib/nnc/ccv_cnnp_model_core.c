@@ -133,7 +133,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_sequential_model_copy(const ccv_cnnp_model_t*
 	return (ccv_cnnp_model_t*)sequential_model;
 }
 
-ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const int is_trainable, const char* const name)
 {
 	assert(model_size > 0);
 	ccv_cnnp_sequential_model_t* const sequential_model = (ccv_cnnp_sequential_model_t*)cccalloc(1, sizeof(ccv_cnnp_sequential_model_t) + sizeof(ccv_cnnp_model_t*) * (model_size - 1) + sizeof(ccv_nnc_tensor_symbol_t));
@@ -141,6 +141,7 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 	sequential_model->super.input_size = models[0]->input_size;
 	sequential_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(sequential_model->sequence + model_size);
 	sequential_model->super.output_size = 1;
+	sequential_model->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&sequential_model->super, name);
 	sequential_model->sequence_size = model_size;
 	memcpy(sequential_model->sequence, models, sizeof(ccv_cnnp_model_t*) * model_size);
@@ -476,7 +477,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 	return (ccv_cnnp_model_t*)functional_model;
 }
 
-ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const int is_trainable, const char* const name)
 {
 	assert(output_size > 0);
 	// Do topological sort.
@@ -603,6 +604,7 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + sequence_size);
 	functional_model->super.output_size = tensor_output_size;
 	functional_model->super.input_size = input_size;
+	functional_model->super.is_trainable = is_trainable;
 	functional_model->model_output_size = output_size;
 	functional_model->model_outputs = (int*)(functional_model->super.outputs + tensor_output_size);
 	ccv_cnnp_model_copy_name(&functional_model->super, name);

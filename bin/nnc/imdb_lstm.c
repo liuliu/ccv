@@ -98,13 +98,13 @@ static ccv_cnnp_model_t* _classifier_lstm_new(const int batch_size, const int ba
 	ccv_cnnp_model_io_t const x = ccv_cnnp_input();
 	ccv_cnnp_model_io_t const mask = ccv_cnnp_input();
 	ccv_cnnp_model_io_t const index = ccv_cnnp_input();
-	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_lstm(1, hidden_size, 0, num_layers, 1, 1, 0, dropout, 0), MODEL_IO_LIST(x, mask));
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_lstm(1, hidden_size, 0, num_layers, 1, 1, 0, dropout, 1, 0), MODEL_IO_LIST(x, mask));
 	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(batch_size * batch_length, 128), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_index_select(0), MODEL_IO_LIST(out, index));
 	// Last layer, get it to 1.
 	out = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_dense(1, 0, 0), MODEL_IO_LIST(out));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(x, mask, index), MODEL_IO_LIST(out), "classifier");
+	out = ccv_cnnp_model_apply(ccv_cnnp_dense(1, 0, 1, 0), MODEL_IO_LIST(out));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(x, mask, index), MODEL_IO_LIST(out), 1, "classifier");
 }
 
 typedef struct {

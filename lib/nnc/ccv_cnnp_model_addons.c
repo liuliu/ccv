@@ -662,13 +662,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_batch_norm_isa = {
 	.deinit = _ccv_cnnp_batch_norm_deinit,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_batch_norm(const float momentum, const float epsilon, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_batch_norm(const float momentum, const float epsilon, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_batch_norm_t* const model_batch_norm = (ccv_cnnp_model_batch_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_batch_norm_t));
 	model_batch_norm->super.isa = &ccv_cnnp_batch_norm_isa;
 	model_batch_norm->super.input_size = 1;
 	model_batch_norm->super.outputs = &model_batch_norm->output;
 	model_batch_norm->super.output_size = 1;
+	model_batch_norm->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_batch_norm->super, name);
 	model_batch_norm->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_batch_norm->scale.graph = 0;
@@ -682,7 +683,7 @@ ccv_cnnp_model_t* ccv_cnnp_batch_norm(const float momentum, const float epsilon,
 static ccv_cnnp_model_t* _ccv_cnnp_batch_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_batch_norm_t* const self = (const ccv_cnnp_model_batch_norm_t*)super;
-	return ccv_cnnp_batch_norm(self->params.bnorm.momentum, self->params.bnorm.epsilon, self->super.name);
+	return ccv_cnnp_batch_norm(self->params.bnorm.momentum, self->params.bnorm.epsilon, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Convolution Layer
@@ -778,7 +779,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.copy = _ccv_cnnp_convolution_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_convolution_t* const model_convolution = (ccv_cnnp_model_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_convolution_t));
 	model_convolution->super.isa = &ccv_cnnp_convolution_isa;
@@ -802,7 +803,7 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->no_bias, self->hint, self->format, self->super.name);
+	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->no_bias, self->hint, self->format, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Dense Layer
@@ -884,7 +885,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.copy = _ccv_cnnp_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_dense_t* const model_dense = (ccv_cnnp_model_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_dense_t));
 	model_dense->super.isa = &ccv_cnnp_dense_isa;
@@ -904,7 +905,7 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const char*
 static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_dense_t* const self = (const ccv_cnnp_model_dense_t*)super;
-	return ccv_cnnp_dense(self->count, self->no_bias, self->super.name);
+	return ccv_cnnp_dense(self->count, self->no_bias, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Pool Layers
@@ -1604,13 +1605,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_layer_norm_isa = {
 	.copy = _ccv_cnnp_layer_norm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_layer_norm_t* const model_layer_norm = (ccv_cnnp_model_layer_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_layer_norm_t));
 	model_layer_norm->super.isa = &ccv_cnnp_layer_norm_isa;
 	model_layer_norm->super.input_size = 1;
 	model_layer_norm->super.outputs = &model_layer_norm->output;
 	model_layer_norm->super.output_size = 1;
+	model_layer_norm->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_layer_norm->super, name);
 	model_layer_norm->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_layer_norm->scale.graph = 0;
@@ -1625,7 +1627,7 @@ ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NN
 static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_layer_norm_t* const self = (const ccv_cnnp_model_layer_norm_t*)super;
-	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.name);
+	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Group Norm Layer
@@ -1696,13 +1698,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_group_norm_isa = {
 	.copy = _ccv_cnnp_group_norm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_group_norm_t* const model_group_norm = (ccv_cnnp_model_group_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_group_norm_t));
 	model_group_norm->super.isa = &ccv_cnnp_group_norm_isa;
 	model_group_norm->super.input_size = 1;
 	model_group_norm->super.outputs = &model_group_norm->output;
 	model_group_norm->super.output_size = 1;
+	model_group_norm->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_group_norm->super, name);
 	model_group_norm->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_group_norm->scale.graph = 0;
@@ -1719,7 +1722,7 @@ ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, co
 static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_group_norm_t* const self = (const ccv_cnnp_model_group_norm_t*)super;
-	return ccv_cnnp_group_norm(self->params.gnorm.group_axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->params.gnorm.reduce_axis, self->params.gnorm.reduce_count, self->super.name);
+	return ccv_cnnp_group_norm(self->params.gnorm.group_axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->params.gnorm.reduce_axis, self->params.gnorm.reduce_count, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Batched Matrix Mul Layer
@@ -1997,13 +2000,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_embedding_isa = {
 	.copy = _ccv_cnnp_embedding_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_embedding(const int datatype, const int vocab_size, const int embed_size, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_embedding_t* const model_embedding = (ccv_cnnp_model_embedding_t*)cccalloc(1, sizeof(ccv_cnnp_model_embedding_t));
 	model_embedding->super.isa = &ccv_cnnp_embedding_isa;
 	model_embedding->super.input_size = 1;
 	model_embedding->super.outputs = &model_embedding->output;
 	model_embedding->super.output_size = 1;
+	model_embedding->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_embedding->super, name);
 	model_embedding->vocab.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_embedding->vocab.graph = 0;
@@ -2019,7 +2023,7 @@ ccv_cnnp_model_t* ccv_cnnp_embedding(const int datatype, const int vocab_size, c
 static ccv_cnnp_model_t* _ccv_cnnp_embedding_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
-	return ccv_cnnp_embedding(self->datatype, self->vocab_size, self->embed_size, self->super.name);
+	return ccv_cnnp_embedding(self->datatype, self->vocab_size, self->embed_size, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Pool Layers
@@ -2623,13 +2627,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_lstm_isa = {
 	.set_is_test = _ccv_cnnp_lstm_set_is_test,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_lstm(const int masked, const int hidden_size, const int proj_size, const int num_layers, const int bias, const int batch_first, const int bidirectional, const float dropout, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_lstm_t* const model_lstm = (ccv_cnnp_model_lstm_t*)cccalloc(1, sizeof(ccv_cnnp_model_lstm_t));
 	model_lstm->super.isa = &ccv_cnnp_lstm_isa;
 	model_lstm->super.input_size = masked ? 2 : 1;
 	model_lstm->super.outputs = &model_lstm->output;
 	model_lstm->super.output_size = 1;
+	model_lstm->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_lstm->super, name);
 	model_lstm->masked = masked;
 	model_lstm->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
@@ -2647,7 +2652,7 @@ ccv_cnnp_model_t* ccv_cnnp_lstm(const int masked, const int hidden_size, const i
 static ccv_cnnp_model_t* _ccv_cnnp_lstm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_lstm_t* const self = (const ccv_cnnp_model_lstm_t*)super;
-	return ccv_cnnp_lstm(self->masked, self->params.rnn.hidden_size, self->params.rnn.proj_size, self->params.rnn.num_layers, self->params.rnn.bias, self->params.rnn.batch_first, self->params.rnn.bidirectional, self->params.rnn.dropout, self->super.name);
+	return ccv_cnnp_lstm(self->masked, self->params.rnn.hidden_size, self->params.rnn.proj_size, self->params.rnn.num_layers, self->params.rnn.bias, self->params.rnn.batch_first, self->params.rnn.bidirectional, self->params.rnn.dropout, self->super.is_trainable, self->super.name);
 }
 
 /// MARK - Datatype conversion layer.
@@ -2789,13 +2794,14 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_parameter_isa = {
 	.copy = _ccv_cnnp_parameter_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const float init_bound, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_parameter_t* const model_parameter = (ccv_cnnp_model_parameter_t*)cccalloc(1, sizeof(ccv_cnnp_model_parameter_t));
 	model_parameter->super.isa = &ccv_cnnp_parameter_isa;
 	model_parameter->super.input_size = 0;
 	model_parameter->super.outputs = &model_parameter->output;
 	model_parameter->super.output_size = 1;
+	model_parameter->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_parameter->super, name);
 	model_parameter->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_parameter->weights.graph = 0;
@@ -2806,7 +2812,7 @@ ccv_cnnp_model_t* ccv_cnnp_parameter(const ccv_nnc_tensor_param_t params, const 
 static ccv_cnnp_model_t* _ccv_cnnp_parameter_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_parameter_t* const self = (const ccv_cnnp_model_parameter_t*)super;
-	return ccv_cnnp_parameter(self->weights_params, self->init_bound, self->super.name);
+	return ccv_cnnp_parameter(self->weights_params, self->init_bound, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Scalar Layer
