@@ -423,7 +423,7 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		assert(inputTensors.count == inputShapedTypes.count);
 		MPSGraphCompilationDescriptor* compilationDescriptor = [MPSGraphCompilationDescriptor new];
 		// Need more investigation into what this does.
-		// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel1;
+		compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
 		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
 		MPSGraphExecutable* executable = [[graph compileWithDevice:_ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
 		executable.options = MPSGraphOptionsSynchronizeResults;
