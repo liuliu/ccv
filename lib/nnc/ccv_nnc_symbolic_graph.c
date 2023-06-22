@@ -1416,7 +1416,8 @@ void ccv_nnc_symbolic_graph_set_destinations(ccv_nnc_symbolic_graph_t* const gra
 		ccv_array_clear(graph->destinations);
 	int i;
 	for (i = 0; i < destination_size; i++)
-		ccv_nnc_symbolic_graph_add_destination(graph, destinations[i]);
+		if (destinations[i].d >= 0)
+			ccv_nnc_symbolic_graph_add_destination(graph, destinations[i]);
 }
 
 int ccv_nnc_symbolic_graph_destination_size(const ccv_nnc_symbolic_graph_t* const graph)

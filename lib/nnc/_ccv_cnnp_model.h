@@ -16,7 +16,7 @@
 #include "3rdparty/khash/khash.h"
 
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
-typedef void(*ccv_cnnp_add_to_array_f)(void* const context, const ccv_nnc_tensor_symbol_t symbol);
+typedef void(*ccv_cnnp_add_to_array_f)(void* const context, const ccv_nnc_tensor_symbol_t symbol, const int is_trainable);
 /**
  * This is the virtual table of the model.
  */
@@ -24,7 +24,7 @@ typedef struct {
 	void (*deinit)(ccv_cnnp_model_t* const self); /**< It can be nil. */
 	void (*build)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size); /**< Call this graph to build computation. No need to specify input size or output size, as it is defined along in the model already. */
 	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); /**< This is called to init ccv_nnc_tensor_symbol_t with a exec. */
-	void (*add_to_parameter)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of parameters. */
+	void (*add_to_parameter)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of parameters. */
 	void (*add_to_output)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of outputs for retention. The final outputs are already added. This method is optional for any additional values we want to retain. */
 	ccv_cnnp_model_t* (*copy)(const ccv_cnnp_model_t* const self, void* const context); /**< This is called to make a deep copy of itself. */
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
@@ -84,6 +84,7 @@ typedef struct {
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 	khash_t(stream_map)* stream_map; // Keeps track of streams on both GPU / CPU and devices so it can be used properly during execution.
 	ccv_array_t* parameters;
+	uint64_t* parameter_flags;
 	ccv_array_t* internals; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* gradients;
 	ccv_nnc_tensor_symbol_t* outgrads;
@@ -233,10 +234,10 @@ static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const 
 	}
 }
 
-static inline void ccv_cnnp_model_add_to_parameter(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+static inline void ccv_cnnp_model_add_to_parameter(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
 {
 	if (self->isa->add_to_parameter)
-		self->isa->add_to_parameter(self, add_to_array, parameters);
+		self->isa->add_to_parameter(self, add_to_array, parameters, is_trainable);
 }
 
 static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -246,6 +247,7 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, co
 }
 
 typedef struct {
+	int is_trainable;
 	ccv_cnnp_model_sequence_t* model_sequence;
 	ccv_cnnp_add_to_array_f add_to_array;
 	ccv_array_t* parameters;
@@ -265,6 +267,9 @@ static inline ccv_nnc_tensor_symbol_t ccv_cnnp_parameter_from_indice(ccv_cnnp_mo
 
 static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	assert(self->data);
+	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
+	const int old_is_trainable = build_data->is_trainable;
 	if (outputs && output_size)
 	{
 		assert(output_size == self->output_size);
@@ -272,18 +277,19 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		memcpy(self->outputs, outputs, sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	} else
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
-	assert(self->data);
-	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
 	// Skip if there is none. This helps to load parameters to a different model when only changes non-parameterized settings (add reshapes, permutations etc).
 	if (self->isa->add_to_parameter || self->isa->add_to_output)
 	{
 		ccv_cnnp_model_push(self, build_data->model_sequence);
 		build_data->model_sequence->it = 0;
-		ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter);
+		if (self->is_trainable >= 0)
+			build_data->is_trainable = self->is_trainable;
+		ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter, build_data->is_trainable);
 		build_data->model_sequence->it = 0;
 		ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);
 		ccv_cnnp_model_pop(self, build_data->model_sequence);
 	}
+	build_data->is_trainable = old_is_trainable;
 }
 
 static inline void ccv_cnnp_model_init_states(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)

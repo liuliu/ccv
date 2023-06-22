@@ -45,24 +45,25 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 	ccv_nnc_tensor_symbol_t update_inputs[aux_size + 2];
 	ccv_nnc_tensor_symbol_t update_outputs[aux_size + 1];
 	for (i = 0; i < parameter_size; i++)
-	{
-		const ccv_nnc_tensor_symbol_t gradient = ccv_nnc_tensor_symbol_for_backward(graph, parameters[i]);
-		if (gradients)
-			gradients[i] = gradient;
-		const ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_for_backward(graph, gradient);
-		update_inputs[0] = gradient;
-		update_inputs[1] = parameters[i];
-		const ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(graph, update_inputs[1]);
-		update_outputs[0] = updated_parameters[i] = ccv_nnc_tensor_symbol_new(graph, info, 0);
-		for (j = 0; j < aux_size; j++)
+		if (parameters[i].d >= 0)
 		{
-			update_inputs[2 + j] = saved_aux[i * aux_size + j].source = ccv_nnc_tensor_symbol_new(graph, info, 0);
-			update_outputs[1 + j] = saved_aux[i * aux_size + j].destination = ccv_nnc_tensor_symbol_new(graph, info, 0);
+			const ccv_nnc_tensor_symbol_t gradient = ccv_nnc_tensor_symbol_for_backward(graph, parameters[i]);
+			if (gradients)
+				gradients[i] = gradient;
+			const ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_for_backward(graph, gradient);
+			update_inputs[0] = gradient;
+			update_inputs[1] = parameters[i];
+			const ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(graph, update_inputs[1]);
+			update_outputs[0] = updated_parameters[i] = ccv_nnc_tensor_symbol_new(graph, info, 0);
+			for (j = 0; j < aux_size; j++)
+			{
+				update_inputs[2 + j] = saved_aux[i * aux_size + j].source = ccv_nnc_tensor_symbol_new(graph, info, 0);
+				update_outputs[1 + j] = saved_aux[i * aux_size + j].destination = ccv_nnc_tensor_symbol_new(graph, info, 0);
+			}
+			const ccv_nnc_graph_exec_symbol_t minimize = ccv_nnc_graph_exec_symbol_new(graph, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
+			ccv_nnc_graph_exec_symbol_concat(graph, graph_exec, minimize);
+			graph_exec_symbols[i] = minimize;
 		}
-		const ccv_nnc_graph_exec_symbol_t minimize = ccv_nnc_graph_exec_symbol_new(graph, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
-		ccv_nnc_graph_exec_symbol_concat(graph, graph_exec, minimize);
-		graph_exec_symbols[i] = minimize;
-	}
 	if (gradients)
 		for (i = 0; i < input_size; i++)
 			gradients[i + parameter_size] = ccv_nnc_tensor_symbol_for_backward(graph, inputs[i]);

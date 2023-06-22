@@ -702,11 +702,11 @@ static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, c
 	ccv_cnnp_model_init_states(self->model, graph, initializer, context);
 }
 
-static void _ccv_cnnp_dynamic_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+static void _ccv_cnnp_dynamic_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
 	assert(self->model);
-	ccv_cnnp_model_add_to_parameter(self->model, add_to_array, parameters);
+	ccv_cnnp_model_add_to_parameter(self->model, add_to_array, parameters, is_trainable);
 }
 
 static void _ccv_cnnp_dynamic_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
@@ -829,16 +829,16 @@ static void _ccv_cnnp_cmd_exec_add_to_output(ccv_cnnp_model_t* const super, cons
 	int i;
 	for (i = 0; i < self->input_size; i++)
 		if (self->inputs[i].type == CCV_CNNP_INIT_SHARED_TENSOR)
-			add_to_array(outputs, self->input_symbols[i]); // Push this as retainable because it need to be init.
+			add_to_array(outputs, self->input_symbols[i], 0); // Push this as retainable because it need to be init.
 }
 
-static void _ccv_cnnp_cmd_exec_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters)
+static void _ccv_cnnp_cmd_exec_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
 {
 	ccv_cnnp_model_cmd_exec_t* const self = (ccv_cnnp_model_cmd_exec_t*)super;
 	int i;
 	for (i = 0; i < self->input_size; i++)
 		if (self->inputs[i].type == CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE)
-			add_to_array(parameters, self->input_symbols[i]); // Push this as parameter.
+			add_to_array(parameters, self->input_symbols[i], is_trainable); // Push this as parameter.
 }
 
 static void _ccv_cnnp_cmd_exec_deinit(ccv_cnnp_model_t* const super)
@@ -876,7 +876,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_cmd_exec_isa = {
 	.copy = _ccv_cnnp_cmd_exec_copy,
 };
 
-static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, int copy_io, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name)
+static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, int copy_io, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const int is_trainable, const char* const name)
 {
 	assert(input_size >= 0);
 	assert(output_size > 0);
@@ -902,6 +902,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, int copy_io
 	model_cmd_exec->super.input_size = io_input_size;
 	model_cmd_exec->super.outputs = (ccv_nnc_tensor_symbol_t*)(model_cmd_exec + 1);
 	model_cmd_exec->super.output_size = io_output_size;
+	model_cmd_exec->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_cmd_exec->super, name);
 	model_cmd_exec->cmd = cmd;
 	model_cmd_exec->hint = hint;
@@ -925,15 +926,15 @@ static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, int copy_io
 	return (ccv_cnnp_model_t*)model_cmd_exec;
 }
 
-ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const int is_trainable, const char* const name)
 {
-	return _ccv_cnnp_cmd_exec(cmd, 0, hint, flags, inputs, input_size, outputs, output_size, name);
+	return _ccv_cnnp_cmd_exec(cmd, 0, hint, flags, inputs, input_size, outputs, output_size, is_trainable, name);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_cmd_exec_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_cmd_exec_t* const self = (const ccv_cnnp_model_cmd_exec_t*)super;
-	return _ccv_cnnp_cmd_exec(self->cmd, 1, self->hint, self->flags, self->inputs, self->input_size, self->outputs, self->output_size, self->super.name);
+	return _ccv_cnnp_cmd_exec(self->cmd, 1, self->hint, self->flags, self->inputs, self->input_size, self->outputs, self->output_size, self->super.is_trainable, self->super.name);
 }
 
 static void _ccv_cnnp_cmd_exec_io_copy(const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_cnnp_state_initializer_f initializer, void* const initializer_context, void* const context)

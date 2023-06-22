@@ -124,9 +124,10 @@ typedef struct {
 	char prefix;
 	ccv_array_t* symbols;
 	ccv_array_t* ids;
+	ccv_array_t* trainables;
 } ccv_cnnp_model_add_to_array_context_t;
 
-static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_symbol_t symbol)
+static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_symbol_t symbol, const int is_trainable)
 {
 	ccv_cnnp_model_add_to_array_context_t* const add_to_array_context = (ccv_cnnp_model_add_to_array_context_t*)context;
 	ccv_cnnp_model_t* const model = add_to_array_context->sequence->model;
@@ -150,6 +151,8 @@ static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_sym
 		ccv_array_push(model->parameter_indices, &add_to_array_context->symbols->rnum);
 	// This is a new one, no need to add_unique_int, it is unique.
 	ccv_array_push(add_to_array_context->symbols, &symbol);
+	if (add_to_array_context->trainables)
+		ccv_array_push(add_to_array_context->trainables, &is_trainable);
 	char id[2048];
 	id[0] = add_to_array_context->prefix;
 	id[1] = '-';
@@ -192,6 +195,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
 	ccv_array_t* const parameters = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const parameter_ids = ccv_array_new(sizeof(char*), 0, 0);
+	ccv_array_t* const parameter_trainables = ccv_array_new(sizeof(int), 0, 0);
 	ccv_cnnp_model_sequence_t model_sequence = {
 		.bank = kh_init(ccv_cnnp_model_name_bank)
 	};
@@ -200,6 +204,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		.prefix = 't',
 		.symbols = parameters,
 		.ids = parameter_ids,
+		.trainables = parameter_trainables,
 	};
 	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
@@ -208,8 +213,10 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		.prefix = 'r',
 		.symbols = internals,
 		.ids = internal_ids,
+		.trainables = 0,
 	};
 	ccv_cnnp_model_build_data_t build_data = {
+		.is_trainable = model->is_trainable >= 0 ? model->is_trainable : 1,
 		.model_sequence = &model_sequence,
 		.add_to_array = _ccv_cnnp_add_to_array,
 		.parameters = parameters,
@@ -224,18 +231,32 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
 	if (model_sequence.sequences)
 		ccv_array_free(model_sequence.sequences);
+	// Check if there are parameters that are not trainables. If there are, we will allocate uint64 bitmap to record that.
+	int not_trainables = 0;
 	// Assert no parameter is alias.
 	for (i = 0; i < parameters->rnum; i++)
 	{
 		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(parameters, i);
 		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(parameter.graph, parameter);
 		assert(alias_to.graph == 0); // Cannot find the one alias to.
+		if (*(int*)ccv_array_get(parameter_trainables, i) == 0)
+			not_trainables = 1;
 	}
+	assert(parameters->rnum == parameter_trainables->rnum);
+	uint64_t* parameter_flags = 0;
+	if (not_trainables)
+	{
+		parameter_flags = (uint64_t*)cccalloc(((parameters->rnum + 63) >> 6), sizeof(uint64_t));
+		for (i = 0; i < parameter_trainables->rnum; i++)
+			if (*(int*)ccv_array_get(parameter_trainables, i))
+				parameter_flags[i >> 6] |= ((uint64_t)1 << (i & 63));
+	}
+	ccv_array_free(parameter_trainables);
 	// Assert no internal is alias.
 	for (i = 0; i < internals->rnum; i++)
 	{
-		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(internals, i);
-		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(retained.graph, retained);
+		const ccv_nnc_tensor_symbol_t internal = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(internals, i);
+		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(internal.graph, internal);
 		assert(alias_to.graph == 0); // Cannot find the one alias to.
 	}
 	const int output_size = model->output_size;
@@ -291,6 +312,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	// If inputs are from GPU, stream type is GPU.
 	compiled_data->parameters = parameters;
+	compiled_data->parameter_flags = parameter_flags;
 	compiled_data->internals = internals;
 	compiled_data->ids.parameters = parameter_ids;
 	compiled_data->ids.internals = internal_ids;
@@ -757,6 +779,8 @@ static void _ccv_cnnp_model_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* cons
 static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data, ccv_nnc_graph_exec_symbol_t* const update_nodes, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, const int parallel_count, const ccv_nnc_cmd_t minimizer, const int saved_aux_size, const int max_saved_aux_size, const int parameter_indice)
 {
 	int this_parameter_flag = 0;
+	if (update_nodes[parameter_indice].d < 0)
+		return this_parameter_flag;
 	const ccv_nnc_cmd_t old_minimizer = ccv_nnc_graph_exec_symbol_cmd(graph, update_nodes[parameter_indice]);
 	int j, k;
 	// For no-op, we can preserve previous saved_aux_size.
@@ -989,10 +1013,20 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	compiled_data->outgrads = parameter_size_maybe_more > parameter_size ? compiled_data->gradients + parameter_size : 0;
 	compiled_data->backward.tos = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->gradients + parameter_size_maybe_more);
 	compiled_data->backward.to_size = parameter_size_maybe_more;
+	ccv_nnc_tensor_symbol_t* parameters = (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0);
+	if (compiled_data->parameter_flags)
+	{
+		parameters = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * parameter_size);
+		for (i = 0; i < parameter_size; i++)
+			if (compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63)))
+				parameters[i] = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
+			else
+				parameters[i] = NO_TENSOR_SYMBOL;
+	}
 	if (gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES || model->input_size == 0)
-		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), parameter_size, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
+		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, parameters, parameter_size, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
 	else if (disable_outgrad == CCV_CNNP_DISABLE_OUTGRAD_NONE) // Compute minimize with gradients including inputs.
-		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), parameter_size, model->inputs, model->input_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
+		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, parameters, parameter_size, model->inputs, model->input_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
 	else { // Compute minimize with gradients including selected inputs.
 		assert(model->input_size > 0);
 		assert(disable_outgrad != CCV_CNNP_DISABLE_OUTGRAD_ALL); // If it is disable all, gradient mode won't be this.
@@ -1002,8 +1036,10 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		for (i = 0; i < model->input_size; i++)
 			if (!(disable_outgrad & ((uint64_t)1 << i)))
 				outgrads[j++] = model->inputs[i];
-		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), parameter_size, outgrads, outgrad_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
+		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimize.minimizer, compiled_data->f, output_size, parameters, parameter_size, outgrads, outgrad_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_data->gradients, compiled_data->updated_parameters, compiled_data->saved_aux, compiled_data->update_nodes);
 	}
+	if (compiled_data->parameter_flags)
+		ccfree(parameters);
 	_ccv_cnnp_scatter_saved_aux(compiled_data->saved_aux, parameter_size, ccv_nnc_minimizer_saved_aux_size(compiled_data->minimize.minimizer), compiled_data->minimize.max_saved_aux_size);
 	if (compiled_data->minimize.parameters)
 		_ccv_cnnp_apply_parameters_with_minimizer(model);
@@ -1013,8 +1049,10 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		// Init this to 1 so we can backprop.
 		ccv_nnc_tensor_symbol_set_flags(model->graph, df, CCV_NNC_TENSOR_SYMBOL_INIT_ONES);
 	}
+	compiled_data->backward.to_size = 0;
 	for (i = 0; i < parameter_size_maybe_more; i++)
-		compiled_data->backward.tos[i] = ccv_nnc_graph_exec_symbol_for_backward(model->graph, compiled_data->gradients[i]);
+		if (!compiled_data->parameter_flags || (compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63))))
+			compiled_data->backward.tos[compiled_data->backward.to_size++] = ccv_nnc_graph_exec_symbol_for_backward(model->graph, compiled_data->gradients[i]);
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS);
 	ccv_nnc_symbolic_graph_set_destinations(model->graph, compiled_data->update_nodes, parameter_size);
 	for (i = 0; i < parameter_size_maybe_more - parameter_size; i++)
@@ -1050,7 +1088,8 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 				if (copy.d != CCV_NNC_NO_GRAPH_EXEC_SYMBOL)
 					compiled_data->evaluate.tos[compiled_data->evaluate.to_size++] = copy;
 			}
-		for (i = 0; i < parameter_size_maybe_more; i++)
+		const int backward_to_size = compiled_data->backward.to_size;
+		for (i = 0; i < backward_to_size; i++)
 			for (j = 1; j < parallel_count; j++)
 			{
 				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_copy(model->graph, compiled_data->backward.tos[i], j);
@@ -1156,6 +1195,8 @@ static void _ccv_cnnp_model_bind_tensors(const ccv_nnc_symbolic_graph_t* const g
 	for (i = 0; i < tensor_size; i++)
 	{
 		ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
+		if (tensor_symbol.d < 0)
+			continue;
 		if (graph)
 		{
 			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph, tensor_symbol);
@@ -1844,6 +1885,8 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 	ccv_array_t* const tos = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), parameter_size * parallel_count, 0);
 	for (i = 0;  i < parameter_size; i++)
 	{
+		if (compiled_data->update_nodes[i].d < 0)
+			continue;
 		ccv_array_push(tos, &compiled_data->update_nodes[i]);
 		for (j = 1; j < parallel_count; j++)
 		{
@@ -2505,6 +2548,8 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	int i;
 	const int parameter_size = compiled_data->parameters->rnum;
 	ccv_array_free(compiled_data->parameters);
+	if (compiled_data->parameter_flags)
+		ccfree(compiled_data->parameter_flags);
 	const int internal_size = compiled_data->internals->rnum;
 	ccv_array_free(compiled_data->internals);
 	assert(compiled_data->ids.parameters->rnum == parameter_size);

@@ -839,6 +839,8 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 			for (j = 0; j < wrt_symbol_size && !wrt; j++)
 			{
 				int wrt_d = wrt_symbols[j].d;
+				if (wrt_d < 0)
+					continue;
 				// Find the root of this tensor alias.
 				if (tensor_symbol_info[wrt_d].alias_ref)
 					wrt_d = tensor_symbol_info[wrt_d].alias_ref - 1;
@@ -1961,16 +1963,18 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	int i;
 	// f symbols cannot be alias.
 	for (i = 0; i < f_symbol_size; i++)
-	{
-		assert(f_symbols[i].graph == graph); // f symbol has to be in the current graph.
-		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, f_symbols[i].d))->alias_ref);
-	}
+		if (f_symbols[i].d >= 0)
+		{
+			assert(f_symbols[i].graph == graph); // f symbol has to be in the current graph.
+			assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, f_symbols[i].d))->alias_ref);
+		}
 	for (i = 0; i < wrt_symbol_size; i++)
-	{
-		assert(wrt_symbols[i].graph == graph);
-		// This is not an alias, or what it refers to is not an alias.
-		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, wrt_symbols[i].d))->alias_ref || !((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, wrt_symbols[i].d))->alias_ref - 1))->alias_ref);
-	}
+		if (wrt_symbols[i].d >= 0)
+		{
+			assert(wrt_symbols[i].graph == graph);
+			// This is not an alias, or what it refers to is not an alias.
+			assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, wrt_symbols[i].d))->alias_ref || !((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, wrt_symbols[i].d))->alias_ref - 1))->alias_ref);
+		}
 	const int exec_symbol_info_size = graph->exec_symbol_info->rnum;
 	const int tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
 	assert(exec_symbol_info_size > 0);
