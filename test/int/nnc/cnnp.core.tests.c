@@ -21,12 +21,12 @@ ccv_cnnp_model_t* _math_2_x_10()
 	ccv_cnnp_model_io_t diff = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 1, 0),
 		MODEL_IO_LIST(left_out, fit));
 	ccv_cnnp_model_io_t sqr = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0,
 			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 1, 0),
 		MODEL_IO_LIST(diff, diff));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input, fit), MODEL_IO_LIST(sqr), 1, 0);
 }
