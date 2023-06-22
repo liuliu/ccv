@@ -170,75 +170,79 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	// inputs: gradient, forw prop input, [w]
 	// outputs: [output gradient], weight updates, bias updates
-	assert((input_size >= 2 && output_size >= 2));
+	assert((input_size >= 2 && output_size >= 1));
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
-	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, outputs[1]->info.datatype);
+	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 
-	cudnnConvolutionBwdFilterAlgo_t filter_algo;
-	// Choose an algorithm
-	switch (cmd.algorithm % CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT)
-	{
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_0:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_1:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_3:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT_TILING:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_WINOGRAD:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD;
-			break;
-		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_WINOGRAD_NONFUSED:
-			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED;
-			break;
-		default: // -1: Using preferences to find a suitable algorithm
-#if CUDNN_VERSION >= 7000
-			int filter_algo_count;
-			cudnnConvolutionBwdFilterAlgoPerf_t filter_perf;
-			CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm_v7(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, 1, &filter_algo_count, &filter_perf));
-			assert(filter_algo_count > 0);
-			filter_algo = filter_perf.algo;
-#else
-			CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
-#endif
-	}
-
-	size_t workspace_size = 0;
-	CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, filter_algo, &workspace_size));
-	void* workspace = 0;
-	// TODO: If error, return OOM
-	if (workspace_size)
-		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
 	static const float one = 1, zero = 0;
-	if ((flags & CCV_NNC_ACCUMULATE_OUTPUT)) // accumulating results to bias and dw
+	if (output_size > 1 && outputs[1])
 	{
-		CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &one, dw.descriptor, dw.data.u8));
-		if (output_size > 2 && outputs[2])
+		cudnnConvolutionBwdFilterAlgo_t filter_algo;
+		// Choose an algorithm
+		switch (cmd.algorithm % CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT)
 		{
-			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-			CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
-			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_0:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_1:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_3:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT_TILING:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_WINOGRAD:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD;
+				break;
+			case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_WINOGRAD_NONFUSED:
+				filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED;
+				break;
+			default: // -1: Using preferences to find a suitable algorithm
+#if CUDNN_VERSION >= 7000
+				int filter_algo_count;
+				cudnnConvolutionBwdFilterAlgoPerf_t filter_perf;
+				CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm_v7(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, 1, &filter_algo_count, &filter_perf));
+				assert(filter_algo_count > 0);
+				filter_algo = filter_perf.algo;
+#else
+				CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
+#endif
 		}
-	} else {
-		CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &zero, dw.descriptor, dw.data.u8));
-		if (output_size > 2 && outputs[2])
+
+		size_t workspace_size = 0;
+		CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, filter_algo, &workspace_size));
+		void* workspace = 0;
+		// TODO: If error, return OOM
+		if (workspace_size)
+			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+		if ((flags & CCV_NNC_ACCUMULATE_OUTPUT)) // accumulating results to bias and dw
 		{
-			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-			CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
-			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+			CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &one, dw.descriptor, dw.data.u8));
+			if (output_size > 2 && outputs[2])
+			{
+				const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+				CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
+				ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+			}
+		} else {
+			CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &zero, dw.descriptor, dw.data.u8));
+			if (output_size > 2 && outputs[2])
+			{
+				const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+				CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
+				ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+			}
 		}
+		ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	}
 	// If h is available, therefore, we need to propagate the gradients back
 	if (outputs[0])
@@ -291,7 +295,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
-	ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -300,27 +303,31 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 {
 	// inputs: gradient, forw prop input, w
 	// outputs:  output gradient, weight updates, bias updates [unused]
-	assert(input_size >= 2 && output_size >= 2);
+	assert(input_size >= 2 && output_size >= 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
-	const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
-	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, outputs[1]->info.datatype);
-	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
-	int count = 0;
-	cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
-	CUDNN_ENFORCE(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
 	int i;
+	int count = 0;
+	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype);
 	cudnnConvolutionBwdFilterAlgo_t filter_algorithm = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
-	for(i = 0; i < count; i++)
-		if ((size_t)filter_perfs[i].memory <= max_workspace_size && filter_perfs[i].status == CUDNN_STATUS_SUCCESS)
-		{
-			filter_algorithm = filter_perfs[i].algo;
-			break;
-		}
+	if (output_size > 1 && outputs[1])
+	{
+		const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
+		cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
+		cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
+		CUDNN_ENFORCE(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
+		for(i = 0; i < count; i++)
+			if ((size_t)filter_perfs[i].memory <= max_workspace_size && filter_perfs[i].status == CUDNN_STATUS_SUCCESS)
+			{
+				filter_algorithm = filter_perfs[i].algo;
+				break;
+			}
+		ccv_nnc_cudnn_deinit_filter_descriptor(dw);
+	}
 	cudnnConvolutionBwdDataAlgo_t data_algorithm = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
 	if (outputs[0])
 	{
@@ -339,7 +346,6 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
-	ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	int filter = -1, data = -1;
 	switch (filter_algorithm)

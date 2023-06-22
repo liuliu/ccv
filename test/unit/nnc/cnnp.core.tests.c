@@ -1608,7 +1608,7 @@ TEST_CASE("use scalar for values and copy types from other inputs")
 	ccv_cnnp_model_free(final);
 }
 
-TEST_CASE("LoRA fine-tuning set is_trainable to false")
+TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, -1, "linear");
@@ -1623,6 +1623,31 @@ TEST_CASE("LoRA fine-tuning set is_trainable to false")
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 10);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+	}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("LoRA fine-tuning convolution set is_trainable to false")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const conv = ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, -1, "conv");
+	ccv_cnnp_model_t* const down = ccv_cnnp_convolution(1, 4, DIM_ALLOC(3, 3), 0, HINT((1, 1), (1, 1)), 0, 1, "down");
+	ccv_cnnp_model_t* const up = ccv_cnnp_convolution(1, 32, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, "up");
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(conv, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_down = ccv_cnnp_model_apply(down, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_up = ccv_cnnp_model_apply(up, MODEL_IO_LIST(out_down));
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
+	ccv_cnnp_model_io_t out_final = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out, out_up));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out_final), 0, "tiny");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 5, 10), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 5, 32), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 5, 5, 10);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 1,

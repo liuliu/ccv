@@ -144,14 +144,15 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(input_size >= 2 && output_size >= 2);
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_t* w = outputs[1];
+	ccv_nnc_tensor_t* w = output_size > 1 ? outputs[1] : 0;
 	assert(CCV_IS_TENSOR_CONTIGUOUS(w));
 	ccv_nnc_tensor_t* bias = output_size > 2 ? outputs[2] : 0;
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
-		memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
+		if (w)
+			memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
 		if (bias)
 			memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
 	}
@@ -166,50 +167,54 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int gstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(g, gstride);
 	const int groups = cmd.info.convolution.groups;
-	assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == adim[CCV_NNC_MAX_DIM]);
+	if (w)
+		assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == adim[CCV_NNC_MAX_DIM]);
 	assert(cmd.info.convolution.count % groups == 0);
 	const int group_size = cmd.info.convolution.count / groups;
-	const int channel_size = w->info.dim[CCV_NNC_MAX_DIM + 1];
-	parallel_for(k, cmd.info.convolution.count) {
-		int c;
-		const int gidx = k / group_size;
-		float* ap = a->data.f32;
-		float* gp = g->data.f32 + k;
-		// kernel weight for one dim.
-		float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
-		float biasval = 0;
-		int i[CCV_NNC_MAX_DIM];
-		int n[CCV_NNC_MAX_DIM];
-		int m[CCV_NNC_MAX_DIM];
-		int j[CCV_NNC_MAX_DIM];
-		for (i[0] = 0; i[0] < gdim[0]; i[0]++)
-		{
-			SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
-			float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-			for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+	const int channel_size = w ? w->info.dim[CCV_NNC_MAX_DIM + 1] : inputs[2]->info.dim[CCV_NNC_MAX_DIM + 1];
+	if (w)
+	{
+		parallel_for(k, cmd.info.convolution.count) {
+			int c;
+			const int gidx = k / group_size;
+			float* ap = a->data.f32;
+			float* gp = g->data.f32 + k;
+			// kernel weight for one dim.
+			float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
+			float biasval = 0;
+			int i[CCV_NNC_MAX_DIM];
+			int n[CCV_NNC_MAX_DIM];
+			int m[CCV_NNC_MAX_DIM];
+			int j[CCV_NNC_MAX_DIM];
+			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
-				const float v = gp[i[1] * gdim[CCV_NNC_MAX_DIM]];
-				if (v == 0) // shortcut if v is zero
-					continue;
-				biasval += v;
-				float* wpz = wpu + n[1] * channel_size;
-				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
-				for (j[0] = 0; j[0] < m[0]; j[0]++)
+				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+				float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
+				for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 				{
-					for (j[1] = 0; j[1] < m[1]; j[1]++)
-						for (c = 0; c < channel_size; c++)
-							wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
-					wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-					apz += astride[CCV_NNC_MAX_DIM - 1];
+					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
+					const float v = gp[i[1] * gdim[CCV_NNC_MAX_DIM]];
+					if (v == 0) // shortcut if v is zero
+						continue;
+					biasval += v;
+					float* wpz = wpu + n[1] * channel_size;
+					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+					{
+						for (j[1] = 0; j[1] < m[1]; j[1]++)
+							for (c = 0; c < channel_size; c++)
+								wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
+						wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
+						apz += astride[CCV_NNC_MAX_DIM - 1];
+					}
 				}
+				gp += gstride[CCV_NNC_MAX_DIM - 1];
+				ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 			}
-			gp += gstride[CCV_NNC_MAX_DIM - 1];
-			ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
-		}
-		if (bias)
-			bias->data.f32[k] = biasval;
-	} parallel_endfor
+			if (bias)
+				bias->data.f32[k] = biasval;
+		} parallel_endfor
+	}
 	// If h is available, therefore, we need to propagate the gradients back
 	if (h)
 	{
