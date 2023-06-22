@@ -63,6 +63,19 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 			const ccv_nnc_graph_exec_symbol_t minimize = ccv_nnc_graph_exec_symbol_new(graph, minimizer, update_inputs, aux_size + 2, update_outputs, aux_size + 1, 0);
 			ccv_nnc_graph_exec_symbol_concat(graph, graph_exec, minimize);
 			graph_exec_symbols[i] = minimize;
+		} else {
+			if (gradients)
+				gradients[i] = NO_TENSOR_SYMBOL;
+			updated_parameters[i] = NO_TENSOR_SYMBOL;
+			for (j = 0; j < aux_size; j++)
+			{
+				saved_aux[i * aux_size + j].source = NO_TENSOR_SYMBOL;
+				saved_aux[i * aux_size + j].destination = NO_TENSOR_SYMBOL;
+			}
+			graph_exec_symbols[i] = (ccv_nnc_graph_exec_symbol_t){
+				.d = -1,
+				.graph = 0,
+			};
 		}
 	if (gradients)
 		for (i = 0; i < input_size; i++)
