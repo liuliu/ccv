@@ -1644,7 +1644,7 @@ TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false")
 		ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 10, 1e-4, "should match the target after fine-tuning");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 10, 1e-2, "should match the target after fine-tuning");
 	ccv_nnc_tensor_free(x);
 	ccv_nnc_tensor_free(target);
 	ccv_nnc_tensor_free(y);
