@@ -30,7 +30,7 @@ static void _ccv_nnc_mse_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const c
 	memcpy(outputs[0].dim, inputs[1].dim, sizeof(outputs[0].dim));
 	const int nd = ccv_nnc_tensor_nd(outputs[0].dim);
 	// Set channel to 1 if it is not..
-	if (nd > 1 && ccv_nnc_tensor_get_c(outputs[0]) > 1)
+	if (ccv_nnc_tensor_get_c(outputs[0]) > 1)
 		ccv_nnc_tensor_set_c(&outputs[0], nd, 1);
 }
 

@@ -779,7 +779,7 @@ static void _ccv_cnnp_model_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* cons
 static int _ccv_cnnp_set_minimizer_for_parameter(ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data, ccv_nnc_graph_exec_symbol_t* const update_nodes, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, const int parallel_count, const ccv_nnc_cmd_t minimizer, const int saved_aux_size, const int max_saved_aux_size, const int parameter_indice)
 {
 	int this_parameter_flag = 0;
-	if (update_nodes[parameter_indice].d < 0)
+	if (update_nodes[parameter_indice].d == CCV_NNC_NO_TENSOR_SYMBOL)
 		return this_parameter_flag;
 	const ccv_nnc_cmd_t old_minimizer = ccv_nnc_graph_exec_symbol_cmd(graph, update_nodes[parameter_indice]);
 	int j, k;
@@ -1195,7 +1195,7 @@ static void _ccv_cnnp_model_bind_tensors(const ccv_nnc_symbolic_graph_t* const g
 	for (i = 0; i < tensor_size; i++)
 	{
 		ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
-		if (tensor_symbol.d < 0)
+		if (tensor_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
 			continue;
 		if (graph)
 		{
@@ -1353,6 +1353,8 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	// ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, &update);
 	for (i = 0; i < saved_aux_size * parameter_size; i++)
 	{
+		if (compiled_data->saved_aux[i].source.d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, compiled_data->saved_aux[i].source);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &tensor, 1, 0);
 		for (j = 1; j < parallel_count; j++)
@@ -1885,7 +1887,7 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 	ccv_array_t* const tos = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), parameter_size * parallel_count, 0);
 	for (i = 0;  i < parameter_size; i++)
 	{
-		if (compiled_data->update_nodes[i].d < 0)
+		if (compiled_data->update_nodes[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
 			continue;
 		ccv_array_push(tos, &compiled_data->update_nodes[i]);
 		for (j = 1; j < parallel_count; j++)

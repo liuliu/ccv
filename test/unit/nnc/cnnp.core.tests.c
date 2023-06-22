@@ -1621,14 +1621,32 @@ TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false")
 	ccv_cnnp_model_io_t out_final = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out, out_up));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out_final), 0, "tiny");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* const tlinear = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 10), 0);
+	int i;
+	for (i = 0; i < 10 * 10; i++)
+		tlinear->data.f32[i] = (i / 10 == i % 10) ? 1 : 0;
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 2), 0);
+	for (i = 0; i < 10 * 2; i++)
+		t->data.f32[i] = 0;
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 10);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
-	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
-		.requires_grad = 1,
-	}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_SGD_FORWARD(1, 0.01, 1, 0.1, 0, 0), CMD_MSE_FORWARD(CCV_NNC_MSE_REDUCE_MEAN));
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear, ALL_PARAMETERS, 0), tlinear);
+	ccv_nnc_tensor_free(tlinear);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(up, ALL_PARAMETERS, 0), t);
+	ccv_nnc_tensor_free(t);
+	for (i = 0; i < 10; i++)
+		x->data.f32[i] = i;
+	ccv_nnc_tensor_t* const target = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	for (i = 0; i < 10; i++)
+		target->data.f32[i] = 10 - i;
+	for (i = 0; i < 10; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
+	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 10, 1e-4, "should match the target after fine-tuning");
 	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(target);
 	ccv_nnc_tensor_free(y);
 	ccv_cnnp_model_free(final);
 }

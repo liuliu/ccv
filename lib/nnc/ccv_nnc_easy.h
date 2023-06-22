@@ -325,15 +325,16 @@ static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
 
 static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 {
+	const int nd = ccv_nnc_tensor_nd(params.dim);
 	switch (params.format)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
-			return params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+			return params.dim[nd - 1];
 		case CCV_TENSOR_FORMAT_NCHW:
-			if (ccv_nnc_tensor_nd(params.dim) == CCV_NNC_MAX_DIM + 1)
+			if (nd == CCV_NNC_MAX_DIM + 1)
 				return params.dim[0];
 			else
-				return params.dim[1];
+				return params.dim[nd <= 1 ? 0 : 1];
 		case CCV_TENSOR_FORMAT_CHWN:
 			return params.dim[0];
 	}
@@ -365,7 +366,7 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 			if (nd == CCV_NNC_MAX_DIM + 1)
 				params->dim[0] = c;
 			else
-				params->dim[1] = c;
+				params->dim[nd <= 1 ? 0 : 1] = c;
 			break;
 		case CCV_TENSOR_FORMAT_CHWN:
 			params->dim[0] = c;
