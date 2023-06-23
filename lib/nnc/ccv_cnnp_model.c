@@ -63,6 +63,14 @@ int ccv_cnnp_model_output_size(const ccv_cnnp_model_t* const model)
 	return model->output_size;
 }
 
+int ccv_cnnp_model_is_trainable(const ccv_cnnp_model_t* const model)
+{
+	// If the model is compiled, it is default to 1 unless it is not.
+	if (model->compiled_data)
+		return model->is_trainable >= 0 ? model->is_trainable : 1;
+	return model->is_trainable;
+}
+
 ccv_cnnp_model_io_t ccv_cnnp_model_parameters(ccv_cnnp_model_t* const model, const int selector, const int index)
 {
 	if (!model->io)

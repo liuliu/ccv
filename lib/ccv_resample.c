@@ -238,10 +238,10 @@ typedef struct {
 static void _ccv_init_cubic_coeffs(int si, int sz, float s, ccv_cubic_coeffs_t* coeff)
 {
 	const float A = -0.75f;
-	coeff->si[0] = ccv_max(si - 1, 0);
-	coeff->si[1] = si;
-	coeff->si[2] = ccv_min(si + 1, sz - 1);
-	coeff->si[3] = ccv_min(si + 2, sz - 1);
+	coeff->si[0] = ccv_min(ccv_max(si - 1, 0), sz - 1);
+	coeff->si[1] = ccv_min(ccv_max(si, 0), sz - 1);
+	coeff->si[2] = ccv_min(ccv_max(si + 1, 0), sz - 1);
+	coeff->si[3] = ccv_min(ccv_max(si + 2, 0), sz - 1);
 	float x = s - si;
 	coeff->coeffs[0] = ((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A;
 	coeff->coeffs[1] = ((A + 2) * x - (A + 3)) * x * x + 1;
@@ -308,10 +308,10 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 static void _ccv_init_cubic_integer_coeffs(int si, int sz, float s, ccv_cubic_integer_coeffs_t* coeff)
 {
 	const float A = -0.75f;
-	coeff->si[0] = ccv_max(si - 1, 0);
-	coeff->si[1] = si;
-	coeff->si[2] = ccv_min(si + 1, sz - 1);
-	coeff->si[3] = ccv_min(si + 2, sz - 1);
+	coeff->si[0] = ccv_min(ccv_max(si - 1, 0), sz - 1);
+	coeff->si[1] = ccv_min(ccv_max(si, 0), sz - 1);
+	coeff->si[2] = ccv_min(ccv_max(si + 1, 0), sz - 1);
+	coeff->si[3] = ccv_min(ccv_max(si + 2, 0), sz - 1);
 	float x = s - si;
 	const int W_BITS = 1 << 6;
 	coeff->coeffs[0] = (int)((((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A) * W_BITS + 0.5);

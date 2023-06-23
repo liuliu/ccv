@@ -1645,6 +1645,9 @@ TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false")
 	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 10, 1e-2, "should match the target after fine-tuning");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(final), 0, "should be marked as not trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up), 1, "should be marked as trainable");
 	ccv_nnc_tensor_free(x);
 	ccv_nnc_tensor_free(target);
 	ccv_nnc_tensor_free(y);
@@ -1670,6 +1673,9 @@ TEST_CASE("LoRA fine-tuning convolution set is_trainable to false")
 	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 1,
 	}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(final), 0, "should be marked as not trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up), 1, "should be marked as trainable");
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_free(x);
 	ccv_nnc_tensor_free(y);

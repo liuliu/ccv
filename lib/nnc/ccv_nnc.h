@@ -3560,6 +3560,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_copy(const ccv_cnnp_model_t* c
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_model_output_size(const ccv_cnnp_model_t* const model);
 /**
+ * Get whether the model is trainable.
+ * @param model The existing model.
+ * @return Whether the model is trainable, -1 is inherited from its parent.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_model_is_trainable(const ccv_cnnp_model_t* const model);
+/**
  * Compute the shape of the output tensor after the model applied to the input.
  * This can only be called after the model is compiled with proper input parameters.
  * @param model The model to compute the output shapes.
