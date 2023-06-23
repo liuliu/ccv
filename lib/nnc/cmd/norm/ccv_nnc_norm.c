@@ -105,6 +105,12 @@ static int _ccv_nnc_layer_norm_back_bitmask(const int input_size, const int outp
 	// Output the propagated error, dgamma and dbeta
 	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
+		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
+		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
+		return 1;
 	return 0;
 }
 
@@ -176,6 +182,12 @@ static int _ccv_nnc_group_norm_back_bitmask(const int input_size, const int outp
 	// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
 	// Output the propagated error, dgamma and dbeta
 	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
+		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
+		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
+		return 1;
+	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
 }

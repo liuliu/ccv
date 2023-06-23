@@ -946,6 +946,10 @@ void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_contex
 
 ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)
 {
+	if (!tensor)
+		return (ccv_nnc_cudnn_tensor_view_descriptor_t){
+			0, 0, 0
+		};
 	ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc = {
 		stream_context,
 		ccv_nnc_stream_context_get_tensor_descriptor(stream_context),
@@ -978,6 +982,10 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_
 
 ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)
 {
+	if (!tensor)
+		return (ccv_nnc_cudnn_tensor_view_descriptor_t){
+			0, 0, 0
+		};
 	ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc = {
 		stream_context,
 		ccv_nnc_stream_context_get_tensor_descriptor(stream_context),
@@ -1272,6 +1280,8 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 
 void ccv_nnc_cudnn_deinit_tensor_view_descriptor(const ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc)
 {
+	if (!tensor_desc.descriptor)
+		return;
 	ccv_nnc_stream_context_return_tensor_descriptor(tensor_desc.stream_context, tensor_desc.descriptor);
 }
 
