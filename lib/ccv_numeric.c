@@ -1265,3 +1265,179 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 	}
 #undef for_block
 }
+
+inline static double _kmeans1d_cost(double* cumsum, double* cumsum2, int i, int j)
+{
+	if (j < i)
+		return 0;
+	double mu = (cumsum[j + 1] - cumsum[i]) / (j - i + 1);
+	double result = cumsum2[j + 1] - cumsum2[i];
+	result += (j - i + 1) * (mu * mu);
+	result -= (2 * mu) * (cumsum[j + 1] - cumsum[i]);
+	return result;
+}
+
+inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2, int i, int j)
+{
+	const int col = i < j - 1 ? i : j - 1;
+	return (col >= 0 ? D[col] : 0) + _kmeans1d_cost(cumsum, cumsum2, j, i);
+}
+
+static void _smawk(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
+{
+	if (row_size == 0)
+		return;
+	int* _cols = cols + col_size;
+	int _col_size = 0;
+	int i;
+	for (i = 0; i < col_size; i++)
+	{
+		const int col = cols[i];
+		for (;;)
+		{
+			if (_col_size == 0)
+				break;
+			const int row = row_start + row_stride * (_col_size - 1);
+			if (_kmeans1d_lookup(D, cumsum, cumsum2, row, col) >= _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[_col_size - 1]))
+				break;
+			--_col_size;
+		}
+		if (_col_size < row_size)
+		{
+			_cols[_col_size] = col;
+			++_col_size;
+		}
+	}
+	_smawk(row_start + row_stride, row_stride * 2, row_size / 2, _cols, _col_size, reserved, D, cumsum, cumsum2, result);
+	// Build the reverse lookup table.
+	for (i = 0; i < _col_size; i++)
+		reserved[_cols[i]] = i;
+    int start = 0;
+    for (i = 0; i < row_size; i += 2) {
+        const int row = row_start + i * row_stride;
+        int stop = _col_size - 1;
+        if (i < row_size - 1)
+		{
+			const int argmin = result[row_start + (i + 1) * row_stride];
+            stop = reserved[argmin];
+		}
+        int argmin = _cols[start];
+        double min = _kmeans1d_lookup(D, cumsum, cumsum2, row, argmin);
+		int c;
+        for (c = start + 1; c <= stop; c++)
+		{
+            double value = _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[c]);
+            if (c == start || value < min) {
+                argmin = _cols[c];
+                min = value;
+            }
+        }
+        result[row] = argmin;
+        start = stop;
+    }
+}
+
+static void smawk(const int n, int* cols, double* D, double* cumsum, double* cumsum2, int* result)
+{
+	int i;
+	for (i = 0; i < n; i++)
+		cols[i + n] = i;
+	_smawk(0, 1, n, cols + n, n, cols, D, cumsum, cumsum2, result);
+}
+
+typedef struct {
+	double value;
+	int index;
+} ccv_kmeans1d_undo_t;
+
+#undef more_than
+#define less_than(s1, s2, aux) ((s1).value < (s2).value)
+static CCV_IMPLEMENT_QSORT(_ccv_kmeans1d_undo_qsort, ccv_kmeans1d_undo_t, less_than)
+#undef less_than
+
+void ccv_kmeans1d(const ccv_dense_matrix_t* const a, const int k, int* const clusters, double* const centroids)
+{
+	assert(k > 1);
+	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
+	const int n = a->rows * a->cols;
+	ccv_kmeans1d_undo_t* const sorted_undos = ccmalloc(sizeof(ccv_kmeans1d_undo_t) * n);
+	int i;
+	if (CCV_GET_DATA_TYPE(a->type) == CCV_16F)
+	{
+		float* f = (float*)sorted_undos;
+		ccv_half_precision_to_float((uint16_t*)a->data.f16, (float*)f, n);
+		for (i = n - 1; i >= 0; i--)
+		{
+			sorted_undos[i].value = f[i];
+			sorted_undos[i].index = i;
+		}
+	} else if (CCV_GET_DATA_TYPE(a->type) == CCV_32F) {
+		for (i = 0; i < n; i++)
+		{
+			sorted_undos[i].value = a->data.f32[i];
+			sorted_undos[i].index = i;
+		}
+	} else if (CCV_GET_DATA_TYPE(a->type) == CCV_64F) {
+		for (i = 0; i < n; i++)
+		{
+			sorted_undos[i].value = a->data.f64[i];
+			sorted_undos[i].index = i;
+		}
+	}
+	_ccv_kmeans1d_undo_qsort(sorted_undos, n, 0);
+	double* cc = ccmalloc(sizeof(double) * 2 * (n + 1));
+	cc[0] = 0;
+	cc[n + 1] = 0;
+	double cumsum = 0, cumsum2 = 0;
+	for (i = 0; i < n; i++)
+	{
+		cumsum += sorted_undos[i].value;
+		cumsum2 += sorted_undos[i].value * sorted_undos[i].value;
+		cc[i + 1] = cumsum;
+		cc[i + 1 + n + 1] = cumsum2;
+	}
+	double* D = ccmalloc(sizeof(double) * 2 * n);
+	int* T = ccmalloc(sizeof(int) * n * k);
+	for (i = 0; i < n; i++)
+	{
+		D[i] = _kmeans1d_cost(cc, cc + n + 1, 0, i);
+		T[i] = 0;
+	}
+	int k_;
+	int* cols = ccmalloc(sizeof(int) * n * 4);
+	for (k_ = 1; k_ < k; k_++)
+	{
+		double* lastD = D + ((k_ - 1) % 2) * n;
+		int* const cT = T + k_ * n;
+		smawk(n, cols, lastD, cc, cc + n + 1, cT);
+		double* nextD = D + (k_ % 2) * n;
+		for (i = 0; i < n; i++)
+		{
+			const int argmin = cT[i];
+			nextD[i] = _kmeans1d_lookup(lastD, cc, cc + n + 1, i, argmin);
+		}
+	}
+	ccfree(cc);
+	ccfree(D);
+	int t = n;
+	k_ = k - 1;
+	int n_ = n - 1;
+	do {
+		int t_ = t;
+		t = T[k_ * n + n_];
+		double centroid = 0.0;
+		for (i = t; i < t_; i++)
+		{
+			cols[i] = k_;
+			centroid += (sorted_undos[i].value - centroid) / (i - t + 1);
+		}
+		centroids[k_] = centroid;
+		k_ -= 1;
+		n_ = t - 1;
+	} while (t > 0);
+	for (i = 0; i < n; i++)
+		clusters[sorted_undos[i].index] = cols[i];
+	ccfree(cols);
+	ccfree(sorted_undos);
+	ccfree(T);
+}

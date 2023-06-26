@@ -398,4 +398,42 @@ TEST_CASE("ccv_distance_transform to compute max distance")
 	ccv_matrix_free(distance);
 }
 
+TEST_CASE("ccv_kmeans1d to compute the 1D K-means")
+{
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1, 100, CCV_32F | CCV_C1, 0, 0);
+	int i;
+	for (i = 0; i < 100; i++)
+		a->data.f32[i] = i > 80 ? i - 80 + 0.5 : 50 - i;
+	int* const indices = ccmalloc(sizeof(int) * 100);
+	double* const centroids = ccmalloc(sizeof(double) * 10);
+	ccv_kmeans1d(a, 10, indices, centroids);
+	// Compute centroids again to see if it matches.
+	int counts[10] = {};
+	double means[10] = {};
+	for (i = 0; i < 100; i++)
+	{
+		means[indices[i]] += a->data.f32[i];
+		++counts[indices[i]];
+	}
+	for (i = 0; i < 10; i++)
+		means[i] = means[i] / counts[i];
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, means, centroids, 10, 1e-6, "centroids should match the recompute");
+	ccfree(centroids);
+	// indices should be continuous up until 80. And then it should be between 4 and 6.
+	int minIndex = indices[0];
+	for (i = 0; i <= 80; i++)
+	{
+		REQUIRE(indices[i] >= 0 && indices[i] <= minIndex, "should be decrement.");
+		minIndex = ccv_min(indices[i], minIndex);
+	}
+	minIndex = indices[81];
+	for (i = 81; i < 100; i++)
+	{
+		REQUIRE(indices[i] <= 9 && indices[i] >= minIndex, "should be increment.");
+		minIndex = ccv_max(indices[i], minIndex);
+	}
+	ccfree(indices);
+	ccv_matrix_free(a);
+}
+
 #include "case_main.h"

@@ -1146,6 +1146,14 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
  * @param flag CCV_GSEDT, generalized squared Euclidean distance transform. CCV_NEGATIVE, negate value in input matrix for computation; effectively, this enables us to compute the maximum distance transform rather than minimum (default one).
  */
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag);
+/**
+ * [O(kn) K-means 1D](https://arxiv.org/pdf/1701.07204.pdf). This implementation follows https://github.com/dstein64/kmeans1d/blob/master/kmeans1d/_core.cpp but makes upfront allocations rather than multiple allocations during the reduce operation.  This implementation uses O(kn) memory, due to we keep backtracking of T.
+ * @param a The input matrix, can be 16F, 32F or 64F.
+ * @param k The number of clusters, should be larger than 1.
+ * @param clusters The index into each cluster.
+ * @param centroids The center of each cluster.
+ */
+void ccv_kmeans1d(const ccv_dense_matrix_t* const a, const int k, int* const clusters, double* const centroids);
 /** @} */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
 void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
