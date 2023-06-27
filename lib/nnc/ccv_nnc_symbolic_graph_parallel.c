@@ -57,13 +57,20 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	ccv_array_t* const broadcast_reduce_execs = ccv_array_new(sizeof(int), 0, 0);
 	int* const allreduce_inputs = allreducer_size > 0 ? (int*)ccmalloc(sizeof(int) * allreducer_size) : 0;
 	for (i = 0; i < allreducer_size; i++)
-		allreduce_inputs[i] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, allreducers[i]), 0).d;
+	{
+		if (allreducers[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			allreduce_inputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+		else
+			allreduce_inputs[i] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, allreducers[i]), 0).d;
+	}
 	const int tensor_symbol_size = graph->tensor_symbol_info->rnum;
 	const int graph_exec_symbol_size = graph->exec_symbol_info->rnum;
 	int* const tensor_flags = (int*)cccalloc(tensor_symbol_size + graph_exec_symbol_size, sizeof(int));
 	int* const exec_flags = tensor_flags + tensor_symbol_size;
 	for (i = 0; i < broadcast_size; i++)
 	{
+		if (broadcasts[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		// Doesn't support alias for these.
 		tensor_flags[broadcasts[i].d] = CCV_NNC_PARALLEL_BROADCAST;
 		assert(graph == broadcasts[i].graph);
@@ -72,6 +79,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	int* const allreduce_producers = allreducer_size > 0 ? (int*)cccalloc(tensor_symbol_size, sizeof(int)) : 0;
 	for (i = 0; i < allreducer_size; i++)
 	{
+		if (allreducers[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		// Doesn't support alias for these.
 		tensor_flags[allreducers[i].d] = CCV_NNC_PARALLEL_ALLREDUCER;
 		assert(graph == allreducers[i].graph);
@@ -79,6 +88,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	}
 	for (i = 0; i < reducer_size; i++)
 	{
+		if (reducers[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		// Doesn't support alias for these.
 		tensor_flags[reducers[i].d] = CCV_NNC_PARALLEL_REDUCER;
 		assert(graph == reducers[i].graph);
@@ -86,14 +97,21 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	}
 	// No overlap between broadcasts, allreducers, reducers.
 	for (i = 0; i < broadcast_size; i++)
+	{
+		if (broadcasts[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		for (j = 0; j < reducer_size; j++)
 			{ assert(broadcasts[i].d != reducers[j].d); }
-	for (i = 0; i < broadcast_size; i++)
 		for (j = 0; j < allreducer_size; j++)
 			{ assert(broadcasts[i].d != allreducers[j].d); }
+	}
 	for (i = 0; i < allreducer_size; i++)
+	{
+		if (allreducers[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		for (j = 0; j < reducer_size; j++)
 			{ assert(allreducers[i].d != reducers[j].d); }
+	}
 	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), node, idx) {
 		int parallelizable_data = 0;
 		int reduce_inputs = 0;
@@ -287,6 +305,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	for (i = 0; i < broadcast_size + reducer_size; i++)
 	{
 		const int idx = i >= broadcast_size ? reducers[i - broadcast_size].d : broadcasts[i].d;
+		if (idx == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		ccv_nnc_tensor_symbol_info_t* const tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, idx);
 		ccv_nnc_tensor_param_t info = tensor_symbol->info;
 		const int flags = tensor_symbol->flags;
@@ -528,6 +548,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	// 2. Disconnect them from source and connect them through all reduce nodes.
 	for (i = 0; i < allreducer_size; i++)
 	{
+		if (allreducers[i].d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		ccv_nnc_tensor_symbol_t* const outputs = max_io + parallel_count;
 		outputs[0] = allreducers[i];
 		// Copy over allreducers output symbols (as the old symbol).
@@ -626,8 +648,14 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	if (allreducer_outs)
 		for (i = 0; i < allreducer_size; i++)
 		{
-			allreducer_outs[i].d = allreduce_inputs[i];
-			allreducer_outs[i].graph = graph;
+			if (allreduce_inputs[i] != CCV_NNC_NO_TENSOR_SYMBOL)
+			{
+				allreducer_outs[i].d = allreduce_inputs[i];
+				allreducer_outs[i].graph = graph;
+			} else {
+				allreducer_outs[i].d = CCV_NNC_NO_TENSOR_SYMBOL;
+				allreducer_outs[i].graph = 0;
+			}
 		}
 	ccfree(allreduce_inputs);
 }

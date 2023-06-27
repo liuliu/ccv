@@ -755,6 +755,7 @@ ccv_cnnp_model_t* ccv_cnnp_dynamic_new(ccv_cnnp_model_dynamic_f func, void* cons
 {
 	ccv_cnnp_dynamic_model_t* const dynamic_model = (ccv_cnnp_dynamic_model_t*)cccalloc(1, sizeof(ccv_cnnp_dynamic_model_t));
 	dynamic_model->super.isa = &ccv_cnnp_dynamic_model_isa;
+	dynamic_model->super.is_trainable = -1;
 	dynamic_model->func = func;
 	dynamic_model->context = context;
 	ccv_cnnp_model_copy_name(&dynamic_model->super, name);
