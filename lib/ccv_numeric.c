@@ -1283,7 +1283,7 @@ inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2
 	return (col >= 0 ? D[col] : 0) + _kmeans1d_cost(cumsum, cumsum2, j, i);
 }
 
-static void _smawk(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
+static void _smawk2(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
 {
 	if (row_size == 0)
 		return;
@@ -1308,7 +1308,7 @@ static void _smawk(int row_start, int row_stride, int row_size, int* cols, int c
 			++_col_size;
 		}
 	}
-	_smawk(row_start + row_stride, row_stride * 2, row_size / 2, _cols, _col_size, reserved, D, cumsum, cumsum2, result);
+	_smawk2(row_start + row_stride, row_stride * 2, row_size / 2, _cols, _col_size, reserved, D, cumsum, cumsum2, result);
 	// Build the reverse lookup table.
 	for (i = 0; i < _col_size; i++)
 		reserved[_cols[i]] = i;
@@ -1327,8 +1327,94 @@ static void _smawk(int row_start, int row_stride, int row_size, int* cols, int c
         for (c = start + 1; c <= stop; c++)
 		{
             double value = _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[c]);
-            if (c == start || value < min) {
+            if (value < min) {
                 argmin = _cols[c];
+                min = value;
+            }
+        }
+        result[row] = argmin;
+        start = stop;
+    }
+}
+
+static void _smawk1(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
+{
+	if (row_size == 0)
+		return;
+	int* _cols = cols;
+	int _col_size = 0;
+	int i;
+	for (i = 0; i < col_size; i++)
+	{
+		const int col = i;
+		for (;;)
+		{
+			if (_col_size == 0)
+				break;
+			const int row = row_start + row_stride * (_col_size - 1);
+			if (_kmeans1d_lookup(D, cumsum, cumsum2, row, col) >= _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[_col_size - 1]))
+				break;
+			--_col_size;
+		}
+		if (_col_size < row_size)
+		{
+			_cols[_col_size] = col;
+			++_col_size;
+		}
+	}
+	_smawk2(row_start + row_stride, row_stride * 2, row_size / 2, _cols, _col_size, reserved, D, cumsum, cumsum2, result);
+	// Build the reverse lookup table.
+	for (i = 0; i < _col_size; i++)
+		reserved[_cols[i]] = i;
+    int start = 0;
+    for (i = 0; i < row_size; i += 2) {
+        const int row = row_start + i * row_stride;
+        int stop = _col_size - 1;
+        if (i < row_size - 1)
+		{
+			const int argmin = result[row_start + (i + 1) * row_stride];
+			stop = reserved[argmin];
+		}
+        int argmin = _cols[start];
+        double min = _kmeans1d_lookup(D, cumsum, cumsum2, row, argmin);
+		int c;
+        for (c = start + 1; c <= stop; c++)
+		{
+            double value = _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[c]);
+            if (value < min) {
+                argmin = _cols[c];
+                min = value;
+            }
+        }
+        result[row] = argmin;
+        start = stop;
+    }
+}
+
+static void _smawk0(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
+{
+	if (row_size == 0)
+		return;
+	_smawk1(row_start + row_stride, row_stride * 2, row_size / 2, cols, col_size, reserved, D, cumsum, cumsum2, result);
+	// Build the reverse lookup table.
+    int start = 0;
+	int i;
+    for (i = 0; i < row_size; i += 2) {
+        const int row = row_start + i * row_stride;
+        int stop = col_size - 1;
+        if (i < row_size - 1)
+		{
+			const int argmin = result[row_start + (i + 1) * row_stride];
+			stop = argmin;
+		}
+        int argmin = start;
+        double min = _kmeans1d_lookup(D, cumsum, cumsum2, row, argmin);
+		int c;
+        for (c = start + 1; c <= stop; c++)
+		{
+            double value = _kmeans1d_lookup(D, cumsum, cumsum2, row, c);
+            if (value < min) {
+                argmin = c;
                 min = value;
             }
         }
@@ -1339,10 +1425,7 @@ static void _smawk(int row_start, int row_stride, int row_size, int* cols, int c
 
 static void smawk(const int n, int* cols, double* D, double* cumsum, double* cumsum2, int* result)
 {
-	int i;
-	for (i = 0; i < n; i++)
-		cols[i + n] = i;
-	_smawk(0, 1, n, cols + n, n, cols, D, cumsum, cumsum2, result);
+	_smawk0(0, 1, n, cols + n, n, cols, D, cumsum, cumsum2, result);
 }
 
 typedef struct {
@@ -1404,7 +1487,7 @@ void ccv_kmeans1d(const ccv_dense_matrix_t* const a, const int k, int* const clu
 		T[i] = 0;
 	}
 	int k_;
-	int* cols = ccmalloc(sizeof(int) * n * 4);
+	int* cols = ccmalloc(sizeof(int) * n * 2);
 	for (k_ = 1; k_ < k; k_++)
 	{
 		double* lastD = D + ((k_ - 1) % 2) * n;
