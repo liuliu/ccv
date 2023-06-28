@@ -270,6 +270,8 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 	assert(self->data);
 	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
 	const int old_is_trainable = build_data->is_trainable;
+	if (self->is_trainable >= 0)
+		build_data->is_trainable = self->is_trainable;
 	if (outputs && output_size)
 	{
 		assert(output_size == self->output_size);
@@ -282,8 +284,6 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 	{
 		ccv_cnnp_model_push(self, build_data->model_sequence);
 		build_data->model_sequence->it = 0;
-		if (self->is_trainable >= 0)
-			build_data->is_trainable = self->is_trainable;
 		ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter, build_data->is_trainable);
 		build_data->model_sequence->it = 0;
 		ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);

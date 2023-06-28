@@ -1059,7 +1059,7 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	}
 	compiled_data->backward.to_size = 0;
 	for (i = 0; i < parameter_size_maybe_more; i++)
-		if (!compiled_data->parameter_flags || (compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63))))
+		if (compiled_data->gradients[i].d != CCV_NNC_NO_TENSOR_SYMBOL)
 			compiled_data->backward.tos[compiled_data->backward.to_size++] = ccv_nnc_graph_exec_symbol_for_backward(model->graph, compiled_data->gradients[i]);
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS);
 	ccv_nnc_symbolic_graph_set_destinations(model->graph, compiled_data->update_nodes, parameter_size);
@@ -1406,6 +1406,8 @@ static void _ccv_cnnp_bind_tensors_to_arena(ccv_nnc_tensor_arena_t* const tensor
 	for (i = 0; i < tensor_size; i++)
 	{
 		ccv_nnc_tensor_symbol_t tensor_symbol = tensor_symbols[i];
+		if (tensor_symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
 		if (graph)
 		{
 			const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(graph, tensor_symbol);
@@ -1887,6 +1889,12 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 		}
 	}
 	const int from_size = apply_gradients_from->rnum;
+	if (from_size == 0)
+	{
+		ccv_array_free(apply_gradients_from);
+		ccv_array_free(tensor_binds);
+		return;
+	}
 	ccv_nnc_graph_exec_symbol_t* const froms = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * from_size);
 	for (i = 0; i < from_size; i++)
 		froms[i] = (ccv_nnc_graph_exec_symbol_t){
@@ -1957,7 +1965,8 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 		else
 			_ccv_cnnp_bind_tensors_to_arena(compiled_data->apply_gradients.tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, parameter_size, parallel_count);
 	}
-	ccv_nnc_graph_run_with_schedule(compiled_data->apply_gradients.graph, 0, 0, 0, stream_context);
+	if (compiled_data->apply_gradients.graph)
+		ccv_nnc_graph_run_with_schedule(compiled_data->apply_gradients.graph, 0, 0, 0, stream_context);
 	// Reset backward count to 0.
 	compiled_data->backward.count = 0;
 }
