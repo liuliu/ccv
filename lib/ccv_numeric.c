@@ -1300,7 +1300,7 @@ inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2
 __attribute__((__always_inline__))
 inline static bool _kmeans1d_lookup_compare(double* D, double* cumsum, double* cumsum2, int i, int j1, int j2)
 {
-  // Uses 2-wide SIMD or instruction-level parallelism.
+  // Uses either 2-wide SIMD or instruction-level parallelism.
   const int i_minus_j1_plus_1 = i - j1 + 1;
   const int i_minus_j2_plus_1 = i - j2 + 1;
   const int col1 = i_minus_j1_plus_1 < 0 ? i : j1 - 1;
