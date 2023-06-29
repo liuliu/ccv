@@ -1296,6 +1296,34 @@ inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2
 	return result_alt;
 }
 
+__attribute__((__always_inline__))
+inline static bool _kmeans1d_lookup_compare(double* D, double* cumsum, double* cumsum2, int i, int j1, int j2)
+{
+  // Uses 2-wide SIMD or instruction-level parallelism.
+  const int i_minus_j1_plus_1 = i - j1 + 1;
+  const int i_minus_j2_plus_1 = i - j2 + 1;
+  const int col1 = i_minus_j1_plus_1 < 0 ? i : j1 - 1;
+  const int col2 = i_minus_j2_plus_1 < 0 ? i : j2 - 1;
+  double result1 = (col1 >= 0 ? D[col1] : 0);
+  double result2 = (col2 >= 0 ? D[col2] : 0);
+  
+  double cumsum_i_1 = cumsum[i + 1];
+  double cumsum2_i_1 = cumsum2[i + 1];
+  double temp1 = (cumsum_i_1 - cumsum[j1]);
+  double temp2 = (cumsum_i_1 - cumsum[j2]);
+  double mu1 = temp1 / i_minus_j1_plus_1;
+  double mu2 = temp2 / i_minus_j2_plus_1;
+  double result1_alt = result1 + cumsum2_i_1 - cumsum2[j1];
+  double result2_alt = result2 + cumsum2_i_1 - cumsum2[j2];
+  result1_alt += i_minus_j1_plus_1 * (mu1 * mu1);
+  result2_alt += i_minus_j2_plus_1 * (mu2 * mu2);
+  result1_alt -= (2 * mu1) * temp1;
+  result2_alt -= (2 * mu2) * temp2;
+  result1 = (i_minus_j1_plus_1 < 1) ? result1 : result1_alt;
+  result2 = (i_minus_j2_plus_1 < 1) ? result2 : result2_alt;
+  return result1 >= result2;
+}
+
 static void _smawk2(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
 {
 	if (row_size == 0)
@@ -1311,7 +1339,7 @@ static void _smawk2(int row_start, int row_stride, int row_size, int* cols, int 
 			if (_col_size == 0)
 				break;
 			const int row = row_start + row_stride * (_col_size - 1);
-			if (_kmeans1d_lookup(D, cumsum, cumsum2, row, col) >= _kmeans1d_lookup(D, cumsum, cumsum2, row, _cols[_col_size - 1]))
+			if (_kmeans1d_lookup_compare(D, cumsum, cumsum2, row, col, _cols[_col_size - 1]))
 				break;
 			--_col_size;
 		}
