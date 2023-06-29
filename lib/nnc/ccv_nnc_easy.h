@@ -287,7 +287,7 @@ static inline void ccv_nnc_tensor_view_get_stride(const ccv_nnc_tensor_view_t* c
 {
 	int x;
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
-	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	const int offset = ccv_max(CCV_NNC_MAX_DIM + 2 - nd, 0);
 	stride[CCV_NNC_MAX_DIM + 2] = 0;
 	if (CCV_IS_TENSOR_VIEW(tv))
 	{
