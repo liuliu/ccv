@@ -1281,19 +1281,19 @@ inline static double _kmeans1d_cost(double* cumsum, double* cumsum2, int i, int 
 __attribute__((__always_inline__))
 inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2, int i, int j)
 {
-  const int i_minus_j_plus_1 = i - j + 1;
-  const int col = i_minus_j_plus_1 < 0 ? i : j - 1;
-  double result = (col >= 0 ? D[col] : 0);
-  
-  if (i_minus_j_plus_1 < 1)
-    return result;
-  
-  double temp = (cumsum[i + 1] - cumsum[j]);
-  double mu = temp / i_minus_j_plus_1;
-  double result_alt = result + cumsum2[i + 1] - cumsum2[j];
-  result_alt += i_minus_j_plus_1 * (mu * mu);
-  result_alt -= (2 * mu) * temp;
-  return result_alt;
+	const int i_minus_j_plus_1 = i - j + 1;
+	const int col = i_minus_j_plus_1 < 0 ? i : j - 1;
+	double result = (col >= 0 ? D[col] : 0);
+	
+	if (i_minus_j_plus_1 < 1)
+		return result;
+	
+	double temp = (cumsum[i + 1] - cumsum[j]);
+	double mu = temp / i_minus_j_plus_1;
+	double result_alt = result + cumsum2[i + 1] - cumsum2[j];
+	result_alt += i_minus_j_plus_1 * (mu * mu);
+	result_alt -= (2 * mu) * temp;
+	return result_alt;
 }
 
 static void _smawk2(int row_start, int row_stride, int row_size, int* cols, int col_size, int* reserved, double* D, double* cumsum, double* cumsum2, int* result)
