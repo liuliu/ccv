@@ -1288,10 +1288,11 @@ inline static double _kmeans1d_lookup(double* D, double* cumsum, double* cumsum2
 	if (i_minus_j_plus_1 < 1)
 		return result;
 	
+	double i_minus_j_plus_1_d = double(i_minus_j_plus_1_d);
 	double temp = (cumsum[i + 1] - cumsum[j]);
-	double mu = temp / i_minus_j_plus_1;
+	double mu = temp / i_minus_j_plus_1_d;
 	double result_alt = result + cumsum2[i + 1] - cumsum2[j];
-	result_alt += i_minus_j_plus_1 * (mu * mu);
+	result_alt += i_minus_j_plus_1_d * (mu * mu);
 	result_alt -= (2 * mu) * temp;
 	return result_alt;
 }
@@ -1307,16 +1308,18 @@ inline static bool _kmeans1d_lookup_compare(double* D, double* cumsum, double* c
   double result1 = (col1 >= 0 ? D[col1] : 0);
   double result2 = (col2 >= 0 ? D[col2] : 0);
   
+  double i_minus_j1_plus_1_d = double(i_minus_j1_plus_1);
+  double i_minus_j1_plus_2_d = double(i_minus_j1_plus_2);
   double cumsum_i_1 = cumsum[i + 1];
   double cumsum2_i_1 = cumsum2[i + 1];
   double temp1 = (cumsum_i_1 - cumsum[j1]);
   double temp2 = (cumsum_i_1 - cumsum[j2]);
-  double mu1 = temp1 / i_minus_j1_plus_1;
-  double mu2 = temp2 / i_minus_j2_plus_1;
+  double mu1 = temp1 / i_minus_j1_plus_1_d;
+  double mu2 = temp2 / i_minus_j1_plus_2_d;
   double result1_alt = result1 + cumsum2_i_1 - cumsum2[j1];
   double result2_alt = result2 + cumsum2_i_1 - cumsum2[j2];
-  result1_alt += i_minus_j1_plus_1 * (mu1 * mu1);
-  result2_alt += i_minus_j2_plus_1 * (mu2 * mu2);
+  result1_alt += i_minus_j1_plus_1_d * (mu1 * mu1);
+  result2_alt += i_minus_j1_plus_2_d * (mu2 * mu2);
   result1_alt -= (2 * mu1) * temp1;
   result2_alt -= (2 * mu2) * temp2;
   result1 = (i_minus_j1_plus_1 < 1) ? result1 : result1_alt;
