@@ -15,33 +15,34 @@ void ccv_nnc_deinit_mfa_context(void* mfa_context) {
   delete (ccv_nnc_mfa_context*)mfa_context;
 }
 
-#define MFA_ERROR_PREFIX "\e[0;36m[Metal]\e[0m"
+#define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
 
 void ccv_nnc_mfa_log_source_location(const char* line, const char *column, const char *file_name, const char *function_name) {
-  std::cerr << MFA_ERROR_PREFIX << " Encountered unexpected error in: " << function << std::endl;
-  std::cerr << "\e[0;1" << file_name << ":" << line << ":" << column << ":\e[0m ";
-  std::cerr << "\e[0;31merror:\e[0m ";
+  std::cerr << METAL_LOG_HEADER << "Encountered unexpected error in: " << function << std::endl;
+  std::cerr << "\e[0;1m" << file_name << ":" << line << ":" << column << ":\e[0m ";
+  std::cerr << "\e[0;31m << "error:"" << "\e[0m ";
 }
 
 void ccv_nnc_mfa_fatal_error(NS::Error* error, const char* line, const char *column, const char *file_name, const char *function_name) {
-  // TODO: Log the code, domain, user info, recovery options.
   auto description = error->localizedDescription();
   auto recovery_suggestion = error->localizedRecoverySuggestion();
   auto failure_reason = error->localizedFailureReason();
   
   ccv_nnc_mfa_log_source_location(line, column, file_name, function_name);
+  std::cerr << "\e[0;1m"
   if (description) {
-    std::cerr << desc << std::endl;
+    std::cerr << description;
   } else {
-    std::cerr << "[description not available]" << std::endl;
+    std::cerr << "[description not available]";
   }
+  std::cerr << "\e[0m" << std::endl;
   if (recovery_suggestion) {
-    std::cerr << MFA_ERROR_PREFIX << " Recovery suggestion: " << recovery_suggestion << std::endl;
+    std::cerr << METAL_LOG_HEADER << "Recovery suggestion: " << recovery_suggestion << std::endl;
   }
   if (failure_reason) {
-    std::cerr << MFA_ERROR_PREFIX << " Failure reason: " << failure_reason << std::endl;
+    std::cerr << METAL_LOG_HEADER << "Failure reason: " << failure_reason << std::endl;
   }
-  std::cerr << MFA_ERROR_PREFIX << " Quitting now." << std::endl;
+  std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
   exit(-1);
 }
 
@@ -66,5 +67,5 @@ ccv_nnc_mfa_context::ccv_nnc_mfa_context(MTL::Device* device, MTL::CommandQueue*
   CCV_NNC_MFA_ASSERT(error);
   
   // Temporary means to evaluate whether MFA loaded correctly.
-  std::cout << "[Metal] libMetalFlashAttention initialized." << std::endl;
+  std::cout << METAL_LOG_HEADER << "libMetalFlashAttention initialized." << std::endl;
 }
