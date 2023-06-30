@@ -24,6 +24,16 @@ id<MTLDevice> ccv_nnc_default_device(void)
 	return device;
 }
 
+void* ccv_nnc_default_mfa_context(void)
+{
+  static dispatch_once_t once;
+  static ccv_nnc_mfa_context* mfa_context;
+  dispatch_once(&once, ^{
+    mfa_context = ccv_nnc_init_mfa_context((__bridge void*)ccv_nnc_default_device());
+  });
+  return mfa_context;
+}
+
 MPSGraphDevice* _ccv_nnc_default_mps_device(void)
 {
 	static dispatch_once_t once;
@@ -514,10 +524,14 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 	return key;
 }
 
+static int mfa_test_integer = 1;
+
 // Stream context
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
-	return stream_context;
+  // Test that this works.
+  mfa_test_integer += ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
+  return stream_context;
 }
 
 static int enable_unbounded_command_buffers = 1;
@@ -586,16 +600,16 @@ int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* c
 }
 
 typedef struct {
-	ccv_nnc_stream_context_t super;
-	// Left for implementation yet, the CPU support for stream context.
-	size_t workspace_size;
-	void* workspace;
+  ccv_nnc_stream_context_t super;
+  // Left for implementation yet, the CPU support for stream context.
+  size_t workspace_size;
+  void* workspace;
 } ccv_nnc_stream_mps_t;
 
 static __thread ccv_nnc_stream_mps_t ccv_nnc_per_thread_stream_mps = {
-	.super = {
-		.type = CCV_STREAM_CONTEXT_CPU,
-	},
+  .super = {
+    .type = CCV_STREAM_CONTEXT_CPU,
+  },
 };
 
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)

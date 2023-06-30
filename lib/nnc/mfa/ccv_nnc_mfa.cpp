@@ -1,35 +1,37 @@
-#include "ccv_nnc_mfa.h"
-#include <nnc/mps/ccv_nnc_mps.h>
+#include "ccv_nnc_mfa.hpp"
 #include <iostream>
 
-void* ccv_nnc_init_mfa_context(void* device, void* command_queue) {
-  auto* mfa_context = new ccv_nnc_mfa_context((MTL::Device*)device, (MTL::CommandQueue*)command_queue);
-  return (void*)mfa_context;
-}
-
-bool ccv_nnc_mfa_context_supported(void* mfa_context) {
-  return ((ccv_nnc_mfa_context*)mfa_context)->get_supported();
+void* ccv_nnc_init_mfa_context(void* device) {
+  return new ccv_nnc_mfa_context((MTL::Device*)device);
 }
 
 void ccv_nnc_deinit_mfa_context(void* mfa_context) {
   delete (ccv_nnc_mfa_context*)mfa_context;
 }
 
-#define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
-
-void ccv_nnc_mfa_log_source_location(const char* line, const char *column, const char *file_name, const char *function_name) {
-  std::cerr << METAL_LOG_HEADER << "Encountered unexpected error in: " << function << std::endl;
-  std::cerr << "\e[0;1m" << file_name << ":" << line << ":" << column << ":\e[0m ";
-  std::cerr << "\e[0;31m << "error:"" << "\e[0m ";
+int ccv_nnc_mfa_context_supported(void* mfa_context) {
+  return ((ccv_nnc_mfa_context*)mfa_context)->supported ? 1 : 0;
 }
 
-void ccv_nnc_mfa_fatal_error(NS::Error* error, const char* line, const char *column, const char *file_name, const char *function_name) {
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+
+#define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
+
+void ccv_nnc_mfa_log_source_location(int line, const char *file_name, const char *function_name) {
+  std::cerr << METAL_LOG_HEADER << "Encountered unexpected error in: " << function_name << std::endl;
+  std::cerr << "\e[0;1m" << file_name << ":" << line << ":\e[0m ";
+  std::cerr << "\e[0;31m" << "error:" << "\e[0m ";
+}
+
+void ccv_nnc_mfa_fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name) {
   auto description = error->localizedDescription();
   auto recovery_suggestion = error->localizedRecoverySuggestion();
   auto failure_reason = error->localizedFailureReason();
   
-  ccv_nnc_mfa_log_source_location(line, column, file_name, function_name);
-  std::cerr << "\e[0;1m"
+  ccv_nnc_mfa_log_source_location(line, file_name, function_name);
+  std::cerr << "\e[0;1m";
   if (description) {
     std::cerr << description;
   } else {
@@ -46,26 +48,44 @@ void ccv_nnc_mfa_fatal_error(NS::Error* error, const char* line, const char *col
   exit(-1);
 }
 
-ccv_nnc_mfa_context::ccv_nnc_mfa_context(MTL::Device* device, MTL::CommandQueue* command_queue)
+ccv_nnc_mfa_context::ccv_nnc_mfa_context(MTL::Device* device)
 {
-  this->_supported = device->supportsFamily(MTL::GPUFamilyApple7);
-  if (!_supported) {
+  // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
+  // We need to have two different variants based on the operating system. macOS
+  // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
+  const char* metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
+  if (!metallib_path) {
+    this->supported = false;
+    return;
+  }
+  std::cerr << METAL_LOG_HEADER << "Loading libMetalFlashAttention.metallib." << std::endl;
+  
+  // Check whether the device architecture is supported.
+  this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
+  if (!supported) {
+    std::cerr << METAL_LOG_HEADER << "Device architecture not supported by Metal FlashAttention." << std::endl;
     return;
   }
   
   this->device = NS::RetainPtr(device);
-  this->command_queue = NS::RetainPtr(command_queue);
+#if TARGET_OS_MAC
+  // This method is only available on macOS 13.3+. To make the code compatible
+  // with macOS 12, we need to call ObjC runtime functions that check whether
+  // the selector actually exists.
+  device->setShouldMaximizeConcurrentCompilation(true);
+#endif
   
-  // Temporary hard-coded path, until we determine how to package libMFA with
-  // the rest of the build process.
-  const char *c_path = "/usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib";
-  auto swift_path = NS::String::string(path, NS::UTF8StringEncoding);
+  // Create a URL out of the path string.
+  auto c_path = metallib_path;
+  auto swift_path = NS::String::string(c_path, NS::UTF8StringEncoding);
   auto url = NS::URL::fileURLWithPath(swift_path);
   
+  // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
   this->library = NS::TransferPtr(device->newLibrary(url, &error));
   CCV_NNC_MFA_ASSERT(error);
   
-  // Temporary means to evaluate whether MFA loaded correctly.
-  std::cout << METAL_LOG_HEADER << "libMetalFlashAttention initialized." << std::endl;
+  // Notify that this finished successfully, and is not just stalling on one of
+  // the previous lines of code.
+  std::cerr << METAL_LOG_HEADER << "Finished loading libMetalFlashAttention." << std::endl;
 }

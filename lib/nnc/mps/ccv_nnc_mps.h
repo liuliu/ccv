@@ -61,6 +61,7 @@ typedef struct {
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
+void* ccv_nnc_default_mfa_context(void);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
@@ -75,5 +76,10 @@ void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer,
 void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const* const data, int* dim[CCV_NNC_MAX_DIM_ALLOC], int* stride[CCV_NNC_MAX_DIM_ALLOC], const int size);
 
 #endif
+
+typedef void ccv_nnc_mfa_context;
+ccv_nnc_mfa_context* ccv_nnc_init_mfa_context(void* device);
+void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context* mfa_context);
+int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context* mfa_context);
 
 #endif
