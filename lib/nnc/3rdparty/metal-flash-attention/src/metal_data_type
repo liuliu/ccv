@@ -1,0 +1,17 @@
+//
+//  metal_data_type.metal
+//  MetalFlashAttention
+//
+//  Created by Philip Turner on 6/27/23.
+//
+
+#include <metal_stdlib>
+using namespace metal;
+
+namespace metal {
+  enum MTLDataType: uint {
+    MTLDataTypeFloat = 3,
+    MTLDataTypeHalf = 16,
+    MTLDataTypeBFloat = 121,
+  };
+}
