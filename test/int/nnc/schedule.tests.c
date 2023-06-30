@@ -30,7 +30,7 @@ TEST_CASE("schedule GPU work on one stream")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -99,7 +99,7 @@ TEST_CASE("schedule GPU work on multiple streams")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -215,7 +215,7 @@ TEST_CASE("schedule GPU work with while loop")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
@@ -323,7 +323,7 @@ TEST_CASE("schedule GPU work with case..of")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
@@ -411,7 +411,7 @@ TEST_CASE("schedule GPU work with both while loop and case..of")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const hw1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
@@ -540,7 +540,7 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -592,7 +592,7 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, d1)),
 		0);
 	// schedule device 0
-	ccv_nnc_graph_static_schedule_t* const schedule0 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU,
+	ccv_nnc_graph_static_schedule_t* const schedule0 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU, 0,
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src0)),
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest0)));
 	ccv_nnc_graph_run_with_schedule(graph, 0, schedule0, 0, stream);
@@ -603,7 +603,7 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 		0);
 	REQUIRE_EQ_WITH_TOLERANCE(hd0->data.f32[0], (0.4 * 3 + 1.2 * 2 - 1) * 1.1 * 0.9, 1e-5, "result should be equal");
 	// schedule device 1
-	ccv_nnc_graph_static_schedule_t* const schedule1 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU,
+	ccv_nnc_graph_static_schedule_t* const schedule1 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU, 0,
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src1)),
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest1)));
 	ccv_nnc_graph_run_with_schedule(graph, 0, schedule1, 0, stream);
@@ -624,7 +624,7 @@ TEST_CASE("partial schedule work, one for device 0 and one for device 1")
 		TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, d1)),
 		0);
 	// custom schedule again with both device 0 and device 1.
-	ccv_nnc_graph_static_schedule_t* const schedule01 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU,
+	ccv_nnc_graph_static_schedule_t* const schedule01 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU, 0,
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src1)),
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest1)));
 	ccv_nnc_graph_run_with_schedule(graph, 0, schedule01, 0, stream);
@@ -688,7 +688,7 @@ TEST_CASE("partial schedule on both device 0 and then join device 1")
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const ha0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
 	ccv_nnc_tensor_t* const ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -720,7 +720,7 @@ TEST_CASE("partial schedule on both device 0 and then join device 1")
 	ccv_nnc_stream_signal_t* const signal0 = ccv_nnc_stream_signal_new(CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_000);
 	ccv_nnc_stream_context_t* const stream1 = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_001);
 	// custom schedule again with both device 0 and device 1.
-	ccv_nnc_graph_static_schedule_t* const schedule01 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU,
+	ccv_nnc_graph_static_schedule_t* const schedule01 = ccv_nnc_graph_static_schedule_new(graph, CCV_STREAM_CONTEXT_GPU, 0,
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, src1)),
 		GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest0), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest1)));
 	ccv_nnc_graph_run_with_schedule(graph, 0, schedule01, 0, stream0);

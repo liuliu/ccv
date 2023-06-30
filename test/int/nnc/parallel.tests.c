@@ -67,7 +67,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 			&graph, &tensor_arena, &graph_exec_arena);
-		ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+		ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 		GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
 		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
@@ -246,7 +246,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 			&graph, &tensor_arena, &graph_exec_arena);
-		ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
+		ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_GPU, 0);
 		GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
 		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);

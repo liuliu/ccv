@@ -1166,21 +1166,23 @@ typedef struct ccv_nnc_graph_static_schedule_s ccv_nnc_graph_static_schedule_t;
  * and save the end result to a internal schedule object to this graph.
  * @param graph The concrete graph.
  * @param stream_type The type of stream context we are going to use.
+ * @param max_stream_count The number of stream contexts to be allocated internally.
  */
-void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
+void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int max_stream_count);
 /**
  * Allocate extra streams to make this graph parallel runnable. Note this requires the graph to be topsorted.
  * After this is done, you can schedule a graph either on its default stream, or a new stream with the schedule
  * object.
  * @param graph The concrete graph.
  * @param stream_type The type of stream context we are going to use.
+ * @param max_stream_count The number of stream contexts to be allocated internally.
  * @param sources The source execution nodes to begin. 0 uses default sources.
  * @param source_size The size of source execution nodes.
  * @param destinations The destination execution nodes which we end. 0 uses default destinations.
  * @param destination_size The size of destination execution nodes.
  * @return An opaque schedule object that let the graph knows how to run itself efficiently.
  */
-CCV_WARN_UNUSED(ccv_nnc_graph_static_schedule_t*) ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_static_schedule_t*) ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const int max_stream_count, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 /**
  * Free a schedule object for a graph.
  * @param schedule The schedule object returned from ccv_nnc_graph_static_schedule_new.
@@ -2845,6 +2847,13 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
  */
 void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * Set the maximum operator-level concurrency. This is a soft-limit, e.g. if you have operations on
+ * different devices, they are concurrent.
+ * @param graph The dynamic graph.
+ * @param max_stream_count The maximum concurrency if the dynamic graph schedules internal streams. 0 is no limit.
+ */
+void ccv_nnc_dynamic_graph_set_max_concurrency(ccv_nnc_dynamic_graph_t* const graph, const int max_stream_count);
+/**
  * Enable or disable gradient computation on a dynamic graph.
  * @param dynamic_graph The dynamic graph.
  * @param no_grad If it is 1, disable gradient computation on the dynamic graph.
@@ -3731,6 +3740,13 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
  */
 void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int parallel);
+/**
+ * Set the maximum operator-level concurrency. This is a soft-limit, e.g. if you have operations on
+ * different devices, they are concurrent.
+ * @param model The composed model.
+ * @param max_stream_count The maximum concurrency if the model schedules internal streams. 0 is no limit.
+ */
+void ccv_cnnp_model_set_max_concurrency(ccv_cnnp_model_t* const model, const int max_stream_count);
 /**
  * Apply memory compression to the composed model. The memory compression technique can reduce memory
  * usage up to 75% comparing with raw mix-precision model during training time.

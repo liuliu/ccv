@@ -84,6 +84,7 @@ KHASH_MAP_INIT_INT(stateful_exec, ccv_nnc_stateful_exec_t*)
 
 struct ccv_nnc_dynamic_graph_s {
 	int no_grad; // 1 if gradient computation is disabled.
+	int max_stream_count;
 	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
 	int reuse_stateful_exec; // -1 if no stateful exec can be reused. Otherwise first locate the reuse without increase array size.
 	ccv_nnc_xpu_alloc_t xpu_alloc; // Allocate memory dynamically.

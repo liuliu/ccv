@@ -448,6 +448,11 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_exchange_new(ccv_nnc_dynamic_g
 	return new_variable;
 }
 
+void ccv_nnc_dynamic_graph_set_max_concurrency(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int max_stream_count)
+{
+	dynamic_graph->max_stream_count = max_stream_count;
+}
+
 int ccv_nnc_dynamic_graph_set_no_grad(ccv_nnc_dynamic_graph_t* const dynamic_graph, const int no_grad)
 {
 	if (dynamic_graph->no_grad == no_grad)
