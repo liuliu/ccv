@@ -379,8 +379,7 @@ cc_library(
   copts = ccv_default_copts(),
   deps = [
     ":metal_cpp_hdrs",
-    ":nnc_headers",
-    ":SFMT_hdrs",
+    ":nnc_headers"
   ]
 )
 
@@ -396,8 +395,8 @@ objc_library(
 	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph"],
 	deps = [
     ":nnc_mfa_compat",
-		":nnc_headers",
-		":SFMT_hdrs",
+    ":nnc_headers",
+    ":SFMT_hdrs"
 	]
 )
 
