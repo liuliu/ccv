@@ -39,7 +39,7 @@ TEST_CASE("schedule a simple graph for parallel execution")
 		TENSOR_SYMBOL_LIST(d2),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
-	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_CPU);
+	ccv_nnc_graph_set_default_static_schedule(graph, CCV_STREAM_CONTEXT_CPU, 0);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	x_tensor->data.f32[0] = 2;

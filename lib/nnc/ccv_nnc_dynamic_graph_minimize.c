@@ -454,7 +454,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_array_free(symbol_stack);
 	if (stream_context)
 	{
-		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context));
+		ccv_nnc_graph_set_default_static_schedule(graph, ccv_nnc_stream_context_type(stream_context), dynamic_graph->max_stream_count);
 		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 		ccv_nnc_tensor_arena_buffer_free(tensor_arena);
 		ccv_nnc_compilation_artifact_t* const artifact = ccv_nnc_compilation_artifact_new(graph, tensor_arena, exec_arena);
@@ -466,7 +466,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			for (i = 0; !flag && i < parameter_size; i++)
 				flag = (CCV_TENSOR_GET_MEMORY(parameters[i]->info.type) == CCV_TENSOR_GPU_MEMORY);
 			const int stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
-			ccv_nnc_graph_set_default_static_schedule(graph, stream_type);
+			ccv_nnc_graph_set_default_static_schedule(graph, stream_type, dynamic_graph->max_stream_count);
 			ccv_nnc_stream_context_t* const default_stream = ccv_nnc_graph_default_stream(graph);
 			ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, default_stream);
 			ccv_nnc_stream_context_wait(default_stream);

@@ -732,7 +732,7 @@ void ccv_nnc_graph_static_schedule_free(ccv_nnc_graph_static_schedule_t* const s
 	ccfree(schedule);
 }
 
-static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_graph_exec_t* const _sources, const int _source_size, const ccv_nnc_graph_exec_t* const _destinations, const int _destination_size)
+static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, const int max_stream_count, ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_graph_exec_t* const _sources, const int _source_size, const ccv_nnc_graph_exec_t* const _destinations, const int _destination_size)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
@@ -907,11 +907,43 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 				}
 				if (stream_idx < 0)
 				{
-					stream_idx = stream_data->rnum;
-					const ccv_nnc_stream_data_t data = {
-						.device_id = device_ids[i],
-					};
-					ccv_array_push(stream_data, &data);
+					// Note that the max stream count is a "soft" limit. Even we have different devices, our compute allocation has to be on different streams.
+					if (stream_data->rnum >= max_stream_count && max_stream_count > 0)
+					{
+						// If we are already at out limit, go through again to see if a stream is available, if the stream has command, and also its exec_idx is not preceding this execution.
+						for (j = 0; (stream_idx < 0 || !stream_has_command) && j < stream_data->rnum; j++)
+						{
+							ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, j);
+							if (data->device_id == device_ids[i])
+							{
+								const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, data->exec_idx, idx);
+								// There must be no path from idx to exec_idx otherwise we already have stream_idx. Now we just to verify
+								// there is no path from exec_idx to idx as well.
+								if (!cell.i32 || cell.i32[0] == 0)
+								{
+									if (ccv_array_find_uint(data->command_set, node->cmd.cmd))
+										stream_idx = j, stream_has_command = 1;
+									else if (stream_idx < 0) // Otherwise, only assign the stream idx if it is not assigned yet.
+										stream_idx = j;
+								}
+							}
+						}
+						if (stream_idx >= 0)
+						{
+							// Now need to mark exec_idx is after idx, so we can avoid A -> B -> A deadlock.
+							ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx);
+							const int32_t one = 1;
+							ccv_set_sparse_matrix_cell(exec_dep, idx, data->exec_idx, &one);
+						}
+					}
+					if (stream_idx < 0)
+					{
+						stream_idx = stream_data->rnum;
+						const ccv_nnc_stream_data_t data = {
+							.device_id = device_ids[i],
+						};
+						ccv_array_push(stream_data, &data);
+					}
 				}
 				assert(stream_idx >= 0);
 				ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx);
@@ -921,56 +953,60 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 				ccv_array_add_unique_uint(data->command_set, node->cmd.cmd);
 				// Assign all subsequent node to use this stream.
 				int outgoing_idx = idx;
-				while (outgoings[outgoing_idx] && outgoings[outgoing_idx]->rnum)
-				{
-					int highest_rank = -1;
-					int highest_idx = -1;
-					int stream_n = -1;
-					int stream_has_command = 0;
-					for (j = 0; j < outgoings[outgoing_idx]->rnum; j++)
+				// if we want to enforce the stream count is only 1, we certainly don't want to the greedy approach.
+				// With the greedy approach, the current stream will go all the way down and certainly conflict with
+				// other streams. We'd prefer to interleaving the execution instead in this case.
+				if (max_stream_count != 1)
+					while (outgoings[outgoing_idx] && outgoings[outgoing_idx]->rnum)
 					{
-						const int d = *(int*)ccv_array_get(outgoings[outgoing_idx], j);
-						// This is not outside of our scope at this point.
-						assert(schd_info[d].stream_size >= 0);
-						ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + d;
-						const int outgoing_device_id_size = _ccv_nnc_device_ids_for_stream_data(outgoing_node, device_id, stream_data, outgoing_device_ids, max_device_id_size);
-						if (schd_info[d].stream_size == 0)
+						int highest_rank = -1;
+						int highest_idx = -1;
+						int stream_n = -1;
+						int stream_has_command = 0;
+						for (j = 0; j < outgoings[outgoing_idx]->rnum; j++)
 						{
-							schd_info[d].stream_size = outgoing_device_id_size; // At least at the same size as the device_id_size.
-							if (outgoing_device_id_size > 1)
+							const int d = *(int*)ccv_array_get(outgoings[outgoing_idx], j);
+							// This is not outside of our scope at this point.
+							assert(schd_info[d].stream_size >= 0);
+							ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + d;
+							const int outgoing_device_id_size = _ccv_nnc_device_ids_for_stream_data(outgoing_node, device_id, stream_data, outgoing_device_ids, max_device_id_size);
+							if (schd_info[d].stream_size == 0)
 							{
-								schd_info[d]._heap_streams = (int*)ccmalloc(sizeof(int) * outgoing_device_id_size * 2);
-								schd_info[d]._heap_signals = (schd_info[d]._heap_streams + outgoing_device_id_size);
+								schd_info[d].stream_size = outgoing_device_id_size; // At least at the same size as the device_id_size.
+								if (outgoing_device_id_size > 1)
+								{
+									schd_info[d]._heap_streams = (int*)ccmalloc(sizeof(int) * outgoing_device_id_size * 2);
+									schd_info[d]._heap_signals = (schd_info[d]._heap_streams + outgoing_device_id_size);
+								}
+								for (k = 0; k < outgoing_device_id_size; k++)
+									SCHEDULE_STREAMS(schd_info[d])[k] = -1, SCHEDULE_SIGNALS(schd_info[d])[k] = -1;
 							}
+							assert(schd_info[d].stream_size == outgoing_device_id_size);
 							for (k = 0; k < outgoing_device_id_size; k++)
-								SCHEDULE_STREAMS(schd_info[d])[k] = -1, SCHEDULE_SIGNALS(schd_info[d])[k] = -1;
+								// If it should be on the same device and the stream is not assign, potentially.
+								if (outgoing_device_ids[k] == device_ids[i] &&
+									SCHEDULE_STREAMS(schd_info[d])[k] < 0 &&
+									(incomings[d].rank > highest_rank ||
+									 (incomings[d].rank == highest_rank &&
+									  !stream_has_command && ccv_array_find_uint(data->command_set, outgoing_node->cmd.cmd))))
+								{
+									highest_rank = incomings[d].rank;
+									highest_idx = d;
+									stream_n = k;
+									// This is 1 if rank is the same (thus, I must break the tie already), if the rank is not the same, we need to compute this.
+									stream_has_command = (incomings[d].rank == highest_rank || ccv_array_find_uint(data->command_set, outgoing_node->cmd.cmd));
+								}
 						}
-						assert(schd_info[d].stream_size == outgoing_device_id_size);
-						for (k = 0; k < outgoing_device_id_size; k++)
-							// If it should be on the same device and the stream is not assign, potentially.
-							if (outgoing_device_ids[k] == device_ids[i] &&
-								SCHEDULE_STREAMS(schd_info[d])[k] < 0 &&
-								(incomings[d].rank > highest_rank ||
-								 (incomings[d].rank == highest_rank &&
-								  !stream_has_command && ccv_array_find_uint(data->command_set, outgoing_node->cmd.cmd))))
-							{
-								highest_rank = incomings[d].rank;
-								highest_idx = d;
-								stream_n = k;
-								// This is 1 if rank is the same (thus, I must break the tie already), if the rank is not the same, we need to compute this.
-								stream_has_command = (incomings[d].rank == highest_rank || ccv_array_find_uint(data->command_set, outgoing_node->cmd.cmd));
-							}
+						if (highest_idx >= 0)
+						{
+							outgoing_idx = highest_idx;
+							ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
+							assert(stream_n >= 0);
+							SCHEDULE_STREAMS(schd_info[outgoing_idx])[stream_n] = stream_idx;
+							ccv_array_add_unique_uint(data->command_set, outgoing_node->cmd.cmd);
+						} else
+							break;
 					}
-					if (highest_idx >= 0)
-					{
-						outgoing_idx = highest_idx;
-						ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
-						assert(stream_n >= 0);
-						SCHEDULE_STREAMS(schd_info[outgoing_idx])[stream_n] = stream_idx;
-						ccv_array_add_unique_uint(data->command_set, outgoing_node->cmd.cmd);
-					} else
-						break;
-				}
 				data->exec_idx = outgoing_idx;
 			}
 	} ccv_nnc_graph_visit_endfor
@@ -1248,24 +1284,24 @@ static ccv_nnc_graph_static_schedule_t* _ccv_nnc_graph_static_schedule_new(ccv_n
 				assert(schd_info[exec_idx].stream_size == 1);
 				const int stream_idx = SCHEDULE_STREAMS(schd_info[exec_idx])[0];
 				const int device_id = ((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx))->device_id;
-				sub_graph->default_schedule = _ccv_nnc_graph_static_schedule_new(sub_graph, stream_type, device_id, graph->streams[stream_idx], 0, 0, 0, 0);
+				sub_graph->default_schedule = _ccv_nnc_graph_static_schedule_new(sub_graph, stream_type, device_id, max_stream_count, graph->streams[stream_idx], 0, 0, 0, 0);
 			}
 		}
 	ccv_array_free(stream_data);
 	return schedule;
 }
-void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type)
+void ccv_nnc_graph_set_default_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int max_stream_count)
 {
 	assert(graph->p == 0);
 	if (graph->default_schedule)
 		ccv_nnc_graph_static_schedule_free(graph->default_schedule);
-	graph->default_schedule = _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, 0, 0, 0, 0, 0);
+	graph->default_schedule = _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, max_stream_count, 0, 0, 0, 0, 0);
 }
 
-ccv_nnc_graph_static_schedule_t* ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+ccv_nnc_graph_static_schedule_t* ccv_nnc_graph_static_schedule_new(ccv_nnc_graph_t* const graph, const int stream_type, const int max_stream_count, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	assert(graph->p == 0);
-	return _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, 0, sources, source_size, destinations, destination_size);
+	return _ccv_nnc_graph_static_schedule_new(graph, stream_type, -1, max_stream_count, 0, sources, source_size, destinations, destination_size);
 }
 
 ccv_nnc_stream_context_t* ccv_nnc_graph_default_stream(const ccv_nnc_graph_t* const graph)
