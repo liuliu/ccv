@@ -11,8 +11,22 @@ typedef struct {
 static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, double rows_scale, double cols_scale)
 {
 	assert(a->cols > 0 && b->cols > 0);
-	ccv_int_alpha* xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
+	unsigned char* workspace = 0;
+	ccv_int_alpha* xofs;
+	unsigned int* buf;
+	unsigned int* sum;
+	if (a->cols > 1024 || b->cols * ch > 1024)
+	{
+		workspace = (unsigned char*)ccmalloc(sizeof(ccv_int_alpha) * a->cols * 2 + 2 * b->cols * ch * sizeof(unsigned int));
+		xofs = (ccv_int_alpha*)workspace;
+		buf = (unsigned int*)(workspace + sizeof(ccv_int_alpha) * a->cols * 2);
+		sum = buf + b->cols * ch;
+	} else {
+		xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
+		buf = (unsigned int*)alloca(b->cols * ch * sizeof(unsigned int));
+		sum = (unsigned int*)alloca(b->cols * ch * sizeof(unsigned int));
+	}
 	double scale_x = (double)1 / cols_scale;
 	double scale_y = (double)1 / rows_scale;
 	// double scale = 1.f / (scale_x * scale_y);
@@ -45,8 +59,6 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 		}
 	}
 	int xofs_count = k;
-	unsigned int* buf = (unsigned int*)alloca(b->cols * ch * sizeof(unsigned int));
-	unsigned int* sum = (unsigned int*)alloca(b->cols * ch * sizeof(unsigned int));
 	for (dx = 0; dx < b->cols * ch; dx++)
 		buf[dx] = sum[dx] = 0;
 	dy = 0;
@@ -111,6 +123,8 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 		for (dx = 0; dx < b->cols * ch; dx++)
 			b_ptr[dx] = ccv_clamp(sum[dx] / inv_scale_256, 0, 255);
 	}
+	if (workspace)
+		ccfree(workspace);
 }
 
 typedef struct {
@@ -121,8 +135,22 @@ typedef struct {
 static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, double rows_scale, double cols_scale)
 {
 	assert(a->cols > 0 && b->cols > 0);
-	ccv_area_alpha_t* xofs = (ccv_area_alpha_t*)alloca(sizeof(ccv_area_alpha_t) * a->cols * 2);
 	int ch = CCV_GET_CHANNEL(a->type);
+	unsigned char* workspace = 0;
+	ccv_area_alpha_t* xofs;
+	float* buf;
+	float* sum;
+	if (a->cols > 1024 || b->cols * ch > 1024)
+	{
+		workspace = (unsigned char*)ccmalloc(sizeof(ccv_area_alpha_t) * a->cols * 2 + 2 * b->cols * ch * sizeof(float));
+		xofs = (ccv_area_alpha_t*)workspace;
+		buf = (float*)(workspace + sizeof(ccv_area_alpha_t) * a->cols * 2);
+		sum = buf + b->cols * ch;
+	} else {
+		xofs = (ccv_area_alpha_t*)alloca(sizeof(ccv_area_alpha_t) * a->cols * 2);
+		buf = (float*)alloca(b->cols * ch * sizeof(float));
+		sum = (float*)alloca(b->cols * ch * sizeof(float));
+	}
 	double scale_x = (double)1 / cols_scale;
 	double scale_y = (double)1 / rows_scale;
 	double scale = 1.f / (scale_x * scale_y);
@@ -154,8 +182,6 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 		}
 	}
 	int xofs_count = k;
-	float* buf = (float*)alloca(b->cols * ch * sizeof(float));
-	float* sum = (float*)alloca(b->cols * ch * sizeof(float));
 	for (dx = 0; dx < b->cols * ch; dx++)
 		buf[dx] = sum[dx] = 0;
 	dy = 0;
@@ -223,6 +249,8 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, dou
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter, b->type, for_block);
 #undef for_block
+	if (workspace)
+		ccfree(workspace);
 }
 
 typedef struct {
@@ -254,7 +282,18 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 	assert(CCV_GET_DATA_TYPE(b->type) == CCV_32F || CCV_GET_DATA_TYPE(b->type) == CCV_64F);
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
 	assert(b->cols > 0 && b->step > 0);
-	ccv_cubic_coeffs_t* xofs = (ccv_cubic_coeffs_t*)alloca(sizeof(ccv_cubic_coeffs_t) * b->cols);
+	unsigned char* workspace = 0;
+	ccv_cubic_coeffs_t* xofs;
+	unsigned char* buf;
+	if (b->step > 2048)
+	{
+		workspace = (unsigned char*)ccmalloc(sizeof(ccv_cubic_coeffs_t) * b->cols + b->step * 4);
+		xofs = (ccv_cubic_coeffs_t*)workspace;
+		buf = (unsigned char*)(workspace + sizeof(ccv_cubic_coeffs_t) * b->cols);
+	} else {
+		xofs = (ccv_cubic_coeffs_t*)alloca(sizeof(ccv_cubic_coeffs_t) * b->cols);
+		buf = (unsigned char*)alloca(b->step * 4);
+	}
 	double scale_x = (double)1 / cols_scale;
 	for (i = 0; i < b->cols; i++)
 	{
@@ -262,7 +301,6 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 		_ccv_init_cubic_coeffs((int)sx, a->cols, (float)sx, xofs + i);
 	}
 	double scale_y = (double)1 / rows_scale;
-	unsigned char* buf = (unsigned char*)alloca(b->step * 4);
 #ifdef __clang_analyzer__
 	memset(buf, 0, b->step * 4);
 #endif
@@ -303,6 +341,8 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_float_only, b->type, for_block);
 #undef for_block
+	if (workspace)
+		ccfree(workspace);
 }
 
 static void _ccv_init_cubic_integer_coeffs(int si, int sz, float s, ccv_cubic_integer_coeffs_t* coeff)
@@ -326,7 +366,19 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
 	int no_8u_type = (b->type & CCV_8U) ? CCV_32S : b->type;
 	assert(b->cols > 0);
-	ccv_cubic_integer_coeffs_t* xofs = (ccv_cubic_integer_coeffs_t*)alloca(sizeof(ccv_cubic_integer_coeffs_t) * b->cols);
+	unsigned char* workspace = 0;
+	ccv_cubic_integer_coeffs_t* xofs;
+	unsigned char* buf;
+	int bufstep = b->cols * ch * CCV_GET_DATA_TYPE_SIZE(no_8u_type);
+	if (b->step > 2048)
+	{
+		workspace = (unsigned char*)ccmalloc(sizeof(ccv_cubic_integer_coeffs_t) * b->cols + bufstep * 4);
+		xofs = (ccv_cubic_integer_coeffs_t*)workspace;
+		buf = (unsigned char*)(workspace + sizeof(ccv_cubic_integer_coeffs_t) * b->cols);
+	} else {
+		xofs = (ccv_cubic_integer_coeffs_t*)alloca(sizeof(ccv_cubic_integer_coeffs_t) * b->cols);
+		buf = (unsigned char*)alloca(bufstep * 4);
+	}
 	double scale_x = (double)1 / cols_scale;
 	for (i = 0; i < b->cols; i++)
 	{
@@ -334,8 +386,6 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 		_ccv_init_cubic_integer_coeffs((int)sx, a->cols, (float)sx, xofs + i);
 	}
 	double scale_y = (double)1 / rows_scale;
-	int bufstep = b->cols * ch * CCV_GET_DATA_TYPE_SIZE(no_8u_type);
-	unsigned char* buf = (unsigned char*)alloca(bufstep * 4);
 #ifdef __clang_analyzer__
 	memset(buf, 0, bufstep * 4);
 #endif
@@ -376,6 +426,8 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 	}
 	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_integer_only, no_8u_type, ccv_matrix_setter_integer_only, b->type, for_block);
 #undef for_block
+	if (workspace)
+		ccfree(workspace);
 }
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, double rows_scale, double cols_scale, int type)
@@ -435,11 +487,21 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	int ch = CCV_GET_CHANNEL(a->type);
 	int cols0 = db->cols - 1 - src_x;
 	int dy, sy = -2 + src_y, sx = src_x * ch, dx, k;
-	int* tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
+	unsigned char* workspace = 0;
+	int* tab;
+	unsigned char* buf;
+	if (a->cols + src_x + 2 > 1024 || db->cols * ch > 1024)
+	{
+		workspace = (unsigned char*)ccmalloc((a->cols + src_x + 2) * ch * sizeof(int) + 5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
+		tab = (int*)workspace;
+		buf = (unsigned char*)(workspace + (a->cols + src_x + 2) * ch * sizeof(int));
+	} else {
+		tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
+		buf = (unsigned char*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
+	}
 	for (dx = 0; dx < a->cols + src_x + 2; dx++)
 		for (k = 0; k < ch; k++)
 			tab[dx * ch + k] = ((dx >= a->cols) ? a->cols * 2 - 1 - dx : dx) * ch + k;
-	unsigned char* buf = (unsigned char*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 #ifdef __clang_analyzer__
 	memset(buf, 0, 5 * bufstep);
@@ -490,6 +552,8 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 #undef x_block
 	}
 #undef for_block
+	if (workspace)
+		ccfree(workspace);
 }
 
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
@@ -503,11 +567,21 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	int cols0 = a->cols - 1 - src_x;
 	assert(a->cols > 0 && cols0 > 0);
 	int y, x, sy = -1 + src_y, sx = src_x * ch, k;
-	int* tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
+	unsigned char* workspace = 0;
+	int* tab;
+	unsigned char* buf;
+	if (a->cols + src_x + 2 > 1024 || db->cols * ch > 1024)
+	{
+		workspace = (unsigned char*)ccmalloc((a->cols + src_x + 2) * ch * sizeof(int) + 3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
+		tab = (int*)workspace;
+		buf = (unsigned char*)(workspace + (a->cols + src_x + 2) * ch * sizeof(int));
+	} else {
+		tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
+		buf = (unsigned char*)alloca(3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
+	}
 	for (x = 0; x < a->cols + src_x + 2; x++)
 		for (k = 0; k < ch; k++)
 			tab[x * ch + k] = ((x >= a->cols) ? a->cols * 2 - 1 - x : x) * ch + k;
-	unsigned char* buf = (unsigned char*)alloca(3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 #ifdef __clang_analyzer__
 	memset(buf, 0, 3 * bufstep);
@@ -630,4 +704,6 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 #undef G025
 	}
 #undef for_block
+	if (workspace)
+		ccfree(workspace);
 }
