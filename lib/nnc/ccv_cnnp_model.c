@@ -1555,6 +1555,8 @@ static void _ccv_cnnp_model_gradient_tensors_init(const ccv_cnnp_model_t* const 
 	int i, j;
 	for (i = 0; i < parameter_size; i++)
 	{
+		if (!(compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63))))
+			continue;
 		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
 		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
