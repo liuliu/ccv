@@ -52,7 +52,7 @@ typedef MTL::CommandBatch mtl_command_batch_t;
 #else // __cplusplus
 typedef struct {
   mtl_command_buffer_t* command_buffer;
-  mtl_compute_command_encoder_t* encoder;
+  mtl_compute_command_encoder_t* command_encoder;
   uint16_t batched_command_count;
   uint8_t command_active;
 } MTLCommandBatch;
