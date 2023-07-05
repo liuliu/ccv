@@ -2,6 +2,8 @@
 #include <iostream>
 using namespace ccv::nnc;
 
+// MARK: - C
+
 ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(ccv_nnc_mfa_context_t* device) {
   return new mfa::context((MTL::Device*)device);
 }
@@ -13,6 +15,8 @@ void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* mfa_context) {
 int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context) {
   return mfa_context->supported ? 1 : 0;
 }
+
+// MARK: - C++
 
 #define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
 
@@ -55,7 +59,8 @@ mfa::context::context(MTL::Device* device)
     this->supported = false;
     return;
   }
-  std::cerr << METAL_LOG_HEADER << "Loading libMetalFlashAttention.metallib." << std::endl;
+  std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
+  auto pool = NS::AutoreleasePool::alloc()->init();
   
   // Check whether the device architecture is supported.
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
@@ -84,5 +89,6 @@ mfa::context::context(MTL::Device* device)
   
   // Notify that this finished successfully, and is not just stalling on one of
   // the previous lines of code.
-  std::cerr << METAL_LOG_HEADER << "Finished loading libMetalFlashAttention." << std::endl;
+  pool->drain();
+  std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
 }

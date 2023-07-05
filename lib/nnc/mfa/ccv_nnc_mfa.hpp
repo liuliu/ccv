@@ -1,10 +1,13 @@
-#ifndef GUARD_ccv_nnc_mfa_h
-#define GUARD_ccv_nnc_mfa_h
+#ifndef GUARD_ccv_nnc_mfa_hpp
+#define GUARD_ccv_nnc_mfa_hpp
 
 #include "nnc/ccv_nnc.h"
 #ifdef __cplusplus
 #include "3rdparty/metal-cpp/Dispatch.hpp"
 #include "3rdparty/metal-cpp/Metal.hpp"
+#include "ccv_nnc_mfa_gemm.hpp"
+
+
 
 namespace ccv {
 namespace nnc {
@@ -22,20 +25,8 @@ public:
   NS::SharedPtr<MTL::Library> library;
   
   context(MTL::Device* device);
-};
-
-class gemm_hash {
-public:
-  uint64_t datatype;
-  uint32_t M;
-  uint32_t N;
-  uint32_t K;
-  uint8_t A_trans;
-  uint8_t B_trans;
-  float alpha;
-  float beta;
-  uint8_t batched;
-  uint8_t fused_activation;
+  
+  std::unordered_map<gemm::hash, int> gemm_cache;
 };
 
 } // namespace mfa

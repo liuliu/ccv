@@ -371,10 +371,13 @@ cuda_library(
 cc_library(
   name = "nnc_mfa_compat",
   srcs = [
+    "nnc/mfa/ccv_nnc_mfa_gemm.cpp",
     "nnc/mfa/ccv_nnc_mfa.cpp",
     "nnc/mfa/Metal.cpp",
   ],
   hdrs = [
+    "nnc/mfa/ccv_nnc_mfa_gemm.hpp",
+    "nnc/mfa/ccv_nnc_mfa_hash.hpp",
     "nnc/mfa/ccv_nnc_mfa.hpp",
   ],
   copts = ccv_default_copts(),
