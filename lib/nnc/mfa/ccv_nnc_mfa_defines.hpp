@@ -39,16 +39,12 @@ public:
   MTL::ComputeCommandEncoder* command_encoder;
   
   uint16_t batched_command_count = 0;
+  uint8_t command_active = 0;
   
-  CommandBatch(MTL::CommandQueue* command_queue) {
-    command_buffer = command_queue->commandBuffer();
-    command_encoder = command_buffer->computeCommandEncoder();
-  }
-  
-  ~CommandBatch() {
-    command_encoder->endEncoding();
-    command_buffer->commit();
-  }
+  CommandBatch(MTL::CommandQueue* command_queue);
+  MTL::ComputeCommandEncoder* start_command(MTL::ComputePipelineState* pso);
+  void finish_command(MTL::ComputeCommandEncoder* command_encoder);
+  ~CommandBatch();
 };
 } // namespace MTL
 
@@ -58,6 +54,7 @@ typedef struct {
   mtl_command_buffer_t* command_buffer;
   mtl_compute_command_encoder_t* encoder;
   uint16_t batched_command_count;
+  uint8_t command_active;
 } MTLCommandBatch;
 
 typedef MTLCommandBatch mtl_command_batch_t;

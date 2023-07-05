@@ -76,3 +76,27 @@ mfa::context::context(MTL::Device* device)
   
   pool->drain();
 }
+
+MTL::CommandBatch::CommandBatch(MTL::CommandQueue* command_queue) {
+  command_buffer = command_queue->commandBuffer();
+  command_encoder = command_buffer->computeCommandEncoder();
+}
+
+MTL::ComputeCommandEncoder* MTL::CommandBatch::start_command(MTL::ComputePipelineState* pso) {
+  CCV_NNC_MFA_PRECONDITION(command_active == 0)
+  command_active = 1;
+  command_encoder->setComputePipelineState(pso);
+  return command_encoder;
+}
+
+void MTL::CommandBatch::finish_command(MTL::ComputeCommandEncoder* command_encoder) {
+  CCV_NNC_MFA_PRECONDITION(command_active == 1)
+  command_active = 0;
+  batched_command_count += 1;
+}
+
+MTL::CommandBatch::~CommandBatch() {
+  CCV_NNC_MFA_PRECONDITION(command_active == 0)
+  command_encoder->endEncoding();
+  command_buffer->commit();
+}
