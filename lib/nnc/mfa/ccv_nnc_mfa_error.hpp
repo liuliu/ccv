@@ -9,7 +9,7 @@ namespace mfa {
 
 #define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
 
-#define CCV_NNC_MFA_ASSERT(error) \
+#define CCV_NNC_MFA_CHECK_ERROR(error) \
 if (error) { ccv::nnc::mfa::fatal_error(error, __LINE__, __FILE__, __FUNCTION__); } \
 
 void fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name);

@@ -78,9 +78,4 @@ void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSComm
 
 #endif
 
-//typedef void ccv_nnc_mfa_context;
-//ccv_nnc_mfa_context* ccv_nnc_init_mfa_context(void* device);
-//void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context* mfa_context);
-//int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context* mfa_context);
-
 #endif

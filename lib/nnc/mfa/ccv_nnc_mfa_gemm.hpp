@@ -45,19 +45,25 @@ public:
 };
 
 class pipeline {
-  NS::SharedPtr<MTL::ComputePipelineState> pso;
-  Dispatch::Semaphore semaphore;
   bool finished = false;
+  Dispatch::Semaphore semaphore;
   
-public:
+  NS::SharedPtr<MTL::ComputePipelineState> pso;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
   
+public:
   pipeline(context* context, hash hash);
   
-  // TODO: Function body is a blocking function that waits on the PSO.
-  MTL::ComputePipelineState* get_pso();
+  // This is a potentially blocking function. Call it before accessing any of
+  // the property getters.
+  void wait();
+  
+  MTL::ComputePipelineState* get_pso() const;
+  uint16_t get_threadgroup_memory_length() const;
+  MTL::Size get_grid_size() const;
+  MTL::Size get_group_size() const;
 };
 
 } // namespace gemm

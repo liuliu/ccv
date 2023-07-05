@@ -21,6 +21,8 @@ int ccv_nnc_mfa_context_supported(mfa::context* context) {
 
 mfa::context::context(MTL::Device* device)
 {
+  auto* pool = NS::AutoreleasePool::alloc()->init();
+  
   // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
   // We need to have two different variants based on the operating system. macOS
   // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
@@ -30,7 +32,6 @@ mfa::context::context(MTL::Device* device)
     return;
   }
   std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
-  auto pool = NS::AutoreleasePool::alloc()->init();
   
   // Check whether the device architecture is supported.
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
@@ -55,10 +56,11 @@ mfa::context::context(MTL::Device* device)
   // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
   this->library = NS::TransferPtr(device->newLibrary(url, &error));
-  CCV_NNC_MFA_ASSERT(error)
+  CCV_NNC_MFA_CHECK_ERROR(error)
   
   // Notify that this finished successfully, and is not just stalling on one of
   // the previous lines of code.
-  pool->drain();
   std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
+  
+  pool->drain();
 }
