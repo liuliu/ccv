@@ -3,36 +3,46 @@
 
 #include "nnc/ccv_nnc.h"
 #ifdef __cplusplus
+#include "3rdparty/metal-cpp/Dispatch.hpp"
 #include "3rdparty/metal-cpp/Metal.hpp"
 
+namespace ccv {
+namespace nnc {
+namespace mfa {
+
 #define CCV_NNC_MFA_ASSERT(error) \
-if (error) { ccv_nnc_mfa_fatal_error(error, __LINE__, __FILE__, __FUNCTION__); } \
+if (error) { ccv::nnc::mfa::fatal_error(error, __LINE__, __FILE__, __FUNCTION__); } \
 
-void ccv_nnc_mfa_fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name);
+void fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name);
 
-class ccv_nnc_mfa_context {
+class context {
 public:
   bool supported;
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
   
-  ccv_nnc_mfa_context(MTL::Device* device);
-  
-  typedef struct {
-    uint64_t datatype;
-    uint32_t M;
-    uint32_t N;
-    uint32_t K;
-    uint8_t A_trans;
-    uint8_t B_trans;
-    float alpha;
-    float beta;
-    uint8_t batched;
-    uint8_t fused_activation;
-  } gemm_hash;
+  context(MTL::Device* device);
 };
 
-typedef ccv_nnc_mfa_context ccv_nnc_mfa_context_t;
+class gemm_hash {
+public:
+  uint64_t datatype;
+  uint32_t M;
+  uint32_t N;
+  uint32_t K;
+  uint8_t A_trans;
+  uint8_t B_trans;
+  float alpha;
+  float beta;
+  uint8_t batched;
+  uint8_t fused_activation;
+};
+
+} // namespace mfa
+} // namespace nnc
+} // namespace ccv
+
+typedef ccv::nnc::mfa::context ccv_nnc_mfa_context_t;
 typedef MTL::Buffer mtl_buffer_t;
 typedef MTL::ComputeCommandEncoder mtl_compute_command_encoder_t;
 

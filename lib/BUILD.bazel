@@ -33,6 +33,8 @@ cc_library(
 cc_library(
   name = "metal_cpp_hdrs",
   hdrs = [
+    "3rdparty/metal-cpp/Dispatch.cpp",
+    "3rdparty/metal-cpp/Dispatch.hpp",
     "3rdparty/metal-cpp/Metal.hpp",
   ],
 )
@@ -366,8 +368,6 @@ cuda_library(
 	]
 )
 
-# Need a separate module because 'objc_library' will not link symbols from files
-# named ".mm" or ".cpp".
 cc_library(
   name = "nnc_mfa_compat",
   srcs = [

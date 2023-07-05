@@ -21690,4 +21690,3 @@ _MTLFX_INLINE void MTLFX::TemporalScaler::encodeToCommandBuffer( MTL::CommandBuf
 {
     Object::sendMessage< void >( this, _MTL_PRIVATE_SEL( encodeToCommandBuffer_ ), pCommandBuffer );
 }
-

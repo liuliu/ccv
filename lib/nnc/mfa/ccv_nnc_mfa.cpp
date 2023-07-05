@@ -1,32 +1,33 @@
 #include "ccv_nnc_mfa.hpp"
 #include <iostream>
+using namespace ccv::nnc;
 
 ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(ccv_nnc_mfa_context_t* device) {
-  return new ccv_nnc_mfa_context_t((MTL::Device*)device);
+  return new mfa::context((MTL::Device*)device);
 }
 
 void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* mfa_context) {
-  delete (ccv_nnc_mfa_context_t*)mfa_context;
+  delete mfa_context;
 }
 
 int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context) {
-  return ((ccv_nnc_mfa_context_t*)mfa_context)->supported ? 1 : 0;
+  return mfa_context->supported ? 1 : 0;
 }
 
 #define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
 
-void ccv_nnc_mfa_log_source_location(int line, const char *file_name, const char *function_name) {
+inline void log_source_location(int line, const char *file_name, const char *function_name) {
   std::cerr << METAL_LOG_HEADER << "Encountered unexpected error in: " << function_name << std::endl;
   std::cerr << "\e[0;1m" << file_name << ":" << line << ":\e[0m ";
   std::cerr << "\e[0;31m" << "error:" << "\e[0m ";
 }
 
-void ccv_nnc_mfa_fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name) {
+void mfa::fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name) {
   auto description = error->localizedDescription();
   auto recovery_suggestion = error->localizedRecoverySuggestion();
   auto failure_reason = error->localizedFailureReason();
   
-  ccv_nnc_mfa_log_source_location(line, file_name, function_name);
+  log_source_location(line, file_name, function_name);
   std::cerr << "\e[0;1m";
   if (description) {
     std::cerr << description->cString(NS::UTF8StringEncoding);
@@ -44,7 +45,7 @@ void ccv_nnc_mfa_fatal_error(NS::Error* error, int line, const char *file_name, 
   exit(-1);
 }
 
-ccv_nnc_mfa_context::ccv_nnc_mfa_context(MTL::Device* device)
+mfa::context::context(MTL::Device* device)
 {
   // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
   // We need to have two different variants based on the operating system. macOS
