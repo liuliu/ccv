@@ -1555,8 +1555,17 @@ static void _ccv_cnnp_model_gradient_tensors_init(const ccv_cnnp_model_t* const 
 	int i, j;
 	for (i = 0; i < parameter_size; i++)
 	{
-		if (!(compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63))))
+		if (compiled_data->parameter_flags && !(compiled_data->parameter_flags[i >> 6] & ((uint64_t)1 << (i & 63))))
+		{
+			compiled_data->tensors.gradients[i] = 0;
+			compiled_data->tensors.accum_gradients[i] = 0;
+			for (j = 1; j < parallel_count; j++)
+			{
+				compiled_data->tensors.gradients[i + j * parameter_size] = 0;
+				compiled_data->tensors.accum_gradients[i + j * parameter_size] = 0;
+			}
 			continue;
+		}
 		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
 		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
@@ -2606,7 +2615,8 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	{
 		for (i = 0; i < parameter_size * parallel_count; i++)
 		{
-			ccv_nnc_tensor_free(compiled_data->tensors.gradients[i]);
+			if (compiled_data->tensors.gradients[i])
+				ccv_nnc_tensor_free(compiled_data->tensors.gradients[i]);
 			if (compiled_data->tensors.accum_gradients[i])
 				ccv_nnc_tensor_free(compiled_data->tensors.accum_gradients[i]);
 		}
