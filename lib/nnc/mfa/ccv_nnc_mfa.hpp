@@ -1,5 +1,11 @@
 #include "3rdparty/metal-cpp/Metal.hpp"
 
+extern "C" {
+void* ccv_nnc_init_mfa_context(void* device);
+void ccv_nnc_deinit_mfa_context(void* mfa_context);
+int ccv_nnc_mfa_context_supported(void* mfa_context);
+}
+
 #define CCV_NNC_MFA_ASSERT(error) \
 if (error) { ccv_nnc_mfa_fatal_error(error, __LINE__, __FILE__, __FUNCTION__); } \
 
@@ -17,6 +23,7 @@ void ccv_nnc_mfa_async_prepare_multi_head_attention(void* mfa_context /* argumen
 // otherwise create some very wierd code.
 void ccv_nnc_mfa_encode_gemm(void* mfa_context, void* compute_encoder /* arguments for tensors and other metadata */);
 void ccv_nnc_mfa_encode_multi_head_attention(void* mfa_context, void* compute_encoder /* arguments for tensors and other metadata */);
+
 
 class ccv_nnc_mfa_context {
 public:

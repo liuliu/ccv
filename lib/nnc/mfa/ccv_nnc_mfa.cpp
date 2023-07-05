@@ -13,10 +13,6 @@ int ccv_nnc_mfa_context_supported(void* mfa_context) {
   return ((ccv_nnc_mfa_context*)mfa_context)->supported ? 1 : 0;
 }
 
-#define NS_PRIVATE_IMPLEMENTATION
-#define CA_PRIVATE_IMPLEMENTATION
-#define MTL_PRIVATE_IMPLEMENTATION
-
 #define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
 
 void ccv_nnc_mfa_log_source_location(int line, const char *file_name, const char *function_name) {
