@@ -13,8 +13,12 @@ void ccv_nnc_deinit_mfa_context(mfa::context* context) {
   delete context;
 }
 
-int ccv_nnc_mfa_context_supported(mfa::context* context) {
+uint8_t ccv_nnc_mfa_context_supported(mfa::context* context) {
   return context->supported ? 1 : 0;
+}
+
+void ccv_nnc_mfa_log_message(const char* message) {
+  std::cerr << METAL_LOG_HEADER << message << std::endl;
 }
 
 MTL::CommandBatch* ccv_nnc_start_command_batch(MTL::CommandQueue* command_queue) {

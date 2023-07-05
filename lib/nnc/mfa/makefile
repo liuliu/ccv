@@ -2,7 +2,7 @@ include ../../config.mk
 
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 
-SRCS := ccv_nnc_mfa.cpp
+SRCS := "" # Not needed because CUDA is not accessible on Apple devices.
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.m,%.o,$(SRCS)))
 

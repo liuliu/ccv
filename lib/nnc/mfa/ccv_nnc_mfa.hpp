@@ -44,7 +44,8 @@ extern "C" {
 
 ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
 void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* context);
-int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
+uint8_t ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
+void ccv_nnc_mfa_log_message(const char* message);
 
 mtl_command_batch_t* ccv_nnc_start_command_batch(mtl_command_queue_t* command_queue);
 void ccv_nnc_finish_command_batch(mtl_command_batch_t* command_batch);

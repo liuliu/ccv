@@ -58,7 +58,9 @@ typedef struct {
   mtl_command_buffer_t* command_buffer;
   mtl_compute_command_encoder_t* encoder;
   uint16_t batched_command_count;
-} mtl_command_batch_t;
+} MTLCommandBatch;
+
+typedef MTLCommandBatch mtl_command_batch_t;
 #endif // __cplusplus
 
 #endif

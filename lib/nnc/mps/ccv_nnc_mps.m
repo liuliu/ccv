@@ -29,7 +29,7 @@ ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
   static dispatch_once_t once;
   static ccv_nnc_mfa_context_t* mfa_context;
   dispatch_once(&once, ^{
-    mfa_context = ccv_nnc_init_mfa_context((__bridge void*)ccv_nnc_default_device());
+    mfa_context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
   });
   return mfa_context;
 }
@@ -528,7 +528,7 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
   // Initialize the MFA context.
-  int supported = ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
+  ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
   return stream_context;
 }
 
@@ -669,7 +669,10 @@ int ccv_nnc_gpu_device_count(void)
 	return 1;
 }
 
-
+MTLCommandBatch* ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context)
+{
+  return ccv_nnc_start_command_batch((__bridge mtl_command_queue_t*)_ccv_nnc_default_queue());
+}
 
 MPSCommandBuffer* ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
@@ -681,7 +684,7 @@ void ccv_nnc_mps_unbounded_command_buffers(int state)
 	enable_unbounded_command_buffers = state;
 }
 
-void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* mps_command_buffer, mtl_command_batch_t* command_batch)
+void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* mps_command_buffer, MTLCommandBatch* command_batch)
 {
   id<MTLCommandBuffer> mtl_command_buffer;
   if (mps_command_buffer != nil) {
@@ -804,7 +807,7 @@ void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* cons
   [old_last_command_buffer release];
 }
 
-void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch)
+void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch)
 {
   ccv_nnc_stream_context_finish_command_buffer(stream_context, nil, command_batch);
 }
