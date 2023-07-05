@@ -29,16 +29,16 @@ void ccv_nnc_mfa_fatal_error(NS::Error* error, int line, const char *file_name, 
   ccv_nnc_mfa_log_source_location(line, file_name, function_name);
   std::cerr << "\e[0;1m";
   if (description) {
-    std::cerr << description;
+    std::cerr << description->cString(NS::UTF8StringEncoding);
   } else {
     std::cerr << "[description not available]";
   }
   std::cerr << "\e[0m" << std::endl;
   if (recovery_suggestion) {
-    std::cerr << METAL_LOG_HEADER << "Recovery suggestion: " << recovery_suggestion << std::endl;
+    std::cerr << METAL_LOG_HEADER << "Recovery suggestion: " << recovery_suggestion->cString(NS::UTF8StringEncoding) << std::endl;
   }
   if (failure_reason) {
-    std::cerr << METAL_LOG_HEADER << "Failure reason: " << failure_reason << std::endl;
+    std::cerr << METAL_LOG_HEADER << "Failure reason: " << failure_reason->cString(NS::UTF8StringEncoding) << std::endl;
   }
   std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
   exit(-1);
