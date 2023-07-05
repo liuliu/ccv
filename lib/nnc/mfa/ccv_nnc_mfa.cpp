@@ -1,16 +1,16 @@
 #include "ccv_nnc_mfa.hpp"
 #include <iostream>
 
-void* ccv_nnc_init_mfa_context(void* device) {
-  return new ccv_nnc_mfa_context((MTL::Device*)device);
+ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(ccv_nnc_mfa_context_t* device) {
+  return new ccv_nnc_mfa_context_t((MTL::Device*)device);
 }
 
-void ccv_nnc_deinit_mfa_context(void* mfa_context) {
-  delete (ccv_nnc_mfa_context*)mfa_context;
+void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* mfa_context) {
+  delete (ccv_nnc_mfa_context_t*)mfa_context;
 }
 
-int ccv_nnc_mfa_context_supported(void* mfa_context) {
-  return ((ccv_nnc_mfa_context*)mfa_context)->supported ? 1 : 0;
+int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context) {
+  return ((ccv_nnc_mfa_context_t*)mfa_context)->supported ? 1 : 0;
 }
 
 #define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "

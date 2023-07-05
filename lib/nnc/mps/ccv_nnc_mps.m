@@ -24,10 +24,10 @@ id<MTLDevice> ccv_nnc_default_device(void)
 	return device;
 }
 
-void* ccv_nnc_default_mfa_context(void)
+ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 {
   static dispatch_once_t once;
-  static ccv_nnc_mfa_context* mfa_context;
+  static ccv_nnc_mfa_context_t* mfa_context;
   dispatch_once(&once, ^{
     mfa_context = ccv_nnc_init_mfa_context((__bridge void*)ccv_nnc_default_device());
   });
@@ -524,13 +524,11 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 	return key;
 }
 
-static int mfa_test_integer = 1;
-
 // Stream context
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
-  // Test that this works.
-  mfa_test_integer += ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
+  // Initialize the MFA context.
+  int supported = ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
   return stream_context;
 }
 
