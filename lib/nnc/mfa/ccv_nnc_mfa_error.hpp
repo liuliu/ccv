@@ -15,9 +15,9 @@ if (error) { ccv::nnc::mfa::fatal_error(error, __LINE__, __FILE__, __FUNCTION__)
 void fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name);
 
 #define CCV_NNC_MFA_PRECONDITION(expr) \
-if (!(expr)) { ccv::nnc::mfa::precondition_failure(__LINE__, __FILE__, __FUNCTION__); } \
+if (!(expr)) { ccv::nnc::mfa::precondition_failure(nullptr, __LINE__, __FILE__, __FUNCTION__); } \
 
-void precondition_failure(int line, const char *file_name, const char *function_name);
+void precondition_failure(const char *message, int line, const char *file_name, const char *function_name);
 
 } // namespace mfa
 } // namespace nnc

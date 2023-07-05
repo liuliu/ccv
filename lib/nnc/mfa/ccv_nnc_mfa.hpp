@@ -14,12 +14,6 @@ namespace ccv {
 namespace nnc {
 namespace mfa {
 
-#define CCV_NNC_MFA_ASSERT(error) \
-if (error) { ccv::nnc::mfa::fatal_error(error, __LINE__, __FILE__, __FUNCTION__); } \
-
-void fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name);
-void precondition_failure(int line, const char *file_name, const char *function_name);
-
 class context {
 public:
   bool supported;
@@ -36,6 +30,8 @@ public:
   //
   // `encode_*` C functions require that you already called `async_prepare_*`,
   // forcing you to create them asynchronously several milliseconds beforehand.
+  // Tensors entered into such functions should be a null-terminated list of
+  // `MTL::Buffer` references.
   std::unordered_map<gemm::hash, gemm::pipeline*> gemm_cache;
 };
 

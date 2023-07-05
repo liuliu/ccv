@@ -32,10 +32,14 @@ void mfa::fatal_error(NS::Error* error, int line, const char *file_name, const c
   exit(-1);
 }
 
-void mfa::precondition_failure(int line, const char *file_name, const char *function_name) {
+void mfa::precondition_failure(const char *message, int line, const char *file_name, const char *function_name) {
   log_source_location(line, file_name, function_name);
   std::cerr << "\e[0;1m";
-  std::cerr << "precondition failure";
+  if (message) {
+    std::cerr << message;
+  } else {
+    std::cerr << "[precondition failure]";
+  }
   std::cerr << "\e[0m" << std::endl;
   std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
   exit(-1);

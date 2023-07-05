@@ -18,11 +18,29 @@ void ccv_nnc_mfa_async_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_para
 void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::ComputeCommandEncoder* encoder, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
   mfa::gemm::hash hash(params);
-  if (context->gemm_cache.find(hash) == context->gemm_cache.end()) {
-    CCV_NNC_MFA_PRECONDITION(false)
+  auto iterator = context->gemm_cache.find(hash);
+  if (iterator == context->gemm_cache.end()) {
+    mfa::precondition_failure("GEMM hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
-  // TODO: Wait on the PSO.
+  auto* pipeline = context->gemm_cache.extract(iterator).mapped();
+  pipeline->wait();
+  encoder->setComputePipelineState(pipeline->get_pso());
+  encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
+  
+  int num_tensors = 0;
+  while (tensors[num_tensors] != nullptr) {
+    num_tensors += 1;
+  }
+  CCV_NNC_MFA_PRECONDITION(num_tensors == 3)
+  for (int i = 0; i < num_tensors; ++i) {
+    encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+  }
+  
+  uint32_t batch_size = 1;
+  auto grid_size = pipeline->get_grid_size();
+  grid_size.depth = batch_size;
+  encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
 }
 
 // MARK: - C++
@@ -129,15 +147,12 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : sem
   grid_size = MTL::Size(ceil_divide(hash.N, N_group), ceil_divide(hash.M, M_group), 1);
   group_size = MTL::Size(128 * K_splits, 1, 1);
   
-  context->library->newFunction(swift_name, constants.get(), [this](MTL::Function* pFunction, NS::Error* error) {
+  context->library->newFunction(swift_name, constants.get(), [context, this](MTL::Function* pFunction, NS::Error* error) {
     CCV_NNC_MFA_CHECK_ERROR(error)
     auto function = NS::TransferPtr(pFunction);
    
-    
-    
-    
-    
-    // TODO: Create the compute pipeline state next.
+    pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error)
     
     semaphore.signal();
   });
