@@ -139,6 +139,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
     mfa_supported = mfa_supported & is_same_batch;
     mfa_supported = mfa_supported & ((a_batch_size == 1) ? 1 : 0);
     mfa_supported = mfa_supported & is_not_transpose;
+    mfa_supported = mfa_supported & ((!bias) ? 1 : 0);
     
     if (mfa_supported) {
       ccv_nnc_mfa_log_message("Compatible GEMM found.");
