@@ -1,6 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
-#include <iostream>
 using namespace ccv::nnc;
+
+#include <iostream>
 
 // MARK: - C
 
@@ -17,37 +18,6 @@ int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context) {
 }
 
 // MARK: - C++
-
-#define METAL_LOG_HEADER "\e[0;36m[Metal]\e[0m "
-
-inline void log_source_location(int line, const char *file_name, const char *function_name) {
-  std::cerr << METAL_LOG_HEADER << "Encountered unexpected error in: " << function_name << std::endl;
-  std::cerr << "\e[0;1m" << file_name << ":" << line << ":\e[0m ";
-  std::cerr << "\e[0;31m" << "error:" << "\e[0m ";
-}
-
-void mfa::fatal_error(NS::Error* error, int line, const char *file_name, const char *function_name) {
-  auto description = error->localizedDescription();
-  auto recovery_suggestion = error->localizedRecoverySuggestion();
-  auto failure_reason = error->localizedFailureReason();
-  
-  log_source_location(line, file_name, function_name);
-  std::cerr << "\e[0;1m";
-  if (description) {
-    std::cerr << description->cString(NS::UTF8StringEncoding);
-  } else {
-    std::cerr << "[description not available]";
-  }
-  std::cerr << "\e[0m" << std::endl;
-  if (recovery_suggestion) {
-    std::cerr << METAL_LOG_HEADER << "Recovery suggestion: " << recovery_suggestion->cString(NS::UTF8StringEncoding) << std::endl;
-  }
-  if (failure_reason) {
-    std::cerr << METAL_LOG_HEADER << "Failure reason: " << failure_reason->cString(NS::UTF8StringEncoding) << std::endl;
-  }
-  std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
-  exit(-1);
-}
 
 mfa::context::context(MTL::Device* device)
 {
@@ -85,7 +55,7 @@ mfa::context::context(MTL::Device* device)
   // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
   this->library = NS::TransferPtr(device->newLibrary(url, &error));
-  CCV_NNC_MFA_ASSERT(error);
+  CCV_NNC_MFA_ASSERT(error)
   
   // Notify that this finished successfully, and is not just stalling on one of
   // the previous lines of code.

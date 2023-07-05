@@ -1,3 +1,6 @@
+#ifndef GUARD_ccv_nnc_mfa_hash_hpp
+#define GUARD_ccv_nnc_mfa_hash_hpp
+
 // Source:
 // https://stackoverflow.com/a/50978188
 
@@ -51,3 +54,5 @@ inline size_t combine_64(std::size_t& seed, const uint64_t& v)
 } // namespace mfa
 } // namespace nnc
 } // namespace ccv
+
+#endif
