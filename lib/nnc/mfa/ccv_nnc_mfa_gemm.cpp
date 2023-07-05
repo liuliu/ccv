@@ -15,7 +15,7 @@ void ccv_nnc_mfa_async_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_para
   }
 }
 
-void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::ComputeCommandEncoder* encoder, MTL::Buffer** tensors, size_t* tensor_offsets)
+void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
   mfa::gemm::hash hash(params);
   auto iterator = context->gemm_cache.find(hash);
@@ -25,6 +25,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   
   auto* pipeline = context->gemm_cache.extract(iterator).mapped();
   pipeline->wait();
+  
+  auto* encoder = command_batch->command_encoder;
   encoder->setComputePipelineState(pipeline->get_pso());
   encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
   

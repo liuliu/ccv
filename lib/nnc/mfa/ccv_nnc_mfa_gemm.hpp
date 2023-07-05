@@ -81,7 +81,7 @@ extern "C" {
 #endif // __cplusplus
 
 void ccv_nnc_mfa_async_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
-void ccv_nnc_mfa_encode_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params, mtl_compute_command_encoder_t* encoder, mtl_buffer_t** tensors, size_t* tensor_offsets);
+void ccv_nnc_mfa_encode_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
 
 #ifdef __cplusplus
 } // extern "C"

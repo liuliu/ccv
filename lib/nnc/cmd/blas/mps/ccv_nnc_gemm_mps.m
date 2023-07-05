@@ -114,7 +114,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		// If all these conditions are met, let's use MPS directly.
 		if ((!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
@@ -184,7 +184,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1);
 			}
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

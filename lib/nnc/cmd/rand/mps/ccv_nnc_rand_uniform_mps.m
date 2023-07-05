@@ -12,7 +12,7 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
@@ -30,7 +30,7 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_a, a, a->info.dim, a->stride);
 			[graph release];
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

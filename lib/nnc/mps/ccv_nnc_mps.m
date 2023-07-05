@@ -669,7 +669,9 @@ int ccv_nnc_gpu_device_count(void)
 	return 1;
 }
 
-MPSCommandBuffer* ccv_nnc_stream_context_get_command_buffer(ccv_nnc_stream_context_t* const stream_context)
+
+
+MPSCommandBuffer* ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
 	return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 }
@@ -679,14 +681,25 @@ void ccv_nnc_mps_unbounded_command_buffers(int state)
 	enable_unbounded_command_buffers = state;
 }
 
-void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer)
+void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* mps_command_buffer, mtl_command_batch_t* command_batch)
 {
+  id<MTLCommandBuffer> mtl_command_buffer;
+  if (mps_command_buffer != nil) {
+    mtl_command_buffer = mps_command_buffer.commandBuffer;
+  } else {
+    mtl_command_buffer = command_batch->command_buffer;
+  }
+  
 	int i;
 	const int buffer_size = enable_unbounded_command_buffers ? OLD_MAX_COMMAND_BUFFER_SIZE : OLD_LIMITED_COMMAND_BUFFER_SIZE;
 	if (!stream_context)
 	{
-		id<MTLCommandBuffer> committed_command_buffer = [command_buffer.commandBuffer retain];
-		[command_buffer commit];
+    id<MTLCommandBuffer> committed_command_buffer = [mtl_command_buffer retain];
+    if (mps_command_buffer != nil) {
+      [mps_command_buffer commit];
+    } else {
+      ccv_nnc_finish_command_batch(command_batch);
+    }
 		id<MTLCommandBuffer> last_buffer;
 		id<MTLCommandBuffer> old_buffers[buffer_size];
 		os_unfair_lock_lock(&queue_lock);
@@ -715,10 +728,53 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 			old_last_command_buffers[i] = old_last_command_buffers[i + 1];
 		old_last_command_buffers[buffer_size - 1] = last_command_buffer;
 	} else
-		old_last_command_buffer = [command_buffer.commandBuffer retain];
-	last_command_buffer = [command_buffer.commandBuffer retain];
+		old_last_command_buffer = [mtl_command_buffer retain];
+	last_command_buffer = [mtl_command_buffer retain];
+  
+  // There is an opportunity to automatically batch MFA commands or custom
+  // shaders into a command batch. Instead of explicitly starting and
+  // finishing, have a background thread automatically commit it. To prevent
+  // committing from happenning in the middle of encoding, protect the command
+  // batch using `queue_lock` (unknown latency) or a pthread mutex lock (~200 ns
+  // latency).
+  //
+  // Every 50 microseconds, the background thread checks whether a command batch
+  // is active. If so, it commits all the commands. The main thread can also
+  // commit when `batched_command_count` exceeds a certain threshold (while it's
+  // still holding the lock). The best threshold is unknown, but 8 would be a
+  // reasonable first guess.
+  //
+  // When encountering an MPS command, you will have to abort the command batch
+  // (i.e. eagerly commit it with `batched_command_count=1`) because
+  // MPSCommandBuffer can't guarantee the command buffer stays the same. Even if
+  // it did, creating a separate `MTL::ComputeCommandEncoder` for each command
+  // is no better than creating a new `MTL::CommandBuffer`. Closing the
+  // `MTL::ComputeCommandEncoder` and creating a new `MTL::BlitCommandEncoder`
+  // for memory copies is equally as slow.
+  //
+  // Until ~50% of all operations transition from MPS -> custom shaders, this
+  // optimization is not worthwhile. It should only be employed on platforms
+  // where custom shaders are consistently faster than MPS (e.g. Apple 7+ with
+  // MFA GEMM). A good start would be creating custom shaders for all the
+  // elementwise operations in MPSGraph, and 4-byte aligned memcpy/memset. There
+  // are many places in ML models where elementwise activations follow GEMM. 90%
+  // of the time, they would be automatically batched within the 50-µs window,
+  // providing a 10x speedup for those layers.
+  //
+  // As a final optimization, delay the encoding of the GEMM. Fuse the GEMM +
+  // activation into one command through the `fused_activation` MFA function
+  // constant. This will require two separate GEMM variants to be ready, one
+  // with and one without `fused_activation` enabled. Same for the elementwise -
+  // one `MTLComputePipelineState` and another `MTLVisibleFunctionTable`. It
+  // might be wise to delay the creation of the fused variant, until you detect
+  // a specific GEMM shape received 2+ opportunities for fusion.
+  //
+  // Alternative implementation path: compile-time graph transformations that
+  // - Check whether MFA is supported
+  // - Fuse groups of consecutive MFA-compatible commands
 	os_unfair_lock_unlock(&queue_lock);
-	[command_buffer.commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+  
+	[mtl_command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		id<MTLCommandBuffer> found_buffer = nil;
 		os_unfair_lock_lock(&queue_lock);
 		if (buffer == last_command_buffer)
@@ -738,10 +794,24 @@ void ccv_nnc_stream_context_commit_command_buffer(ccv_nnc_stream_context_t* cons
 		os_unfair_lock_unlock(&queue_lock);
 		[found_buffer release];
 	}];
-	[command_buffer commit];
-	// Wait if we need to bound how many in-flight command buffers there are. This helps memory usage.
-	[old_last_command_buffer waitUntilCompleted];
-	[old_last_command_buffer release];
+  if (mps_command_buffer != nil) {
+    [mps_command_buffer commit];
+  } else {
+    ccv_nnc_finish_command_batch(command_batch);
+  }
+  // Wait if we need to bound how many in-flight command buffers there are. This helps memory usage.
+  [old_last_command_buffer waitUntilCompleted];
+  [old_last_command_buffer release];
+}
+
+void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch)
+{
+  ccv_nnc_stream_context_finish_command_buffer(stream_context, nil, command_batch);
+}
+
+void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer)
+{
+  ccv_nnc_stream_context_finish_command_buffer(stream_context, command_buffer, NULL);
 }
 
 MPSDataType ccv_nnc_mps_datatype(const int datatype)

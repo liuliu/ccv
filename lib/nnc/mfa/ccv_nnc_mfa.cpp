@@ -17,6 +17,14 @@ int ccv_nnc_mfa_context_supported(mfa::context* context) {
   return context->supported ? 1 : 0;
 }
 
+MTL::CommandBatch* ccv_nnc_start_command_batch(MTL::CommandQueue* command_queue) {
+  return new MTL::CommandBatch(command_queue);
+}
+
+void ccv_nnc_finish_command_batch(MTL::CommandBatch* command_batch) {
+  delete command_batch;
+}
+
 // MARK: - C++
 
 mfa::context::context(MTL::Device* device)
