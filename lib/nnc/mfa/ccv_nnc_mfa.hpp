@@ -46,9 +46,9 @@ public:
 extern "C" {
 #endif // __cplusplus
 
-ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(ccv_nnc_mfa_context_t* device);
-void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* mfa_context);
-int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context);
+ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
+void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* context);
+int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
 
 #ifdef __cplusplus
 } // extern "C"

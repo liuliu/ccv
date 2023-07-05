@@ -5,16 +5,16 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(ccv_nnc_mfa_context_t* device) {
-  return new mfa::context((MTL::Device*)device);
+mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
+  return new mfa::context(device);
 }
 
-void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* mfa_context) {
-  delete mfa_context;
+void ccv_nnc_deinit_mfa_context(mfa::context* context) {
+  delete context;
 }
 
-int ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* mfa_context) {
-  return mfa_context->supported ? 1 : 0;
+int ccv_nnc_mfa_context_supported(mfa::context* context) {
+  return context->supported ? 1 : 0;
 }
 
 // MARK: - C++

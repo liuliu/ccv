@@ -4,31 +4,39 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-void ccv_nnc_mfa_async_prepare_gemm(ccv_nnc_mfa_context_t* mfa_context, ccv_nnc_mfa_gemm_params_t params) {
-  mfa::gemm::hash hash {
-    .data_type = params.data_type,
-    .M = params.M,
-    .N = params.N,
-    .K = params.K,
-    .A_trans = params.A_trans,
-    .B_trans = params.B_trans,
-    .alpha = params.alpha,
-    .beta = params.beta,
-    .batched = params.batched,
-    .fused_activation = params.fused_activation
-  };
-  
-  auto* gemm_cache = &(mfa_context->gemm_cache);
-  auto found = gemm_cache->find(hash);
-  if (found != gemm_cache->end()) {
-    // Already cached.
-    return;
+void ccv_nnc_mfa_async_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
+{
+  mfa::gemm::hash hash(params);
+  if (context->gemm_cache.find(hash) == context->gemm_cache.end()) {
+    auto* pipeline = new mfa::gemm::pipeline(context, hash);
+    context->gemm_cache[hash] = pipeline;
+  }
+}
+
+void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::ComputeCommandEncoder* encoder, MTL::Buffer** tensors, size_t* tensor_offsets)
+{
+  mfa::gemm::hash hash(params);
+  if (context->gemm_cache.find(hash) == context->gemm_cache.end()) {
+    CCV_NNC_MFA_PRECONDITION(false)
   }
   
-  // TODO: Link this to the pipeline constructor, enter into the hash map.
+  // TODO: Wait on the PSO.
 }
 
 // MARK: - C++
+
+mfa::gemm::hash::hash(ccv_nnc_mfa_gemm_params_t params) {
+  data_type = params.data_type;
+  M = params.M;
+  N = params.N;
+  K = params.K;
+  A_trans = params.A_trans;
+  B_trans = params.B_trans;
+  alpha = params.alpha;
+  beta = params.beta;
+  batched = params.batched;
+  fused_activation = params.fused_activation;
+}
 
 bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
   return (memcmp(this, &hash, sizeof(hash)) == 0);
@@ -49,7 +57,16 @@ std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) 
   return seed;
 }
 
-mfa::gemm::pipeline::pipeline(mfa::gemm::hash hash) : semaphore(0) {
-  // TODO: Create the pipeline
-  CCV_NNC_MFA_PRECONDITION(hash.data_type == MTL::DataTypeFloat || hash.data_type == MTL::DataTypeHalf)
+mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : semaphore(0) {
+  CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
+  CCV_NNC_MFA_PRECONDITION(hash.A_trans == false)
+  CCV_NNC_MFA_PRECONDITION(hash.B_trans == false)
+  CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
+  CCV_NNC_MFA_PRECONDITION(hash.beta == 0.0)
+  CCV_NNC_MFA_PRECONDITION(hash.batched == false)
+  CCV_NNC_MFA_PRECONDITION(hash.fused_activation == false)
+  
+  
+  
+  // TODO: Finish the function body with an async handler.
 }
