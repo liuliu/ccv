@@ -3,6 +3,10 @@
 
 #include "3rdparty/metal-cpp/Metal.hpp"
 
+// `std::cout` and `CACurrentMediaTime()` for profiling.
+#include <iostream>
+#include <QuartzCore/QuartzCore.h>
+
 namespace ccv {
 namespace nnc {
 namespace mfa {

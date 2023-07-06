@@ -30,8 +30,51 @@
 #include <AvailabilityMacros.h>
 #include <dispatch/dispatch.h>
 #include <errno.h>
+#include <libkern/OSAtomic.h>
+#include <pthread.h>
+#include <stdio.h>
 
 #include <exception>
+
+
+
+namespace Security {
+
+//
+// Elementary debugging support.
+// #include <debugging.h> for more debugging facilities.
+//
+#define IFDEBUG(it)    IFELSEDEBUG(it,)
+#define IFNDEBUG(it)  IFELSEDEBUG(,it)
+
+#if defined(NDEBUG)
+
+# define safe_cast  static_cast
+# define safer_cast  static_cast
+
+# define IFELSEDEBUG(d,nd) nd
+
+#else
+
+template <class Derived, class Base>
+inline Derived safer_cast(Base &base)
+{
+    return dynamic_cast<Derived>(base);
+}
+
+template <class Derived, class Base>
+inline Derived safe_cast(Base *base)
+{
+    if (base == NULL)
+        return NULL;  // okay to cast NULL to NULL
+    Derived p = dynamic_cast<Derived>(base);
+    assert(p);
+    return p;
+}
+
+# define IFELSEDEBUG(d,nd) d
+
+#endif //NDEBUG
 
 //
 // Place this into your class definition if you don't want it to be copyable
@@ -42,8 +85,6 @@
 #define NOCOPY(Type)  \
   private: Type(const Type &) DEPRECATED_IN_MAC_OS_X_VERSION_10_0_AND_LATER; \
   void operator = (const Type &) DEPRECATED_IN_MAC_OS_X_VERSION_10_0_AND_LATER;
-
-namespace Security {
   
 //
 // Common base of Security exceptions that represent error conditions.
@@ -58,8 +99,8 @@ protected:
 public:
     virtual ~CommonError() throw ();
 
-    //virtual OSStatus osStatus() const = 0;
-  virtual int unixError() const = 0;
+//    virtual OSStatus osStatus() const = 0;
+    virtual int unixError() const = 0;
 
     char whatBuffer[128];
     const size_t whatBufferSize = sizeof(whatBuffer);
@@ -78,8 +119,8 @@ protected:
     UnixError(int err);
 public:
     const int error;
-    //virtual OSStatus osStatus() const;
-  virtual int unixError() const;
+//    virtual OSStatus osStatus() const;
+    virtual int unixError() const;
     virtual const char *what () const throw ();
     
     static void check(int result)    { if (result == -1) throwMe(); }
@@ -88,6 +129,106 @@ public:
     // @@@ This is a hack for the Network protocol state machine
     static UnixError make(int err = errno) DEPRECATED_ATTRIBUTE;
 };
+
+// Something that gets thrown when ModuleNexus creation fails
+class ModuleNexusError : public CommonError {
+protected:
+    ModuleNexusError() {}
+
+public:
+//    virtual OSStatus osStatus() const;
+    virtual int unixError() const;
+    static void throwMe() __attribute__((noreturn));
+};
+
+
+
+//
+// GlobalNexus is the common superclass of all globality scopes.
+// A Nexus is an *access point* to the *single* object of a given
+// type in the Nexus's particular scope.
+//
+class GlobalNexus {
+public:
+    class Error : public std::exception {
+    public:
+        virtual ~Error() throw();
+        const char * const message;
+        Error(const char *m) : message(m) { }
+        const char *what() const throw() { return message; }
+    };
+};
+
+
+class ModuleNexusCommon : public GlobalNexus {
+private:
+    void do_create(void *(*make)());
+
+protected:
+    void *create(void *(*make)());
+    void lock() {OSSpinLockLock(&access);}
+    void unlock() {OSSpinLockUnlock(&access);}
+
+protected:
+    // all of these will be statically initialized to zero
+  void *pointer;
+    dispatch_once_t once;
+    OSSpinLock access;
+};
+
+template <class Type>
+class ModuleNexus : public ModuleNexusCommon {
+public:
+    Type &operator () ()
+    {
+        lock();
+        
+        try
+        {
+            if (pointer == NULL)
+            {
+                pointer = create(make);
+            }
+            
+            unlock();
+        }
+        catch (...)
+        {
+            unlock();
+            throw;
+        }
+        
+    return *reinterpret_cast<Type *>(pointer);
+    }
+  
+  // does the object DEFINITELY exist already?
+  bool exists() const
+  {
+        bool result;
+        lock();
+        result = pointer != NULL;
+        unlock();
+        return result;
+  }
+    
+  // destroy the object (if any) and start over - not really thread-safe
+    void reset()
+    {
+        lock();
+        if (pointer != NULL)
+        {
+            delete reinterpret_cast<Type *>(pointer);
+            pointer = NULL;
+            once = 0;
+        }
+        unlock();
+    }
+    
+private:
+    static void *make() { return new Type; }
+};
+
+
 
 //
 // Pthread Synchronization primitives.
@@ -154,6 +295,8 @@ protected:
 };
 
 } // end namespace Security
+
+
 
 namespace Dispatch {
 
@@ -241,6 +384,9 @@ private:
 };
 
 
+
 } // end namespace Dispatch
+
+
 
 #endif // !_H_DISPATCH

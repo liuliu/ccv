@@ -17,6 +17,10 @@ uint8_t ccv_nnc_mfa_context_supported(mfa::context* context) {
   return context->supported ? 1 : 0;
 }
 
+uint16_t ccv_nnc_mfa_context_log_level(mfa::context* context) {
+  return context->log_level;
+}
+
 void ccv_nnc_mfa_log_message(const char* message) {
   std::cerr << METAL_LOG_HEADER << message << std::endl;
 }
@@ -31,24 +35,96 @@ void ccv_nnc_finish_command_batch(MTL::CommandBatch* command_batch) {
 
 // MARK: - C++
 
+template <typename T, typename U>
+mfa::cache<T, U>::cache()
+{
+  this->map = {};
+}
+
+template <typename T, typename U>
+mfa::cache<T, U>::~cache()
+{
+  for (auto it = map->begin(); it != map->end(); ++it) {
+    delete it->second;
+  }
+}
+
+// This is a workaround. If we use a template member function directly, the
+// symbols won't link.
+template <typename T, typename U>
+inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash, bool async)
+{
+  if (map->find(hash) == map->end()) {
+    if (METAL_LOG_LEVEL(context) >= 2) {
+      std::cout << METAL_LOG_HEADER << "PSO cache miss." << std::endl;
+      std::cout << METAL_LOG_HEADER << "  Creating new PSO asynchronously: " << async << std::endl;
+      std::cout << METAL_LOG_HEADER << "  Contents of map (before):" << std::endl;
+      for (auto it = map->begin(); it != map->end(); ++it) {
+        std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
+      }
+    }
+    
+    auto* pipeline = new mfa::gemm::pipeline(context, hash, async);
+    (*map)[hash] = pipeline;
+    
+    if (METAL_LOG_LEVEL(context) >= 2) {
+      std::cout << METAL_LOG_HEADER << "  Contents of map (after):" << std::endl;
+      for (auto it = map->begin(); it != map->end(); ++it) {
+        std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
+      }
+    }
+  }
+}
+
+template <>
+void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash, bool async)
+{
+  _mfa_cache_prepare(&map, context, hash, async);
+}
+
 mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
+  
+  this->log_level = 0;
+#if CCV_METAL_LOGGING_ENABLE
+  const char* log_level_repr = getenv("CCV_METAL_LOG_LEVEL");
+  if (log_level_repr) {
+    int log_level_raw = atoi(log_level_repr);
+    std::cerr << METAL_LOG_HEADER << "Using log level: " << log_level_raw << std::endl;
+    CCV_NNC_MFA_PRECONDITION(log_level_raw >= 0 && log_level_raw <= 3)
+    
+    this->log_level = uint16_t(log_level_raw);
+  }
+#endif
   
   // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
   // We need to have two different variants based on the operating system. macOS
   // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
   const char* metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
   if (!metallib_path) {
-    this->supported = false;
-    return;
+    // If a metallib was bundled with the Bazel build, you can hard-code the
+    // metallib's path into the source code. Choose this path if the user hasn't
+    // already set the `CCV_NNC_MFA_METALLIB_PATH` environment variable.
+    constexpr const char* bundled_path = nullptr;
+    
+    if (bundled_path) {
+      metallib_path = bundled_path;
+    } else {
+      this->supported = false;
+      return;
+    }
   }
-  std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
+  if (METAL_LOG_LEVEL(this) >= 1) {
+    std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
+  }
   
   // Check whether the device architecture is supported.
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
   if (!supported) {
-    std::cerr << METAL_LOG_HEADER << "Device architecture not supported by Metal FlashAttention." << std::endl;
+    if (METAL_LOG_LEVEL(this) >= 1) {
+      std::cerr << METAL_LOG_HEADER << "Device architecture not supported by Metal FlashAttention." << std::endl;
+    }
     return;
   }
   
@@ -72,7 +148,9 @@ mfa::context::context(MTL::Device* device)
   
   // Notify that this finished successfully, and is not just stalling on one of
   // the previous lines of code.
-  std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
+  if (METAL_LOG_LEVEL(this) >= 1) {
+    std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
+  }
   
   pool->drain();
 }

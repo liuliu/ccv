@@ -32,8 +32,10 @@ cc_library(
 
 cc_library(
   name = "metal_cpp_hdrs",
-  hdrs = [
+  srcs = [
     "3rdparty/metal-cpp/Dispatch.cpp",
+  ],
+  hdrs = [
     "3rdparty/metal-cpp/Dispatch.hpp",
     "3rdparty/metal-cpp/Metal.hpp",
   ],

@@ -27,11 +27,11 @@ id<MTLDevice> ccv_nnc_default_device(void)
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 {
   static dispatch_once_t once;
-  static ccv_nnc_mfa_context_t* mfa_context;
+  static ccv_nnc_mfa_context_t* context;
   dispatch_once(&once, ^{
-    mfa_context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
+    context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
   });
-  return mfa_context;
+  return context;
 }
 
 MPSGraphDevice* _ccv_nnc_default_mps_device(void)

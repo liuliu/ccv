@@ -114,6 +114,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
   @autoreleasepool {
+    // TODO: Make these logic statements cleaner.
     uint8_t is_contiguous = 1;
     is_contiguous = is_contiguous & ((!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) ? 1 : 0);
     is_contiguous = is_contiguous & ((!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) ? 1 : 0);
@@ -122,6 +123,24 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
     uint8_t is_same_dtype = 1;
     is_same_dtype = is_same_dtype & ((a->info.datatype == w->info.datatype) ? 1 : 0);
     is_same_dtype = is_same_dtype & ((a->info.datatype == b->info.datatype) ? 1 : 0);
+    
+    uint8_t is_supported_dtype = 0;
+    uint32_t mtl_data_type = UINT32_MAX;
+    switch (a->info.datatype) {
+      case CCV_16F: {
+        is_supported_dtype = 1;
+        mtl_data_type = 16;
+        break;
+      }
+      case CCV_32F: {
+        is_supported_dtype = 1;
+        mtl_data_type = 3;
+        break;
+      }
+      default: {
+        break;
+      }
+    }
     
     uint8_t is_same_batch = 1;
     is_same_batch = is_same_batch & ((a_batch_size == w_batch_size) ? 1 : 0);
@@ -136,19 +155,63 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
     uint8_t mfa_supported = ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
     mfa_supported = mfa_supported & is_contiguous;
     mfa_supported = mfa_supported & is_same_dtype;
+    mfa_supported = mfa_supported & is_supported_dtype;
     mfa_supported = mfa_supported & is_same_batch;
     mfa_supported = mfa_supported & ((a_batch_size == 1) ? 1 : 0);
     mfa_supported = mfa_supported & is_not_transpose;
     mfa_supported = mfa_supported & ((!bias) ? 1 : 0);
     
-    if (mfa_supported) {
-      ccv_nnc_mfa_log_message("Compatible GEMM found.");
-    } else {
-      ccv_nnc_mfa_log_message("Incompatible GEMM found.");
+    ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+    if (METAL_LOG_LEVEL(context) >= 3) {
+      if (mfa_supported) {
+        ccv_nnc_mfa_log_message("Compatible GEMM found.");
+      } else {
+        ccv_nnc_mfa_log_message("Incompatible GEMM found.");
+      }
     }
     
-    if (false) {
+    if (mfa_supported) {
       // On supported devices, use Metal directly.
+      ccv_nnc_mfa_gemm_params_t params = {
+        .data_type = mtl_data_type,
+        .M = (uint32_t)b_rows, // C_rows
+        .N = (uint32_t)b_cols, // C_cols
+        .K = (uint32_t)w_rows, // B_rows
+        .A_trans = (is_transpose_a ? 1 : 0),
+        .B_trans = (is_transpose_w ? 1 : 0),
+        .alpha = (float)1.0,
+        .beta = (float)0.0,
+        .batched = 0,
+        .fused_activation = 0,
+        
+        .batch_dim_a = { 0 },
+        .batch_dim_b = { 0 },
+      };
+      ccv_nnc_mfa_sync_prepare_gemm(context, params);
+      
+      // Creating a new command buffer has a >10 µs penalty CPU-side. Still
+      // faster the >50 µs penalty for MPSGraph (probably why
+      // MPSMatrixMultiplication is faster for GEMM).
+      mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+      mtl_buffer_t* tensors[4] = {
+        mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+        mpgetbuffer((ccv_nnc_tensor_t*)w), // B
+        mpgetbuffer((ccv_nnc_tensor_t*)b), // C
+        NULL
+      };
+      size_t tensor_offsets[3] = { 0, 0, 0 };
+      ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+      
+      if (METAL_LOG_LEVEL(context) >= 3) {
+        if (command_batch->batched_command_count == 0) {
+          ccv_nnc_mfa_log_message("Encoded 0 commands in the batch.");
+        } else if (command_batch->batched_command_count == 1) {
+          ccv_nnc_mfa_log_message("Encoded 1 command in the batch.");
+        } else {
+          ccv_nnc_mfa_log_message("Encoded >1 commands in the batch.");
+        }
+      }
+      ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
       
       // TODO: Try to use `fused_activation` for with bias case.
     } else {

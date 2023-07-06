@@ -26,7 +26,207 @@
 //
 #include "Dispatch.hpp"
 
+
+
 namespace Security {
+
+//
+// The base of the exception hierarchy.
+//
+CommonError::CommonError() : whatBuffer("CommonError")
+{
+}
+
+
+//
+// We strongly encourage catching all exceptions by const reference, so the copy
+// constructor of our exceptions should never be called.
+//
+CommonError::CommonError(const CommonError &source)
+{
+    strlcpy(whatBuffer, source.whatBuffer, whatBufferSize);
+}
+
+CommonError::~CommonError() throw ()
+{
+}
+
+void CommonError::LogBacktrace() {
+  
+}
+
+
+
+//
+// UnixError exceptions
+//
+UnixError::UnixError() : error(errno)
+{
+//    SECURITY_EXCEPTION_THROW_UNIX(this, errno);
+
+    snprintf(whatBuffer, whatBufferSize, "UNIX errno exception: %d", this->error);
+    printf("security_exception", "%s", what());
+    LogBacktrace();
+}
+
+UnixError::UnixError(int err) : error(err)
+{
+//    SECURITY_EXCEPTION_THROW_UNIX(this, err);
+
+    snprintf(whatBuffer, whatBufferSize, "UNIX error exception: %d", this->error);
+    printf("security_exception", "%s", what());
+    LogBacktrace();
+}
+
+const char *UnixError::what() const throw ()
+{
+    return whatBuffer;
+}
+
+int UnixError::unixError() const
+{ return error; }
+
+void UnixError::throwMe(int err) { throw UnixError(err); }
+
+// @@@ This is a hack for the Network protocol state machine
+UnixError UnixError::make(int err) { return UnixError(err); }
+
+
+
+void ModuleNexusError::throwMe()
+{
+    throw ModuleNexusError();
+}
+
+
+
+//OSStatus ModuleNexusError::osStatus() const
+//{
+//    return errSecParam;
+//}
+
+
+
+int ModuleNexusError::unixError() const
+{
+    return EINVAL;
+}
+
+
+//
+// The Error class thrown if Nexus operations fail
+//
+GlobalNexus::Error::~Error() throw()
+{
+}
+
+void ModuleNexusCommon::do_create(void *(*make)())
+{
+    try
+    {
+        pointer = make();
+    }
+    catch (...)
+    {
+        pointer = NULL;
+    }
+}
+
+
+
+void *ModuleNexusCommon::create(void *(*make)())
+{
+    dispatch_once(&once, ^{do_create(make);});
+    
+    if (pointer == NULL)
+    {
+        ModuleNexusError::throwMe();
+    }
+    
+    return pointer;
+}
+
+
+
+
+//
+// Mutex implementation
+//
+struct MutexAttributes {
+  pthread_mutexattr_t recursive;
+  pthread_mutexattr_t checking;
+  
+  MutexAttributes()
+  {
+    pthread_mutexattr_init(&recursive);
+    pthread_mutexattr_settype(&recursive, PTHREAD_MUTEX_RECURSIVE);
+#if !defined(NDEBUG)
+    pthread_mutexattr_init(&checking);
+    pthread_mutexattr_settype(&checking, PTHREAD_MUTEX_ERRORCHECK);
+#endif //NDEBUG
+  }
+};
+
+
+static ModuleNexus<MutexAttributes> mutexAttrs;
+
+
+Mutex::Mutex()
+{
+  check(pthread_mutex_init(&me, NULL));
+}
+
+Mutex::Mutex(Type type)
+{
+  switch (type) {
+  case normal:
+    check(pthread_mutex_init(&me, IFELSEDEBUG(&mutexAttrs().checking, NULL)));
+    break;
+  case recursive:    // requested recursive (is also checking, always)
+    check(pthread_mutex_init(&me, &mutexAttrs().recursive));
+    break;
+  };
+}
+
+
+Mutex::~Mutex()
+{
+    int result = pthread_mutex_destroy(&me);
+    if(result) {
+      printf("Probable bug: error destroying Mutex: %d", result);
+    }
+  check(result);
+}
+
+
+void Mutex::lock()
+{
+  check(pthread_mutex_lock(&me));
+}
+
+
+bool Mutex::tryLock()
+{
+  if (int err = pthread_mutex_trylock(&me)) {
+    if (err != EBUSY)
+      UnixError::throwMe(err);
+    return false;
+  }
+
+  return true;
+}
+
+
+void Mutex::unlock()
+{
+    int result = pthread_mutex_unlock(&me);
+  check(result);
+}
+
+} // end namespace Security
+
+
+
 namespace Dispatch {
 
 ExceptionAwareEnqueuing::ExceptionAwareEnqueuing()
@@ -155,4 +355,3 @@ SemaphoreWait::~SemaphoreWait()
 
 
 } // end namespace Dispatch
-} // end namespace Security

@@ -13,6 +13,8 @@ typedef struct {
   uint8_t batched;
   uint8_t fused_activation;
   
+  // Fill these in the same order as the original shape, but null-terminated.
+  // Both arrays must have the same length.
   uint32_t batch_dim_a[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dim_b[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_gemm_params_t;
@@ -45,16 +47,17 @@ public:
 };
 
 class pipeline {
-  bool finished = false;
-  Dispatch::Semaphore semaphore;
+  bool finished;
+  Dispatch::Semaphore* semaphore;
   
-  NS::SharedPtr<MTL::ComputePipelineState> pso;
+  MTL::ComputePipelineState* pso;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
   
 public:
-  pipeline(context* context, hash hash);
+  pipeline(context* context, hash hash, bool async);
+  ~pipeline();
   
   // This is a potentially blocking function. Call it before accessing any of
   // the property getters.
@@ -71,6 +74,8 @@ public:
 } // namespace nnc
 } // namespace ccv
 
+std::ostream& operator<<(std::ostream& os, const ccv::nnc::mfa::gemm::hash& hash);
+
 template<>
 struct std::hash<ccv::nnc::mfa::gemm::hash>
 {
@@ -81,6 +86,7 @@ extern "C" {
 #endif // __cplusplus
 
 void ccv_nnc_mfa_async_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
+void ccv_nnc_mfa_sync_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
 void ccv_nnc_mfa_encode_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
 
 #ifdef __cplusplus

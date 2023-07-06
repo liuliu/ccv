@@ -1,6 +1,8 @@
 #ifndef GUARD_ccv_nnc_mfa_defines_hpp
 #define GUARD_ccv_nnc_mfa_defines_hpp
 
+// MARK: - Types
+
 #ifdef __cplusplus
 #include "3rdparty/metal-cpp/Metal.hpp"
 namespace ccv {
@@ -42,9 +44,10 @@ public:
   uint8_t command_active = 0;
   
   CommandBatch(MTL::CommandQueue* command_queue);
+  ~CommandBatch();
+  
   MTL::ComputeCommandEncoder* start_command(MTL::ComputePipelineState* pso);
   void finish_command(MTL::ComputeCommandEncoder* command_encoder);
-  ~CommandBatch();
 };
 } // namespace MTL
 
@@ -59,5 +62,30 @@ typedef struct {
 
 typedef MTLCommandBatch mtl_command_batch_t;
 #endif // __cplusplus
+
+// MARK: - Diagnostics
+
+#ifndef CCV_METAL_LOGGING_ENABLE
+#define CCV_METAL_LOGGING_ENABLE 1
+#endif
+
+// 0 - crash reports
+// 1 - metallib initialization
+// 2 - PSO creation
+// 3 - command encoding
+
+#if CCV_METAL_LOGGING_ENABLE
+
+#ifdef __cplusplus
+#define METAL_LOG_LEVEL(CONTEXT) CONTEXT->log_level
+#else
+#define METAL_LOG_LEVEL(CONTEXT) ccv_nnc_mfa_context_log_level(CONTEXT)
+#endif // __cplusplus
+
+#else // CCV_NNC_METAL_LOGGING_ENABLE
+
+#define METAL_LOG_LEVEL(CONTEXT) 0
+
+#endif // CCV_NNC_METAL_LOGGING_ENABLE
 
 #endif

@@ -8,22 +8,23 @@ using namespace ccv::nnc;
 
 void ccv_nnc_mfa_async_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
 {
-  mfa::gemm::hash hash(params);
-  if (context->gemm_cache.find(hash) == context->gemm_cache.end()) {
-    auto* pipeline = new mfa::gemm::pipeline(context, hash);
-    context->gemm_cache[hash] = pipeline;
-  }
+  context->gemm_cache.prepare(context, mfa::gemm::hash(params), true);
+}
+
+void ccv_nnc_mfa_sync_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
+{
+  context->gemm_cache.prepare(context, mfa::gemm::hash(params), false);
 }
 
 void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
   mfa::gemm::hash hash(params);
-  auto iterator = context->gemm_cache.find(hash);
-  if (iterator == context->gemm_cache.end()) {
+  auto iterator = context->gemm_cache.map.find(hash);
+  if (iterator == context->gemm_cache.map.end()) {
     mfa::precondition_failure("GEMM hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
-  auto* pipeline = context->gemm_cache.extract(iterator).mapped();
+  auto* pipeline = iterator->second;
   pipeline->wait();
   
   auto* encoder = command_batch->start_command(pipeline->get_pso());
@@ -61,25 +62,20 @@ mfa::gemm::hash::hash(ccv_nnc_mfa_gemm_params_t params) {
 }
 
 bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
-  return (memcmp(this, &hash, sizeof(hash)) == 0);
+  return
+  (data_type == hash.data_type) &&
+  (M == hash.M) &&
+  (N == hash.N) &&
+  (K == hash.K) &&
+  (A_trans == hash.A_trans) &&
+  (B_trans == hash.B_trans) &&
+  (alpha == hash.alpha) &&
+  (beta == hash.beta) &&
+  (batched == hash.batched) &&
+  (fused_activation == hash.fused_activation);
 }
 
-std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) const noexcept {
-  std::size_t seed = 0;
-  mfa::hash::combine_64(seed, hash.data_type);
-  mfa::hash::combine_32(seed, hash.M);
-  mfa::hash::combine_32(seed, hash.N);
-  mfa::hash::combine_32(seed, hash.K);
-  mfa::hash::combine_32(seed, uint32_t(hash.A_trans));
-  mfa::hash::combine_32(seed, uint32_t(hash.B_trans));
-  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.alpha));
-  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.beta));
-  mfa::hash::combine_32(seed, uint32_t(hash.batched));
-  mfa::hash::combine_32(seed, uint32_t(hash.fused_activation));
-  return seed;
-}
-
-mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : semaphore(0) {
+mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool async) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   CCV_NNC_MFA_PRECONDITION(hash.A_trans == false)
   CCV_NNC_MFA_PRECONDITION(hash.B_trans == false)
@@ -89,6 +85,14 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : sem
   CCV_NNC_MFA_PRECONDITION(hash.fused_activation == false)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
+  
+  if (async) {
+    finished = false;
+    semaphore = new Dispatch::Semaphore(0);
+  } else {
+    finished = true;
+    semaphore = nullptr;
+  }
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.M, MTL::DataTypeUInt, NS::UInteger(0));
@@ -168,29 +172,43 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : sem
   grid_size = MTL::Size(ceil_divide(hash.N, N_group), ceil_divide(hash.M, M_group), 1);
   group_size = MTL::Size(128 * K_splits, 1, 1);
   
-  context->library->newFunction(swift_name, constants.get(), [context, this](MTL::Function* pFunction, NS::Error* error) {
+  NS::Error* error;
+  auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
+  CCV_NNC_MFA_CHECK_ERROR(error)
+  
+  if (async) {
+    context->device->newComputePipelineState(function.get(), [=](MTL::ComputePipelineState* pipeline, NS::Error* error) {
+      CCV_NNC_MFA_CHECK_ERROR(error)
+      
+      pipeline->retain();
+      pso = pipeline;
+      semaphore->signal();
+    });
+  } else {
+    pso = context->device->newComputePipelineState(function.get(), &error);
     CCV_NNC_MFA_CHECK_ERROR(error)
-    auto function = NS::TransferPtr(pFunction);
-   
-    pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
-    CCV_NNC_MFA_CHECK_ERROR(error)
-    
-    semaphore.signal();
-  });
+  }
   
   pool->drain();
 }
 
+mfa::gemm::pipeline::~pipeline() {
+  if (semaphore) {
+    delete semaphore;
+  }
+  pso->release();
+}
+
 void mfa::gemm::pipeline::wait() {
   if (!finished) {
-    semaphore.wait();
+    semaphore->wait();
     finished = true;
   }
 }
 
 MTL::ComputePipelineState* mfa::gemm::pipeline::get_pso() const {
   if (finished) {
-    return pso.get();
+    return pso;
   } else {
     return nullptr;
   }
@@ -218,4 +236,36 @@ MTL::Size mfa::gemm::pipeline::get_group_size() const {
   } else {
     return MTL::Size(0, UINT64_MAX, UINT64_MAX);
   }
+}
+
+std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash)
+{
+  os << "mfa::gemm::hash {";
+  os << " .data_type = " << hash.data_type << ',';
+  os << " .M = " << hash.M << ',';
+  os << " .N = " << hash.N << ',';
+  os << " .K = " << hash.K << ',';
+  os << " .A_trans = " << bool(hash.A_trans) << ',';
+  os << " .B_trans = " << bool(hash.B_trans) << ',';
+  os << " .alpha = " << double(hash.alpha) << ',';
+  os << " .beta = " << double(hash.beta) << ',';
+  os << " .batched = " << bool(hash.batched) << ',';
+  os << " .fused_activation = " << bool(hash.fused_activation);
+  os << " }";
+  return os;
+}
+
+std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) const noexcept {
+  std::size_t seed = 0;
+  mfa::hash::combine_64(seed, hash.data_type);
+  mfa::hash::combine_32(seed, hash.M);
+  mfa::hash::combine_32(seed, hash.N);
+  mfa::hash::combine_32(seed, hash.K);
+  mfa::hash::combine_32(seed, uint32_t(hash.A_trans));
+  mfa::hash::combine_32(seed, uint32_t(hash.B_trans));
+  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.alpha));
+  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.beta));
+  mfa::hash::combine_32(seed, uint32_t(hash.batched));
+  mfa::hash::combine_32(seed, uint32_t(hash.fused_activation));
+  return seed;
 }
