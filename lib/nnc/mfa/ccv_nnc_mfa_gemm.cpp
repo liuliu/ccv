@@ -101,10 +101,29 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) : sem
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
   constants->setConstantValue(&hash.fused_activation, MTL::DataTypeBool, 101);
   
-  // 32x32x32 block size for now.
-  uint16_t M_group = 32;
-  uint16_t N_group = 32;
-  uint16_t K_group = 32;
+  // Use monolithic block sizes for now.
+  uint16_t M_group = UINT16_MAX;
+  uint16_t N_group = UINT16_MAX;
+  uint16_t K_group = UINT16_MAX;
+  switch (hash.data_type) {
+    case MTL::DataTypeHalf: {
+      M_group = 32;
+      N_group = 32;
+      K_group = 32;
+      break;
+    }
+    case MTL::DataTypeFloat: {
+      M_group = 48;
+      N_group = 48;
+      K_group = 24;
+      break;
+    }
+    default: {
+      CCV_NNC_MFA_PRECONDITION(false)
+      break;
+    }
+  }
+  
   uint16_t M_splits = 2;
   uint16_t N_splits = 2;
   uint16_t K_splits = 1;
