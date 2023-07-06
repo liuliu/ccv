@@ -38,13 +38,13 @@ void ccv_nnc_finish_command_batch(MTL::CommandBatch* command_batch) {
 template <typename T, typename U>
 mfa::cache<T, U>::cache()
 {
-  this->map = {};
+  map = {};
 }
 
 template <typename T, typename U>
 mfa::cache<T, U>::~cache()
 {
-  for (auto it = map->begin(); it != map->end(); ++it) {
+  for (auto it = map.begin(); it != map.end(); ++it) {
     delete it->second;
   }
 }
