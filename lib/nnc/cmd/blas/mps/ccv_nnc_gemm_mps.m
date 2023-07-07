@@ -199,7 +199,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         mpgetbuffer((ccv_nnc_tensor_t*)b), // C
         NULL
       };
-      size_t tensor_offsets[3] = { 0, 0, 0 };
+      size_t tensor_offsets[3] = {
+        a->dataof, // A offset
+        w->dataof, // B offset
+        b->dataof, // C offset
+      };
       ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
       
       if (METAL_LOG_LEVEL(context) >= 3) {

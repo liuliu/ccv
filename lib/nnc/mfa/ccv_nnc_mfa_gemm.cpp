@@ -111,15 +111,15 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   uint16_t K_group = UINT16_MAX;
   switch (hash.data_type) {
     case MTL::DataTypeHalf: {
-      M_group = 32;
-      N_group = 32;
-      K_group = 32;
+      M_group = 32; // 32, 48, 64
+      N_group = 32; // 32, 48, 64
+      K_group = 32; // 32, 32, 32
       break;
     }
     case MTL::DataTypeFloat: {
-      M_group = 48;
-      N_group = 48;
-      K_group = 24;
+      M_group = 32; // 32, 48, 64
+      N_group = 32; // 32, 48, 64
+      K_group = 32; // 32, 24, 16
       break;
     }
     default: {
