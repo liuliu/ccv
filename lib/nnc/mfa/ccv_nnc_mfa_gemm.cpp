@@ -154,7 +154,6 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
   CCV_NNC_MFA_PRECONDITION(hash.beta == 0.0)
-  CCV_NNC_MFA_PRECONDITION(hash.batched == false)
   CCV_NNC_MFA_PRECONDITION(hash.fused_activation == false)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();

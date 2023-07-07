@@ -145,29 +145,62 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
     (int)(a_batch_size == w_batch_size) &
     (int)(a_batch_size == b_batch_size);
     
+    // NNC uses the convention B = A * W.
+    // MFA uses the convention C = A * B.
+    int is_batched = 0;
+    int is_mfa_compatible_batch = 0;
+    int A_batch_size = a_batch_size;
+    int B_batch_size = w_batch_size;
+    int C_batch_size = b_batch_size;
+    if (A_batch_size == 1 && B_batch_size == 1 && C_batch_size == 1) {
+      // Not batched.
+    } else if (A_batch_size <= 0 || B_batch_size <= 0 || C_batch_size <= 0) {
+      // Invalid batch size.
+    } else {
+      is_batched = 1;
+      if (A_batch_size == C_batch_size) {
+        if (A_batch_size == B_batch_size) {
+          is_mfa_compatible_batch = 1;
+        } else if (B_batch_size == 1) {
+          is_mfa_compatible_batch = 1;
+        }
+      }
+    }
+    
     ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
     int is_mfa_supported =
     (int)(ccv_nnc_mfa_context_supported(context)) &
     is_contiguous &
     is_same_dtype &
     is_supported_dtype &
-    is_same_batch &
-    (a_batch_size == 1) &
+    (is_mfa_compatible_batch || !is_batched) &
     (!bias);
     
     if (METAL_LOG_LEVEL(context) >= 3) {
       if (is_mfa_supported) {
         ccv_nnc_mfa_log_message("Compatible GEMM found.");
       } else {
-        ccv_nnc_mfa_log_message("Incompatible GEMM found.");
+        ccv_nnc_mfa_log_message("Incompatible GEMM found. Incompatible because:");
+        if (!is_contiguous) {
+          ccv_nnc_mfa_log_message("  Strided.");
+        }
+        if (!is_same_dtype) {
+          ccv_nnc_mfa_log_message("  Mixed precision.");
+        }
+        if (!is_same_dtype) {
+          ccv_nnc_mfa_log_message("  Unsupported data type.");
+        }
+        if (!(is_mfa_compatible_batch || !is_batched)) {
+          ccv_nnc_mfa_log_message("  Unsupported batch.");
+        }
+        if (!(!bias)) {
+          ccv_nnc_mfa_log_message("  Requires fused activations.");
+        }
       }
     }
     
     if (is_mfa_supported) {
       // On supported devices, use Metal directly.
-      //
-      // Note: NNC uses the convention B = A * W.
-      //       MFA uses the convention C = A * B.
       ccv_nnc_mfa_gemm_params_t params = {
         .data_type = mtl_data_type,
         .M = (uint32_t)b_rows, // C_rows
@@ -177,12 +210,30 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         .B_trans = (is_transpose_w ? 1 : 0),
         .alpha = (float)1.0,
         .beta = (float)0.0,
-        .batched = 0,
+        .batched = is_batched,
         .fused_activation = 0,
         
         .batch_dims_a = { 0 },
         .batch_dims_b = { 0 },
       };
+      if (is_batched) {
+        // Create a null-terminated list of batch dimensions.
+        int A_batch_dim = a_nd - 2;
+        for (int i = 0; i < A_batch_dim; ++i) {
+          params.batch_dims_a[i] = adim[i];
+        }
+        if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+          params.batch_dims_a[A_batch_dim] = 0;
+        }
+        
+        int B_batch_dim = w_nd - 2;
+        for (int i = 0; i < B_batch_dim; ++i) {
+          params.batch_dims_b[i] = w->info.dim[i];
+        }
+        if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+          params.batch_dims_b[B_batch_dim] = 0;
+        }
+      }
       ccv_nnc_mfa_sync_prepare_gemm(context, params);
       
       // Creating a new command buffer has a >10 µs penalty CPU-side. Still
