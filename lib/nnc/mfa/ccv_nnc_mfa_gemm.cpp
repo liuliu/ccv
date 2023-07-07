@@ -1,5 +1,6 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
+#include <simd/simd.h>
 using namespace ccv::nnc;
 
 #include <string>
@@ -79,7 +80,37 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     }
     batch_size = batch_size_a;
     
-    // TODO: Encode the matrix offsets.
+    uint16_t element_size = 0;
+    switch (params.data_type) {
+      case MTL::DataTypeHalf: {
+        element_size = 2;
+        break;
+      }
+      case MTL::DataTypeFloat: {
+        element_size = 4;
+        break;
+      }
+      default:
+        CCV_NNC_MFA_PRECONDITION(false);
+        break;
+    }
+    uint64_t byte_stride_a = hash.M * hash.K * element_size;
+    uint64_t byte_stride_b = hash.K * hash.N * element_size;
+    uint64_t byte_stride_c = hash.M * hash.N * element_size;
+    if (batch_size_b == 1) {
+      byte_stride_b = 0;
+    }
+    
+    simd::ulong4 matrix_offsets[batch_size];
+    for (int i = 0; i < batch_size; ++i) {
+      matrix_offsets[i] = simd::ulong4 {
+        i * byte_stride_a,
+        i * byte_stride_b,
+        i * byte_stride_c,
+        0
+      };
+    }
+    encoder->setBytes(matrix_offsets, batch_size * 32, 10);
   } else {
     batch_size = 1;
   }
@@ -152,6 +183,9 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
   // BxMxN > 4,000,000 -> 64x64, only if M >= 120 and N >= 120
   uint64_t C_elements = uint64_t(hash.M) * uint64_t(hash.N);
+  if (batched) {
+    C_elements *= 2;
+  }
   int is_half = (hash.data_type == MTL::DataTypeHalf); // SD v1 attention
   int is_float = (hash.data_type == MTL::DataTypeFloat); // SD v2 attention
   
