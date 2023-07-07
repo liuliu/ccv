@@ -114,17 +114,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
   @autoreleasepool {
-    // TODO: Make these logic statements cleaner.
-    uint8_t is_contiguous = 1;
-    is_contiguous = is_contiguous & ((!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) ? 1 : 0);
-    is_contiguous = is_contiguous & ((!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) ? 1 : 0);
-    is_contiguous = is_contiguous & ((!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) ? 1 : 0);
+    int is_contiguous =
+    (int)(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &
+    (int)(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &
+    (int)(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride));
     
-    uint8_t is_same_dtype = 1;
-    is_same_dtype = is_same_dtype & ((a->info.datatype == w->info.datatype) ? 1 : 0);
-    is_same_dtype = is_same_dtype & ((a->info.datatype == b->info.datatype) ? 1 : 0);
+    int is_same_dtype =
+    (int)(a->info.datatype == w->info.datatype) &
+    (int)(a->info.datatype == b->info.datatype);
     
-    uint8_t is_supported_dtype = 0;
+    int is_supported_dtype = 0;
     uint32_t mtl_data_type = UINT32_MAX;
     switch (a->info.datatype) {
       case CCV_16F: {
@@ -142,36 +141,33 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
       }
     }
     
-    uint8_t is_same_batch = 1;
-    is_same_batch = is_same_batch & ((a_batch_size == w_batch_size) ? 1 : 0);
-    is_same_batch = is_same_batch & ((a_batch_size == b_batch_size) ? 1 : 0);
-    
-    // Note: NNC uses the convention B = A * W.
-    //       MFA uses the convention C = A * B.
-    uint8_t is_not_transpose = 1;
-    is_not_transpose = is_not_transpose & ((!is_transpose_a) ? 1 : 0);
-    is_not_transpose = is_not_transpose & ((!is_transpose_w) ? 1 : 0);
-    
-    uint8_t mfa_supported = ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context());
-    mfa_supported = mfa_supported & is_contiguous;
-    mfa_supported = mfa_supported & is_same_dtype;
-    mfa_supported = mfa_supported & is_supported_dtype;
-    mfa_supported = mfa_supported & is_same_batch;
-    mfa_supported = mfa_supported & ((a_batch_size == 1) ? 1 : 0);
-    mfa_supported = mfa_supported & is_not_transpose;
-    mfa_supported = mfa_supported & ((!bias) ? 1 : 0);
+    int is_same_batch =
+    (int)(a_batch_size == w_batch_size) &
+    (int)(a_batch_size == b_batch_size);
     
     ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+    int is_mfa_supported =
+    (int)(ccv_nnc_mfa_context_supported(context)) &
+    is_contiguous &
+    is_same_dtype &
+    is_supported_dtype &
+    is_same_batch &
+    (a_batch_size == 1) &
+    (!bias);
+    
     if (METAL_LOG_LEVEL(context) >= 3) {
-      if (mfa_supported) {
+      if (is_mfa_supported) {
         ccv_nnc_mfa_log_message("Compatible GEMM found.");
       } else {
         ccv_nnc_mfa_log_message("Incompatible GEMM found.");
       }
     }
     
-    if (mfa_supported) {
+    if (is_mfa_supported) {
       // On supported devices, use Metal directly.
+      //
+      // Note: NNC uses the convention B = A * W.
+      //       MFA uses the convention C = A * B.
       ccv_nnc_mfa_gemm_params_t params = {
         .data_type = mtl_data_type,
         .M = (uint32_t)b_rows, // C_rows

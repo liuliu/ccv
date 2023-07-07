@@ -77,8 +77,6 @@ bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
 
 mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool async) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
-  CCV_NNC_MFA_PRECONDITION(hash.A_trans == false)
-  CCV_NNC_MFA_PRECONDITION(hash.B_trans == false)
   CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
   CCV_NNC_MFA_PRECONDITION(hash.beta == 0.0)
   CCV_NNC_MFA_PRECONDITION(hash.batched == false)
@@ -105,26 +103,40 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
   constants->setConstantValue(&hash.fused_activation, MTL::DataTypeBool, 101);
   
-  // Use monolithic block sizes for now.
-  uint16_t M_group = UINT16_MAX;
-  uint16_t N_group = UINT16_MAX;
-  uint16_t K_group = UINT16_MAX;
-  switch (hash.data_type) {
-    case MTL::DataTypeHalf: {
-      M_group = 32; // 32, 48, 64
-      N_group = 32; // 32, 48, 64
-      K_group = 32; // 32, 32, 32
-      break;
-    }
-    case MTL::DataTypeFloat: {
-      M_group = 32; // 32, 48, 64
-      N_group = 32; // 32, 48, 64
-      K_group = 32; // 32, 24, 16
-      break;
-    }
-    default: {
-      CCV_NNC_MFA_PRECONDITION(false)
-      break;
+  // Eventually, this will incorporate the batch size.
+  // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
+  // BxMxN > 4,000,000 -> 64x64, only if M >= 120 and N >= 120
+  uint64_t C_elements = uint64_t(hash.M) * uint64_t(hash.N);
+  int is_half = (hash.data_type == MTL::DataTypeHalf); // SD v1 attention
+  int is_float = (hash.data_type == MTL::DataTypeFloat); // SD v2 attention
+  
+  uint16_t M_group = 32;
+  uint16_t N_group = 32;
+  uint16_t K_group = 32;
+  if (C_elements > 1000 * 1000) {
+    M_group = 48;
+    N_group = 48;
+  }
+  
+  // If K_simd is perfectly equal to matrix K, the compiler can elide a large
+  // amount of logic in the kernel.
+  if (hash.K >= 33 && hash.K <= 40) {
+    K_group = 40; // 1 * 40
+  } else if (is_half && hash.K >= 73 && hash.K <= 80) {
+    K_group = 40; // 2 * 40
+  } else if (C_elements > 1000 * 1000) {
+    if (hash.K <= 16) {
+      K_group = 16; // 1 * 16
+    } else if (hash.K <= 24) {
+      K_group = 24; // 1 * 24
+    } else if (hash.K <= 32) {
+      K_group = 32; // 1 * 32
+    } else if (hash.K <= 48) {
+      K_group = 24;
+    } else if (hash.K <= 64) {
+      K_group = 32;
+    } else if (is_float) {
+      K_group = 24;
     }
   }
   
