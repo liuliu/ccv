@@ -180,8 +180,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         .batched = 0,
         .fused_activation = 0,
         
-        .batch_dim_a = { 0 },
-        .batch_dim_b = { 0 },
+        .batch_dims_a = { 0 },
+        .batch_dims_b = { 0 },
       };
       ccv_nnc_mfa_sync_prepare_gemm(context, params);
       
@@ -202,15 +202,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
       };
       ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
       
-      if (METAL_LOG_LEVEL(context) >= 3) {
-        if (command_batch->batched_command_count == 0) {
-          ccv_nnc_mfa_log_message("Encoded 0 commands in the batch.");
-        } else if (command_batch->batched_command_count == 1) {
-          ccv_nnc_mfa_log_message("Encoded 1 command in the batch.");
-        } else {
-          ccv_nnc_mfa_log_message("Encoded >1 commands in the batch.");
-        }
-      }
+      // TODO: Add this diagnostic once we consistently capture >>1 commands/batch.
+//      if (METAL_LOG_LEVEL(context) >= 3) {
+//        if (command_batch->batched_command_count == 0) {
+//          ccv_nnc_mfa_log_message("Encoded 0 commands in the batch.");
+//        } else if (command_batch->batched_command_count == 1) {
+//          ccv_nnc_mfa_log_message("Encoded 1 command in the batch.");
+//        } else {
+//          ccv_nnc_mfa_log_message("Encoded >1 commands in the batch.");
+//        }
+//      }
       ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
       
       // TODO: Try to use `fused_activation` for with bias case.

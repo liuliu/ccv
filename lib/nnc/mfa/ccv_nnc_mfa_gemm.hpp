@@ -15,8 +15,8 @@ typedef struct {
   
   // Fill these in the same order as the original shape, but null-terminated.
   // Both arrays must have the same length.
-  uint32_t batch_dim_a[CCV_NNC_MAX_DIM_ALLOC];
-  uint32_t batch_dim_b[CCV_NNC_MAX_DIM_ALLOC];
+  uint32_t batch_dims_a[CCV_NNC_MAX_DIM_ALLOC];
+  uint32_t batch_dims_b[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_gemm_params_t;
 
 #ifdef __cplusplus
@@ -51,6 +51,8 @@ class pipeline {
   Dispatch::Semaphore* semaphore;
   
   MTL::ComputePipelineState* pso;
+  
+  bool batched;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
@@ -64,6 +66,8 @@ public:
   void wait();
   
   MTL::ComputePipelineState* get_pso() const;
+  
+  bool get_batched() const;
   uint16_t get_threadgroup_memory_length() const;
   MTL::Size get_grid_size() const;
   MTL::Size get_group_size() const;

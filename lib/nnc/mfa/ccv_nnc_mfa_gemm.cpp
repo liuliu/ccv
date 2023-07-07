@@ -39,7 +39,51 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
-  uint32_t batch_size = 1;
+  uint32_t batch_size;
+  if (pipeline->get_batched()) {
+    uint16_t num_batch_dims_a = 0;
+    uint64_t batch_size_a = 1;
+    for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+      if (params.batch_dims_a[i] == 0) {
+        break;
+      }
+      num_batch_dims_a += 1;
+      batch_size_a *= params.batch_dims_a[i];
+    }
+    
+    uint16_t num_batch_dims_b = 0;
+    uint64_t batch_size_b = 1;
+    for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+      if (params.batch_dims_b[i] == 0) {
+        break;
+      }
+      num_batch_dims_b += 1;
+      batch_size_b *= params.batch_dims_b[i];
+    }
+    
+    bool same_batch_dims = true;
+    if (num_batch_dims_a != num_batch_dims_b) {
+      same_batch_dims = false;
+    } else if (batch_size_a != batch_size_b) {
+      same_batch_dims = false;
+    } else {
+      for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+        if (params.batch_dims_a[i] != params.batch_dims_b[i]) {
+          same_batch_dims = false;
+        }
+      }
+    }
+    
+    if (!same_batch_dims) {
+      CCV_NNC_MFA_PRECONDITION(batch_size_b == 1);
+    }
+    batch_size = batch_size_a;
+    
+    // TODO: Encode the matrix offsets.
+  } else {
+    batch_size = 1;
+  }
+  
   auto grid_size = pipeline->get_grid_size();
   grid_size.depth = batch_size;
   encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
@@ -91,6 +135,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
     finished = true;
     semaphore = nullptr;
   }
+  this->batched = hash.batched;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.M, MTL::DataTypeUInt, NS::UInteger(0));
@@ -226,6 +271,14 @@ MTL::ComputePipelineState* mfa::gemm::pipeline::get_pso() const {
   }
 }
 
+bool mfa::gemm::pipeline::get_batched() const {
+  if (finished) {
+    return batched;
+  } else {
+    return false;
+  }
+}
+
 uint16_t mfa::gemm::pipeline::get_threadgroup_memory_length() const {
   if (finished) {
     return threadgroup_memory_length;
@@ -263,7 +316,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash)
   os << " .beta = " << double(hash.beta) << ',';
   os << " .batched = " << bool(hash.batched) << ',';
   os << " .fused_activation = " << bool(hash.fused_activation);
-  os << " }";
+  os << "}";
   return os;
 }
 
