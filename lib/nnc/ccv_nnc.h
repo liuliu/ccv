@@ -3927,6 +3927,14 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
  * @param stream_context The stream context to be associated with.
  */
 void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Process parameter gradients to check if any is nan.
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param stream_context The stream context to be associated with.
+ * @return 1 if it has any nan, 0 otherwise.
+ */
+int ccv_cnnp_model_parameter_gradients_isnan(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, ccv_nnc_stream_context_t* const stream_context);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */

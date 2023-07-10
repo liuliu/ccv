@@ -2453,6 +2453,8 @@ void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const
 						ccv_nnc_stream_context_wait(streams[j]);
 		} else {
 			ccv_nnc_tensor_t* const dest = tensor_gradients[dest_d];
+			if (!dest)
+				continue;
 			assert(dest);
 			inputs[0] = outputs[0] = dest;
 			ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_context);

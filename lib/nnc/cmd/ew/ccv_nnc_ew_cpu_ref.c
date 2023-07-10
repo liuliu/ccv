@@ -12,7 +12,7 @@
 
 #include "../_ccv_nnc_cpu_ref.h"
 
-void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size)
+void _ccv_nnc_ewsum_forw_cpu_ref_f32(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size)
 {
 	if (input_size == 1 && output_size == 1)
 	{
@@ -108,9 +108,108 @@ void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, con
 	}
 }
 
+void _ccv_nnc_ewsum_forw_cpu_ref_i32(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size)
+{
+	if (input_size == 1 && output_size == 1)
+	{
+		_ccv_nnc_tensor_transfer_cpu_ref_f32(inputs[0], outputs[0]);
+		return;
+	}
+	// Assuming this is float 32.
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int bstride[CCV_NNC_MAX_DIM_ALLOC];
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
+	int x, z;
+	int k = 0;
+	// Bad, I promised this can be inplace operation. Need to first find out if there are share the same pointer first.
+	for (z = 1; z < input_size; z++)
+	{
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = inputs[z];
+		if (c->data.f32 == a->data.f32)
+		{
+			k = z;
+			break;
+		}
+	}
+	for (z = 0; z < input_size - 1; z++)
+	{
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = z > 0 ? c : inputs[k];
+		ccv_nnc_tensor_view_t* b = z >= k ? inputs[z + 1] : inputs[z];
+		assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
+		assert(ccv_nnc_tensor_nd(b->info.dim) <= CCV_NNC_MAX_DIM + 2);
+		assert(ccv_nnc_tensor_nd(c->info.dim) <= CCV_NNC_MAX_DIM + 2);
+		ccv_nnc_tensor_view_get_dim(a, dim);
+		assert(ccv_nnc_tensor_view_check_dim(b, dim));
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
+		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
+		{
+			// Super optimal case, just do one for-loop for sum.
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			for (x = 0; x < tensor_count; x++)
+				c->data.f32[x] = a->data.f32[x] + b->data.f32[x];
+			continue;
+		}
+		assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+		ccv_nnc_tensor_view_get_stride(a, astride);
+		ccv_nnc_tensor_view_get_stride(b, bstride);
+		ccv_nnc_tensor_view_get_stride(c, cstride);
+		int i[CCV_NNC_MAX_DIM + 2];
+		int* const ap = a->data.i32;
+		int* const bp = b->data.i32;
+		int* const cp = c->data.i32;
+		const int count = dim[2] * dim[3];
+		if (astride[2] == dim[3] && bstride[2] == dim[3] && cstride[2] == dim[3] && astride[3] == 1 && bstride[3] == 1 && cstride[3] == 1)
+		{
+			// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
+			for (i[0] = 0; i[0] < dim[0]; i[0]++)
+			{
+				int* ap0 = ap + i[0] * astride[0];
+				int* bp0 = bp + i[0] * bstride[0];
+				int* cp0 = cp + i[0] * cstride[0];
+				for (i[1] = 0; i[1] < dim[1]; i[1]++)
+				{
+					for (x = 0; x < count; x++)
+						cp0[x] = ap0[x] + bp0[x];
+					ap0 += astride[1];
+					bp0 += bstride[1];
+					cp0 += cstride[1];
+				}
+			}
+			continue;
+		}
+		// Non-optimal case, need to do skip copy.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			int* const ap0 = ap + i[0] * astride[0];
+			int* const bp0 = bp + i[0] * bstride[0];
+			int* const cp0 = cp + i[0] * cstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				int* ap1 = ap0 + i[1] * astride[1];
+				int* bp1 = bp0 + i[1] * bstride[1];
+				int* cp1 = cp0 + i[1] * cstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					for (x = 0; x < dim[3]; x++)
+						cp1[x * cstride[3]] = ap1[x * astride[3]] + bp1[x * bstride[3]];
+					ap1 += astride[2];
+					bp1 += bstride[2];
+					cp1 += cstride[2];
+				}
+			}
+		}
+	}
+}
+
 static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	_ccv_nnc_ewsum_forw_cpu_ref((ccv_nnc_tensor_view_t**)inputs, input_size, (ccv_nnc_tensor_view_t**)outputs, output_size);
+	if (outputs[0]->info.datatype == CCV_32S)
+		_ccv_nnc_ewsum_forw_cpu_ref_i32((ccv_nnc_tensor_view_t**)inputs, input_size, (ccv_nnc_tensor_view_t**)outputs, output_size);
+	else
+		_ccv_nnc_ewsum_forw_cpu_ref_f32((ccv_nnc_tensor_view_t**)inputs, input_size, (ccv_nnc_tensor_view_t**)outputs, output_size);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
