@@ -102,9 +102,9 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		float* const af = update + tensor_count;
 		if (g->info.datatype == CCV_16F)
 		{
-			_ccv_nnc_lamb_kernel_to_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, update, af, (__half*)n->data.f16, (__half*)u->data.f16);
+			_ccv_nnc_lamb_kernel_to_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, update, af, (__half*)n->data.f16, (__half*)u->data.f16);
 		} else if (g->info.datatype == CCV_32F) {
-			_ccv_nnc_lamb_kernel_to_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, update, af, (__half*)n->data.f16, (__half*)u->data.f16);
+			_ccv_nnc_lamb_kernel_to_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, update, af, (__half*)n->data.f16, (__half*)u->data.f16);
 		}
 		float* const w_norm = af + tensor_count;
 		float* const update_norm = w_norm + 1;
@@ -124,9 +124,9 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, cublas_workspace_size);
 		if (g->info.datatype == CCV_16F)
 		{
-			_ccv_nnc_lamb_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, update, n->data.f32, u->data.f32);
+			_ccv_nnc_lamb_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, update, n->data.f32, u->data.f32);
 		} else if (g->info.datatype == CCV_32F) {
-			_ccv_nnc_lamb_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, update, n->data.f32, u->data.f32);
+			_ccv_nnc_lamb_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, decay, inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, update, n->data.f32, u->data.f32);
 		}
 		float* const w_norm = update + tensor_count;
 		float* const update_norm = w_norm + 1;

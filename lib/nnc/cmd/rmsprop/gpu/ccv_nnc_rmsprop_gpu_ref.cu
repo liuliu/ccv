@@ -65,7 +65,7 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		if (b->info.datatype == CCV_16F)
 			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, scale, decay, alpha, momentum, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
 		else if (b->info.datatype == CCV_32F)
-			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, decay, alpha, momentum, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
+			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, scale, decay, alpha, momentum, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
 	} else if (g->info.datatype == CCV_32F) {
 		if (b->info.datatype == CCV_16F)
 			_ccv_nnc_rmsprop_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, rate, scale, decay, alpha, momentum, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);

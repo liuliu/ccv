@@ -524,6 +524,75 @@ void _ccv_nnc_tensor_set_cpu_ref_f64(ccv_nnc_tensor_view_t* const a, const doubl
 	}
 }
 
+void _ccv_nnc_tensor_set_cpu_ref_i32(ccv_nnc_tensor_view_t* const a, const int b)
+{
+	// Assuming this is float 32.
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int x;
+	if (!CCV_IS_TENSOR_VIEW(a))
+	{
+		// Super optimal case, just do one for-loop for sum.
+		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		for (x = 0; x < tensor_count; x++)
+			a->data.f32[x] = b;
+		return;
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int i[CCV_NNC_MAX_DIM + 2];
+	int* const ap = a->data.i32;
+	const int count = dim[2] * dim[3];
+	if (astride[2] == dim[3])
+	{
+		// Special casing if the ainc[3] is the same as dim[3]
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			int* ap0 = ap + i[0] * astride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				for (x = 0; x < count; x++)
+					ap0[x] = b;
+				ap0 += astride[1];
+			}
+		}
+		return;
+	} else if (astride[3] == 1) {
+		// The case the last dimension is packed.
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			int* const ap0 = ap + i[0] * astride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				int* ap1 = ap0 + i[1] * astride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					for (x = 0; x < dim[3]; x++)
+						ap1[x] = b;
+					ap1 += astride[2];
+				}
+			}
+		}
+		return;
+	}
+	// Non-optimal case, need to do skip copy.
+	for (i[0] = 0; i[0] < dim[0]; i[0]++)
+	{
+		int* const ap0 = ap + i[0] * astride[0];
+		for (i[1] = 0; i[1] < dim[1]; i[1]++)
+		{
+			int* ap1 = ap0 + i[1] * astride[1];
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			{
+				for (x = 0; x < dim[3]; x++)
+					ap1[x * astride[3]] = b;
+				ap1 += astride[2];
+			}
+		}
+	}
+}
+
 static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
