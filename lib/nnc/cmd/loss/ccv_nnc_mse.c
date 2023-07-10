@@ -16,7 +16,7 @@ static int _ccv_nnc_mse_back_bitmask(const int input_size, const int output_size
 {
 	// input: [gradient of loss], activation, label, [loss]
 	// output: w.r.t [activation], [label]
-	if ((input_bitmasks[0] & 6u) == 6u && ((output_bitmasks[0] & 1u) == 1u || (output_bitmasks[0] & 2u) == 2u))
+	if ((input_bitmasks[0] & 7u) == 7u && ((output_bitmasks[0] & 1u) == 1u || (output_bitmasks[0] & 2u) == 2u))
 		return 1;
 	return 0;
 }
