@@ -52,4 +52,4 @@ REGISTER_COMMAND(CCV_NNC_LAMB_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_LAMB_FORWARD)
-#define CMD_LAMB_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_LAMB_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lamb={.step=_step,.rate=_rate,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+#define CMD_LAMB_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_LAMB_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lamb={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)

@@ -10,10 +10,10 @@ extern "C" {
 #ifdef HAVE_CUDA
 
 template<typename NUM1, typename NUM2>
-__global__ void _ccv_nnc_adamw_kernel(const size_t tensor_count, const float beta1, const float beta2, const float rate_decay, const float rate_inv_bias_correction1, const float inv_bias_correction2, const float epsilon, const NUM1* const g, const NUM2* const a, const NUM2* const mom, const NUM2* const vel, NUM2* const b, NUM2* const new_mom, NUM2* const new_vel)
+__global__ void _ccv_nnc_adamw_kernel(const size_t tensor_count, const float scale, const float beta1, const float beta2, const float rate_decay, const float rate_inv_bias_correction1, const float inv_bias_correction2, const float epsilon, const NUM1* const g, const NUM2* const a, const NUM2* const mom, const NUM2* const vel, NUM2* const b, NUM2* const new_mom, NUM2* const new_vel)
 {
 	CUDA_1D_KERNEL_LOOP(i, tensor_count) {
-		const float grad = (float)g[i];
+		const float grad = scale * (float)g[i];
 		const float m = beta1 * (float)mom[i] + (1 - beta1) * grad;
 		const float v = beta2 * (float)vel[i] + (1 - beta2) * grad * grad;
 		b[i] = (NUM2)((float)a[i] - rate_decay * (float)a[i] - (m * rate_inv_bias_correction1) / (sqrtf(v * inv_bias_correction2) + epsilon));
@@ -29,6 +29,7 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	const int step = cmd.info.adam.step;
 	const float rate = cmd.info.adam.rate;
+	const float scale = cmd.info.adam.scale;
 	const float beta1 = cmd.info.adam.beta1;
 	const float beta2 = cmd.info.adam.beta2;
 	const float decay = cmd.info.adam.decay;
@@ -66,14 +67,14 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	if (g->info.datatype == CCV_16F)
 	{
 		if (b->info.datatype == CCV_16F)
-			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
+			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
 		else if (b->info.datatype == CCV_32F)
-			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
+			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, (__half*)g->data.f16, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
 	} else if (g->info.datatype == CCV_32F) {
 		if (b->info.datatype == CCV_16F)
-			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
+			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, (__half*)a->data.f16, (__half*)m->data.f16, (__half*)v->data.f16, (__half*)b->data.f16, (__half*)n->data.f16, (__half*)u->data.f16);
 		else if (b->info.datatype == CCV_32F)
-			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
+			_ccv_nnc_adamw_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, scale, beta1, beta2, rate_decay, rate_inv_bias_correction1, inv_bias_correction2, epsilon, g->data.f32, a->data.f32, m->data.f32, v->data.f32, b->data.f32, n->data.f32, u->data.f32);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

@@ -51,6 +51,7 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	ccv_nnc_tensor_view_get_stride(n, nstride);
 	ccv_nnc_tensor_view_get_stride(u, ustride);
 	const float rate = cmd.info.rmsprop.rate;
+	const float scale = cmd.info.rmsprop.scale;
 	const float decay = cmd.info.rmsprop.decay;
 	const float alpha = cmd.info.rmsprop.alpha;
 	const float momentum = cmd.info.rmsprop.momentum;
@@ -86,7 +87,7 @@ static int _ccv_nnc_rmsprop_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			{
 				for (x = 0; x < adim[3]; x++)
 				{
-					float grad = gp1[x];
+					float grad = scale * gp1[x];
 					grad += decay * ap1[x];
 					const float vel = up1[x] = alpha * vp1[x] + (1 - alpha) * grad * grad;
 					const float mom = np1[x] = momentum * mp1[x] + grad / (sqrtf(vel) + epsilon);
