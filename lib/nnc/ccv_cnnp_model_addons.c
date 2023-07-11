@@ -182,7 +182,12 @@ static int _ccv_cnnp_model_isnan(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[0]->info.type);
 	ccv_nnc_tensor_t* const old_isnanr = outputs[1 + device_id * 2];
 	ccv_nnc_tensor_t* const isnanr = outputs[1 + device_id * 2 + 1];
-	ccv_nnc_cmd_exec(CMD_REDUCE_ISNAN_FORWARD(), hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(isnanr), stream_context);
+	ccv_nnc_cmd_t reduce_cmd = CMD_REDUCE_ISNAN_FORWARD();
+	reduce_cmd.info.reduce.count = ccv_nnc_tensor_nd(inputs[0]->info.dim);
+	int i;
+	for (i = 0; i < cmd.info.reduce.count; i++)
+		reduce_cmd.info.reduce.axis[i] = i;
+	ccv_nnc_cmd_exec(reduce_cmd, hint, flags, TENSOR_LIST(inputs[0]), TENSOR_LIST(isnanr), stream_context);
 	ccv_nnc_cmd_exec(CMD_EWSUM_FORWARD(), hint, flags, TENSOR_LIST(old_isnanr, isnanr), TENSOR_LIST(old_isnanr), stream_context);
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -265,26 +270,36 @@ int ccv_cnnp_model_parameter_gradients_isnan(ccv_cnnp_model_t* const model, cons
 		.isa = &reduce_isnan_vtab,
 	};
 	ccv_cnnp_model_parameter_gradients_map(model, parameters, reduce_cmd, ccv_nnc_no_hint, 0, 0, 0, isnanr, parallel_count * 2, stream_context);
-	ccv_nnc_tensor_param_t info = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.datatype = CCV_32S,
-		.dim = {1},
-	};
 	for (i = 0; i < parallel_count; i++)
 		ccv_nnc_tensor_free(isnanr[i * 2 + 1]);
-	ccv_nnc_tensor_t* checknan = ccv_nnc_tensor_new(0, info, 0);
 	int retval = 0;
-	for (i = 0; i < parallel_count; i++)
+	if (stream_type == CCV_TENSOR_GPU_MEMORY)
 	{
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(isnanr[i * 2]), TENSOR_LIST(checknan), 0);
-		if (checknan->data.i32[0] > 0)
+		ccv_nnc_tensor_param_t info = {
+			.type = CCV_TENSOR_CPU_MEMORY,
+			.format = CCV_TENSOR_FORMAT_NHWC,
+			.datatype = CCV_32S,
+			.dim = {1},
+		};
+		ccv_nnc_tensor_t* checknan = ccv_nnc_tensor_new(0, info, 0);
+		for (i = 0; i < parallel_count; i++)
 		{
-			retval = 1;
-			break;
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(isnanr[i * 2]), TENSOR_LIST(checknan), 0);
+			if (checknan->data.i32[0] > 0)
+			{
+				retval = 1;
+				break;
+			}
 		}
+		ccv_nnc_tensor_free(checknan);
+	} else {
+		for (i = 0; i < parallel_count; i++)
+			if (isnanr[i * 2]->data.i32[0] > 0)
+			{
+				retval = 1;
+				break;
+			}
 	}
-	ccv_nnc_tensor_free(checknan);
 	for (i = 0; i < parallel_count; i++)
 		ccv_nnc_tensor_free(isnanr[i * 2]);
 	return retval;

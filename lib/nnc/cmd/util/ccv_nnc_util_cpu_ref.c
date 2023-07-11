@@ -648,6 +648,8 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				_ccv_nnc_tensor_set_cpu_ref_f32((ccv_nnc_tensor_view_t*)outputs[i], cmd.info.blas.a[0]);
 			else if (outputs[i]->info.datatype == CCV_64F)
 				_ccv_nnc_tensor_set_cpu_ref_f64((ccv_nnc_tensor_view_t*)outputs[i], cmd.info.blas.a[0]);
+			else if (outputs[i]->info.datatype == CCV_32S)
+				_ccv_nnc_tensor_set_cpu_ref_i32((ccv_nnc_tensor_view_t*)outputs[i], (int)cmd.info.blas.a[0]);
 			else
 				{ assert(0); }
 	return CCV_NNC_EXEC_SUCCESS;

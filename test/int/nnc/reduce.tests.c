@@ -382,11 +382,11 @@ TEST_CASE("reduce isnan float")
 	ccv_nnc_tensor_free(bt);
 }
 
-TEST_CASE("reduce isnan half")
+TEST_CASE("reduce isnan in half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_ISNAN_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_ISNAN_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
-	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
 	ha->data.f32[0] = NAN;
 	ha->data.f32[1] = 2;
 	ha->data.f32[2] = 3;
@@ -396,11 +396,11 @@ TEST_CASE("reduce isnan half")
 	ccv_nnc_cmd_exec(CMD_REDUCE_ISNAN_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb), 0);
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const a16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 3), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 1), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(a16), 0);
 	ccv_nnc_cmd_exec(CMD_REDUCE_ISNAN_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(a16), TENSOR_LIST(b), 0);
-	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt), 0);
 	REQUIRE_TENSOR_EQ(hb, bt, "result should be equal");
 	ccv_nnc_tensor_free(ha);

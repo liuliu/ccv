@@ -140,6 +140,13 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(
 
 #ifdef HAVE_CUDNN
 
+__global__ void _ccv_nnc_set_kernel(const size_t count, const int value, int* const a)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		a[i] = count;
+	}
+}
+
 static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
@@ -151,6 +158,12 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		{
 			double v = cmd.info.blas.a[0];
 			CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &v));
+		} else if (outputs[i]->info.datatype == CCV_32S) {
+			int v = (int)cmd.info.blas.a[0];
+			cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+			const size_t count = ccv_nnc_tensor_count(outputs[0]->info);
+			assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[0]));
+			_ccv_nnc_set_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, v, outputs[0]->data.i32);
 		} else {
 			CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &cmd.info.blas.a[0]));
 		}
@@ -185,7 +198,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_nnc
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_set_forw;
