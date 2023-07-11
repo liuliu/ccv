@@ -261,9 +261,8 @@ int ccv_cnnp_model_parameter_gradients_isnan(ccv_cnnp_model_t* const model, cons
 			for (i = 0; i < parallel_count; i++)
 				if (streams[i])
 					ccv_nnc_stream_context_wait(streams[i]);
-	} else {
+	} else
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(isnanr[0]), stream_context);
-	}
 	// Gather isnanr.
 	ccv_nnc_cmd_t reduce_cmd = {
 		.cmd = CCV_NNC_CUSTOM_FORWARD,

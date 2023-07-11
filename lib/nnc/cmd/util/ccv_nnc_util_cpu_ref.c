@@ -535,7 +535,7 @@ void _ccv_nnc_tensor_set_cpu_ref_i32(ccv_nnc_tensor_view_t* const a, const int b
 		// Super optimal case, just do one for-loop for sum.
 		const int tensor_count = ccv_nnc_tensor_count(a->info);
 		for (x = 0; x < tensor_count; x++)
-			a->data.f32[x] = b;
+			a->data.i32[x] = b;
 		return;
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
@@ -666,7 +666,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 REGISTER_COMMAND_BACKEND(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_64F | CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_set_forw;

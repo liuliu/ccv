@@ -143,7 +143,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(
 __global__ void _ccv_nnc_set_kernel(const size_t count, const int value, int* const a)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
-		a[i] = count;
+		a[i] = value;
 	}
 }
 
@@ -153,21 +153,24 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	for (i = 0; i < output_size; i++)
 	{
-		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
-		if (outputs[i]->info.datatype == CCV_64F)
+		if (outputs[i]->info.datatype == CCV_32S)
 		{
-			double v = cmd.info.blas.a[0];
-			CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &v));
-		} else if (outputs[i]->info.datatype == CCV_32S) {
 			int v = (int)cmd.info.blas.a[0];
 			cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-			const size_t count = ccv_nnc_tensor_count(outputs[0]->info);
-			assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[0]));
-			_ccv_nnc_set_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, v, outputs[0]->data.i32);
+			const size_t count = ccv_nnc_tensor_count(outputs[i]->info);
+			assert(CCV_IS_TENSOR_CONTIGUOUS(outputs[i]));
+			_ccv_nnc_set_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, v, outputs[i]->data.i32);
 		} else {
-			CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &cmd.info.blas.a[0]));
+			const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
+			if (outputs[i]->info.datatype == CCV_64F)
+			{
+				double v = cmd.info.blas.a[0];
+				CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &v));
+			} else {
+				CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &cmd.info.blas.a[0]));
+			}
+			ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		}
-		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
