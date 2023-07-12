@@ -254,7 +254,14 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   
   uint16_t A_block_bytes = M_group * K_group * data_type_size;
   uint16_t B_block_bytes = K_group * N_group * data_type_size;
+  uint16_t C_block_bytes = M_group * N_group * data_type_size;
   threadgroup_memory_length = A_block_bytes + B_block_bytes;
+  
+  if ((hash.M % 8 > 0) && (hash.N % 8 > 0)) {
+    if (C_block_bytes > threadgroup_memory_length) {
+      threadgroup_memory_length = C_block_bytes;
+    }
+  }
   
   std::function<size_t(size_t, uint16_t)> ceil_divide = [](size_t original, uint16_t granularity) {
     return (original + size_t(granularity) - 1) / size_t(granularity);
