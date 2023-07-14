@@ -60,24 +60,27 @@ void cudnn_save(const int type, cudnnHandle_t cudnn)
 void cudnn_pressure(const int device_id)
 {
 	pthread_mutex_lock(&g_cudnn_mutex);
-	khiter_t k;
-	for (k = kh_begin(g_cudnn); k != kh_end(g_cudnn); ++k)
+	if (g_cudnn)
 	{
-		if (!kh_exist(g_cudnn, k))
-			continue;
-		const int type = kh_key(g_cudnn, k);
-		const int this_device_id = CCV_TENSOR_GET_DEVICE_ID(type);
-		if (this_device_id != device_id) // Only free for a particular device.
-			continue;
-		struct cudnn_free_list_s* item = kh_val(g_cudnn, k);
-		while (item)
+		khiter_t k;
+		for (k = kh_begin(g_cudnn); k != kh_end(g_cudnn); ++k)
 		{
-			CUDNN_ENFORCE(cudnnDestroy(item->cudnn));
-			struct cudnn_free_list_s* next = item->next;
-			ccfree(item);
-			item = next;
+			if (!kh_exist(g_cudnn, k))
+				continue;
+			const int type = kh_key(g_cudnn, k);
+			const int this_device_id = CCV_TENSOR_GET_DEVICE_ID(type);
+			if (this_device_id != device_id) // Only free for a particular device.
+				continue;
+			struct cudnn_free_list_s* item = kh_val(g_cudnn, k);
+			while (item)
+			{
+				CUDNN_ENFORCE(cudnnDestroy(item->cudnn));
+				struct cudnn_free_list_s* next = item->next;
+				ccfree(item);
+				item = next;
+			}
+			kh_del(cudnn_free, g_cudnn, k);
 		}
-		kh_del(cudnn_free, g_cudnn, k);
 	}
 	pthread_mutex_unlock(&g_cudnn_mutex);
 }
