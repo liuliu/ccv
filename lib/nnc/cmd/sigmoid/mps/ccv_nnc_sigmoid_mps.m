@@ -55,17 +55,10 @@ static int _ccv_nnc_sigmoid_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 			[inputShapedTypes addObject:mps_b_shape];
 
-			MPSGraphTensor *bOnes =  [graph constantWithScalar:1.0
-                              						  dataType:mps_b.dataType];
-			MPSGraphTensor* bMinus = [graph subtractionWithPrimaryTensor:bOnes														  
-														 secondaryTensor:mps_b 
-                                           				 	 	    name:nil];
-			MPSGraphTensor* multiply = [graph multiplicationWithPrimaryTensor:bMinus
-															  secondaryTensor:mps_b 
-                                           					 	         name:nil];
-			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g														  
-														   secondaryTensor:multiply 
-                                           					 	      name:nil];
+			MPSGraphTensor *bOnes =  [graph constantWithScalar:1.0 dataType:mps_b.dataType];
+			MPSGraphTensor* bMinus = [graph subtractionWithPrimaryTensor:bOnes secondaryTensor:mps_b name:nil];
+			MPSGraphTensor* multiply = [graph multiplicationWithPrimaryTensor:bMinus secondaryTensor:mps_b name:nil];
+			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:multiply name:nil];
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
