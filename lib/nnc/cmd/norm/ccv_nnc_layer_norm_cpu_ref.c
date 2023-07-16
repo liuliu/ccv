@@ -100,7 +100,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			{
 				float* const varp2 = varp1 + i[2] * saved_inv_std_stride[2];
 				for (x = 0; x < rdim[3]; x++)
-					varp2[x] = 1. / (sqrtf(varp2[x] * inv_n) + epsilon);
+					varp2[x] = 1. / sqrtf(varp2[x] * inv_n + epsilon);
 			}
 		}
 	}

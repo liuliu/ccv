@@ -553,6 +553,13 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	memset(alloc_prep->buffers, 0, sizeof(alloc_prep->buffers[0]) * num_assigned);
 	for (i = 0; i < num_assigned; i++)
 		alloc_prep->buffers[i].size = allocated_size[i];
+	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+	{
+		size_t total_size = 0;
+		for (i = 0; i < num_assigned; i++)
+			total_size += allocated_size[i];
+		PRINT(CCV_CLI_INFO, "Total buffer size of %zu to be allocated\n", total_size);
+	}
 	ccfree(allocated_size);
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
