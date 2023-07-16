@@ -55,16 +55,15 @@ static int _ccv_nnc_sigmoid_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 			[inputShapedTypes addObject:mps_b_shape];
 
-			MPSGraphTensor *bOnes =  [graph constantWithScalar:1.0 dataType:mps_b.dataType];
-			MPSGraphTensor* bMinus = [graph subtractionWithPrimaryTensor:bOnes secondaryTensor:mps_b name:nil];
-			MPSGraphTensor* multiply = [graph multiplicationWithPrimaryTensor:bMinus secondaryTensor:mps_b name:nil];
+			MPSGraphTensor *ones =  [graph constantWithScalar:1.0 dataType:mps_b.dataType];
+			MPSGraphTensor* b_minus = [graph subtractionWithPrimaryTensor:ones secondaryTensor:mps_b name:nil];
+			MPSGraphTensor* multiply = [graph multiplicationWithPrimaryTensor:b_minus secondaryTensor:mps_b name:nil];
 			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:multiply name:nil];
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
 		MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
 		MPSGraphTensorData* data[] = {data_g, data_b};
-		
 		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &h, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1);
 		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
 	}
