@@ -188,7 +188,7 @@ typedef struct {
 	ccv_array_t* itf;
 } ccv_nnc_tensor_block_adjacent_t;
 
-static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
+static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec_dep(ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
 {
 	// Compute how many dis-continuous buffers are needed.
 	// We prefer to have several dis-continuous buffers instead of one big buffer because
@@ -244,6 +244,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 						++adj[j].oc;
 					}
 				}
+	const int exec_dep_rows = exec_dep->rows;
+	ccv_matrix_free(exec_dep);
 	int* const buf = (int*)ccmalloc(sizeof(int) * tensor_block_size * 2);
 	int* const assigned = (int*)cccalloc(tensor_block_size, sizeof(int));
 	uint64_t* const allocated_offset = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
@@ -290,7 +292,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		// Order opt array by the oc because type and size should be equal at this point.
 		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
-		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;
+		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep_rows * 3;
 		uint64_t min_val[2] = {
 			0, 0
 		};
@@ -367,7 +369,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					y_hop_p_cache[y] = -1;
 					if (val.u64 && val.u64[0] >= a.size)
 					{
-						const int hop = exec_dep->rows + y_hop_p_cache[y];
+						const int hop = exec_dep_rows + y_hop_p_cache[y];
 						if (hop < min_hop)
 							min_y = y_buf[y], min_x = tensor_block_size + 1, min_hop = hop,
 								min_val[0] = val.u64[0], min_val[1] = val.u64[1];
@@ -379,7 +381,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					q_hop_x_cache[x] = -1;
 					if (val.u64 && val.u64[0] >= a.size)
 					{
-						const int hop = exec_dep->rows + q_hop_x_cache[x];
+						const int hop = exec_dep_rows + q_hop_x_cache[x];
 						if (hop < min_hop)
 							min_y = 0, min_x = x_buf[x], min_hop = hop,
 								min_val[0] = val.u64[0], min_val[1] = val.u64[1];
@@ -3546,8 +3548,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccfree(tensor_fold);
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
-	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
-	ccv_matrix_free(exec_dep);
+	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new_and_free_exec_dep(exec_dep, tensor_blocks, tensor_block_size);
 	prep->while_count_tensor = 0;
 	prep->dup_breakpoints = 0;
 	prep->p = 0;
