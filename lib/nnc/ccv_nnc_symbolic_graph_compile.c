@@ -81,6 +81,13 @@ typedef struct {
 #define more_than(i1, i2, aux) (((i1).size > (i2).size) || ((i1).size == (i2).size && (i1).oc >= (i2).oc))
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
+typedef struct {
+	int idx;
+	int hop;
+} ccv_nnc_tensor_hop_t;
+#define less_than(i1, i2, aux) ((i1).hop < (i2).hop)
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_sort_by_hops, ccv_nnc_tensor_hop_t, less_than)
+#undef less_than
 
 // If b has items overlap with a, a is still after b (inclusive).
 static int _ccv_nnc_tensor_block_a_after_b_inclusively(const ccv_sparse_matrix_t* const exec_dep, const ccv_array_t* const a, const ccv_array_t* const b)
@@ -246,7 +253,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 				}
 	const int exec_dep_rows = exec_dep->rows;
 	ccv_matrix_free(exec_dep);
-	int* const buf = (int*)ccmalloc(sizeof(int) * tensor_block_size * 2);
+	ccv_nnc_tensor_hop_t* const buf = (ccv_nnc_tensor_hop_t*)ccmalloc(sizeof(ccv_nnc_tensor_hop_t) * tensor_block_size);
 	int* const assigned = (int*)cccalloc(tensor_block_size, sizeof(int));
 	uint64_t* const allocated_offset = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
 	uint64_t* const allocated_size = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
@@ -297,9 +304,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 			0, 0
 		};
 		if (j > 0)
+		{
+			int last_oc = (opt->rnum > 0) ? ((ccv_nnc_tensor_opt_t*)ccv_array_get(opt, 0))->oc + 1 : 0;
 			for (i = 0; i < opt->rnum; i++)
 			{
 				ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
+				if (a.oc == last_oc) // Not useful to check another one with the same oc.
+					continue;
+				last_oc = a.oc;
 				// Now, determine the order between a and c. After this, we can always check whether y
 				// can hop to the earliest one and if the latest one can hop to x.
 				// The earliest one will be called p and the latest one will be called q.
@@ -331,15 +343,12 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 				// out of q. For these nodes, we try to verify whether they form a connection (by checking against
 				// alloc sparse matrix). If they do, try to see whether we can insert with tightest bound.
 				int y_size = 0;
-				int* const y_buf = buf;
-				int* const y_hop_p_cache = buf + tensor_block_size;
+				ccv_nnc_tensor_hop_t* const y_buf = buf;
 #define for_block(y, val) do { \
-					if (((int*)val)[0] > 0 && assigned[y] && tensor_blocks[y].type == type) \
-					{ \
-						y_hop_p_cache[y_size] = ((int*)val)[0]; \
-						y_buf[y_size] = y + 1; \
-						y_size++; \
-					} \
+					if (((int*)val)[0] > 0 && assigned[y] && tensor_blocks[y].type == type && tensor_blocks[y].size >= a.size) \
+						y_buf[y_size++] = (ccv_nnc_tensor_hop_t){ \
+							.idx = y + 1, .hop = ((int*)val)[0] \
+						}; \
 				} while(0)
 				ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(tensor_dt, p);
 				if (y_vector)
@@ -347,15 +356,12 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 #undef for_block
 				assert(y_size <= tensor_block_size);
 				int x_size = 0;
-				int* const x_buf = buf + y_size;
-				int* const q_hop_x_cache = y_hop_p_cache + y_size;
+				ccv_nnc_tensor_hop_t* const x_buf = buf + y_size;
 #define for_block(x, val) do { \
-					if (((int*)val)[0] > 0 && assigned[x] && tensor_blocks[x].type == type) \
-					{ \
-						q_hop_x_cache[x_size] = ((int*)val)[0]; \
-						x_buf[x_size] = x + 1; \
-						x_size++; \
-					} \
+					if (((int*)val)[0] > 0 && assigned[x] && tensor_blocks[x].type == type && tensor_blocks[x].size >= a.size) \
+						x_buf[x_size++] = (ccv_nnc_tensor_hop_t){ \
+							.idx = x + 1, .hop = ((int*)val)[0] \
+						}; \
 				} while(0)
 				ccv_sparse_matrix_vector_t* const x_vector = ccv_get_sparse_matrix_vector(tensor_df, q);
 				if (x_vector)
@@ -363,49 +369,58 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 #undef for_block
 				assert(y_size + x_size <= tensor_block_size);
 				int x, y;
+				_ccv_nnc_sort_by_hops(y_buf, y_size, 0);
 				for (y = 0; y < y_size; y++)
 				{
-					const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell(alloc, y_buf[y], tensor_block_size + 1);
-					y_hop_p_cache[y] = -1;
+					const int hop = exec_dep_rows + y_buf[y].hop;
+					if (hop >= min_hop)
+						break;
+					const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell(alloc, y_buf[y].idx, tensor_block_size + 1);
 					if (val.u64 && val.u64[0] >= a.size)
 					{
-						const int hop = exec_dep_rows + y_hop_p_cache[y];
-						if (hop < min_hop)
-							min_y = y_buf[y], min_x = tensor_block_size + 1, min_hop = hop,
-								min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						min_y = y_buf[y].idx, min_x = tensor_block_size + 1, min_hop = hop,
+							min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						break;
 					}
 				}
+				_ccv_nnc_sort_by_hops(x_buf, x_size, 0);
 				for (x = 0; x < x_size; x++)
 				{
-					const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell(alloc, 0, x_buf[x]);
-					q_hop_x_cache[x] = -1;
+					const int hop = exec_dep_rows + x_buf[x].hop;
+					if (hop >= min_hop)
+						break;
+					const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell(alloc, 0, x_buf[x].idx);
 					if (val.u64 && val.u64[0] >= a.size)
 					{
-						const int hop = exec_dep_rows + q_hop_x_cache[x];
-						if (hop < min_hop)
-							min_y = 0, min_x = x_buf[x], min_hop = hop,
-								min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						min_y = 0, min_x = x_buf[x].idx, min_hop = hop,
+							min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						break;
 					}
 				}
+				const int x_min_hop = x_buf[0].hop;
 				for (y = 0; y < y_size; y++)
 				{
-					const int y_hop_p_v = y_hop_p_cache[y];
-					if (y_hop_p_v >= min_hop)
-						continue;
-					ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(alloc, y_buf[y]);
+					const int y_hop_p_v = y_buf[y].hop;
+					if (y_hop_p_v + x_min_hop >= min_hop)
+						break;
+					ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(alloc, y_buf[y].idx);
 					if (y_vector)
+					{
 						for (x = 0; x < x_size; x++)
 						{
-							const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell_from_vector(alloc, y_vector, x_buf[x]);
+							const int q_hop_x_v = x_buf[x].hop;
+							const int hop = y_hop_p_v + q_hop_x_v;
+							if (hop >= min_hop)
+								break;
+							const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell_from_vector(alloc, y_vector, x_buf[x].idx);
 							if (val.u64 && val.u64[0] >= a.size)
 							{
-								const int q_hop_x_v = q_hop_x_cache[x];
-								const int hop = y_hop_p_v + q_hop_x_v;
-								if (hop < min_hop)
-									min_y = y_buf[y], min_x = x_buf[x], min_hop = hop,
-										min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+								min_y = y_buf[y].idx, min_x = x_buf[x].idx, min_hop = hop,
+									min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+								break;
 							}
 						}
+					}
 				}
 				// If I found a place, stop, and exit.
 				if (min_y > 0 || min_x < tensor_block_size + 1)
@@ -414,6 +429,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 					break;
 				}
 			}
+		}
 		// If I cannot find a place, then start a new connection between min_y and min_x (a new assignment group).
 		// and default to largest size available.
 		ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, ccv_max(0, min_i));
