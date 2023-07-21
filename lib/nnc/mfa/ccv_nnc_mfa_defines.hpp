@@ -4,7 +4,7 @@
 // MARK: - Types
 
 #ifdef __cplusplus
-#include "3rdparty/metal-cpp/Metal.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 namespace ccv {
 namespace nnc {
 namespace mfa {

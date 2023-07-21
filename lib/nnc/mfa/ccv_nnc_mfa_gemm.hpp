@@ -20,8 +20,8 @@ typedef struct {
 } ccv_nnc_mfa_gemm_params_t;
 
 #ifdef __cplusplus
-#include "3rdparty/metal-cpp/Dispatch.hpp"
-#include "3rdparty/metal-cpp/Metal.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 
 namespace ccv {
 namespace nnc {

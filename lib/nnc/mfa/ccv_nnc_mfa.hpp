@@ -6,8 +6,8 @@
 #include "ccv_nnc_mfa_gemm.hpp"
 
 #ifdef __cplusplus
-#include "3rdparty/metal-cpp/Dispatch.hpp"
-#include "3rdparty/metal-cpp/Metal.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
 
 namespace ccv {

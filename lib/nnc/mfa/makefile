@@ -1,12 +1,12 @@
 include ../../config.mk
 
-CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
+CFLAGS := -std=c++17 -O3 -Wall -I"../../" $(CFLAGS)
 
-SRCS := "" # Not needed because CUDA is not accessible on Apple devices.
+SRCS := Metal.cpp ccv_nnc_mfa.cpp ccv_nnc_mfa_error.cpp ccv_nnc_mfa_gemm.cpp 3rdparty/metal-cpp/Dispatch.cpp
 
-SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.m,%.o,$(SRCS)))
+SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SRCS)))
 
-.PHONY: release all lib clean libnnc-compat-mfa.o
+.PHONY: release all lib clean
 
 release: all
 
@@ -32,7 +32,7 @@ dep: .dep.mk
 .dep.mk: $(SRCS)
 	echo '' > .dep.mk
 	for SRC in $(patsubst %.c,,$^) ; do \
-		$(NVCC) $(NVFLAGS) -M $$SRC | sed -e 's/^.*\://g' | (echo "$${SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+		$(CC) $(CFLAGS) -M $$SRC | sed -e 's/^.*\://g' | (echo "$${SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
 	done
 
 -include .dep.mk

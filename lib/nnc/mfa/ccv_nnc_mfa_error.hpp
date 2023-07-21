@@ -1,7 +1,7 @@
 #ifndef GUARD_ccv_nnc_mfa_error_hpp
 #define GUARD_ccv_nnc_mfa_error_hpp
 
-#include "3rdparty/metal-cpp/Metal.hpp"
+#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 
 // `std::cout` and `CACurrentMediaTime()` for profiling.
 #include <iostream>
