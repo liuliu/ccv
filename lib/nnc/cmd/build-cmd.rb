@@ -159,7 +159,12 @@ def parse_find_backend filename, which_command, find_backend
 end
 
 # Find source code in subdirs.
+filenames = []
 Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu,m,mm}").each do |fn|
+	filenames << fn
+end
+filenames.sort!
+filenames.each do |fn|
 	File.open(fn, 'r') do |f|
 		command_parser = MacroParser.new 'REGISTER_COMMAND'
 		find_backend_parser = MacroParser.new 'FIND_BACKEND'
