@@ -1762,17 +1762,22 @@ static void _ccv_cnnp_model_multistage_jit_1(ccv_cnnp_model_t* const model)
 	compiled_data->backward.updated_accum_gradients = compiled_data->backward.accum_gradients + parameter_size * parallel_count;
 	for (i = 0; i < parameter_size; i++)
 		for (j = 0; j < parallel_count; j++)
-		{
-			const ccv_nnc_tensor_param_t info = compiled_data->tensors.gradients[i + j * parameter_size]->info;
-			// Now, the old gradient is the accumulated gradient, getting new gradient tensor setup so we can collect them.
-			compiled_data->tensors.accum_gradients[i + j * parameter_size] = compiled_data->tensors.gradients[i + j * parameter_size];
-			compiled_data->tensors.gradients[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
-			ccv_nnc_tensor_symbol_t inputs[2];
-			inputs[0] = compiled_data->backward.accum_gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
-			inputs[1] = compiled_data->backward.gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
-			ccv_nnc_tensor_symbol_t output = compiled_data->backward.updated_accum_gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
-			ccv_nnc_graph_exec_symbol_new(accum, CMD_EWSUM_FORWARD(), inputs, 2, &output, 1, 0);
-		}
+			if (compiled_data->tensors.gradients[i + j * parameter_size])
+			{
+				const ccv_nnc_tensor_param_t info = compiled_data->tensors.gradients[i + j * parameter_size]->info;
+				// Now, the old gradient is the accumulated gradient, getting new gradient tensor setup so we can collect them.
+				compiled_data->tensors.accum_gradients[i + j * parameter_size] = compiled_data->tensors.gradients[i + j * parameter_size];
+				compiled_data->tensors.gradients[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
+				ccv_nnc_tensor_symbol_t inputs[2];
+				inputs[0] = compiled_data->backward.accum_gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
+				inputs[1] = compiled_data->backward.gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
+				ccv_nnc_tensor_symbol_t output = compiled_data->backward.updated_accum_gradients[i + j * parameter_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
+				ccv_nnc_graph_exec_symbol_new(accum, CMD_EWSUM_FORWARD(), inputs, 2, &output, 1, 0);
+			} else {
+				compiled_data->backward.accum_gradients[i + j * parameter_size] = NO_TENSOR_SYMBOL;
+				compiled_data->backward.gradients[i + j * parameter_size] = NO_TENSOR_SYMBOL;
+				compiled_data->backward.updated_accum_gradients[i + j * parameter_size] = NO_TENSOR_SYMBOL;
+			}
 	ccv_nnc_graph_exec_symbol_autogen(accum, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	_ccv_cnnp_model_bind_tensors(accum, compiled_data->backward.accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1, tensor_binds);
@@ -2448,6 +2453,8 @@ void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const
 						ccv_nnc_stream_context_wait(streams[j]);
 		} else {
 			ccv_nnc_tensor_t* const dest = tensor_gradients[dest_d];
+			if (!dest)
+				continue;
 			assert(dest);
 			inputs[0] = outputs[0] = dest;
 			ccv_nnc_cmd_exec(cmd, hint, flags, inputs, aux_in_size + 1, outputs, aux_out_size + 1, stream_context);

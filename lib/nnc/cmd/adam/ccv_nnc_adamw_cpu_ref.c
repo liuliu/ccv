@@ -52,6 +52,7 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	ccv_nnc_tensor_view_get_stride(u, ustride);
 	const int step = cmd.info.adam.step;
 	const float rate = cmd.info.adam.rate;
+	const float scale = cmd.info.adam.scale;
 	const float beta1 = cmd.info.adam.beta1;
 	const float beta2 = cmd.info.adam.beta2;
 	const float decay = cmd.info.adam.decay;
@@ -91,7 +92,7 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			{
 				for (x = 0; x < adim[3]; x++)
 				{
-					const float grad = gp1[x];
+					const float grad = scale * gp1[x];
 					const float mom = np1[x] = beta1 * mp1[x] + (1 - beta1) * grad;
 					const float vel = up1[x] = beta2 * vp1[x] + (1 - beta2) * grad * grad;
 					bp1[x] = ap1[x] - rate_decay * ap1[x] - (mom * rate_inv_bias_correction1) / (sqrtf(vel * inv_bias_correction2) + epsilon);

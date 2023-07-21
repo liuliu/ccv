@@ -52,6 +52,7 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_get_stride(u, ustride);
 	const int step = cmd.info.lamb.step;
 	const float rate = cmd.info.lamb.rate;
+	const float scale = cmd.info.lamb.scale;
 	const float beta1 = cmd.info.lamb.beta1;
 	const float beta2 = cmd.info.lamb.beta2;
 	const float decay = cmd.info.lamb.decay;
@@ -92,7 +93,7 @@ static int _ccv_nnc_lamb_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				for (x = 0; x < adim[3]; x++)
 				{
-					const float grad = gp1[x];
+					const float grad = scale * gp1[x];
 					const float w = ap1[x];
 					const float mom = np1[x] = beta1 * mp1[x] + (1 - beta1) * grad;
 					const float vel = up1[x] = beta2 * vp1[x] + (1 - beta2) * grad * grad;

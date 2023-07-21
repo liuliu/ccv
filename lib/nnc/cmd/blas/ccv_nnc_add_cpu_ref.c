@@ -99,7 +99,7 @@ void _ccv_nnc_add_forw_cpu_ref(const float p, const float q, ccv_nnc_tensor_view
 	const int b_check_dim = ccv_nnc_tensor_view_check_dim(b, cdim);
 	if (p == 1 && q == 1 && a_check_dim && b_check_dim)
 	{
-		_ccv_nnc_ewsum_forw_cpu_ref((ccv_nnc_tensor_view_t*[]){
+		_ccv_nnc_ewsum_forw_cpu_ref_f32((ccv_nnc_tensor_view_t*[]){
 			a, b
 		}, 2, &c, 1);
 		return;

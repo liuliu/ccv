@@ -152,6 +152,7 @@ typedef struct {
 		struct {
 			int step; /**< [adam.step] Step t in adam optimizer. */
 			float rate; /**< [adam.rate] The learning rate. */
+			float scale; /**< [adam.scale] The scale to be applied to the gradient before doing any minimization. */
 			float beta1; /**< [adam.beta1] The beta1 hyper-parameter in adam optimizer. */
 			float beta2; /**< [adam.beta2] The beta2 hyper-parameter in adam optimizer. */
 			float decay; /**< [adam.decay] This is the weight decay parameter, which represents L2 regularization. */
@@ -160,6 +161,7 @@ typedef struct {
 		struct {
 			int step; /**< [lamb.step] Step t in lamb optimizer. */
 			float rate; /**< [lamb.rate] The learning rate. */
+			float scale; /**< [lamb.scale] The scale to be applied to the gradient before doing any minimization. */
 			float beta1; /**< [lamb.beta1] The beta1 hyper-parameter in lamb optimizer. */
 			float beta2; /**< [lamb.beta2] The beta2 hyper-parameter in lamb optimizer. */
 			float decay; /**< [lamb.decay] This is the weight decay parameter, which represents L2 regularization. */
@@ -167,6 +169,7 @@ typedef struct {
 		} lamb;
 		struct {
 			float rate; /**< [rmsprop.rate] The learning rate. */
+			float scale; /**< [rmsprop.scale] The scale to be applied to the gradient before doing any minimization. */
 			float decay; /**< [rmsprop.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
 			float alpha; /**< [rmsprop.momentum] The alpha hyper-parameter. */
 			float momentum; /**< [rmsprop.momentum] The momentum hyper-parameter. */
@@ -3924,6 +3927,14 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
  * @param stream_context The stream context to be associated with.
  */
 void ccv_cnnp_model_parameters_clip_grad_norm(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int norm_type, float max_norm, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Process parameter gradients to check if any is nan.
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param stream_context The stream context to be associated with.
+ * @return 1 if it has any nan, 0 otherwise.
+ */
+int ccv_cnnp_model_parameter_gradients_isnan(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, ccv_nnc_stream_context_t* const stream_context);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */

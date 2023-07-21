@@ -13,7 +13,7 @@ template<typename NUM>
 __global__ void _ccv_nnc_inv_std_kernel(const int count, const float epsilon, const NUM* const a, NUM* const b)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
-		b[i] = (NUM)(1. / ((float)a[i] + epsilon));
+		b[i] = (NUM)(1. / sqrt((float)a[i] * (float)a[i] + epsilon));
 	}
 }
 
