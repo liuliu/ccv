@@ -9,6 +9,7 @@
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
+#include <unordered_map>
 
 namespace ccv {
 namespace nnc {
