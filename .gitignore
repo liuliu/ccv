@@ -42,3 +42,4 @@ site/_doxygen
 clang.bazelrc
 .bazelrc
 bazel-*
+.DS_Store
