@@ -659,6 +659,7 @@ void* ccv_nnc_cmd_aux(const ccv_nnc_cmd_t cmd)
 
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	printf("%p", cmd.cmd);
 	// If it is no-op, return as if succeed already.
 	if (cmd.cmd == CCV_NNC_NOOP)
 		return 0;
@@ -671,8 +672,12 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 			ccv_nnc_stream_context_drain(stream_context);
 		return ret;
 	}
+		printf("0");
+
 	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+			printf("1");
+
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
 	int i;
 	uint32_t backend = cmd.backend;
@@ -688,14 +693,22 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 				tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
 		backend = ccv_nnc_cmd_find_backend(cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	}
+				printf("2");
+
 	assert(backend != CCV_NNC_NO_BACKEND);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(backend);
+					printf("3");
+
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
 	// Everything is out, call the underlying implementation.
+					printf("4");
+
 	int ret = api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+						printf("5");
+
 	if (!stream_context)
 		ccv_nnc_stream_context_drain(stream_context);
 	return ret;

@@ -406,6 +406,22 @@ void ccv_nnc_mps_clear_graph_executable_cache(void)
 	}
 }
 
+MPSGraphTensor* ccv_nnc_mps_reduce_tensor(MPSGraphTensor* tensor, int64_t reduction, MPSGraph* mpsGraph, NSUInteger axesCount) {
+  NSMutableArray<NSNumber*>* axes = [NSMutableArray<NSNumber*> arrayWithCapacity:axesCount];
+  for (NSUInteger i = 0; i < axesCount; i++)
+    axes[i] = @(i);
+
+  switch (reduction) {
+    case CCV_NNC_MSE_REDUCE_MEAN:
+      return [mpsGraph meanOfTensor:tensor axes:axes name:@"reductionMeanTensor"];
+    case CCV_NNC_MSE_REDUCE_SUM:
+      return [mpsGraph reductionSumWithTensor:tensor axes:axes name:@"reductionSumTensor"];
+    default:
+	  assert(0 && "unknown reduce op");
+      return tensor;
+  }
+}
+
 MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors))
 {
 	if (!g_graph_executable_cache)
