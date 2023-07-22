@@ -119,7 +119,7 @@ mfa::context::context(MTL::Device* device, const char* metallib_path)
   }
   
   this->device = NS::RetainPtr(device);
-#if TARGET_OS_MAC
+#if TARGET_OS_OSX
   // This method is only available on macOS 13.3+. To make the code compatible
   // with macOS 12, we need to call ObjC runtime functions that check whether
   // the selector actually exists.
