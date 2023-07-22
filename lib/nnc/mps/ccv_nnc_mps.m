@@ -528,7 +528,7 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	// Initialize the MFA context.
-	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+	ccv_nnc_default_mfa_context();
 	return stream_context;
 }
 
