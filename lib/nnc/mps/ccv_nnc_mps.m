@@ -6,6 +6,7 @@
 #include <string.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
+#import <TargetConditionals.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
@@ -24,12 +25,28 @@ id<MTLDevice> ccv_nnc_default_device(void)
 	return device;
 }
 
+@interface MTLFileBackedBuffer: NSObject
+@property (nonatomic, copy) NSString* path;
+@property (nonatomic, assign) NSUInteger size;
+@end
+
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 {
 	static dispatch_once_t once;
 	static ccv_nnc_mfa_context_t* context;
 	dispatch_once(&once, ^{
-		context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
+		const char* metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
+		if (metallib_path)
+			context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device(), metallib_path);
+		else {
+			NSBundle* bundle = [NSBundle bundleForClass:[MTLFileBackedBuffer class]];
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+			NSString* path = [bundle pathForResource:@"libmfaios16-0.2" ofType:@"metallib"];
+#else
+			NSString* path = [bundle pathForResource:@"libmfamacos13-0.2" ofType:@"metallib"];
+#endif
+			context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device(), path.UTF8String);
+		}
 	});
 	return context;
 }
@@ -206,10 +223,6 @@ void* mpobjcreate(void* ptr, off_t offset, size_t size)
 	return buffer;
 }
 
-@interface MTLFileBackedBuffer: NSObject
-@property (nonatomic, copy) NSString* path;
-@property (nonatomic, assign) NSUInteger size;
-@end
 @implementation MTLFileBackedBuffer
 @end
 

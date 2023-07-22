@@ -5,8 +5,8 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
-  return new mfa::context(device);
+mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device, const char* metallib_path) {
+  return new mfa::context(device, metallib_path);
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
@@ -82,7 +82,7 @@ void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* con
   _mfa_cache_prepare(&map, context, hash, async);
 }
 
-mfa::context::context(MTL::Device* device)
+mfa::context::context(MTL::Device* device, const char* metallib_path)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
@@ -101,19 +101,9 @@ mfa::context::context(MTL::Device* device)
   // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
   // We need to have two different variants based on the operating system. macOS
   // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
-  const char* metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
   if (!metallib_path) {
-    // If a metallib was bundled with the Bazel build, you can hard-code the
-    // metallib's path into the source code. Choose this path if the user hasn't
-    // already set the `CCV_NNC_MFA_METALLIB_PATH` environment variable.
-    constexpr const char* bundled_path = nullptr;
-    
-    if (bundled_path) {
-      metallib_path = bundled_path;
-    } else {
-      this->supported = false;
-      return;
-    }
+    this->supported = false;
+    return;
   }
   if (METAL_LOG_LEVEL(this) >= 1) {
     std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
