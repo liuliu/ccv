@@ -1352,8 +1352,6 @@ TEST_CASE("mps mse mean loss forward")
 	ccv_nnc_tensor_free(tc);
 }
 
-
-
 TEST_CASE("mps mse sum loss forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MSE_FORWARD, CCV_NNC_BACKEND_MPS));
