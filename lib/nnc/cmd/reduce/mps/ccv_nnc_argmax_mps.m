@@ -23,7 +23,7 @@ static int _ccv_nnc_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		noop = btv.info.dim[i] != atv.info.dim[i];
 	const int axis = cmd.info.reduce.axis[0];
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		if (noop)
 		{
 			MPSGraph* graph = [MPSGraph new];
@@ -51,7 +51,7 @@ static int _ccv_nnc_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(&atv, atv.info.dim, atv.stride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &tvs[1], (int*[]){ btv.info.dim }, (int*[]){ btv.stride }, 1);
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

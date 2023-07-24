@@ -6,6 +6,7 @@ AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_SRCS, ["cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_convolutional.cu cuda/convnet/cwc_convnet_rnorm.cu cuda/convnet/cwc_convnet_pool.cu cuda/convnet/cwc_convnet_full_connect.cu"])
 AC_SUBST(CUDA_COMPAT_LIB, ["gpu/libnnc-compat-cuda.o"])
 AC_SUBST(CUDA_CMD_LIB, ["libnnc-cmd-cuda.o"])
+AC_SUBST(MFA_COMPAT_LIB, ["mfa/libnnc-compat-mfa.o"])
 AC_SUBST(MPS_COMPAT_LIB, ["mps/libnnc-compat-mps.o"])
 AC_SUBST(MPS_CMD_LIB, ["libnnc-cmd-mps.o"])
 
@@ -190,12 +191,13 @@ AC_ARG_ENABLE(mps, [AS_HELP_STRING([--enable-mps], [Enable Metal support])], [mp
 if test "$mps_support" = yes; then
 	AC_MSG_RESULT(yes)
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_MPS "])
-	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal "])
+	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal -lc++ "])
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])
 	AC_SUBST(CUDA_CMD_LIB, [""])
 else
 	AC_MSG_RESULT(no)
+	AC_SUBST(MFA_COMPAT_LIB, [""])
 	AC_SUBST(MPS_COMPAT_LIB, [""])
 	AC_SUBST(MPS_CMD_LIB, [""])
 fi

@@ -7,7 +7,7 @@ SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_tensor_io.c ccv_nnc_stream.c ccv_
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
-.PHONY: release all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o mps/libnnc-compat-mps.o
+.PHONY: release all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o mfa/libnnc-compat-mfa.o mps/libnnc-compat-mps.o
 
 release: all
 
@@ -18,9 +18,9 @@ all: lib
 lib: libnnc.o
 
 clean:
-	rm -f *.o gpu/*.o && ${MAKE} -C ./gpu clean && ${MAKE} -C ./mps clean && ${MAKE} -C ./cmd clean
+	rm -f *.o gpu/*.o && ${MAKE} -C ./gpu clean && ${MAKE} -C ./mfa clean && ${MAKE} -C ./mps clean && ${MAKE} -C ./cmd clean
 
-libnnc.o: $(SRC_OBJS) cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB) $(MPS_COMPAT_LIB)
+libnnc.o: $(SRC_OBJS) cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB) $(MFA_COMPAT_LIB) $(MPS_COMPAT_LIB)
 	ld -r $^ -o $@
 
 %.o: %.c
@@ -37,6 +37,9 @@ cmd:
 
 gpu/libnnc-compat-cuda.o:
 	${MAKE} -C ./gpu
+
+mfa/libnnc-compat-mfa.o:
+	${MAKE} -C ./mfa
 
 mps/libnnc-compat-mps.o:
 	${MAKE} -C ./mps

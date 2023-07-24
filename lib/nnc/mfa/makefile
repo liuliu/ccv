@@ -1,12 +1,12 @@
 include ../../config.mk
 
-CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
+CFLAGS := -std=c++17 -O3 -Wall -I"../../" $(CFLAGS)
 
-SRCS := ccv_nnc_mps.m
+SRCS := Metal.cpp ccv_nnc_mfa.cpp ccv_nnc_mfa_error.cpp ccv_nnc_mfa_gemm.cpp 3rdparty/metal-cpp/Dispatch.cpp
 
-SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.m,%.o,$(SRCS)))
+SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SRCS)))
 
-.PHONY: release all lib clean libnnc-compat-mps.o
+.PHONY: release all lib clean
 
 release: all
 
@@ -14,18 +14,18 @@ include ../../scheme.mk
 
 all: lib
 
-lib: libnnc-compat-mps.o
+lib: libnnc-compat-mfa.o
 
 clean:
 	rm -f *.o
 
-libnnc-compat-mps.o: $(SRC_OBJS)
+libnnc-compat-mfa.o: $(SRC_OBJS)
 	ld -r $^ -o $@
 
 %.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.m
+%.o: %.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 dep: .dep.mk
@@ -36,3 +36,4 @@ dep: .dep.mk
 	done
 
 -include .dep.mk
+

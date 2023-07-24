@@ -377,7 +377,6 @@ TEST_CASE("compare sigmoid with mps in half precision")
 
 TEST_CASE("compare sigmoid gradient with mps")
 {
-	ccv_cli_set_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SIGMOID_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SIGMOID_BACKWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
