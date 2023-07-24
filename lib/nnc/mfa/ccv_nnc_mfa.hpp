@@ -36,7 +36,7 @@ public:
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
   
-  context(MTL::Device* device, const char* metallib_path);
+  context(MTL::Device* device);
   
   // MFA keeps internal caches of pipeline state objects. If you're eagerly
   // executing a command, call `sync_prepare_*` just before encoding it. This
@@ -57,7 +57,7 @@ public:
 extern "C" {
 #endif // __cplusplus
 
-ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context, const char* metallib_path);
+ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
 void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* context);
 uint8_t ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
 uint16_t ccv_nnc_mfa_context_log_level(ccv_nnc_mfa_context_t* context);

@@ -1,12 +1,13 @@
 #include "ccv_nnc_mfa.hpp"
+#include "libmfa.inc"
 using namespace ccv::nnc;
 
 #include <iostream>
 
 // MARK: - C
 
-mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device, const char* metallib_path) {
-  return new mfa::context(device, metallib_path);
+mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
+  return new mfa::context(device);
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
@@ -82,7 +83,7 @@ void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* con
   _mfa_cache_prepare(&map, context, hash, async);
 }
 
-mfa::context::context(MTL::Device* device, const char* metallib_path)
+mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
@@ -101,10 +102,6 @@ mfa::context::context(MTL::Device* device, const char* metallib_path)
   // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
   // We need to have two different variants based on the operating system. macOS
   // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
-  if (!metallib_path) {
-    this->supported = false;
-    return;
-  }
   if (METAL_LOG_LEVEL(this) >= 1) {
     std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
@@ -126,14 +123,15 @@ mfa::context::context(MTL::Device* device, const char* metallib_path)
   device->setShouldMaximizeConcurrentCompilation(true);
 #endif
   
-  // Create a URL out of the path string.
-  auto c_path = metallib_path;
-  auto swift_path = NS::String::string(c_path, NS::UTF8StringEncoding);
-  auto url = NS::URL::fileURLWithPath(swift_path);
-  
   // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
-  this->library = NS::TransferPtr(device->newLibrary(url, &error));
+#if TARGET_OS_IPHONE
+  dispatch_data_t data = dispatch_data_create(libmfaios16_v0_2_metallib, sizeof(libmfaios16_v0_2_metallib), NULL, 0);
+#else
+  dispatch_data_t data = dispatch_data_create(libmfamacos13_v0_2_metallib, sizeof(libmfamacos13_v0_2_metallib), NULL, 0);
+#endif
+  this->library = NS::TransferPtr(device->newLibrary(data, &error));
+  dispatch_release(data);
   CCV_NNC_MFA_CHECK_ERROR(error)
   
   // Notify that this finished successfully, and is not just stalling on one of

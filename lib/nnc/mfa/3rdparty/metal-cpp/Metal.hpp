@@ -13322,7 +13322,7 @@ _MTL_INLINE bool MTL::Device::shouldMaximizeConcurrentCompilation() const
 
 _MTL_INLINE void MTL::Device::setShouldMaximizeConcurrentCompilation(bool shouldMaximizeConcurrentCompilation)
 {
-    Object::sendMessage<void>(this, _MTL_PRIVATE_SEL(setShouldMaximizeConcurrentCompilation_), shouldMaximizeConcurrentCompilation);
+    Object::sendMessageSafe<void>(this, _MTL_PRIVATE_SEL(setShouldMaximizeConcurrentCompilation_), shouldMaximizeConcurrentCompilation);
 }
 
 _MTL_INLINE NS::UInteger MTL::Device::maximumConcurrentCompilationTaskCount() const

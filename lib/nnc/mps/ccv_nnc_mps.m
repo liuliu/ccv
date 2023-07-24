@@ -35,18 +35,7 @@ ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 	static dispatch_once_t once;
 	static ccv_nnc_mfa_context_t* context;
 	dispatch_once(&once, ^{
-		const char* metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
-		if (metallib_path)
-			context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device(), metallib_path);
-		else {
-			NSBundle* bundle = [NSBundle bundleForClass:[MTLFileBackedBuffer class]];
-#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
-			NSString* path = [bundle pathForResource:@"libmfaios16-0.2" ofType:@"metallib"];
-#else
-			NSString* path = [bundle pathForResource:@"libmfamacos13-0.2" ofType:@"metallib"];
-#endif
-			context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device(), path.UTF8String);
-		}
+		context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
 	});
 	return context;
 }
