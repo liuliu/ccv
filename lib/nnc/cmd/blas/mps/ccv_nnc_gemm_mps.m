@@ -118,7 +118,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
 			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride));
-		
+
 		const int is_same_dtype =
 			(a->info.datatype == w->info.datatype) &&
 			(a->info.datatype == b->info.datatype);
@@ -140,7 +140,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				break;
 			}
 		}
-		
+
 		const int is_same_batch =
 			(a_batch_size == w_batch_size) &&
 			(a_batch_size == b_batch_size);
@@ -166,11 +166,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 			}
 		}
-		
+
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (is_mfa_compatible_batch || !is_batched) && !bias;
-		
+
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
 			if (is_mfa_supported)
@@ -200,7 +200,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 			}
 		}
-		
+
 		if (is_mfa_supported)
 		{
 			// On supported devices, use Metal directly.
@@ -238,7 +238,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 			}
 			ccv_nnc_mfa_sync_prepare_gemm(context, params);
-			
+
 			// Creating a new command buffer has a >10 µs penalty CPU-side. Still
 			// faster the >50 µs penalty for MPSGraph (probably why
 			// MPSMatrixMultiplication is faster for GEMM).
@@ -255,7 +255,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				b->dataof, // C offset
 			};
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
-			
+
 			// TODO: Add this diagnostic once we consistently capture >>1 commands/batch.
 //			if (METAL_LOG_LEVEL(context) >= 3) {
 //				if (command_batch->batched_command_count == 0) {
@@ -267,7 +267,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 //				}
 //			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-			
 			// TODO: Try to use `fused_activation` for with bias case.
 		} else {
 			// Otherwise, incur the ~10-50 microsecond latency of MPS.
