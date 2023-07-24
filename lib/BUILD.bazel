@@ -372,7 +372,7 @@ cuda_library(
 
 cc_library(
 	name = "nnc_mfa_compat",
-	srcs = glob(["nnc/mfa/**/*.cpp"]),
+	srcs = glob(["nnc/mfa/**/*.cpp", "nnc/mfa/**/*.inc"]),
 	hdrs = glob(["nnc/mfa/**/*.hpp"]),
 	copts = ccv_default_copts(),
 	deps = [
