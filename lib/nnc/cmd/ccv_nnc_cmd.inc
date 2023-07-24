@@ -565,8 +565,10 @@ void _register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc
 void _register_command_CCV_NNC_EWSQRT_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_GELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_INDEX_SELECT_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_LEAKY_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_LEAKY_RELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GROUP_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -988,8 +990,10 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWSQRT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[60].backends[6]));
 	_register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[50].backends[6]));
 	_register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[90].backends[6]));
+	_register_command_CCV_NNC_GELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[91].backends[6]));
 	_register_command_CCV_NNC_INDEX_SELECT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[124].backends[6]));
 	_register_command_CCV_NNC_LEAKY_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[112].backends[6]));
+	_register_command_CCV_NNC_LEAKY_RELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[113].backends[6]));
 	_register_command_CCV_NNC_MSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[32].backends[6]));
 	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[120].backends[6]));
 	_register_command_CCV_NNC_GROUP_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[96].backends[6]));
