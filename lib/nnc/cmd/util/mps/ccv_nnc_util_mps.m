@@ -29,11 +29,11 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
 				id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
-				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 				[buffer_a release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY) {
@@ -44,11 +44,11 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const size_t aligned_size = ((size + offset_b + vm_page_size - 1) & -vm_page_size);
 			@autoreleasepool {
 				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
-				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 				[buffer_b release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
@@ -62,11 +62,11 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			const off_t offset_a = mpgetoffset(a);
 			const off_t offset_b = mpgetoffset(b);
 			@autoreleasepool {
-				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
-				ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 			}
 		}
 	}
@@ -96,7 +96,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
@@ -115,7 +115,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1);
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -142,7 +142,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	int i, j;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
@@ -158,7 +158,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			[shape release];
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], &a, (int*[]){ a->info.dim }, (int*[]){ a->stride }, 1);
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -167,7 +167,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	int i, j;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
@@ -183,7 +183,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			[shape release];
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], &a, (int*[]){ a->info.dim }, (int*[]){ a->stride }, 1);
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -211,7 +211,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
@@ -311,7 +311,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				ccv_nnc_mps_export_data(data_a, command_buffer, &bt, bdim, bstride);
 			[graph release];
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -339,7 +339,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_get_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
@@ -362,7 +362,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			} else
 				ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
 		}
-		ccv_nnc_stream_context_commit_command_buffer(stream_context, command_buffer);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

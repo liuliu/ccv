@@ -31,6 +31,17 @@ cc_library(
 )
 
 cc_library(
+	name = "metal_cpp_hdrs",
+	srcs = [
+		"nnc/mfa/3rdparty/metal-cpp/Dispatch.cpp",
+	],
+	hdrs = [
+		"nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp",
+		"nnc/mfa/3rdparty/metal-cpp/Metal.hpp",
+	],
+)
+
+cc_library(
 	name = "siphash",
 	srcs = [
 		"3rdparty/siphash/siphash24.c"
@@ -359,6 +370,17 @@ cuda_library(
 	]
 )
 
+cc_library(
+	name = "nnc_mfa_compat",
+	srcs = glob(["nnc/mfa/**/*.cpp"]),
+	hdrs = glob(["nnc/mfa/**/*.hpp"]),
+	copts = ccv_default_copts(),
+	deps = [
+		":metal_cpp_hdrs",
+		":nnc_headers"
+	]
+)
+
 objc_library(
 	name = "nnc_mps_compat",
 	non_arc_srcs = [
@@ -370,8 +392,9 @@ objc_library(
 	copts = ccv_default_copts(),
 	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph"],
 	deps = [
+		":nnc_mfa_compat",
 		":nnc_headers",
-		":SFMT_hdrs",
+		":SFMT_hdrs"
 	]
 )
 
@@ -417,6 +440,7 @@ objc_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
+		":nnc_mfa_compat",
 		":nnc_mps_compat",
 	]
 )
@@ -516,6 +540,7 @@ cc_library(
 		"//conditions:default": []
 	}) + select({
 		"//config:have_mps": [
+			":nnc_mfa_compat",
 			":nnc_mps_compat",
 			":cmd_mps"
 		],
