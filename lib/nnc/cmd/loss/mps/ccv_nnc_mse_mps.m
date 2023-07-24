@@ -36,25 +36,22 @@ static int _ccv_nnc_mse_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			[inputTensors addObject:mps_input_b];
 			MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 			[inputShapedTypes addObject:mps_b_shape];
-            
-            MPSGraphTensor* diffTensor = [graph subtractionWithPrimaryTensor:mps_a
-                                                          secondaryTensor:mps_b
-                                                                     name:nil];
-            MPSGraphTensor* diffSquareTensor = [graph squareWithTensor:diffTensor name:nil];
-            NSUInteger axesCount = ccv_nnc_tensor_nd(a->info.dim);
-            NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
+			MPSGraphTensor* diffTensor = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil];
+			MPSGraphTensor* diffSquareTensor = [graph squareWithTensor:diffTensor name:nil];
+			NSUInteger axesCount = ccv_nnc_tensor_nd(a->info.dim);
+			NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
 			int i;
 			for (i = 0; i < a_nd; i++) {
 				if (a->info.dim[i] != c->info.dim[i])
 					[axes addObject:@(i)];
 			}
-            MPSGraphTensor* mps_c;
-            if (cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN) {
-                mps_c = [graph meanOfTensor:diffSquareTensor axes:axes name:nil];
-            } else {
-                assert(cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_SUM);
-                mps_c = [graph reductionSumWithTensor:diffSquareTensor axes:axes name:nil];
-            }
+			MPSGraphTensor* mps_c;
+			if (cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_MEAN) {
+				mps_c = [graph meanOfTensor:diffSquareTensor axes:axes name:nil];
+			} else {
+				assert(cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_SUM);
+				mps_c = [graph reductionSumWithTensor:diffSquareTensor axes:axes name:nil];
+			}
 			[resultTensors addObject:mps_c];
 		});
 
