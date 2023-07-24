@@ -44,7 +44,7 @@ static void _ccv_nnc_mse_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const c
 }
 
 REGISTER_COMMAND(CCV_NNC_MSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_mse_cpu_ref.c, gpu/ccv_nnc_mse_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_mse_cpu_ref.c, gpu/ccv_nnc_mse_gpu_ref.cu, mps/ccv_nnc_mse_mps.m)
 {
 	registry->bitmask = _ccv_nnc_mse_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_mse_tensor_auto_forw;
