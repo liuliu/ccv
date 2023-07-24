@@ -281,7 +281,11 @@ commands = $command_backends.map(&:command).uniq.map do |command|
 	end
 end.uniq
 
+commands.sort!
+
 backends = $command_backends.map(&:backend).uniq
+
+backends.sort!
 
 command_map = {}
 commands.each do |command|
