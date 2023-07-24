@@ -37,7 +37,14 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3)
   for (int i = 0; i < num_tensors; ++i) {
-    encoder->useResource(tensors[i], i < 2 ? MTL::ResourceUsageRead : MTL::ResourceUsageWrite);
+    if (i < 2) {
+      encoder->useResource(tensors[i], MTL::ResourceUsageRead);
+    } else if (i < 3) {
+      encoder->useResource(tensors[i], MTL::ResourceUsageWrite);
+    } else {
+      // This should never happen.
+      CCV_NNC_MFA_PRECONDITION(false);
+    }
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
