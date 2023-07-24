@@ -58,10 +58,10 @@ static int _ccv_nnc_leaky_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 			[inputShapedTypes addObject:mps_b_shape];
 
-			MPSGraphTensor* alphaTensor = [graph constantWithScalar:alpha dataType:[mps_b dataType]];
+			MPSGraphTensor* alpha_tensor = [graph constantWithScalar:alpha dataType:[mps_b dataType]];
 			MPSGraphTensor* mps_h = [graph leakyReLUGradientWithIncomingGradient:mps_g
                                              sourceTensor:mps_b
-                                              alphaTensor:alphaTensor
+                                              alphaTensor:alpha_tensor
                                                      name:nil];
 			
 			[resultTensors addObject:mps_h];

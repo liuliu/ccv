@@ -61,17 +61,17 @@ MPSGraphTensor* normcdf(MPSGraph* mpsGraph, MPSGraphTensor* inputTensor) {
   MPSGraphTensor* onef = [mpsGraph constantWithScalar:1.0f shape:@[ @1 ] dataType:dataType];
   MPSGraphTensor* halff = [mpsGraph constantWithScalar:0.5f shape:@[ @1 ] dataType:dataType];
 
-  MPSGraphTensor* erfTensor = [mpsGraph multiplicationWithPrimaryTensor:inputTensor secondaryTensor:sqrt1_2 name:nil];
-  erfTensor = [mpsGraph erfWithTensor:erfTensor name:nil];
-  erfTensor = [mpsGraph additionWithPrimaryTensor:erfTensor secondaryTensor:onef name:nil];
-  erfTensor = [mpsGraph multiplicationWithPrimaryTensor:erfTensor secondaryTensor:halff name:nil];
+  MPSGraphTensor* erf_tensor = [mpsGraph multiplicationWithPrimaryTensor:inputTensor secondaryTensor:sqrt1_2 name:nil];
+  erf_tensor = [mpsGraph erfWithTensor:erf_tensor name:nil];
+  erf_tensor = [mpsGraph additionWithPrimaryTensor:erf_tensor secondaryTensor:onef name:nil];
+  erf_tensor = [mpsGraph multiplicationWithPrimaryTensor:erf_tensor secondaryTensor:halff name:nil];
 
-  return erfTensor;
+  return erf_tensor;
 }
 
 static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size >= 2);
 	assert(output_size == 1);
 	const ccv_nnc_tensor_view_t* const g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -97,16 +97,14 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSDataType dataType = mps_b.dataType;
 			MPSGraphTensor* mps_h;
 			if (cmd.info.gelu.tanh) {
-				 float kBeta = 0.797884560802865355 * (0.5f);
-				 float kKappa = 0.044715f;
+				float kBeta = 0.797884560802865355 * (0.5f);
+				float kKappa = 0.044715f;
 				MPSGraphTensor* betaf = [graph constantWithScalar:kBeta shape:@[ @1 ] dataType:dataType];
 				MPSGraphTensor* kappaf = [graph constantWithScalar:kKappa shape:@[ @1 ] dataType:dataType];
 				MPSGraphTensor* halff = [graph constantWithScalar:0.5f shape:@[ @1 ] dataType:dataType];
 				MPSGraphTensor* onef = [graph constantWithScalar:1.0f shape:@[ @1 ] dataType:dataType];
 				MPSGraphTensor* threef = [graph constantWithScalar:3.0f shape:@[ @1 ] dataType:dataType];
-				MPSGraphTensor* x_sq = [graph multiplicationWithPrimaryTensor:inputTensor
-																secondaryTensor:inputTensor
-																			name:nil];
+				MPSGraphTensor* x_sq = [graph multiplicationWithPrimaryTensor:inputTensor secondaryTensor:inputTensor name:nil];
 				MPSGraphTensor* x_cube = [graph multiplicationWithPrimaryTensor:x_sq secondaryTensor:inputTensor name:nil];
 				MPSGraphTensor* inner = [graph multiplicationWithPrimaryTensor:kappaf secondaryTensor:x_cube name:nil];
 				inner = [graph additionWithPrimaryTensor:inner secondaryTensor:inputTensor name:nil];
@@ -114,32 +112,21 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphTensor* tanhInner = [graph tanhWithTensor:inner name:nil];
 				MPSGraphTensor* left = [graph multiplicationWithPrimaryTensor:halff secondaryTensor:inputTensor name:nil];
 				MPSGraphTensor* right = [graph additionWithPrimaryTensor:onef secondaryTensor:tanhInner name:nil];
-				MPSGraphTensor* left_derivative = [graph multiplicationWithPrimaryTensor:halff
-																			secondaryTensor:right
-																					name:nil];
-				MPSGraphTensor* tanh_derivative = [graph multiplicationWithPrimaryTensor:tanhInner
-																			secondaryTensor:tanhInner
-																					name:nil];
+				MPSGraphTensor* left_derivative = [graph multiplicationWithPrimaryTensor:halff secondaryTensor:right name:nil];
+				MPSGraphTensor* tanh_derivative = [graph multiplicationWithPrimaryTensor:tanhInner secondaryTensor:tanhInner name:nil];
 				tanh_derivative = [graph subtractionWithPrimaryTensor:onef secondaryTensor:tanh_derivative name:nil];
-				MPSGraphTensor* inner_derivative = [graph multiplicationWithPrimaryTensor:threef
-																			secondaryTensor:kappaf
-																						name:nil];
+				MPSGraphTensor* inner_derivative = [graph multiplicationWithPrimaryTensor:threef secondaryTensor:kappaf name:nil];
 				inner_derivative = [graph multiplicationWithPrimaryTensor:inner_derivative secondaryTensor:x_sq name:nil];
 				inner_derivative = [graph additionWithPrimaryTensor:inner_derivative secondaryTensor:onef name:nil];
 				inner_derivative = [graph multiplicationWithPrimaryTensor:betaf secondaryTensor:inner_derivative name:nil];
-				MPSGraphTensor* right_derivative = [graph multiplicationWithPrimaryTensor:left
-																			secondaryTensor:tanh_derivative
-																						name:nil];
-				right_derivative = [graph multiplicationWithPrimaryTensor:right_derivative
-															secondaryTensor:inner_derivative
-																		name:nil];
+				MPSGraphTensor* right_derivative = [graph multiplicationWithPrimaryTensor:left secondaryTensor:tanh_derivative name:nil];
+				right_derivative = [graph multiplicationWithPrimaryTensor:right_derivative secondaryTensor:inner_derivative name:nil];
 				mps_h = [graph additionWithPrimaryTensor:left_derivative secondaryTensor:right_derivative name:nil];
-				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h name:nil];
-																		
+				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h name:nil];			
 			} else {
 				float kBeta = 0.797884560802865355;
-        		MPSGraphTensor* halff = [graph constantWithScalar:-0.5f shape:@[ @1 ] dataType:dataType];
-				MPSGraphTensor* betaf = [graph constantWithScalar:kBeta shape:@[ @1 ] dataType:dataType];
+				MPSGraphTensor* halff = [graph constantWithScalar:-0.5f dataType:dataType];
+				MPSGraphTensor* betaf = [graph constantWithScalar:kBeta dataType:dataType];
 				MPSGraphTensor* cdf = normcdf(graph, inputTensor);
 				MPSGraphTensor* pdfMul = [graph squareWithTensor:inputTensor name:nil];
 				pdfMul = [graph multiplicationWithPrimaryTensor:pdfMul secondaryTensor:halff name:nil];
@@ -147,7 +134,7 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphTensor* pdf = [graph multiplicationWithPrimaryTensor:pdfMul secondaryTensor:betaf name:nil];
 				pdf = [graph multiplicationWithPrimaryTensor:inputTensor secondaryTensor:pdf name:nil];
 				pdf = [graph additionWithPrimaryTensor:pdf secondaryTensor:cdf name:nil];
-        		mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:pdf name:nil];			
+				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:pdf name:nil];			
 			}
 			
 			[resultTensors addObject:mps_h];
