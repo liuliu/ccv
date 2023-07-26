@@ -101,6 +101,122 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	printf("_ccv_nnc_conv_back\n");
+
+	// inputs: gradient, forw prop input, [w]
+	// outputs: [output gradient], weight updates, (no bias updates yet)
+	assert(input_size >= 2 && output_size >= 2);
+	const ccv_nnc_tensor_view_t* g = (const ccv_nnc_tensor_view_t*)inputs[0]; // gradients input
+	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1]; // forward input
+	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[2]; // weights input
+
+	ccv_nnc_tensor_view_t* w_updates = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0; // weight_update
+	assert(CCV_IS_TENSOR_CONTIGUOUS(w_updates));
+	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
+	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+	{
+		if (w_updates)
+			memset(w_updates->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w_updates->info));
+	}
+	
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(g, gdim);
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	int hdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(h, hdim);
+	int hstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(h, hstride);
+	int adim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(a, adim);
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	int wdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(w, wdim);
+	int wstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(w, wstride);
+	int wudim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(w_updates, wudim);
+	int wustride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(w_updates, wustride);
+	assert(w->info.format == CCV_TENSOR_FORMAT_NCHW);
+	
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
+		int* gdim_r = gdim;
+		int* gstride_r = gstride;
+		int* hdim_r = hdim;
+		int* hstride_r = hstride;
+		int* adim_r = adim;
+		int* astride_r = astride;
+		int* wdim_r = wdim;
+		int* wstride_r = wstride;
+		int* wudim_r = wudim;
+		int* wustride_r = wustride;
+		int indices[3];
+
+		// [output gradient]
+		MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+			MPSGraphTensor* mps_input_g;
+			MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, gdim_r, gstride_r, &mps_input_g);
+			MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, hdim_r, gstride_r);
+			[inputTensors addObject:mps_g];
+			[inputShapedTypes addObject:mps_g_shape];
+
+			MPSGraphTensor* mps_input_w;
+			MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w, wdim_r, wstride_r, &mps_input_w);
+			MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w, wdim_r, wstride_r);
+			[inputTensors addObject:mps_w];
+			[inputShapedTypes addObject:mps_w_shape];
+
+			MPSGraphShapedType* mps_h_shape = ccv_nnc_mps_graph_tensor_input_shape(h, hdim_r, hstride_r);
+			MPSGraphConvolution2DOpDescriptor* descriptor = [MPSGraphConvolution2DOpDescriptor descriptorWithStrideInX:hint.stride.dim[1] strideInY:hint.stride.dim[0] dilationRateInX:1 dilationRateInY:1 groups:cmd.info.convolution.groups paddingLeft:hint.border.begin[1] paddingRight:hint.border.end[1] paddingTop:hint.border.begin[0] paddingBottom:hint.border.end[0] paddingStyle:MPSGraphPaddingStyleExplicit dataLayout:MPSGraphTensorNamedDataLayoutNCHW weightsLayout:MPSGraphTensorNamedDataLayoutOIHW];
+			printf("// gradient updates		\n");
+			// gradient updates		
+			MPSGraphTensor* mps_h = [graph convolution2DDataGradientWithIncomingGradientTensor:mps_g
+                                                                          weightsTensor:mps_w
+                                                                            outputShape:mps_h_shape.shape
+                                                           forwardConvolutionDescriptor:descriptor
+                                                                                   name:nil];
+			[resultTensors addObject:mps_h];
+
+			MPSGraphTensor* mps_input_a;
+			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim_r, astride_r, &mps_input_a);
+			MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
+			[inputTensors addObject:mps_a];
+			[inputShapedTypes addObject:mps_a_shape];
+
+			MPSGraphShapedType* mps_wu_shape = ccv_nnc_mps_graph_tensor_input_shape(w_updates, wudim_r, wustride_r);
+
+			MPSGraphConvolution2DOpDescriptor* wu_descriptor = [MPSGraphConvolution2DOpDescriptor descriptorWithStrideInX:hint.stride.dim[1] strideInY:hint.stride.dim[0] dilationRateInX:1 dilationRateInY:1 groups:cmd.info.convolution.groups paddingLeft:hint.border.begin[1] paddingRight:hint.border.end[1] paddingTop:hint.border.begin[0] paddingBottom:hint.border.end[0] paddingStyle:MPSGraphPaddingStyleExplicit dataLayout:MPSGraphTensorNamedDataLayoutNCHW weightsLayout:MPSGraphTensorNamedDataLayoutOIHW];			
+			// weight updates
+			printf("// weight updates		\n");
+
+			MPSGraphTensor* mps_wu = [graph convolution2DWeightsGradientWithIncomingGradientTensor:mps_g
+                                                                          	  sourceTensor:mps_a
+                                                                            outputShape:mps_wu_shape.shape
+                                                           forwardConvolutionDescriptor:wu_descriptor
+                                                                                   name:nil];
+
+			[resultTensors addObject:mps_wu];
+
+		});
+		printf("// ccv_nnc_mps_graph_tensor_data		\n");
+
+		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
+		MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
+		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+
+		MPSGraphTensorData* data[] = {data_g, data_w, data_a};
+		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]],  data[indices[2]]], (ccv_nnc_tensor_view_t* []){ h, w_updates }, (int*[]){ hdim, wudim }, (int*[]){ hstride, wustride }, 2);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
@@ -110,3 +226,11 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_n
 	registry->exec = _ccv_nnc_conv_forw;
 }
 
+REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_conv_back;
+}
