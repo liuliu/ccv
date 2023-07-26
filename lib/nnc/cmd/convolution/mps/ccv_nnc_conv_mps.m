@@ -115,11 +115,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* dw = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0; // weight_update
 	assert(CCV_IS_TENSOR_CONTIGUOUS(dw));
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
-	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-	{
-		if (dw)
-			memset(dw->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(dw->info));
-	}
 	
 	int gdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(g, gdim);
