@@ -156,8 +156,6 @@ TEST_CASE("swish gradient in float")
 
 TEST_CASE("mps swish gradient in float")
 {
-	ccv_cli_set_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
-
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWISH_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SWISH_BACKWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
@@ -195,29 +193,13 @@ TEST_CASE("mps swish gradient in float")
 	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
 	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_from_symbol(tensor_arena, y);
-	printf("\ndx_tensor\n");
-	ccv_nnc_print_tensor_info(dx_tensor);
-	printf("\n");
-
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(dx_tensor), 0);
-	printf("\ndx_tensor\n");
-	ccv_nnc_print_tensor_info(dx_tensor);
-	printf("\n");
-
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y_tensor), 0);
 	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SWISH_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
 	REQUIRE_TENSOR_EQ(ty_tensor, y_tensor, "forward pass should match");
 	ccv_nnc_tensor_t* const tdx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SWISH_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, x_tensor, 0), TENSOR_LIST(tdx_tensor), 0);
-	
-	printf("\ntdx_tensor\n");
-	ccv_nnc_print_tensor_info(tdx_tensor);
-
-	printf("\ndx_tensor\n");
-	ccv_nnc_print_tensor_info(dx_tensor);
-	printf("\n");
-
 	REQUIRE_TENSOR_EQ(tdx_tensor, dx_tensor, "backward pass should match");
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(y_tensor);
