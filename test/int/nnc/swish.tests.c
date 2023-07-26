@@ -3,7 +3,6 @@
 #include "ccv_nnc_case.h"
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
-#include "nnc/ccv_nnc_internal.h"
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 
