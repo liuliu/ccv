@@ -174,7 +174,9 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
-	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype);
+	const int is_w_nhwc = (output_size > 1 && outputs[1]) ? outputs[1]->info.format == CCV_TENSOR_FORMAT_NHWC : inputs[2]->info.format == CCV_TENSOR_FORMAT_NHWC;
+	const int w_datatype = (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype;
+	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (is_w_nhwc && w_datatype == CCV_16F) ? CCV_32F : w_datatype);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 
 	static const float one = 1, zero = 0;
@@ -312,7 +314,9 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	int i;
 	int count = 0;
-	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype);
+	const int is_w_nhwc = (output_size > 1 && outputs[1]) ? outputs[1]->info.format == CCV_TENSOR_FORMAT_NHWC : inputs[2]->info.format == CCV_TENSOR_FORMAT_NHWC;
+	const int w_datatype = (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype;
+	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (is_w_nhwc && w_datatype == CCV_16F) ? CCV_32F : w_datatype);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 	cudnnConvolutionBwdFilterAlgo_t filter_algorithm = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
 	if (output_size > 1 && outputs[1])

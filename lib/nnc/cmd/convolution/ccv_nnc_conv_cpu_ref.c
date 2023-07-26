@@ -172,13 +172,12 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(cmd.info.convolution.count % groups == 0);
 	const int group_size = cmd.info.convolution.count / groups;
 	const int channel_size = w ? w->info.dim[CCV_NNC_MAX_DIM + 1] : inputs[2]->info.dim[CCV_NNC_MAX_DIM + 1];
+	const int batch_size = (a_nd == CCV_NNC_MAX_DIM + 2) ? a->info.dim[0] : 1;
 	if (w)
 	{
 		parallel_for(k, cmd.info.convolution.count) {
 			int c;
 			const int gidx = k / group_size;
-			float* ap = a->data.f32;
-			float* gp = g->data.f32 + k;
 			// kernel weight for one dim.
 			float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
 			float biasval = 0;
@@ -186,30 +185,36 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			int n[CCV_NNC_MAX_DIM];
 			int m[CCV_NNC_MAX_DIM];
 			int j[CCV_NNC_MAX_DIM];
-			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+			int bidx;
+			for (bidx = 0; bidx < batch_size; bidx++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
-				float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-				for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+				const float* ap = a->data.f32 + bidx * astride[0];
+				const float* gp = g->data.f32 + bidx * gstride[0] + k;
+				for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
-					const float v = gp[i[1] * gdim[CCV_NNC_MAX_DIM]];
-					if (v == 0) // shortcut if v is zero
-						continue;
-					biasval += v;
-					float* wpz = wpu + n[1] * channel_size;
-					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
+					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+					float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
+					for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 					{
-						for (j[1] = 0; j[1] < m[1]; j[1]++)
-							for (c = 0; c < channel_size; c++)
-								wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
-						wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-						apz += astride[CCV_NNC_MAX_DIM - 1];
+						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
+						const float v = gp[i[1] * gstride[CCV_NNC_MAX_DIM]];
+						if (v == 0) // shortcut if v is zero
+							continue;
+						biasval += v;
+						float* wpz = wpu + n[1] * channel_size;
+						const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
+						for (j[0] = 0; j[0] < m[0]; j[0]++)
+						{
+							for (j[1] = 0; j[1] < m[1]; j[1]++)
+								for (c = 0; c < channel_size; c++)
+									wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
+							wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
+							apz += astride[CCV_NNC_MAX_DIM - 1];
+						}
 					}
+					gp += gstride[CCV_NNC_MAX_DIM - 1];
+					ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 				}
-				gp += gstride[CCV_NNC_MAX_DIM - 1];
-				ap += astride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 			}
 			if (bias)
 				bias->data.f32[k] = biasval;
@@ -221,19 +226,23 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(h);
 		const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
 		assert(h_nd == CCV_NNC_MAX_DIM + 1 || h_nd == CCV_NNC_MAX_DIM + 2);
+		const int* hdim = (h_nd == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
 		int hstride[CCV_NNC_MAX_DIM_ALLOC];
 		ccv_nnc_tensor_view_get_stride(h, hstride);
 		// reset it to 0.
 		ccv_nnc_tensor_zero(h);
 		w = inputs[2];
 		assert(CCV_IS_TENSOR_CONTIGUOUS(w));
-		int k, gidx;
-		for (gidx = 0; gidx < groups; gidx++)
-			for (k = gidx * group_size; k < (gidx + 1) * group_size; k++)
+		int bidx;
+		for (bidx = 0; bidx < batch_size; bidx++)
+		{
+			int k;
+			for (k = 0; k < cmd.info.convolution.count; k++)
 			{
 				int c;
-				float* hp = h->data.f32;
-				float* gp = g->data.f32 + k;
+				const int gidx = k / group_size;
+				float* hp = h->data.f32 + bidx * hstride[0];
+				const float* gp = g->data.f32 + bidx * gstride[0] + k;
 				// kernel weight for one dim.
 				float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * channel_size;
 				// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
@@ -243,15 +252,15 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				int j[CCV_NNC_MAX_DIM];
 				for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, h->info.dim, n, m);
-					float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
+					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, hdim, n, m);
+					const float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
 					for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 					{
-						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, h->info.dim, n, m);
+						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, hdim, n, m);
 						const float v = gp[i[1] * gstride[CCV_NNC_MAX_DIM]];
 						if (v == 0) // shortcut if v is zero
 							continue;
-						float* wpz = wpu + n[1] * channel_size;
+						const float* wpz = wpu + n[1] * channel_size;
 						float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hstride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 						for (j[0] = 0; j[0] < m[0]; j[0]++)
 						{
@@ -266,6 +275,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					hp += hstride[CCV_NNC_MAX_DIM - 1] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 				}
 			}
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
