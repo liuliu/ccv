@@ -207,8 +207,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		printf("// ccv_nnc_mps_graph_tensor_data		\n");
 
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, gdim, gstride);
-		MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
-		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+		MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, wdim, wstride);
+		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
 
 		MPSGraphTensorData* data[] = {data_g, data_w, data_a};
 		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]],  data[indices[2]]], (ccv_nnc_tensor_view_t* []){ h, dw }, (int*[]){ hdim, dw_dim }, (int*[]){ hstride, dw_stride }, 2);
