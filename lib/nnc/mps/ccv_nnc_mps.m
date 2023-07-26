@@ -1070,12 +1070,8 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 	int i;
 	NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 	NSInteger full_count, partial_count;
-	printf("lol\n");
-
 	if (CCV_IS_TENSOR_VIEW(tensor_view))
 	{
-			printf("yoyo \n");
-
 		int sorted_dim[CCV_NNC_MAX_DIM_ALLOC];
 		int sorted_stride[CCV_NNC_MAX_DIM_ALLOC];
 		for (i = 0; i < nd; i++)
@@ -1121,10 +1117,10 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 			for (i = 0; i < nd; i++)
 				[shape addObject:@(dim[i])];
 	}
-	NSLog(@"here\n");
 	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor_view);
-	NSLog(@"buffer :%@, shape: %@, dataType:%@ \n", buffer, shape, ccv_nnc_mps_datatype(tensor_view->info.datatype));
+	printf("buffer :%s, shape: %s, dataType:%d \n", buffer.description.UTF8String, shape.description.UTF8String, tensor_view->info.datatype );
 	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+	printf("MPSGraphTensorData success \n");
 	[shape release];
 	return [data autorelease];
 }
