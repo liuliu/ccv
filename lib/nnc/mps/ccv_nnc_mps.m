@@ -1118,9 +1118,7 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 				[shape addObject:@(dim[i])];
 	}
 	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor_view);
-	printf("buffer :%s, shape: %s, dataType:%d \n", buffer.description.UTF8String, shape.description.UTF8String, tensor_view->info.datatype );
 	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
-	printf("MPSGraphTensorData success \n");
 	[shape release];
 	return [data autorelease];
 }
