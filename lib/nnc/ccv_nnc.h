@@ -230,6 +230,10 @@ typedef struct {
 		struct {
 			float negative_slope; /**< [leaky_relu.negative_slop] The negative slope to be applied when activation < 0. */
 		} leaky_relu;
+		struct {
+			float scale; /**< [scaled_dot_product_attention.scale] The scale we multiple to the dot product of Q & K */
+			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
+		} scaled_dot_product_attention;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
