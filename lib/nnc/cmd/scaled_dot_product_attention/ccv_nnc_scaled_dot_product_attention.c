@@ -5,7 +5,7 @@
 static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 5 inputs (query, key, value, [unify head weight], [unify head bias], [attn_mask])
-	// 2 outputs (y, [softmax])
+	// 3 outputs (y, [softmax], [qkv])
 	if ((input_bitmasks[0] & 7u) == 7u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
@@ -32,7 +32,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back_bitmask(const int input_si
 static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	assert(input_size >= 3);
-	assert(output_size == 1);
+	assert(output_size >= 1);
 	outputs[0] = inputs[0];
 	if (output_size == 1)
 		return;
