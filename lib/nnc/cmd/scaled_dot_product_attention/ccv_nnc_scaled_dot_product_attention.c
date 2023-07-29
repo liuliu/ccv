@@ -4,9 +4,11 @@
 
 static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 5 inputs (query, key, value, [unify head weight], [unify head bias], [attn_mask])
+	// 5 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
 	// 3 outputs (y, [softmax], [qkv])
-	if ((input_bitmasks[0] & 7u) == 7u && (output_bitmasks[0] & 1u) == 1u)
+	if ((input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 5u) == 5u)
+		return 1;
+	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
 }
@@ -33,15 +35,32 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 {
 	assert(input_size >= 3);
 	assert(output_size >= 1);
-	outputs[0] = inputs[0];
-	if (output_size == 1)
-		return;
-	int i, j;
-	for (i = 1; i < output_size; i++)
+	const int q_nd = ccv_nnc_tensor_nd(inputs[0].dim);
+	assert(q_nd == 3 || q_nd == 4);
+	const int k_nd = ccv_nnc_tensor_nd(inputs[1].dim);
+	assert(k_nd == 3 || k_nd == 4);
+	const int v_nd = ccv_nnc_tensor_nd(inputs[2].dim);
+	assert(v_nd == 3 || v_nd == 4);
+	assert(q_nd == k_nd && k_nd == v_nd);
+	if (input_size >= 4)
 	{
-		outputs[i] = inputs[0];
-		for (j = 0; j < cmd.bnorm.count; j++)
-			outputs[i].dim[cmd.bnorm.axis[j]] = 1; // Reduce the dimension to 1.
+		assert(output_size >= 3);
+		outputs[0] = inputs[0];
+		outputs[0].dim[1] = inputs[0].dim[2]; // sequence length matches query, embedding size matches value * num_head.
+		outputs[0].dim[2] = inputs[2].dim[v_nd - 1] * (q_nd == 4 ? inputs[0].dim[1] : 1);
+		outputs[0].dim[3] = 0;
+		outputs[1] = inputs[0];
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 2]; // saved softmax should have sequence length of query x key.
+		outputs[2] = inputs[0];
+		outputs[2].dim[q_nd - 1] = inputs[2].dim[v_nd - 1]; // sequence length matches query, embedding size matches value.
+	} else {
+		outputs[0] = inputs[0];
+		outputs[0].dim[q_nd - 1] = inputs[2].dim[v_nd - 1]; // sequence length matches query, embedding size matches value.
+		if (output_size == 1)
+			return;
+		assert(output_size > 1);
+		outputs[1] = inputs[0];
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 2]; // saved softmax should have sequence length of query x key.
 	}
 }
 

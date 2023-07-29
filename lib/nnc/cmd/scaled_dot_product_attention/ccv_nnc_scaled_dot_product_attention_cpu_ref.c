@@ -20,11 +20,11 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t* const w = input_size > 3 ? (ccv_nnc_tensor_view_t*)inputs[3] : 0;
-	ccv_nnc_tensor_view_t* const bias = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
+	ccv_nnc_tensor_view_t* const attn_mask = input_size > 3 ? (ccv_nnc_tensor_view_t*)inputs[3] : 0;
+	ccv_nnc_tensor_view_t* const w = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
+	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
-	ccv_nnc_tensor_view_t* const attn_mask = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	ccv_nnc_tensor_view_t* const c = (w) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const saved_softmax = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);

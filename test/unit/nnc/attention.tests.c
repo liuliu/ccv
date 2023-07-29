@@ -134,7 +134,7 @@ TEST_CASE("implement scaled dot product attention + unify head output with fine-
 	ccv_nnc_tensor_symbol_t bbias = ccv_nnc_tensor_symbol_new(sdp_symbolic_graph, CPU_TENSOR_NHWC(32F, 768), "bias");
 	ccv_nnc_tensor_symbol_t bc = ccv_nnc_tensor_symbol_new(sdp_symbolic_graph, CPU_TENSOR_NHWC(32F, 32, 8, 128, 96), "c");
 	ccv_nnc_tensor_symbol_t br = ccv_nnc_tensor_symbol_new(sdp_symbolic_graph, CPU_TENSOR_NHWC(32F, 32, 128, 768), "r");
-	ccv_nnc_graph_exec_symbol_new(sdp_symbolic_graph, CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / 8, 0), TENSOR_SYMBOL_LIST(bq, bk, bv, bw, bbias), TENSOR_SYMBOL_LIST(br, NO_TENSOR_SYMBOL, bc), "scaled_dot_product_attention");
+	ccv_nnc_graph_exec_symbol_new(sdp_symbolic_graph, CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / 8, 0), TENSOR_SYMBOL_LIST(bq, bk, bv, NO_TENSOR_SYMBOL, bw, bbias), TENSOR_SYMBOL_LIST(br, NO_TENSOR_SYMBOL, bc), "scaled_dot_product_attention");
 	ccv_nnc_graph_exec_symbol_autogen(sdp_symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_graph_t* sdp_graph = 0;
 	ccv_nnc_tensor_arena_t* sdp_tensor_arena = 0;
