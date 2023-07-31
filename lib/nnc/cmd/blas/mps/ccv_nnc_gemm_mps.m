@@ -173,7 +173,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (is_mfa_compatible_batch || !is_batched) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
 
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
@@ -194,7 +194,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				{
 					ccv_nnc_mfa_log_message("  Unsupported data type.");
 				}
-				if (!is_mfa_compatible_batch && is_batched)
+				if (is_batched && !is_mfa_compatible_batch)
 				{
 					ccv_nnc_mfa_log_message("  Unsupported batch.");
 				}
