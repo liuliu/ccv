@@ -135,14 +135,21 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         }
       }
       
-      // Add fallback reason for unsupported batch.
       if (is_batched && !is_mfa_compatible_batch) {
         use_mfa = false;
         fallback_reason = "Unsupported batch.";
       }
+      
+      // For simplicity, omit the logic for transposing the output matrix
+      // between formats.
+      if (a->info.format != b->info.format) {
+        use_mfa = false;
+        fallback_reason = "Image layout conversion.";
+      }
     }
     
     if (use_mfa) {
+      // Height and width of the filter, not the image.
       const int W = wdim[w_nd - 1];
       const int H = wdim[w_nd - 2];
       
@@ -174,14 +181,11 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         (!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
         (bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
       if (!is_contiguous) {
+        // There is one real-world example of a Conv1x1 with non-contiguous
+        // tensors, but it's 1 out of 10-100 operations in the network.
         use_mfa = false;
         fallback_reason = "Strided.";
       }
-    }
-    
-    if (use_mfa) {
-      use_mfa = false;
-      fallback_reason = "Not implemented yet.";
     }
     
     if (METAL_LOG_LEVEL(context) >= 3) {
@@ -193,7 +197,103 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
       }
     }
     
-    if (!use_mfa) {
+    if (use_mfa) {
+      int O;
+      int H;
+      int W;
+      
+      // Bypass a compilation error from a header.
+#if __APPLE__
+#undef I
+#endif
+      int I;
+      assert(a->info.format == b->info.format);
+      if (a->info.format == CCV_TENSOR_FORMAT_NHWC) {
+        // HWxI -> MxK
+        I = adim[a_nd - 1];
+        W = adim[a_nd - 2];
+        H = adim[a_nd - 3];
+      } else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
+        // IxHW -> KxM
+        W = adim[a_nd - 1];
+        H = adim[a_nd - 2];
+        I = adim[a_nd - 3];
+      } else {
+        // This should never happen.
+        assert(false);
+      }
+      
+      // OxI -> NxK
+      assert(I == wdim[w_nd - 3]);
+      O = wdim[w_nd - 4];
+      
+      ccv_nnc_mfa_gemm_params_t params = {
+        .data_type = mtl_data_type,
+        .M = (uint32_t)(H * W),
+        .N = (uint32_t)O,
+        .K = (uint32_t)I,
+        .A_trans = (a->info.format == CCV_TENSOR_FORMAT_NHWC ? 0 : 1),
+        .B_trans = 1,
+        .D_trans = 0,
+        .alpha = (float)1.0,
+        .beta = (float)0.0,
+        .batched = is_batched,
+        .fused_activation_function = 0,
+        .fused_bias = (bias ? 1 : 0),
+        
+        .batch_dims_a = { 0 },
+        .batch_dims_b = { 0 },
+        .batch_dims_d = { 0 },
+      };
+      
+      // Bypass a compilation error from a header.
+#if __APPLE__
+#define I _Complex_I
+#endif
+      if (is_batched) {
+        // Create a null-terminated list of batch dimensions.
+        int A_batch_dim = a_nd - 3;
+        for (int i = 0; i < A_batch_dim; ++i) {
+          params.batch_dims_a[i] = adim[i];
+        }
+        if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+          params.batch_dims_a[A_batch_dim] = 0;
+        }
+        
+        int B_batch_dim = w_nd - 4;
+        for (int i = 0; i < B_batch_dim; ++i) {
+          params.batch_dims_b[i] = w->info.dim[i];
+        }
+        if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+          params.batch_dims_b[B_batch_dim] = 0;
+        }
+        
+        params.batch_dims_d[0] = 1;
+        params.batch_dims_d[1] = 0;
+      }
+      ccv_nnc_mfa_sync_prepare_gemm(context, params);
+      
+      mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+      mtl_buffer_t* bias_buffer = NULL;
+      if (bias) {
+        bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+      }
+      mtl_buffer_t* tensors[5] = {
+        mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+        mpgetbuffer((ccv_nnc_tensor_t*)w), // B
+        mpgetbuffer((ccv_nnc_tensor_t*)b), // C
+        bias_buffer, // D
+        NULL,
+      };
+      size_t tensor_offsets[4] = {
+        a->dataof, // A offset
+        w->dataof, // B offset
+        b->dataof, // C offset
+        bias ? bias->dataof : 0, // D offset
+      };
+      ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+      ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+    } else {
       MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
       ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
       int* adim_r = adim;
