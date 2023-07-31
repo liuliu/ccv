@@ -117,11 +117,13 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_contiguous =
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
-			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride));
+			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
+      (bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
 
 		const int is_same_dtype =
 			(a->info.datatype == w->info.datatype) &&
-			(a->info.datatype == b->info.datatype);
+			(a->info.datatype == b->info.datatype) &&
+      (bias ? (a->info.datatype == bias->info.datatype) : 1);
 		
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -157,6 +159,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		} else if (A_batch_size <= 0 || B_batch_size <= 0 || C_batch_size <= 0) {
 			// Invalid batch size.
 		} else {
+      // This does not check whether the D batch size matches the others. If it
+      // does not match, it will crash when encoding the GEMM command.
 			is_batched = 1;
 			if (A_batch_size == C_batch_size) {
 				if (A_batch_size == B_batch_size) {
@@ -169,7 +173,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (is_mfa_compatible_batch || !is_batched) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION) && !bias;
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (is_mfa_compatible_batch || !is_batched) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
 
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
@@ -190,13 +194,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				{
 					ccv_nnc_mfa_log_message("  Unsupported data type.");
 				}
-				if (!(is_mfa_compatible_batch || !is_batched))
+				if (!is_mfa_compatible_batch && is_batched)
 				{
 					ccv_nnc_mfa_log_message("  Unsupported batch.");
-				}
-				if (!(!bias))
-				{
-					ccv_nnc_mfa_log_message("  Requires fused activations.");
 				}
 			}
 		}
@@ -261,11 +261,12 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
       if (bias) {
         bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
       }
-			mtl_buffer_t* tensors[4] = {
+			mtl_buffer_t* tensors[5] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
 				mpgetbuffer((ccv_nnc_tensor_t*)w), // B
 				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
         bias_buffer, // D
+        NULL,
 			};
 			size_t tensor_offsets[4] = {
 				a->dataof, // A offset
@@ -274,17 +275,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
         bias ? bias->dataof : 0, // D offset
 			};
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
-
-			// TODO: Add this diagnostic once we consistently capture >>1 commands/batch.
-//			if (METAL_LOG_LEVEL(context) >= 3) {
-//				if (command_batch->batched_command_count == 0) {
-//					ccv_nnc_mfa_log_message("Encoded 0 commands in the batch.");
-//				} else if (command_batch->batched_command_count == 1) {
-//					ccv_nnc_mfa_log_message("Encoded 1 command in the batch.");
-//				} else {
-//					ccv_nnc_mfa_log_message("Encoded >1 commands in the batch.");
-//				}
-//			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
 			// Otherwise, incur the ~10-50 microsecond latency of MPS.

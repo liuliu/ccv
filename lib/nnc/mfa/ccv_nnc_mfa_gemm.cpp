@@ -197,6 +197,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   constants->setConstantValue(&hash.K, MTL::DataTypeUInt, 2);
   constants->setConstantValue(&hash.A_trans, MTL::DataTypeBool, 10);
   constants->setConstantValue(&hash.B_trans, MTL::DataTypeBool, 11);
+  constants->setConstantValue(&hash.D_trans, MTL::DataTypeBool, 13);
   constants->setConstantValue(&hash.alpha, MTL::DataTypeFloat, 20);
   constants->setConstantValue(&hash.beta, MTL::DataTypeFloat, 21);
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
@@ -282,6 +283,12 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   if ((hash.M % 8 > 0) && (hash.N % 8 > 0)) {
     if (C_block_bytes > threadgroup_memory_length) {
       threadgroup_memory_length = C_block_bytes;
+    }
+  }
+  if (hash.fused_bias) {
+    uint16_t D_block_bytes = (hash.D_trans ? M_group : N_group) * data_type_size;
+    if (D_block_bytes > threadgroup_memory_length) {
+      threadgroup_memory_length = D_block_bytes;
     }
   }
   
