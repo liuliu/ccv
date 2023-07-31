@@ -20,7 +20,7 @@
 #define CCV_NNC_TENSOR_PLACEHOLDER ((ccv_nnc_tensor_t*)(intptr_t)(0x10))
 
 typedef void (*ccv_nnc_cmd_tensor_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
-typedef int (*ccv_nnc_cmd_bitmask_f)(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
+typedef int (*ccv_nnc_cmd_bitmask_f)(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
 typedef int (*ccv_nnc_cmd_inplace_f)(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size);
 
 typedef struct {

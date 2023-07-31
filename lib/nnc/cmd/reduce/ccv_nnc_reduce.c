@@ -12,14 +12,14 @@ static void _ccv_nnc_reduce_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, cons
 		outputs[0].dim[cmd.reduce.axis[i]] = 1; // Reduce the dimension to 1.
 }
 
-static int _ccv_nnc_reduce_sum_or_mean_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_sum_or_mean_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_reduce_sum_or_mean_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_sum_or_mean_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Output the propagated error.
 	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
@@ -65,14 +65,14 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MEAN_BACKWARD)
 #define CMD_REDUCE_MEAN_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MEAN_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
-static int _ccv_nnc_reduce_max_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_max_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_reduce_max_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_max_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Output the propagated error.
 	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == 1u)
@@ -99,14 +99,14 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_MAX_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MAX_BACKWARD)
 #define CMD_REDUCE_MAX_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MAX_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
-static int _ccv_nnc_reduce_min_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_min_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_reduce_min_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_min_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Output the propagated error.
 	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == 1u)
@@ -133,14 +133,14 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_MIN_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MIN_BACKWARD)
 #define CMD_REDUCE_MIN_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MIN_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
-static int _ccv_nnc_reduce_norm2_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_norm2_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_reduce_norm2_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_norm2_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Output the propagated error.
 	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == 1u)
@@ -167,14 +167,14 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_NORM2_BACKWARD)(ccv_nnc_cmd_registry_t* const re
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_NORM2_BACKWARD)
 #define CMD_REDUCE_NORM2_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_NORM2_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
-static int _ccv_nnc_argmax_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_argmax_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_argmax_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_argmax_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Doesn't support.
 	return 0;
@@ -215,14 +215,14 @@ REGISTER_COMMAND(CCV_NNC_ARGMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registry
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ARGMAX_BACKWARD)
 #define CMD_ARGMAX_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_ARGMAX_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
-static int _ccv_nnc_argmin_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_argmin_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_argmin_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_argmin_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Doesn't support.
 	return 0;

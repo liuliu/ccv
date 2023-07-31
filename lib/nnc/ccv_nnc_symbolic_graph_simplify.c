@@ -805,20 +805,22 @@ static void _ccv_nnc_symbolic_graph_pruning_undead_exec(ccv_nnc_symbolic_graph_s
 					output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 			}
 		}
-		// For inputs, no matter if it s dead or not, we try to limit our input to the smallest number.
-		for (i = 0; i < exec_symbol_info->input_size; i++)
-		{
-			const int d = exec_symbol_info->inputs[i];
-			// If this tensor currently is marked as dead, try to see whether it works when we don't have this tensor at all.
-			if (d >= 0 && (input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))))
+		// Only check if there are inputs we can remove if it is backward.
+		if (!ccv_nnc_cmd_is_forward(exec_symbol_info->cmd))
+			// For inputs, no matter if it s dead or not, we try to limit our input to the smallest number.
+			for (i = 0; i < exec_symbol_info->input_size; i++)
 			{
-				input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
-				if (ccv_nnc_cmd_bitmask(exec_symbol_info->cmd, exec_symbol_info->input_size, exec_symbol_info->output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size))
-					flag = 1;
-				else // Reset the bitmask.
-					input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+				const int d = exec_symbol_info->inputs[i];
+				// If this tensor currently is marked as dead, try to see whether it works when we don't have this tensor at all.
+				if (d >= 0 && (input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))))
+				{
+					input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
+					if (ccv_nnc_cmd_bitmask(exec_symbol_info->cmd, exec_symbol_info->input_size, exec_symbol_info->output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size))
+						flag = 1;
+					else // Reset the bitmask.
+						input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+				}
 			}
-		}
 	} while (flag);
 	// Now we know which one to keep, which one to undead.
 	for (i = 0; i < exec_symbol_info->input_size; i++)

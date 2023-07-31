@@ -2,7 +2,7 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_internal.h"
 
-static int _ccv_nnc_lamb_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_lamb_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 3 inputs (gradient, x, momentum, velocity)
 	// 2 outputs (y, new momentum, new velocity)
@@ -18,7 +18,7 @@ static int _ccv_nnc_lamb_allow_inplace(const ccv_nnc_cmd_param_t cmd, const int 
 	return 0;
 }
 
-static int _ccv_nnc_lamb_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_lamb_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// Doesn't support.
 	return 0;

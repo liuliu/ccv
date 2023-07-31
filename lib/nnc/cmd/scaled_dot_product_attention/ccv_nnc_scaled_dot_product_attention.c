@@ -2,13 +2,15 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_internal.h"
 
-static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 5 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
+	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
 	// 3 outputs (y, [softmax], [qkv])
-	if ((input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 5u) == 5u)
+	if (input_size == 6 && (input_bitmasks[0] & 55u) == 55u && (output_bitmasks[0] & 5u) == 5u)
 		return 1;
-	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 1u) == 1u)
+	if (input_size == 5 && (input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 5u) == 5u)
+		return 1;
+	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 5u) == 1u)
 		return 1;
 	return 0;
 }
@@ -21,7 +23,7 @@ static int _ccv_nnc_allow_query_inplace(const ccv_nnc_cmd_param_t cmd, const int
 	return 0;
 }
 
-static int _ccv_nnc_scaled_dot_product_attention_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_scaled_dot_product_attention_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 0b110000001100001
 	// Inputs (gradient, 0, 0, 0, 0, x, scale, 0, 0, 0, 0, 0, 0, saved_mean, saved_inv_var)
@@ -42,7 +44,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	const int v_nd = ccv_nnc_tensor_nd(inputs[2].dim);
 	assert(v_nd == 3 || v_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd);
-	if (input_size >= 4)
+	if (input_size > 4)
 	{
 		assert(output_size >= 3);
 		outputs[0] = inputs[0];
