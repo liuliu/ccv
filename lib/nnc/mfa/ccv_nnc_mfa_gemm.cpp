@@ -35,58 +35,66 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   while (tensors[num_tensors] != nullptr) {
     num_tensors += 1;
   }
-  CCV_NNC_MFA_PRECONDITION(num_tensors == 3)
+  CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
   for (int i = 0; i < num_tensors; ++i) {
     if (i < 2) {
       encoder->useResource(tensors[i], MTL::ResourceUsageRead);
     } else if (i < 3) {
       encoder->useResource(tensors[i], MTL::ResourceUsageWrite);
-    } else {
-      // This should never happen.
-      CCV_NNC_MFA_PRECONDITION(false);
+    } else if (i < 4) {
+      encoder->useResource(tensors[i], MTL::ResourceUsageRead);
     }
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
   uint32_t batch_size;
   if (pipeline->get_batched()) {
-    uint16_t num_batch_dims_a = 0;
-    uint64_t batch_size_a = 1;
-    for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-      if (params.batch_dims_a[i] == 0) {
-        break;
-      }
-      num_batch_dims_a += 1;
-      batch_size_a *= params.batch_dims_a[i];
-    }
+    uint16_t num_batch_dims[4] = { 0, 0, 0, 0 };
+    uint64_t batch_sizes[4] = { 1, 1, 1, 1 };
     
-    uint16_t num_batch_dims_b = 0;
-    uint64_t batch_size_b = 1;
-    for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-      if (params.batch_dims_b[i] == 0) {
-        break;
+    for (uint16_t operand = 0; operand < 4; ++operand) {
+      uint32_t* batch_dims;
+      if (operand == 0) {
+        batch_dims = params.batch_dims_a;
+      } else if (operand == 1) {
+        batch_dims = params.batch_dims_b;
+      } else if (operand == 2) {
+        // Skip the C operand.
+        continue;
+      } else if (operand == 3) {
+        // Skip the D operand if unavailable.
+        if (!(params.fused_activation_function || params.fused_bias)) {
+          continue;
+        }
+        batch_dims = params.batch_dims_d;
       }
-      num_batch_dims_b += 1;
-      batch_size_b *= params.batch_dims_b[i];
-    }
-    
-    bool same_batch_dims = true;
-    if (num_batch_dims_a != num_batch_dims_b) {
-      same_batch_dims = false;
-    } else if (batch_size_a != batch_size_b) {
-      same_batch_dims = false;
-    } else {
+      
       for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-        if (params.batch_dims_a[i] != params.batch_dims_b[i]) {
-          same_batch_dims = false;
+        if (batch_dims[i] == 0) {
+          break;
+        }
+        num_batch_dims[operand] += 1;
+        batch_sizes[operand] *= batch_dims[i];
+      }
+      
+      bool dims_match_a = true;
+      if (num_batch_dims[0] != num_batch_dims[operand]) {
+        dims_match_a = false;
+      } else if (batch_sizes[0] != batch_sizes[operand]) {
+        dims_match_a = false;
+      } else {
+        for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+          if (params.batch_dims_a[i] != batch_dims[i]) {
+            dims_match_a = false;
+          }
         }
       }
+      
+      if (!dims_match_a) {
+        CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
+      }
     }
-    
-    if (!same_batch_dims) {
-      CCV_NNC_MFA_PRECONDITION(batch_size_b == 1);
-    }
-    batch_size = batch_size_a;
+    batch_size = batch_sizes[0];
     
     uint16_t element_size = 0;
     switch (params.data_type) {
@@ -105,8 +113,12 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     uint64_t byte_stride_a = hash.M * hash.K * element_size;
     uint64_t byte_stride_b = hash.K * hash.N * element_size;
     uint64_t byte_stride_c = hash.M * hash.N * element_size;
-    if (batch_size_b == 1) {
+    uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * element_size;
+    if (batch_sizes[1] == 1) {
       byte_stride_b = 0;
+    }
+    if (batch_sizes[3] == 1) {
+      byte_stride_d = 0;
     }
     
     simd::ulong4 matrix_offsets[batch_size];
@@ -115,7 +127,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         i * byte_stride_a,
         i * byte_stride_b,
         i * byte_stride_c,
-        0
+        i * byte_stride_d,
       };
     }
     encoder->setBytes(matrix_offsets, batch_size * 32, 10);
@@ -138,10 +150,12 @@ mfa::gemm::hash::hash(ccv_nnc_mfa_gemm_params_t params) {
   K = params.K;
   A_trans = params.A_trans;
   B_trans = params.B_trans;
+  D_trans = params.D_trans;
   alpha = params.alpha;
   beta = params.beta;
   batched = params.batched;
-  fused_activation = params.fused_activation;
+  fused_activation_function = params.fused_activation_function;
+  fused_bias = params.fused_bias;
 }
 
 bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
@@ -152,17 +166,19 @@ bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
   (K == hash.K) &&
   (A_trans == hash.A_trans) &&
   (B_trans == hash.B_trans) &&
+  (D_trans == hash.D_trans) &&
   (alpha == hash.alpha) &&
   (beta == hash.beta) &&
   (batched == hash.batched) &&
-  (fused_activation == hash.fused_activation);
+  (fused_activation_function == hash.fused_activation_function) &&
+  (fused_bias == hash.fused_bias);
 }
 
 mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool async) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
   CCV_NNC_MFA_PRECONDITION(hash.beta == 0.0)
-  CCV_NNC_MFA_PRECONDITION(hash.fused_activation == false)
+  CCV_NNC_MFA_PRECONDITION(hash.fused_activation_function == false)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
@@ -184,9 +200,10 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   constants->setConstantValue(&hash.alpha, MTL::DataTypeFloat, 20);
   constants->setConstantValue(&hash.beta, MTL::DataTypeFloat, 21);
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
-  constants->setConstantValue(&hash.fused_activation, MTL::DataTypeBool, 101);
+  constants->setConstantValue(&hash.fused_activation_function, MTL::DataTypeBool, 101);
+  constants->setConstantValue(&hash.fused_bias, MTL::DataTypeBool, 50001);
   
-  // Eventually, this will incorporate the batch size.
+  // Eventually, this may incorporate the batch size.
   // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
   // BxMxN > 4,000,000 -> 64x64, only if M >= 120 and N >= 120
   uint64_t C_elements = uint64_t(hash.M) * uint64_t(hash.N);
@@ -198,7 +215,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   
   uint16_t M_group = 32;
   uint16_t N_group = 32;
-  uint16_t K_group = 32;
+  uint16_t K_simd = 32;
   if (C_elements > 1000 * 1000) {
     M_group = 48;
     N_group = 48;
@@ -207,38 +224,35 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   // If K_simd is perfectly equal to matrix K, the compiler can elide a large
   // amount of logic in the kernel.
   if (hash.K >= 33 && hash.K <= 40) {
-    K_group = 40; // 1 * 40
+    K_simd = 40; // 1 * 40
   } else if (is_half && hash.K >= 73 && hash.K <= 80) {
-    K_group = 40; // 2 * 40
+    K_simd = 40; // 2 * 40
   } else if (C_elements > 1000 * 1000) {
     if (hash.K <= 16) {
-      K_group = 16; // 1 * 16
+      K_simd = 16; // 1 * 16
     } else if (hash.K <= 24) {
-      K_group = 24; // 1 * 24
+      K_simd = 24; // 1 * 24
     } else if (hash.K <= 32) {
-      K_group = 32; // 1 * 32
+      K_simd = 32; // 1 * 32
     } else if (hash.K <= 48) {
-      K_group = 24;
+      K_simd = 24;
     } else if (hash.K <= 64) {
-      K_group = 32;
+      K_simd = 32;
     } else if (is_float) {
-      K_group = 24;
+      K_simd = 24;
     }
   }
   
   uint16_t M_splits = 2;
   uint16_t N_splits = 2;
-  uint16_t K_splits = 1;
   uint16_t M_simd = M_group / M_splits;
   uint16_t N_simd = N_group / N_splits;
-  uint16_t K_simd = K_group / K_splits;
   
   constants->setConstantValue(&M_simd, MTL::DataTypeUShort, 200);
   constants->setConstantValue(&N_simd, MTL::DataTypeUShort, 201);
   constants->setConstantValue(&K_simd, MTL::DataTypeUShort, 202);
   constants->setConstantValue(&M_splits, MTL::DataTypeUShort, 210);
   constants->setConstantValue(&N_splits, MTL::DataTypeUShort, 211);
-  constants->setConstantValue(&K_splits, MTL::DataTypeUShort, 212);
   
   std::string cpp_name;
   uint16_t data_type_size = UINT16_MAX;
@@ -260,8 +274,8 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   }
   auto* swift_name = NS::String::string(cpp_name.c_str(), NS::UTF8StringEncoding);
   
-  uint16_t A_block_bytes = M_group * K_group * data_type_size;
-  uint16_t B_block_bytes = K_group * N_group * data_type_size;
+  uint16_t A_block_bytes = M_group * K_simd * data_type_size;
+  uint16_t B_block_bytes = K_simd * N_group * data_type_size;
   uint16_t C_block_bytes = M_group * N_group * data_type_size;
   threadgroup_memory_length = A_block_bytes + B_block_bytes;
   
@@ -275,7 +289,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
     return (original + size_t(granularity) - 1) / size_t(granularity);
   };
   grid_size = MTL::Size(ceil_divide(hash.N, N_group), ceil_divide(hash.M, M_group), 1);
-  group_size = MTL::Size(128 * K_splits, 1, 1);
+  group_size = MTL::Size(32 * M_splits * N_splits, 1, 1);
   
   NS::Error* error;
   auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
@@ -360,10 +374,12 @@ std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash)
   os << " .K = " << hash.K << ',';
   os << " .A_trans = " << bool(hash.A_trans) << ',';
   os << " .B_trans = " << bool(hash.B_trans) << ',';
+  os << " .D_trans = " << bool(hash.D_trans) << ',';
   os << " .alpha = " << double(hash.alpha) << ',';
   os << " .beta = " << double(hash.beta) << ',';
   os << " .batched = " << bool(hash.batched) << ',';
-  os << " .fused_activation = " << bool(hash.fused_activation);
+  os << " .fused_activation_function = " << bool(hash.fused_activation_function) << ',';
+  os << " .fused_bias = " << bool(hash.fused_bias) << " ";
   os << "}";
   return os;
 }
@@ -376,9 +392,11 @@ std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) 
   mfa::hash::combine_32(seed, hash.K);
   mfa::hash::combine_32(seed, uint32_t(hash.A_trans));
   mfa::hash::combine_32(seed, uint32_t(hash.B_trans));
+  mfa::hash::combine_32(seed, uint32_t(hash.D_trans));
   mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.alpha));
   mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.beta));
   mfa::hash::combine_32(seed, uint32_t(hash.batched));
-  mfa::hash::combine_32(seed, uint32_t(hash.fused_activation));
+  mfa::hash::combine_32(seed, uint32_t(hash.fused_activation_function));
+  mfa::hash::combine_32(seed, uint32_t(hash.fused_bias));
   return seed;
 }

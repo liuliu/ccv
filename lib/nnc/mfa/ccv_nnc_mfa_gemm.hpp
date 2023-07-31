@@ -8,15 +8,18 @@ typedef struct {
   uint32_t K;
   uint8_t A_trans;
   uint8_t B_trans;
+  uint8_t D_trans;
   float alpha;
   float beta;
   uint8_t batched;
-  uint8_t fused_activation;
+  uint8_t fused_activation_function;
+  uint8_t fused_bias;
   
   // Fill these in the same order as the original shape, but null-terminated.
   // Both arrays must have the same length.
   uint32_t batch_dims_a[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dims_b[CCV_NNC_MAX_DIM_ALLOC];
+  uint32_t batch_dims_d[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_gemm_params_t;
 
 #ifdef __cplusplus
@@ -36,10 +39,12 @@ public:
   uint32_t K;
   uint8_t A_trans;
   uint8_t B_trans;
+  uint8_t D_trans;
   float alpha;
   float beta;
   uint8_t batched;
-  uint8_t fused_activation;
+  uint8_t fused_activation_function;
+  uint8_t fused_bias;
   
   hash(ccv_nnc_mfa_gemm_params_t);
   

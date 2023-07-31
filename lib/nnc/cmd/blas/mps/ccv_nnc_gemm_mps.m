@@ -58,7 +58,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	if (bias)
 	{
-		const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+    const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
 		// Align bias to this.
 		assert(bias_nd <= 2 || bias_nd == b_nd);
 		int i;
@@ -211,13 +211,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows, // B_rows
 				.A_trans = (is_transpose_a ? 1 : 0),
 				.B_trans = (is_transpose_w ? 1 : 0),
+        .D_trans = 0,
 				.alpha = (float)1.0,
 				.beta = (float)0.0,
 				.batched = is_batched,
-				.fused_activation = 0,
+				.fused_activation_function = 0,
+        .fused_bias = (bias ? 1 : 0),
 				
 				.batch_dims_a = { 0 },
 				.batch_dims_b = { 0 },
+        .batch_dims_d = { 0 },
 			};
 			if (is_batched) {
 				// Create a null-terminated list of batch dimensions.
@@ -236,6 +239,17 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
 					params.batch_dims_b[B_batch_dim] = 0;
 				}
+        
+        int D_batch_dim = 0;
+        if (bias) {
+          D_batch_dim = ccv_nnc_tensor_nd(bias->info.dim) - 1;
+        }
+        for (int i = 0; i < D_batch_dim; ++i) {
+          params.batch_dims_d[i] = biasdim[i];
+        }
+        if (D_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+          params.batch_dims_d[D_batch_dim] = 0;
+        }
 			}
 			ccv_nnc_mfa_sync_prepare_gemm(context, params);
 
@@ -243,16 +257,21 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// faster the >50 µs penalty for MPSGraph (probably why
 			// MPSMatrixMultiplication is faster for GEMM).
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+      mtl_buffer_t* bias_buffer = NULL;
+      if (bias) {
+        bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+      }
 			mtl_buffer_t* tensors[4] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
 				mpgetbuffer((ccv_nnc_tensor_t*)w), // B
 				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
-				NULL
+        bias_buffer, // D
 			};
-			size_t tensor_offsets[3] = {
+			size_t tensor_offsets[4] = {
 				a->dataof, // A offset
 				w->dataof, // B offset
 				b->dataof, // C offset
+        bias ? bias->dataof : 0, // D offset
 			};
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
 
@@ -267,7 +286,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 //				}
 //			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-			// TODO: Try to use `fused_activation` for with bias case.
 		} else {
 			// Otherwise, incur the ~10-50 microsecond latency of MPS.
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
