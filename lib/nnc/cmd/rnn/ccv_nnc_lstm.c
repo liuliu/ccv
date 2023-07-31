@@ -7,7 +7,7 @@ static int _ccv_nnc_lstm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int i
 {
 	// input: x, [xs], [hx], [cx], w.
 	// output: y, [hy], [cy], r
-	if (input_size == 5 && (input_bitmasks[0] & 17u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4)) && (output_bitmasks[0] & 0x9u) == ((1u << 0) | (0u << 1) | (0u << 2) | (1u << 3)))
+	if (input_size == 5 && (input_bitmasks[0] & 19u) == ((1u << 0) | (1u << 1) | (0u << 2) | (0u << 3) | (1u << 4)) && (output_bitmasks[0] & 0x9u) == ((1u << 0) | (0u << 1) | (0u << 2) | (1u << 3)))
 		return 1;
 	return 0;
 }
@@ -16,13 +16,13 @@ static int _ccv_nnc_lstm_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int i
 {
 	// input: dy, [dhy], [dcy], [dr]
 	// output: dx, [dxs], [dhx], [dcx].
-	if ((input_bitmasks[0] & 4865u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (0u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 13u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
+	if ((input_bitmasks[0] & 4929u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (0u << 4) | (0u << 5) | (1u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 13u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | (0u << 4)))
 		return 1;
 	// Output dx, [dxs], [dhx], [dcx] and dw.
-	if ((input_bitmasks[0] & 4881u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 29u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
+	if ((input_bitmasks[0] & 4945u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 29u) == ((1u << 0) | (0u << 1) | (1u << 2) | (1u << 3) | 1u << 4))
 		return 1;
 	// Output dw (this needs to be invoked after dx, dhx, dcx computed, thus, functionally the same as above).
-	if ((input_bitmasks[0] & 4881u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (0u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 16u) == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
+	if ((input_bitmasks[0] & 4945u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4) | (0u << 5) | (1u << 6) | (0u << 7) | (1u << 8) | (1u << 9) | (0u << 10) | (0u << 11) | (1u << 12)) && (output_bitmasks[0] & 16u) == ((0u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | 1u << 4))
 		return 1;
 	return 0;
 }
