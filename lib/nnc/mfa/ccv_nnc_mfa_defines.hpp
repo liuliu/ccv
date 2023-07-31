@@ -69,6 +69,10 @@ typedef MTLCommandBatch mtl_command_batch_t;
 #define CCV_METAL_LOGGING_ENABLE 1
 #endif
 
+#ifndef CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE
+#define CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE 1
+#endif
+
 // 0 - crash reports
 // 1 - metallib initialization
 // 2 - PSO creation

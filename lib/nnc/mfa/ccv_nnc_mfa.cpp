@@ -123,15 +123,33 @@ mfa::context::context(MTL::Device* device)
   device->setShouldMaximizeConcurrentCompilation(true);
 #endif
   
+  const char *external_metallib_path = nullptr;
+#if CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE
+  external_metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
+#endif
+  if (METAL_LOG_LEVEL(this) >= 1) {
+    if (external_metallib_path) {
+      std::cerr << METAL_LOG_HEADER << "Loading from path '" << external_metallib_path << "'." << std::endl;
+    } else {
+      std::cerr << METAL_LOG_HEADER << "Loading from embedded string." << std::endl;
+    }
+  }
+  
   // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
+  if (external_metallib_path) {
+    auto string = NS::String::string(external_metallib_path, NS::UTF8StringEncoding);
+    auto url = NS::URL::fileURLWithPath(string);
+    this->library = NS::TransferPtr(device->newLibrary(url, &error));
+  } else {
 #if TARGET_OS_IPHONE
-  dispatch_data_t data = dispatch_data_create(libmfaios16_v0_2_metallib, sizeof(libmfaios16_v0_2_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfaios16_v0_2_metallib, sizeof(libmfaios16_v0_2_metallib), NULL, 0);
 #else
-  dispatch_data_t data = dispatch_data_create(libmfamacos13_v0_2_metallib, sizeof(libmfamacos13_v0_2_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfamacos13_v0_2_metallib, sizeof(libmfamacos13_v0_2_metallib), NULL, 0);
 #endif
-  this->library = NS::TransferPtr(device->newLibrary(data, &error));
-  dispatch_release(data);
+    this->library = NS::TransferPtr(device->newLibrary(data, &error));
+    dispatch_release(data);
+  }
   CCV_NNC_MFA_CHECK_ERROR(error)
   
   // Notify that this finished successfully, and is not just stalling on one of
