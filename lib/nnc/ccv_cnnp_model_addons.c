@@ -3084,10 +3084,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 		saved_softmax = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
 	}
-	if (self->no_bias)
-		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights), TENSOR_SYMBOL_LIST(output, saved_softmax, saved_v_proj), "scaled_dot_product_attention");
-	else
-		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax, saved_v_proj), "scaled_dot_product_attention");
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax, saved_v_proj), "scaled_dot_product_attention");
 	outputs[0] = output;
 }
 

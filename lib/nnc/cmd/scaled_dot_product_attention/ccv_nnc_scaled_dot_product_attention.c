@@ -25,10 +25,15 @@ static int _ccv_nnc_allow_query_inplace(const ccv_nnc_cmd_param_t cmd, const int
 
 static int _ccv_nnc_scaled_dot_product_attention_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 0b110000001100001
-	// Inputs (gradient, 0, 0, 0, 0, x, scale, 0, 0, 0, 0, 0, 0, saved_mean, saved_inv_var)
-	// Output (dquery, dkey, dvalue, dweight, dbias) [cannot diff against attn_mask]
-	if ((input_bitmasks[0] & 24673u) == 24673u && (output_bitmasks[0] & 7u) == 7u)
+	// 1, 0, 0, 8, 16, 32, 64?, 128?, 256?, 512, 1024, 2048?
+	// 1, 2, 4, 8, 16, 32
+	// Inputs (gradient, 0, 0, q, k, v, [attn_mask], [head weight], [bias], y, saved softmax, qkv)
+	// Output (dquery, dkey, dvalue, [attn mask], dweight, dbias) [cannot diff against attn_mask]
+	if ((input_bitmasks[0] & 4025u) == 4025u && (output_bitmasks[0] & 63u) == 55u)
+		return 1;
+	if ((input_bitmasks[0] & 3769u) == 3769u && (output_bitmasks[0] & 31u) == 23u)
+		return 1;
+	if ((input_bitmasks[0] & 1593u) == 1593u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
 	return 0;
 }
@@ -68,16 +73,11 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 
 static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 15);
-	assert(output_size == 5);
-	outputs[0] = inputs[0];
-	int i, j;
-	for (i = 1; i < output_size; i++)
-	{
-		outputs[i] = inputs[0];
-		for (j = 0; j < cmd.bnorm.count; j++)
-			outputs[i].dim[cmd.bnorm.axis[j]] = 1; // Reduce the dimension to 1.
-	}
+	assert(input_size >= 10);
+	assert(output_size >= 3);
+	int i;
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[3 + i];
 }
 
 REGISTER_COMMAND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
