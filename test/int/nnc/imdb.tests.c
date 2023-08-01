@@ -85,7 +85,7 @@ static ccv_array_t* _array_from_disk_new(const char* const list, const char* con
 			if (tensor->data.i32[i] == pad_flag)
 				length = i;
 		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
-		mask->data.i32[0] = length;
+		mask->data.i32[0] = length ? length : max_length;
 		ccv_nnc_text_t categorized = {
 			.tensor = tensor,
 			.mask = mask,
@@ -1057,11 +1057,11 @@ static int train_imdb_lstm(const int epoch_limit, const int vocab_size, const in
 	{
 		gpu_batched[i * 4] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, trunc_data_batched, i, 1, i, 0);
 		gpu_batched[i * 4 + 1] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3 + 1, 1, i, 0);
-		gpu_batched[i * 4 + 2] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, 0, i * 3 + 2, 1, i, 0);
+		gpu_batched[i * 4 + 2] = ccv_cnnp_dataframe_extract_tuple(batched_data, 0, i * 3 + 2, 0);
 		gpu_batched[i * 4 + 3] = ccv_cnnp_dataframe_copy_to_gpu(batched_data, index_batched[i], 0, 1, i, 0);
 		test_gpu_batched[i * 4] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_trunc_data_batched, i, 1, i, 0);
 		test_gpu_batched[i * 4 + 1] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 1, 1, i, 0);
-		test_gpu_batched[i * 4 + 2] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, 0, i * 3 + 2, 1, i, 0);
+		test_gpu_batched[i * 4 + 2] = ccv_cnnp_dataframe_extract_tuple(test_batched_data, 0, i * 3 + 2, 0);
 		test_gpu_batched[i * 4 + 3] = ccv_cnnp_dataframe_copy_to_gpu(test_batched_data, test_index_batched[i], 0, 1, i, 0);
 	}
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batched_data, gpu_batched, 4);
@@ -1134,13 +1134,13 @@ static int train_imdb_lstm(const int epoch_limit, const int vocab_size, const in
 			ccv_nnc_tensor_param_t vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size, batch_length, embedding_size);
 			CCV_TENSOR_SET_DEVICE_ID(vec_params.type, j);
 			vec[j * 3] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, word_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
-			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size);
-			assert(tensor[j * 4 + 2][0]->info.dim[0] == batch_size);
+			ccv_nnc_tensor_param_t mask_params = CPU_TENSOR_NCHW(32S, batch_size);
+			assert(((ccv_nnc_tensor_t*)tensor[j * 4 + 2])->info.dim[0] == batch_size);
 			CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
 			ccv_nnc_tensor_param_t index_params = GPU_TENSOR_NCHW(000, 32S, batch_size);
 			assert(tensor[j * 4 + 3][0]->info.dim[0] == batch_size);
 			CCV_TENSOR_SET_DEVICE_ID(index_params.type, j);
-			mask_tensor[j] = ccv_nnc_tensor(tensor[j * 4 + 2][0]->data.i32, mask_params, 0);
+			mask_tensor[j] = ccv_nnc_tensor(((ccv_nnc_tensor_t*)tensor[j * 4 + 2])->data.i32, mask_params, 0);
 			index_tensor[j] = ccv_nnc_tensor(tensor[j * 4 + 3][0]->data.i32, index_params, 0);
 			vec[j * 3 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 			vec[j * 3 + 2] = ccv_nnc_tensor_constant_new(dynamic_graph, index_params);
@@ -1223,13 +1223,13 @@ static int train_imdb_lstm(const int epoch_limit, const int vocab_size, const in
 			ccv_nnc_tensor_param_t vec_params = GPU_TENSOR_NCHW(000, 32F, batch_size, batch_length, embedding_size);
 			CCV_TENSOR_SET_DEVICE_ID(vec_params.type, j);
 			vec[j * 3] = ccv_nnc_tensor_variable_alias_new(dynamic_graph, word_vec[j], ccv_nnc_no_ofs, DIM_ALLOC(), vec_params);
-			ccv_nnc_tensor_param_t mask_params = GPU_TENSOR_NCHW(000, 32S, batch_size);
+			ccv_nnc_tensor_param_t mask_params = CPU_TENSOR_NCHW(32S, batch_size);
 			CCV_TENSOR_SET_DEVICE_ID(mask_params.type, j);
-			assert(tensor[j * 4 + 2][0]->info.dim[0] == batch_size);
+			assert(((ccv_nnc_tensor_t*)tensor[j * 4 + 2])->info.dim[0] == batch_size);
 			ccv_nnc_tensor_param_t index_params = GPU_TENSOR_NCHW(000, 32S, batch_size);
 			CCV_TENSOR_SET_DEVICE_ID(index_params.type, j);
 			assert(tensor[j * 4 + 3][0]->info.dim[0] == batch_size);
-			mask_tensor[j] = ccv_nnc_tensor(tensor[j * 4 + 2][0]->data.i32, mask_params, 0);
+			mask_tensor[j] = ccv_nnc_tensor(((ccv_nnc_tensor_t*)tensor[j * 4 + 2])->data.i32, mask_params, 0);
 			index_tensor[j] = ccv_nnc_tensor(tensor[j * 4 + 3][0]->data.i32, index_params, 0);
 			vec[j * 3 + 1] = ccv_nnc_tensor_constant_new(dynamic_graph, mask_params);
 			ccv_nnc_tensor_variable_set(dynamic_graph, vec[j * 3 + 1], &mask_tensor[j]);

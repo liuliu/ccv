@@ -12,7 +12,7 @@ static void _ccv_nnc_reduce_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, cons
 		outputs[0].dim[cmd.reduce.axis[i]] = 1; // Reduce the dimension to 1.
 }
 
-static int _ccv_nnc_reduce_isnan_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_isnan_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
 		return 1;

@@ -3,14 +3,14 @@
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
 
-static int _ccv_nnc_nms_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_nms_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 3u)
 		return 1;
 	return 0;
 }
 
-static int _ccv_nnc_nms_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_nms_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// gradient of sorted, gradient of sorting index, input, output of sorted, output of sorting index.
 	if ((input_bitmasks[0] & 17u) == ((1u << 0) | (0u << 1) | (0u << 2) | (0u << 3) | (1u << 4)) && output_bitmasks[0] == 1u)

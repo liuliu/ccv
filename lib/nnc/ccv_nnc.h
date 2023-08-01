@@ -4379,6 +4379,19 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_parameter(const ccv_nnc_tensor_param
  * @return A model that can be applied and return the scalar.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar(const int type, const int format, const int datatype, const float value, const char* const name);
+/**
+ * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
+ * or (q, k, v, attn_mask) if has_attn_mask is 1.
+ * @param scale The scale to be applied to the qk dot product.
+ * @param is_causal Whether to apply is_causal mask to it. If both attn_mask and is_causal supplied, we will cut attn_mask to upper right triangle.
+ * @param has_attn_mask Whether the input would accept a 4th parameter the attention mask.
+ * @param fused_unify_head_weights Whether we also have unifying head weight fused into it. The output would be in shape of (N, S, H * Ev).
+ * @param no_bias Whether we have bias or not for the unifying head output.
+ * @param is_trainable Whether or not it is trainable (if weight / bias provided).
+ * @param name The unique name of the model.
+ * @return A model that can apply scaled dot product attention compute.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
 
 /** @} */
 

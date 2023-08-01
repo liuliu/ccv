@@ -597,7 +597,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	if (cmd_registry.bitmask)
-		return cmd_registry.bitmask(input_size, output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size);
+		return cmd_registry.bitmask(cmd.info, input_size, output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size);
 	// If there is not checking, none can pass.
 	return 0;
 }

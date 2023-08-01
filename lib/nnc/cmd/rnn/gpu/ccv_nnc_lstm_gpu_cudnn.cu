@@ -66,7 +66,7 @@ static int _ccv_nnc_lstm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(ix->info.datatype == CCV_32S);
 		assert(ccv_nnc_tensor_nd(ix->info.dim) == 1);
 		assert(batch_count == ix->info.dim[0]);
-		assert(CCV_TENSOR_GET_MEMORY(ix->info.type) == CCV_TENSOR_GPU_MEMORY);
+		assert(CCV_TENSOR_GET_MEMORY(ix->info.type) == CCV_TENSOR_CPU_MEMORY);
 	} else {
 		for (i = 0; i < batch_count; i++)
 			seq_lengths[i] = max_seq_count;
@@ -121,15 +121,12 @@ static int _ccv_nnc_lstm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// TODO: If error, return OOM
 	if (workspace_size)
 	{
-		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + (!ix ? sizeof(int) * batch_count : 0), CCV_TENSOR_GPU_MEMORY);
+		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + sizeof(int) * batch_count, CCV_TENSOR_GPU_MEMORY);
 		dev_seq_lengths = (int*)((uint8_t*)workspace + workspace_size);
-	} else if (!ix)
+	} else
 		dev_seq_lengths = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * batch_count, CCV_TENSOR_GPU_MEMORY);
-	if (!ix) // Copy from host to device.
-	{
-		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-		CUDA_ENFORCE(cudaMemcpyAsync(dev_seq_lengths, seq_lengths, sizeof(int) * batch_count, cudaMemcpyHostToDevice, stream));
-	}
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	CUDA_ENFORCE(cudaMemcpyAsync(dev_seq_lengths, seq_lengths, sizeof(int) * batch_count, cudaMemcpyHostToDevice, stream));
 	size_t weight_size = 0;
 	cudnnGetRNNWeightSpaceSize(cudnn, rnn, &weight_size);
 	assert(CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * ccv_nnc_tensor_count(w->info) >= weight_size);
@@ -181,7 +178,7 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(ix->info.datatype == CCV_32S);
 		assert(ccv_nnc_tensor_nd(ix->info.dim) == 1);
 		assert(batch_count == ix->info.dim[0]);
-		assert(CCV_TENSOR_GET_MEMORY(ix->info.type) == CCV_TENSOR_GPU_MEMORY);
+		assert(CCV_TENSOR_GET_MEMORY(ix->info.type) == CCV_TENSOR_CPU_MEMORY);
 	} else {
 		for (i = 0; i < batch_count; i++)
 			seq_lengths[i] = max_seq_count;
@@ -200,15 +197,12 @@ static int _ccv_nnc_lstm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// TODO: If error, return OOM
 	if (workspace_size)
 	{
-		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + (!ix ? sizeof(int) * batch_count : 0), CCV_TENSOR_GPU_MEMORY);
+		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + sizeof(int) * batch_count, CCV_TENSOR_GPU_MEMORY);
 		dev_seq_lengths = (int*)((uint8_t*)workspace + workspace_size);
-	} else if (!ix)
+	} else
 		dev_seq_lengths = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * batch_count, CCV_TENSOR_GPU_MEMORY);
-	if (!ix) // Copy from host to device.
-	{
-		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-		CUDA_ENFORCE(cudaMemcpyAsync(dev_seq_lengths, seq_lengths, sizeof(int) * batch_count, cudaMemcpyHostToDevice, stream));
-	}
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	CUDA_ENFORCE(cudaMemcpyAsync(dev_seq_lengths, seq_lengths, sizeof(int) * batch_count, cudaMemcpyHostToDevice, stream));
 	assert(!inputs[1] || inputs[0]->info.datatype == inputs[1]->info.datatype);
 	assert(!inputs[2] || inputs[0]->info.datatype == inputs[2]->info.datatype);
 	assert(!inputs[6] || inputs[0]->info.datatype == inputs[6]->info.datatype);
@@ -259,7 +253,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_LSTM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_nn
 #if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8100
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
-	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY | CCV_TENSOR_CPU_MEMORY;
 	registry->exec = _ccv_nnc_lstm_forw;
 	registry->aux = (void*)_ccv_nnc_lstm_reserve_space_size;
 #endif
@@ -270,7 +264,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_LSTM_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv_n
 #if defined(HAVE_CUDNN) && CUDNN_VERSION >= 8100
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
-	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY | CCV_TENSOR_CPU_MEMORY;
 	registry->exec = _ccv_nnc_lstm_back;
 	registry->aux = (void*)_ccv_nnc_lstm_reserve_space_size;
 #endif

@@ -7,7 +7,7 @@ static int _ccv_nnc_allreduce_allow_inplace(const ccv_nnc_cmd_param_t cmd, const
 	return input_idx == output_idx;
 }
 
-static int _ccv_nnc_allreduce_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_allreduce_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -50,7 +50,7 @@ static int _ccv_nnc_allreduce_forw_bitmask(const int input_size, const int outpu
 	return output_bitcount == input_bitcount && input_size == output_size && input_size == input_bitcount;
 }
 
-static int _ccv_nnc_allreduce_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_allreduce_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -119,7 +119,7 @@ static int _ccv_nnc_arbitary_inplace(const ccv_nnc_cmd_param_t cmd, const int in
 	return 1;
 }
 
-static int _ccv_nnc_broadcast_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_broadcast_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -162,7 +162,7 @@ static int _ccv_nnc_broadcast_forw_bitmask(const int input_size, const int outpu
 	return output_bitcount >= 1 && output_bitcount == output_size && input_size == 1 && input_size == input_bitcount;
 }
 
-static int _ccv_nnc_broadcast_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_broadcast_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -231,7 +231,7 @@ static int _ccv_nnc_first_inplace(const ccv_nnc_cmd_param_t cmd, const int input
 	return input_idx == output_idx && input_idx == 0;
 }
 
-static int _ccv_nnc_reduce_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -274,7 +274,7 @@ static int _ccv_nnc_reduce_forw_bitmask(const int input_size, const int output_s
 	return output_size == input_size && output_bitcount == output_size && input_size >= 1 && input_size == input_bitcount;
 }
 
-static int _ccv_nnc_reduce_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_reduce_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
