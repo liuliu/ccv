@@ -172,8 +172,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 						[dscale_axes addObject:@(i)];
 				}
 				//  dscalep2[x] += ahp[x] * gp1[x];
-          		MPSGraphTensor* gradBnMulTensor = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:mps_g name:nil];
-				mps_dscale = [graph reductionSumWithTensor:gradBnMulTensor axes:dscale_axes name:nil];
+				MPSGraphTensor* dscale = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:mps_g name:nil];
+				mps_dscale = [graph reductionSumWithTensor:dscale axes:dscale_axes name:nil];
 			}
 
 			if (dbias) {
