@@ -213,11 +213,6 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   
   uint16_t D_simd = (hash.D + 7) / 8 * 8;
   uint16_t R_group = R_simd * R_splits;
-  uint16_t Q_block_length;
-  uint16_t K_block_length;
-  uint16_t V_block_length;
-  uint16_t O_block_length;
-  
   uint16_t R_block_dim = R_group;
   uint16_t C_block_dim = C_simd;
   uint16_t D_block_dim = D_simd;
@@ -241,7 +236,46 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   set_bank_offset(&C_block_dim, 221);
   set_bank_offset(&D_block_dim, 222);
   
-  // TODO: Find amount of threadgroup memory and grid sizes.
+  uint16_t Q_block_length;
+  uint16_t K_block_length;
+  uint16_t V_block_length;
+  uint16_t O_block_length;
+  if (hash.Q_trans) {
+    Q_block_length = D_simd * R_block_dim;
+  } else {
+    Q_block_length = R_group * D_block_dim;
+  }
+  if (hash.K_trans) {
+    K_block_length = C_simd * D_block_dim;
+  } else {
+    K_block_length = D_simd * C_block_dim;
+  }
+  if (hash.V_trans) {
+    V_block_length = D_simd * C_block_dim;
+  } else {
+    V_block_length = C_simd * D_block_dim;
+  }
+  if (hash.O_trans) {
+    O_block_length = D_simd * R_block_dim;
+  } else {
+    O_block_length = R_group * D_block_dim;
+  }
+  
+  uint16_t block_elements;
+  if (fuse_async_loads) {
+    block_elements = K_block_length + V_block_length;
+  } else {
+    block_elements = std::max(K_block_length, V_block_length);
+  }
+  block_elements = std::max(block_elements, Q_block_length);
+  block_elements = std::max(block_elements, O_block_length);
+  this->threadgroup_memory_length = block_elements * data_type_size;
+  
+  std::function<size_t(size_t, uint16_t)> ceil_divide = [](size_t original, uint16_t granularity) {
+    return (original + size_t(granularity) - 1) / size_t(granularity);
+  };
+  this->grid_size = MTL::Size(ceil_divide(hash.R, R_group), ceil_divide(hash.C, C_simd), 1);
+  this->group_size = MTL::Size(32 * R_splits, 1, 1);
   
   auto swift_name = NS::String::string("attention", NS::UTF8StringEncoding);
   for (int i = 0; i < 2; ++i) {

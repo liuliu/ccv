@@ -28,7 +28,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   auto* pipeline = iterator->second;
   pipeline->wait();
   
-  auto* encoder = command_batch->start_command(pipeline->get_pso());
+  auto* encoder = command_batch->startCommand(pipeline->get_pso());
   encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
   
   int num_tensors = 0;
@@ -138,7 +138,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   auto grid_size = pipeline->get_grid_size();
   grid_size.depth = batch_size;
   encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
-  command_batch->finish_command(encoder);
+  command_batch->finishCommand(encoder);
 }
 
 // MARK: - C++

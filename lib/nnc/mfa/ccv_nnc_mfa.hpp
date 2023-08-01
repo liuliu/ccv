@@ -36,7 +36,7 @@ public:
   
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
-  // TODO: - Scratch buffer for block-sparse FlashAttention
+  NS::SharedPtr<MTL::Buffer> scratch;
   
   context(MTL::Device* device);
   
@@ -51,6 +51,8 @@ public:
   // `MTL::Buffer*` through a null-terminated list.
   cache<attention::hash, attention::pipeline> attention_cache;
   cache<gemm::hash, gemm::pipeline> gemm_cache;
+  
+  MTL::Buffer* request_scratch(uint64_t size);
 };
 
 } // namespace mfa

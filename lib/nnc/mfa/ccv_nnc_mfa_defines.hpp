@@ -32,22 +32,22 @@ typedef void mtl_device_t;
 namespace MTL {
 class CommandBatch {
 public:
-  MTL::CommandBuffer* command_buffer;
+  MTL::CommandBuffer* commandBuffer;
   
   // Although labeled `MTL::ComputeCommandEncoder`, this should be used for
   // memcpy and memset as well. Here is a performant reference implementation
   // using custom shaders to bypass the CPU-side latency of switching encoders:
   // https://github.com/philipturner/metal-usm/tree/main/BlitEncoderAlternative
-  MTL::ComputeCommandEncoder* command_encoder;
+  MTL::ComputeCommandEncoder* commandEncoder;
   
-  uint16_t batched_command_count = 0;
-  uint8_t command_active = 0;
+  uint16_t batchedCommandCount = 0;
+  uint8_t commandActive = 0;
   
-  CommandBatch(MTL::CommandQueue* command_queue);
+  CommandBatch(MTL::CommandQueue* commandQueue);
   ~CommandBatch();
   
-  MTL::ComputeCommandEncoder* start_command(MTL::ComputePipelineState* pso);
-  void finish_command(MTL::ComputeCommandEncoder* command_encoder);
+  MTL::ComputeCommandEncoder* startCommand(MTL::ComputePipelineState* pso);
+  void finishCommand(MTL::ComputeCommandEncoder* commandEncoder);
 };
 } // namespace MTL
 

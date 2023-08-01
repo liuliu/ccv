@@ -164,29 +164,33 @@ mfa::context::context(MTL::Device* device)
     std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
   
+  // TODO: Set to a more reasonable initial value once the expanding allocation
+  // mechanism is debugged.
+  scratch = NS::TransferPtr(device->newBuffer(1, MTL::StorageModePrivate));
+  
   pool->drain();
 }
 
-MTL::CommandBatch::CommandBatch(MTL::CommandQueue* command_queue) {
-  command_buffer = command_queue->commandBuffer();
-  command_encoder = command_buffer->computeCommandEncoder();
+MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
+  commandBuffer = commandQueue->commandBuffer();
+  commandEncoder = commandBuffer->computeCommandEncoder();
 }
 
-MTL::ComputeCommandEncoder* MTL::CommandBatch::start_command(MTL::ComputePipelineState* pso) {
-  CCV_NNC_MFA_PRECONDITION(command_active == 0)
-  command_active = 1;
-  command_encoder->setComputePipelineState(pso);
-  return command_encoder;
+MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand(MTL::ComputePipelineState* pso) {
+  CCV_NNC_MFA_PRECONDITION(commandActive == 0)
+  commandActive = 1;
+  commandEncoder->setComputePipelineState(pso);
+  return commandEncoder;
 }
 
-void MTL::CommandBatch::finish_command(MTL::ComputeCommandEncoder* command_encoder) {
-  CCV_NNC_MFA_PRECONDITION(command_active == 1)
-  command_active = 0;
-  batched_command_count += 1;
+void MTL::CommandBatch::finishCommand(MTL::ComputeCommandEncoder* commandEncoder) {
+  CCV_NNC_MFA_PRECONDITION(commandActive == 1)
+  commandActive = 0;
+  batchedCommandCount += 1;
 }
 
 MTL::CommandBatch::~CommandBatch() {
-  CCV_NNC_MFA_PRECONDITION(command_active == 0)
-  command_encoder->endEncoding();
-  command_buffer->commit();
+  CCV_NNC_MFA_PRECONDITION(commandActive == 0)
+  commandEncoder->endEncoding();
+  commandBuffer->commit();
 }
