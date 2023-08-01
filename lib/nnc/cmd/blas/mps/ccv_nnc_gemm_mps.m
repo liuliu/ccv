@@ -58,7 +58,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	if (bias)
 	{
-    const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+		const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
 		// Align bias to this.
 		assert(bias_nd <= 2 || bias_nd == b_nd);
 		int i;
@@ -118,12 +118,12 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
 			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
-      (bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
+			(bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
 
 		const int is_same_dtype =
 			(a->info.datatype == w->info.datatype) &&
 			(a->info.datatype == b->info.datatype) &&
-      (bias ? (a->info.datatype == bias->info.datatype) : 1);
+			(bias ? (a->info.datatype == bias->info.datatype) : 1);
 		
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -159,8 +159,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		} else if (A_batch_size <= 0 || B_batch_size <= 0 || C_batch_size <= 0) {
 			// Invalid batch size.
 		} else {
-      // This does not check whether the D batch size matches the others. If it
-      // does not match, it will crash when encoding the GEMM command.
+			// This does not check whether the D batch size matches the others. If it
+			// does not match, it will crash when encoding the GEMM command.
 			is_batched = 1;
 			if (A_batch_size == C_batch_size) {
 				if (A_batch_size == B_batch_size) {
@@ -211,16 +211,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows, // B_rows
 				.A_trans = (is_transpose_a ? 1 : 0),
 				.B_trans = (is_transpose_w ? 1 : 0),
-        .D_trans = 0,
+				.D_trans = 0,
 				.alpha = (float)1.0,
 				.beta = (float)0.0,
 				.batched = is_batched,
 				.fused_activation_function = 0,
-        .fused_bias = (bias ? 1 : 0),
+				.fused_bias = (bias ? 1 : 0),
 				
 				.batch_dims_a = { 0 },
 				.batch_dims_b = { 0 },
-        .batch_dims_d = { 0 },
+				.batch_dims_d = { 0 },
 			};
 			if (is_batched) {
 				// Create a null-terminated list of batch dimensions.
@@ -239,17 +239,17 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
 					params.batch_dims_b[B_batch_dim] = 0;
 				}
-        
-        int D_batch_dim = 0;
-        if (bias) {
-          D_batch_dim = ccv_nnc_tensor_nd(bias->info.dim) - 1;
-        }
-        for (int i = 0; i < D_batch_dim; ++i) {
-          params.batch_dims_d[i] = biasdim[i];
-        }
-        if (D_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-          params.batch_dims_d[D_batch_dim] = 0;
-        }
+
+				int D_batch_dim = 0;
+				if (bias) {
+					D_batch_dim = ccv_nnc_tensor_nd(bias->info.dim) - 1;
+				}
+				for (int i = 0; i < D_batch_dim; ++i) {
+					params.batch_dims_d[i] = biasdim[i];
+				}
+				if (D_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+					params.batch_dims_d[D_batch_dim] = 0;
+				}
 			}
 			ccv_nnc_mfa_sync_prepare_gemm(context, params);
 
@@ -257,22 +257,22 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// faster the >50 µs penalty for MPSGraph (probably why
 			// MPSMatrixMultiplication is faster for GEMM).
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-      mtl_buffer_t* bias_buffer = NULL;
-      if (bias) {
-        bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
-      }
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias) {
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			}
 			mtl_buffer_t* tensors[5] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
 				mpgetbuffer((ccv_nnc_tensor_t*)w), // B
 				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
-        bias_buffer, // D
-        NULL,
+				bias_buffer, // D
+				NULL,
 			};
 			size_t tensor_offsets[4] = {
 				a->dataof, // A offset
 				w->dataof, // B offset
 				b->dataof, // C offset
-        bias ? bias->dataof : 0, // D offset
+				bias ? bias->dataof : 0, // D offset
 			};
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
