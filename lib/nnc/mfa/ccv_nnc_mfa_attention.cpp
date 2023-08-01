@@ -93,7 +93,188 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
+  if (async) {
+    flags[0] = false;
+    semaphore = new Dispatch::Semaphore(0);
+  } else {
+    flags[0] = true;
+    semaphore = nullptr;
+  }
+  this->flags[1] = hash.batched;
+  this->flags[2] = hash.masked;
   
+  auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  constants->setConstantValue(&hash.R, MTL::DataTypeUInt, NS::UInteger(0));
+  constants->setConstantValue(&hash.C, MTL::DataTypeUInt, 1);
+  constants->setConstantValue(&hash.H, MTL::DataTypeUInt, 2);
+  constants->setConstantValue(&hash.D, MTL::DataTypeUInt, 3);
+  constants->setConstantValue(&hash.Q_trans, MTL::DataTypeBool, 10);
+  constants->setConstantValue(&hash.K_trans, MTL::DataTypeBool, 11);
+  constants->setConstantValue(&hash.V_trans, MTL::DataTypeBool, 12);
+  constants->setConstantValue(&hash.O_trans, MTL::DataTypeBool, 13);
+  constants->setConstantValue(&hash.alpha, MTL::DataTypeFloat, 20);
+  constants->setConstantValue(&hash.data_type, MTL::DataTypeUInt, 30);
+  constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
+  constants->setConstantValue(&hash.masked, MTL::DataTypeBool, 50000);
+  
+  {
+    bool block_sparse = hash.masked;
+    bool triangular = false;
+    bool forward = true;
+    bool backward = false;
+    bool generate_block_mask = false;
+    bool grouped_query = false;
+    constants->setConstantValue(&block_sparse, MTL::DataTypeBool, 102);
+    constants->setConstantValue(&triangular, MTL::DataTypeBool, 103);
+    constants->setConstantValue(&forward, MTL::DataTypeBool, 110);
+    constants->setConstantValue(&backward, MTL::DataTypeBool, 111);
+    constants->setConstantValue(&generate_block_mask, MTL::DataTypeBool, 112);
+    constants->setConstantValue(&grouped_query, MTL::DataTypeBool, 113);
+  }
+  
+  uint16_t R_simd;
+  uint16_t C_simd;
+  uint16_t R_splits;
+  bool fuse_async_loads = false;
+  if (hash.data_type == MTL::DataTypeFloat) {
+    R_simd = 8;
+    C_simd = 32;
+    R_splits = 4;
+  } else {
+    uint32_t D = hash.D;
+    if (hash.masked) {
+      if (D <= 16) {
+        R_simd = 16;
+        C_simd = 64;
+        R_splits = 4;
+      } else if (D <= 24) {
+        R_simd = 8;
+        C_simd = 64;
+        R_splits = 8;
+      } else if (D <= 80) {
+        R_simd = 8;
+        C_simd = 64;
+        R_splits = 4;
+      } else {
+        R_simd = 8;
+        C_simd = 32;
+        R_splits = 4;
+      }
+    } else {
+      R_simd = 8;
+      R_splits = 8;
+      
+      if (D <= 8) {
+        R_simd = 16;
+        C_simd = 64;
+      } else if (D <= 16) {
+        C_simd = 72;
+        fuse_async_loads = true;
+      } else if (D <= 24) {
+        C_simd = 56;
+        fuse_async_loads = true;
+      } else if (D <= 56) {
+        C_simd = 64;
+      } else if (D <= 64) {
+        C_simd = 40;
+        fuse_async_loads = true;
+      } else if (D <= 96) {
+        C_simd = 64;
+      } else if (D <= 304) {
+        C_simd = 32;
+        R_splits = 4;
+      } else {
+        C_simd = 40;
+        R_splits = 8;
+      }
+    }
+  }
+  
+  constants->setConstantValue(&R_simd, MTL::DataTypeUShort, 200);
+  constants->setConstantValue(&C_simd, MTL::DataTypeUShort, 201);
+  constants->setConstantValue(&R_splits, MTL::DataTypeUShort, 210);
+  constants->setConstantValue(&fuse_async_loads, MTL::DataTypeBool, 213);
+  
+  uint16_t data_type_size = UINT16_MAX;
+  switch (hash.data_type) {
+    case MTL::DataTypeHalf: {
+      data_type_size = 2;
+      break;
+    }
+    case MTL::DataTypeFloat: {
+      data_type_size = 4;
+      break;
+    }
+    default: {
+      CCV_NNC_MFA_PRECONDITION(false)
+      break;
+    }
+  }
+  
+  uint16_t D_simd = (hash.D + 7) / 8 * 8;
+  uint16_t R_group = R_simd * R_splits;
+  uint16_t Q_block_length;
+  uint16_t K_block_length;
+  uint16_t V_block_length;
+  uint16_t O_block_length;
+  
+  uint16_t R_block_dim = R_group;
+  uint16_t C_block_dim = C_simd;
+  uint16_t D_block_dim = D_simd;
+  std::function<void(uint16_t*, NS::UInteger)> set_bank_offset = [=](uint16_t* dim, NS::UInteger index) {
+    CCV_NNC_MFA_PRECONDITION(*dim % 8 == 0);
+    
+    uint16_t dim_bytes = *dim * data_type_size;
+    uint16_t dim_bytes_modulo = dim_bytes % 64;
+    if (dim_bytes_modulo == 16 || dim_bytes_modulo == 48) {
+      return;
+    } else if (dim_bytes_modulo == 0 || dim_bytes_modulo == 32) {
+      constexpr uint16_t bank_offset_bytes = 16;
+      uint16_t bank_offset = bank_offset_bytes / data_type_size;
+      constants->setConstantValue(&bank_offset, MTL::DataTypeUShort, index);
+      *dim += bank_offset;
+    } else {
+      CCV_NNC_MFA_PRECONDITION(false)
+    }
+  };
+  set_bank_offset(&R_block_dim, 220);
+  set_bank_offset(&C_block_dim, 221);
+  set_bank_offset(&D_block_dim, 222);
+  
+  // TODO: Find amount of threadgroup memory and grid sizes.
+  
+  auto swift_name = NS::String::string("attention", NS::UTF8StringEncoding);
+  for (int i = 0; i < 2; ++i) {
+    MTL::ComputePipelineState** pso;
+    if (i == 0) {
+      pso = &attention_pso;
+    } else {
+      pso = &generate_mask_pso;
+      if (hash.masked) {
+        bool generate_block_mask = true;
+        constants->setConstantValue(&generate_block_mask, MTL::DataTypeBool, 112);
+      } else {
+        continue;
+      }
+    }
+    
+    NS::Error *error;
+    auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error)
+    
+    if (async) {
+      context->device->newComputePipelineState(function.get(), [=](MTL::ComputePipelineState* pipeline, NS::Error* error) {
+        CCV_NNC_MFA_CHECK_ERROR(error)
+        
+        pipeline->retain();
+        *pso = pipeline;
+        semaphore->signal();
+      });
+    } else {
+      *pso = context->device->newComputePipelineState(function.get(), &error);
+      CCV_NNC_MFA_CHECK_ERROR(error)
+    }
+  }
   
   pool->drain();
 }
@@ -109,6 +290,9 @@ mfa::attention::pipeline::~pipeline() {
 void mfa::attention::pipeline::wait() {
   if (!flags[0]) {
     semaphore->wait();
+    if (flags[2]) {
+      semaphore->wait();
+    }
     flags[0] = true;
   }
 }
