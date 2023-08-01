@@ -242,7 +242,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 				int D_batch_dim = 0;
 				if (bias) {
-					D_batch_dim = ccv_nnc_tensor_nd(bias->info.dim) - 1;
+					const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+					assert(bias_nd <= a_nd);
+					D_batch_dim = bias_nd == a_nd ? bias_nd - 2 : bias_nd - 1;
 				}
 				for (int i = 0; i < D_batch_dim; ++i) {
 					params.batch_dims_d[i] = biasdim[i];
