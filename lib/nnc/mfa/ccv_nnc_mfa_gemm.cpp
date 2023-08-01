@@ -96,24 +96,24 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     }
     batch_size = batch_sizes[0];
     
-    uint16_t element_size = 0;
+    uint16_t data_type_size = 0;
     switch (params.data_type) {
       case MTL::DataTypeHalf: {
-        element_size = 2;
+        data_type_size = 2;
         break;
       }
       case MTL::DataTypeFloat: {
-        element_size = 4;
+        data_type_size = 4;
         break;
       }
       default:
         CCV_NNC_MFA_PRECONDITION(false);
         break;
     }
-    uint64_t byte_stride_a = hash.M * hash.K * element_size;
-    uint64_t byte_stride_b = hash.K * hash.N * element_size;
-    uint64_t byte_stride_c = hash.M * hash.N * element_size;
-    uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * element_size;
+    uint64_t byte_stride_a = hash.M * hash.K * data_type_size;
+    uint64_t byte_stride_b = hash.K * hash.N * data_type_size;
+    uint64_t byte_stride_c = hash.M * hash.N * data_type_size;
+    uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * data_type_size;
     if (batch_sizes[1] == 1) {
       byte_stride_b = 0;
     }

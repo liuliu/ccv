@@ -54,7 +54,7 @@ public:
 class pipeline {
   Dispatch::Semaphore* semaphore;
   MTL::ComputePipelineState* attention_pso;
-  MTL::ComputePipelineState* generate_mask_pso;
+  MTL::ComputePipelineState* generate_block_mask_pso;
   
   simd::uchar4 flags;
   uint16_t threadgroup_memory_length; // use 48B for the mask-generating shader
@@ -70,7 +70,7 @@ public:
   void wait();
   
   MTL::ComputePipelineState* get_attention_pso() const;
-  MTL::ComputePipelineState* get_generate_mask_pso() const;
+  MTL::ComputePipelineState* get_generate_block_mask_pso() const;
   simd::uchar4 get_flags() const;
   uint16_t get_threadgroup_memory_length() const;
   MTL::Size get_grid_size() const;

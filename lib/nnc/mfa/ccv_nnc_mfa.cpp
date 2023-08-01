@@ -164,11 +164,22 @@ mfa::context::context(MTL::Device* device)
     std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
   
-  // TODO: Set to a more reasonable initial value once the expanding allocation
-  // mechanism is debugged.
-  scratch = NS::TransferPtr(device->newBuffer(1, MTL::StorageModePrivate));
+  this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
   
   pool->drain();
+}
+
+MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
+  if (size > scratch->length()) {
+    uint64_t padded_size = std::max(int64_t(0), int64_t(size) - 1);
+    uint64_t leading_zeroes = __builtin_clzll(padded_size);
+    uint64_t rounded_size = 1 << uint64_t(64 - leading_zeroes);
+    
+    auto buffer = device->newBuffer(rounded_size, 0);
+    CCV_NNC_MFA_PRECONDITION(buffer != nullptr);
+    this->scratch = NS::TransferPtr(buffer);
+  }
+  return scratch.get();
 }
 
 MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {

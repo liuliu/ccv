@@ -24,6 +24,95 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   if (iterator == context->attention_cache.map.end()) {
     mfa::precondition_failure("Attention hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
+  
+  auto* pipeline = iterator->second;
+  pipeline->wait();
+  auto encoder = command_batch->commandEncoder;
+  
+  int num_tensors = 0;
+  while (tensors[num_tensors] != nullptr) {
+    num_tensors += 1;
+  }
+  CCV_NNC_MFA_PRECONDITION(num_tensors == (hash.cached ? 5 : 4));
+  
+  uint16_t element_size = 0;
+  switch (params.data_type) {
+    case MTL::DataTypeHalf: {
+      element_size = 2;
+      break;
+    }
+    case MTL::DataTypeFloat: {
+      element_size = 4;
+      break;
+    }
+    default:
+      CCV_NNC_MFA_PRECONDITION(false);
+      break;
+  }
+  
+  uint32_t batch_size;
+  if (pipeline->get_flags()[1]) {
+    uint16_t num_batch_dims[2] = { 0, 0 };
+    uint64_t batch_sizes[2] = { 1, 1 };
+   
+    for (uint16_t operand = 0; operand < 2; ++operand) {
+      uint32_t* batch_dims;
+      if (operand == 0) {
+        batch_dims = params.batch_dims_q;
+      } else if (operand == 1) {
+        batch_dims = params.batch_dims_mask;
+      }
+      
+      for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+        if (batch_dims[i] == 0) {
+          break;
+        }
+        num_batch_dims[operand] += 1;
+        batch_sizes[operand] *= batch_dims[i];
+      }
+      
+      bool dims_match_q = true;
+      if (num_batch_dims[0] != num_batch_dims[operand]) {
+        dims_match_q = false;
+      } else if (batch_sizes[0] != batch_sizes[operand]) {
+        dims_match_q = false;
+      } else {
+        for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+          if (params.batch_dims_q[i] != batch_dims[i]) {
+            dims_match_q = false;
+          }
+        }
+      }
+      
+      if (!dims_match_q) {
+        CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
+      }
+    }
+    batch_size = batch_sizes[0];
+    
+    uint64_t byte_stride_mask = 0;
+    uint64_t byte_stride_block_mask = 0;
+    if (batch_sizes[1] > 1) {
+      MTL::Size grid_size = pipeline.get_grid_size();
+      data_type_size = hash.R * hash.C * data_type_size;
+      byte_stride_block_mask = grid_size.width * grid_size.height * 1;
+    }
+    
+    simd::ulong4 matrix_offsets[batch_size];
+    for (int i = 0; i < batch_size; ++i) {
+      matrix_offsets[i] = simd::ulong4 {
+        i * byte_stride_maskk,
+        i * byte_stride_block_mask,
+        0,
+        0,
+      };
+    }
+    encoder->setBytes(matrix_offsets, batch_size * 32, 10);
+  }
+  
+  if (params.masked) {
+    command_batch->startCommand(pipeline->get_generate_block_mask_pso());
+  }
 }
 
 // MARK: - C++
@@ -283,7 +372,7 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     if (i == 0) {
       pso = &attention_pso;
     } else {
-      pso = &generate_mask_pso;
+      pso = &generate_block_mask_pso;
       if (hash.masked) {
         bool generate_block_mask = true;
         constants->setConstantValue(&generate_block_mask, MTL::DataTypeBool, 112);
@@ -318,7 +407,7 @@ mfa::attention::pipeline::~pipeline() {
     delete semaphore;
   }
   attention_pso->release();
-  generate_mask_pso->release();
+  generate_block_mask_pso->release();
 }
 
 void mfa::attention::pipeline::wait() {
@@ -339,9 +428,9 @@ MTL::ComputePipelineState* mfa::attention::pipeline::get_attention_pso() const {
   }
 }
 
-MTL::ComputePipelineState* mfa::attention::pipeline::get_generate_mask_pso() const {
+MTL::ComputePipelineState* mfa::attention::pipeline::get_generate_block_mask_pso() const {
   if (flags[0]) {
-    return generate_mask_pso;
+    return generate_block_mask_pso;
   } else {
     return nullptr;
   }
