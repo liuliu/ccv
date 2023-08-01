@@ -196,7 +196,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		ccv_nnc_tensor_view_get_stride(d, dstride);
 		assert(ddim[2] == cdim[2]);
 		assert(ddim[3] == num_heads * cdim[3]);
-		assert(w->info.dim[1] == ddim[2]);
+		assert(w->info.dim[1] == ddim[3]);
 		assert(w->info.dim[0] == ddim[3]);
 		float* const dp = d->data.f32;
 		const float* const wp = w->data.f32;
