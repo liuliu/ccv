@@ -33,16 +33,16 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   while (tensors[num_tensors] != nullptr) {
     num_tensors += 1;
   }
-  CCV_NNC_MFA_PRECONDITION(num_tensors == (hash.cached ? 5 : 4));
+  CCV_NNC_MFA_PRECONDITION(num_tensors == (hash.masked ? 5 : 4));
   
-  uint16_t element_size = 0;
+  uint16_t data_type_size = 0;
   switch (params.data_type) {
     case MTL::DataTypeHalf: {
-      element_size = 2;
+      data_type_size = 2;
       break;
     }
     case MTL::DataTypeFloat: {
-      element_size = 4;
+      data_type_size = 4;
       break;
     }
     default:
@@ -50,11 +50,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       break;
   }
   
-  uint32_t batch_size;
-  if (pipeline->get_flags()[1]) {
-    uint16_t num_batch_dims[2] = { 0, 0 };
-    uint64_t batch_sizes[2] = { 1, 1 };
-   
+  simd::ushort2 num_batch_dims(0);
+  simd::ulong2 batch_sizes(1);
+  if (params.batched) {
     for (uint16_t operand = 0; operand < 2; ++operand) {
       uint32_t* batch_dims;
       if (operand == 0) {
@@ -88,31 +86,62 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
       }
     }
-    batch_size = batch_sizes[0];
     
     uint64_t byte_stride_mask = 0;
     uint64_t byte_stride_block_mask = 0;
+    if (batch_sizes[0] > 1) {
+      byte_stride_mask = hash.R * hash.C * data_type_size;
+    }
     if (batch_sizes[1] > 1) {
-      MTL::Size grid_size = pipeline.get_grid_size();
-      data_type_size = hash.R * hash.C * data_type_size;
+      auto grid_size = pipeline->get_grid_size();
       byte_stride_block_mask = grid_size.width * grid_size.height * 1;
     }
     
-    simd::ulong4 matrix_offsets[batch_size];
-    for (int i = 0; i < batch_size; ++i) {
+    simd::ulong4 matrix_offsets[batch_sizes[0]];
+    for (int i = 0; i < batch_sizes[0]; ++i) {
       matrix_offsets[i] = simd::ulong4 {
-        i * byte_stride_maskk,
+        i * byte_stride_mask,
         i * byte_stride_block_mask,
         0,
         0,
       };
     }
-    encoder->setBytes(matrix_offsets, batch_size * 32, 10);
+    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
   }
   
   if (params.masked) {
     command_batch->startCommand(pipeline->get_generate_block_mask_pso());
+    encoder->setThreadgroupMemoryLength(48, 0);
+    encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+    encoder->setBuffer(tensors[4], tensor_offsets[4], 12);
+    
+    auto grid_size = pipeline->get_grid_size();
+    auto scratch_size = grid_size.width * grid_size.height * 1;
+    grid_size.depth = batch_sizes[1];
+    scratch_size *= batch_sizes[1];
+    
+    auto scratch = context->request_scratch(scratch_size);
+    encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+    encoder->setBuffer(scratch, 0, 13);
+    encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
+    command_batch->finishCommand(encoder);
   }
+  
+  command_batch->startCommand(pipeline->get_attention_pso());
+  encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
+  encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+  for (int i = 0; i < 4; ++i) {
+    encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+  }
+  
+  auto grid_size = pipeline->get_grid_size();
+  grid_size.height = params.H;
+  grid_size.depth = batch_sizes[0];
+  encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
+  command_batch->finishCommand(encoder);
 }
 
 // MARK: - C++

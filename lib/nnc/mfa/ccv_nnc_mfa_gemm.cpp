@@ -36,22 +36,20 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
+  
+  encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+  if (num_tensors >= 4) {
+    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  }
   for (int i = 0; i < num_tensors; ++i) {
-    if (i < 2) {
-      encoder->useResource(tensors[i], MTL::ResourceUsageRead);
-    } else if (i < 3) {
-      encoder->useResource(tensors[i], MTL::ResourceUsageWrite);
-    } else if (i < 4) {
-      encoder->useResource(tensors[i], MTL::ResourceUsageRead);
-    }
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
-  uint32_t batch_size;
-  if (pipeline->get_flags()[1]) {
-    uint16_t num_batch_dims[4] = { 0, 0, 0, 0 };
-    uint64_t batch_sizes[4] = { 1, 1, 1, 1 };
-    
+  simd::ushort4 num_batch_dims(0);
+  simd::ulong4 batch_sizes(1);
+  if (params.batched) {
     for (uint16_t operand = 0; operand < 4; ++operand) {
       uint32_t* batch_dims;
       if (operand == 0) {
@@ -94,7 +92,6 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
       }
     }
-    batch_size = batch_sizes[0];
     
     uint16_t data_type_size = 0;
     switch (params.data_type) {
@@ -121,8 +118,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       byte_stride_d = 0;
     }
     
-    simd::ulong4 matrix_offsets[batch_size];
-    for (int i = 0; i < batch_size; ++i) {
+    simd::ulong4 matrix_offsets[batch_sizes[0]];
+    for (int i = 0; i < batch_sizes[0]; ++i) {
       matrix_offsets[i] = simd::ulong4 {
         i * byte_stride_a,
         i * byte_stride_b,
@@ -130,13 +127,11 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         i * byte_stride_d,
       };
     }
-    encoder->setBytes(matrix_offsets, batch_size * 32, 10);
-  } else {
-    batch_size = 1;
+    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
   }
   
   auto grid_size = pipeline->get_grid_size();
-  grid_size.depth = batch_size;
+  grid_size.depth = batch_sizes[0];
   encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
   command_batch->finishCommand(encoder);
 }
