@@ -165,15 +165,19 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 			// ahp[x] = (ap1[x] - meanp2[0]) * inv_stdp2[0];
 			MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:x_minus_mean secondaryTensor:mps_saved_inv_std name:nil];
+			
+			
 			if (dscale) {
 				NSMutableArray<NSNumber*>* dscale_axes = [NSMutableArray new];	
 				for (int i = 0; i < a_nd; i++) {
 					if (a->info.dim[i] != dscale->info.dim[i])
 						[dscale_axes addObject:@(i)];
 				}
-				//  dscalep2[x] += ahp[x] * gp1[x];
-				MPSGraphTensor* dscale = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:mps_g name:nil];
-				mps_dscale = [graph reductionSumWithTensor:dscale axes:dscale_axes name:nil];
+				//  dscalep2[x] = ahp[x] * gp1[x]; no reduce
+				MPSGraphTensor* mps_dscale_original = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:mps_g name:nil];
+				
+				//  dscalep2[x] += ahp[x] * gp1[x]; reduce
+				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
 			}
 
 			if (dbias) {
@@ -191,15 +195,6 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				// inv_n 
 				MPSGraphTensor* sizeReciprocalTensor = [graph reciprocalWithTensor:[graph constantWithScalar:n dataType:mps_a.dataType] name:nil];          
-
-				// dscalep2[0] = ahp[x] * gp1[x] * scalep2[x];
-				MPSGraphTensor* bnGradMulTensor = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:ah name:nil];
-				
-				// dscalep2[0] += ahp[x] * gp1[x] * scalep2[x]; reduce 
-				MPSGraphTensor* gammaGradient = [graph reductionSumWithTensor:bnGradMulTensor axes:axes name:nil];
-
-				// gp1[x] * scalep2[x]; reduce
-				MPSGraphTensor* betaGradient = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
 
 				// gssp = gp1[x] * scalep2[x] * inv_stdp2[x]
 				MPSGraphTensor* gss = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_saved_inv_std name:nil];
