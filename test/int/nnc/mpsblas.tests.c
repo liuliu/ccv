@@ -1125,4 +1125,43 @@ TEST_CASE("compare set with mps")
 	ccv_nnc_tensor_free(ga);
 }
 
+TEST_CASE("scaled dot product attention with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 8, 128, 64), 0);
+	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 8, 128, 64), 0);
+	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 8, 128, 96), 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 32 * 8 * 128 * 64; i++)
+		q_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 32 * 8 * 128 * 64; i++)
+		k_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 32 * 8 * 128 * 96; i++)
+		v_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const dot = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 8, 128, 96), 0);
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / 8, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(dot), 0);
+	ccv_nnc_tensor_t* const gq_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 32, 8, 128, 64), 0);
+	ccv_nnc_tensor_t* const gk_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 32, 8, 128, 64), 0);
+	ccv_nnc_tensor_t* const gv_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 32, 8, 128, 96), 0);
+	ccv_nnc_tensor_t* const gdot = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 32, 8, 128, 96), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(gq_tensor, gk_tensor, gv_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / 8, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gq_tensor, gk_tensor, gv_tensor), TENSOR_LIST(gdot), 0);
+	ccv_nnc_tensor_t* const rdot = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 8, 128, 96), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gdot), TENSOR_LIST(rdot), 0);
+	for (i = 0; i < 128 * 96; i++)
+		printf("%d %f %f\n", i, rdot->data.f32[i], dot->data.f32[i]);
+	REQUIRE_TENSOR_EQ(rdot, dot, "scaled dot product attention result should be the same");
+	ccv_nnc_tensor_free(dot);
+	ccv_nnc_tensor_free(gdot);
+	ccv_nnc_tensor_free(rdot);
+	ccv_nnc_tensor_free(q_tensor);
+	ccv_nnc_tensor_free(k_tensor);
+	ccv_nnc_tensor_free(v_tensor);
+	ccv_nnc_tensor_free(gq_tensor);
+	ccv_nnc_tensor_free(gk_tensor);
+	ccv_nnc_tensor_free(gv_tensor);
+}
+
 #include "case_main.h"

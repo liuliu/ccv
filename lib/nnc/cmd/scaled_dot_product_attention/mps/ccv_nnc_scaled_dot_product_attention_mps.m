@@ -30,7 +30,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	assert(k_nd == 3 || k_nd == 4);
 	const int v_nd = ccv_nnc_tensor_nd(v->info.dim);
 	assert(v_nd == 3 || v_nd == 4);
-	const int c_nd = ccv_nnc_tensor_nd(o->info.dim);
+	const int o_nd = ccv_nnc_tensor_nd(o->info.dim);
 	assert(o_nd == 3 || o_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd && v_nd == o_nd);
 
@@ -253,8 +253,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 
 		// We assume the weights matrix is square.
 		assert(K == N);
-		assert(bdim[0] == N);
-		assert(bdim[1] == K);
+		assert(b->info.dim[0] == N);
+		assert(b->info.dim[1] == K);
 
 		if (bias) {
 			const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
