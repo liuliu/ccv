@@ -65,7 +65,7 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
       }
     }
     
-    auto* pipeline = new mfa::gemm::pipeline(context, hash, async);
+    auto* pipeline = new U(context, hash, async);
     (*map)[hash] = pipeline;
     
     if (METAL_LOG_LEVEL(context) >= 2) {
@@ -75,6 +75,12 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
       }
     }
   }
+}
+
+template <>
+void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash, bool async)
+{
+  _mfa_cache_prepare(&map, context, hash, async);
 }
 
 template <>

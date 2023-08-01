@@ -48,7 +48,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   
   uint32_t batch_size;
-  if (pipeline->get_batched()) {
+  if (pipeline->get_flags()[1]) {
     uint16_t num_batch_dims[4] = { 0, 0, 0, 0 };
     uint64_t batch_sizes[4] = { 1, 1, 1, 1 };
     
@@ -174,6 +174,35 @@ bool mfa::gemm::hash::operator==(const mfa::gemm::hash& hash) const {
   (fused_bias == hash.fused_bias);
 }
 
+std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash) {
+  os << "mfa::gemm::hash {";
+  os << " .data_type = " << hash.data_type << ',';
+  os << " .M = " << hash.M << ',';
+  os << " .N = " << hash.N << ',';
+  os << " .K = " << hash.K << ',';
+  os << " .A_trans = " << bool(hash.A_trans) << ',';
+  os << " .B_trans = " << bool(hash.B_trans) << ',';
+  os << " .D_trans = " << bool(hash.D_trans) << ',';
+  os << " .alpha = " << double(hash.alpha) << ',';
+  os << " .beta = " << double(hash.beta) << ',';
+  os << " .batched = " << bool(hash.batched) << ',';
+  os << " .fused_activation_function = " << bool(hash.fused_activation_function) << ',';
+  os << " .fused_bias = " << bool(hash.fused_bias) << " ";
+  os << "}";
+  return os;
+}
+
+std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) const noexcept {
+  std::size_t seed = 0;
+  using namespace mfa::hash;
+  combine_64(seed, hash.data_type);
+  combine_64(seed, pack_64(simd::uint2 { hash.M, hash.N }));
+  combine_64(seed, pack_64(simd::uint2 { hash.K, pack_32(simd::uchar4 { hash.A_trans, hash.B_trans, hash.D_trans, 0 }) }));
+  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), *reinterpret_cast<const uint32_t*>(&hash.beta) }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.batched, hash.fused_activation_function, hash.fused_bias, 0 }));
+  return seed;
+}
+
 mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool async) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
@@ -183,13 +212,13 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
   if (async) {
-    finished = false;
+    flags[0] = false;
     semaphore = new Dispatch::Semaphore(0);
   } else {
-    finished = true;
+    flags[0] = true;
     semaphore = nullptr;
   }
-  this->batched = hash.batched;
+  this->flags[1] = hash.batched;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.M, MTL::DataTypeUInt, NS::UInteger(0));
@@ -208,7 +237,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
   // BxMxN > 4,000,000 -> 64x64, only if M >= 120 and N >= 120
   uint64_t C_elements = uint64_t(hash.M) * uint64_t(hash.N);
-  if (batched) {
+  if (flags[1]) {
     C_elements *= 2;
   }
   int is_half = (hash.data_type == MTL::DataTypeHalf); // SD v1 attention
@@ -326,30 +355,30 @@ mfa::gemm::pipeline::~pipeline() {
 }
 
 void mfa::gemm::pipeline::wait() {
-  if (!finished) {
+  if (!flags[0]) {
     semaphore->wait();
-    finished = true;
+    flags[0] = true;
   }
 }
 
 MTL::ComputePipelineState* mfa::gemm::pipeline::get_pso() const {
-  if (finished) {
+  if (flags[0]) {
     return pso;
   } else {
     return nullptr;
   }
 }
 
-bool mfa::gemm::pipeline::get_batched() const {
-  if (finished) {
-    return batched;
+simd::uchar2 mfa::gemm::pipeline::get_flags() const {
+  if (flags[0]) {
+    return flags;
   } else {
     return false;
   }
 }
 
 uint16_t mfa::gemm::pipeline::get_threadgroup_memory_length() const {
-  if (finished) {
+  if (flags[0]) {
     return threadgroup_memory_length;
   } else {
     return UINT16_MAX;
@@ -357,7 +386,7 @@ uint16_t mfa::gemm::pipeline::get_threadgroup_memory_length() const {
 }
 
 MTL::Size mfa::gemm::pipeline::get_grid_size() const {
-  if (finished) {
+  if (flags[0]) {
     return grid_size;
   } else {
     return MTL::Size(0, UINT64_MAX, UINT64_MAX);
@@ -365,38 +394,9 @@ MTL::Size mfa::gemm::pipeline::get_grid_size() const {
 }
 
 MTL::Size mfa::gemm::pipeline::get_group_size() const {
-  if (finished) {
+  if (flags[0]) {
     return group_size;
   } else {
     return MTL::Size(0, UINT64_MAX, UINT64_MAX);
   }
-}
-
-std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash) {
-  os << "mfa::gemm::hash {";
-  os << " .data_type = " << hash.data_type << ',';
-  os << " .M = " << hash.M << ',';
-  os << " .N = " << hash.N << ',';
-  os << " .K = " << hash.K << ',';
-  os << " .A_trans = " << bool(hash.A_trans) << ',';
-  os << " .B_trans = " << bool(hash.B_trans) << ',';
-  os << " .D_trans = " << bool(hash.D_trans) << ',';
-  os << " .alpha = " << double(hash.alpha) << ',';
-  os << " .beta = " << double(hash.beta) << ',';
-  os << " .batched = " << bool(hash.batched) << ',';
-  os << " .fused_activation_function = " << bool(hash.fused_activation_function) << ',';
-  os << " .fused_bias = " << bool(hash.fused_bias) << " ";
-  os << "}";
-  return os;
-}
-
-std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) const noexcept {
-  std::size_t seed = 0;
-  using namespace mfa::hash;
-  combine_64(seed, hash.data_type);
-  combine_64(seed, pack_64(simd::uint2 { hash.M, hash.N }));
-  combine_64(seed, pack_64(simd::uint2 { hash.K, pack_32(simd::uchar4 { hash.A_trans, hash.B_trans, hash.D_trans, 0 }) }));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), *reinterpret_cast<const uint32_t*>(&hash.beta) }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.batched, hash.fused_activation_function, hash.fused_bias, 0 }));
-  return seed;
 }

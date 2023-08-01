@@ -25,6 +25,7 @@ typedef struct {
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
+#include <simd/simd.h>
 
 namespace ccv {
 namespace nnc {
@@ -52,12 +53,10 @@ public:
 };
 
 class pipeline {
-  bool finished;
   Dispatch::Semaphore* semaphore;
-  
   MTL::ComputePipelineState* pso;
   
-  bool batched;
+  simd::uchar2 flags;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
@@ -71,8 +70,7 @@ public:
   void wait();
   
   MTL::ComputePipelineState* get_pso() const;
-  
-  bool get_batched() const;
+  simd::uchar2 get_flags() const;
   uint16_t get_threadgroup_memory_length() const;
   MTL::Size get_grid_size() const;
   MTL::Size get_group_size() const;

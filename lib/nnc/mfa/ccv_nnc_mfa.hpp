@@ -2,8 +2,8 @@
 #define GUARD_ccv_nnc_mfa_hpp
 
 #include "nnc/ccv_nnc.h"
-#include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_defines.hpp"
+#include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 
 #ifdef __cplusplus
@@ -49,6 +49,7 @@ public:
   //
   // After preparing the pipeline, call `encode_*`. Pass each tensor's backing
   // `MTL::Buffer*` through a null-terminated list.
+  cache<attention::hash, attention::pipeline> attention_cache;
   cache<gemm::hash, gemm::pipeline> gemm_cache;
 };
 
