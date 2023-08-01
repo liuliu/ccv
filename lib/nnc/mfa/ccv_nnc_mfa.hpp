@@ -2,6 +2,7 @@
 #define GUARD_ccv_nnc_mfa_hpp
 
 #include "nnc/ccv_nnc.h"
+#include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_defines.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 
@@ -35,6 +36,7 @@ public:
   
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
+  // TODO: - Scratch buffer for block-sparse FlashAttention
   
   context(MTL::Device* device);
   

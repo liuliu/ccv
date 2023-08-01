@@ -1,6 +1,8 @@
 #ifndef GUARD_ccv_nnc_mfa_hash_hpp
 #define GUARD_ccv_nnc_mfa_hash_hpp
 
+#include <simd/simd.h>
+
 // Source:
 // https://stackoverflow.com/a/50978188
 
@@ -40,14 +42,20 @@ namespace mfa {
 namespace hash {
 
 // call this function with the old seed and the new key to be hashed and combined into the new seed value, respectively the final hash
-inline size_t combine_32(std::size_t& seed, const uint32_t& v)
-{
-    return rotl(seed,std::numeric_limits<size_t>::digits/3) ^ distribute_32(v);
+inline size_t combine_32(std::size_t& seed, const uint32_t& v) {
+    return rotl(seed, std::numeric_limits<size_t>::digits/3) ^ distribute_32(v);
 }
 
-inline size_t combine_64(std::size_t& seed, const uint64_t& v)
-{
-    return rotl(seed,std::numeric_limits<size_t>::digits/3) ^ distribute_64(v);
+inline uint32_t pack_32(const simd::uchar4& v) {
+  return reinterpret_cast<const uint32_t&>(v);
+}
+
+inline size_t combine_64(std::size_t& seed, const uint64_t& v) {
+    return rotl(seed, std::numeric_limits<size_t>::digits/3) ^ distribute_64(v);
+}
+
+inline uint64_t pack_64(const simd::uint2& v) {
+  return reinterpret_cast<const uint64_t&>(v);
 }
 
 } // namespace hash

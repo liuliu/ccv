@@ -372,8 +372,7 @@ MTL::Size mfa::gemm::pipeline::get_group_size() const {
   }
 }
 
-std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash)
-{
+std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash) {
   os << "mfa::gemm::hash {";
   os << " .data_type = " << hash.data_type << ',';
   os << " .M = " << hash.M << ',';
@@ -393,17 +392,11 @@ std::ostream& operator<<(std::ostream& os, const mfa::gemm::hash& hash)
 
 std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) const noexcept {
   std::size_t seed = 0;
-  mfa::hash::combine_64(seed, hash.data_type);
-  mfa::hash::combine_32(seed, hash.M);
-  mfa::hash::combine_32(seed, hash.N);
-  mfa::hash::combine_32(seed, hash.K);
-  mfa::hash::combine_32(seed, uint32_t(hash.A_trans));
-  mfa::hash::combine_32(seed, uint32_t(hash.B_trans));
-  mfa::hash::combine_32(seed, uint32_t(hash.D_trans));
-  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.alpha));
-  mfa::hash::combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.beta));
-  mfa::hash::combine_32(seed, uint32_t(hash.batched));
-  mfa::hash::combine_32(seed, uint32_t(hash.fused_activation_function));
-  mfa::hash::combine_32(seed, uint32_t(hash.fused_bias));
+  using namespace mfa::hash;
+  combine_64(seed, hash.data_type);
+  combine_64(seed, pack_64(simd::uint2 { hash.M, hash.N }));
+  combine_64(seed, pack_64(simd::uint2 { hash.K, pack_32(simd::uchar4 { hash.A_trans, hash.B_trans, hash.D_trans, 0 }) }));
+  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), *reinterpret_cast<const uint32_t*>(&hash.beta) }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.batched, hash.fused_activation_function, hash.fused_bias, 0 }));
   return seed;
 }
