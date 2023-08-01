@@ -108,10 +108,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(a_batch_size == b_batch_size || a_batch_size == 1);
 			assert(w_batch_size == a_batch_size || w_batch_size == 1);
 
-			const int is_same_batch =
-				(a_batch_size == w_batch_size) &&
-				(a_batch_size == b_batch_size);
-
 			// NNC uses the convention B = A * W.
 			// MFA uses the convention C = A * B.
 			int is_mfa_compatible_batch = 0;
@@ -358,7 +354,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		if (h) {
 			// [output gradient]
-			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ g, w }, 2, (ccv_nnc_tensor_t*[]){ h }, 1);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)g, (ccv_nnc_tensor_t*)w }, 2, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)h }, 1);
 			int indices[1];
 
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
@@ -391,7 +387,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		if (dw) {
 			// [weight updates]
-			ccv_nnc_mps_graph_key_t dw_key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ g, a }, 2, (ccv_nnc_tensor_t*[]){ dw }, 1);
+			ccv_nnc_mps_graph_key_t dw_key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)g, (ccv_nnc_tensor_t*)a }, 2, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)dw }, 1);
 			int dw_indices[2];
 
 			MPSGraphExecutable* executable_dw = ccv_nnc_mps_graph_executable_cache(dw_key, dw_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
@@ -425,7 +421,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		if (db) {
 			// [bias updates]
-			ccv_nnc_mps_graph_key_t db_key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ g }, 1, (ccv_nnc_tensor_t*[]){ db }, 1);
+			ccv_nnc_mps_graph_key_t db_key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)g }, 1, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)db }, 1);
 			int db_indices[1];
 
 			MPSGraphExecutable* executable_db = ccv_nnc_mps_graph_executable_cache(db_key, db_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
