@@ -591,6 +591,8 @@ void _register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(cc
 void _register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_ARGMIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SOFTMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1024,6 +1026,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[44].backends[6]));
 	_register_command_CCV_NNC_ARGMIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[78].backends[6]));
 	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[12].backends[6]));
+	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[38].backends[6]));
+	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[39].backends[6]));
 	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[0].backends[6]));
 	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[1].backends[6]));
 	_register_command_CCV_NNC_SOFTMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[114].backends[6]));
