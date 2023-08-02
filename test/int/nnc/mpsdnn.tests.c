@@ -1775,4 +1775,93 @@ TEST_CASE("mps backward convolution in nhwc format")
 	ccv_nnc_tensor_free(cdbias);
 }
 
+// TEST_CASE("mps downsample bilinear NHWC in float")
+// {
+// 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_BACKWARD, CCV_NNC_BACKEND_MPS));
+// 	ccv_dense_matrix_t* image = 0;
+// 	ccv_read("../../../samples/chessbox.png", &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+// 	ccv_dense_matrix_t* fimage = 0;
+// 	ccv_shift(image, (ccv_matrix_t**)&fimage, CCV_32F, 0, 0);
+// 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, image->rows, image->cols, 3), 0);
+// 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)fimage), TENSOR_LIST(a), 0);
+// 	ccv_matrix_free(fimage);
+// 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, image->rows / 2, image->cols / 2, 3), 0);
+// 	ccv_nnc_cmd_exec(CMD_UPSAMPLE_BACKWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+// 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, image->rows / 2, image->cols / 2, 3), 0);
+// 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+// 	REQUIRE_MATRIX_FILE_EQ((ccv_matrix_t*)hb, "../../unit/nnc/data/upsample.backward.bin", "the backward of upsample should be equal");
+// 	ccv_nnc_tensor_free(a);
+// 	ccv_nnc_tensor_free(b);
+// 	ccv_nnc_tensor_free(hb);
+// 	ccv_matrix_free(image);
+// }
+
+TEST_CASE("mps downsample bilinear NCHW in float")
+{
+		ccv_cli_set_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
+/**/
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_dense_matrix_t* image = 0;
+	ccv_read("../../../samples/chessbox.png", &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+	ccv_dense_matrix_t* fimage = 0;
+	ccv_shift(image, (ccv_matrix_t**)&fimage, CCV_32F, 0, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, image->rows, image->cols, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)fimage), TENSOR_LIST(a), 0);
+	ccv_matrix_free(fimage);
+	ccv_nnc_tensor_t* const at = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 3, image->rows, image->cols), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(at), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 3, image->rows / 2, image->cols / 2), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_BACKWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(at), TENSOR_LIST(bt), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, image->rows / 2, image->cols / 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(bt), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, image->rows / 2, image->cols / 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	printf("\n at\n");
+	ccv_nnc_print_tensor_info(at);
+	printf("\n bt\n");
+	ccv_nnc_print_tensor_info(bt);
+	printf("\n b\n");
+	ccv_nnc_print_tensor_info(b);
+	printf("\n hb\n");
+	ccv_nnc_print_tensor_info(hb);
+
+	ccv_dense_matrix_t* cimage = 0;
+	ccv_read("../../../samples/chessbox.png", &cimage, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+	ccv_dense_matrix_t* cfimage = 0;
+	ccv_shift(cimage, (ccv_matrix_t**)&cfimage, CCV_32F, 0, 0);
+	ccv_nnc_tensor_t* const ca = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC( 32F, cimage->rows, cimage->cols, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)cfimage), TENSOR_LIST(ca), 0);
+	ccv_nnc_tensor_t* const cat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, cimage->rows, cimage->cols), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ca), TENSOR_LIST(cat), 0);
+	
+	ccv_nnc_tensor_t* const cbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, image->rows / 2, image->cols / 2), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_BACKWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(cat), TENSOR_LIST(cbt), 0);
+
+	ccv_nnc_tensor_t* const cb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, image->rows / 2, image->cols / 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cbt), TENSOR_LIST(cb), 0);
+	ccv_nnc_tensor_t* const chb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, image->rows / 2, image->cols / 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cb), TENSOR_LIST(chb), 0);
+		ccv_matrix_free(cfimage);
+
+	printf("\n cat\n");
+	ccv_nnc_print_tensor_info(cat);
+
+	printf("\n cbt\n");
+	ccv_nnc_print_tensor_info(cbt);
+	printf("\n cb\n");
+	ccv_nnc_print_tensor_info(cb);
+	printf("\n chb\n");
+	ccv_nnc_print_tensor_info(chb);
+	printf("\n");
+	REQUIRE_TENSOR_EQ(hb, chb, "the backward of upsample should be equa");
+
+	// REQUIRE_MATRIX_FILE_EQ((ccv_matrix_t*)chb, "../../unit/nnc/data/upsample.backward.bin", "the backward of upsample should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(at);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(hb);
+	ccv_matrix_free(image);
+}
+
 #include "case_main.h"
