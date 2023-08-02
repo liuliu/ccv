@@ -132,3 +132,23 @@ cc_binary(
 		"//lib:nnc"
 	]
 )
+
+cc_binary(
+  name = "mpsblas.tests",
+  srcs = ["mpsblas.tests.c"],
+  copts = ccv_default_copts(),
+  deps = [
+    "//test:case",
+    "//lib:nnc"
+  ]
+)
+
+cc_binary(
+  name = "mpsdnn.tests",
+  srcs = ["mpsdnn.tests.c"],
+  copts = ccv_default_copts(),
+  deps = [
+    "//test:case",
+    "//lib:nnc"
+  ]
+)
