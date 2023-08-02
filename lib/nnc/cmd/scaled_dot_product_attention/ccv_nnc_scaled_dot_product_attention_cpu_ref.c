@@ -10,8 +10,9 @@
 #include <dispatch/dispatch.h>
 #endif
 
+#if __APPLE__
 #include <Accelerate/Accelerate.h>
-#include <simd/simd.h>
+#endif
 
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
@@ -107,6 +108,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
   const float* mask_pointer = mask ? mask->data.f32 : NULL;
   float* O_pointer = O->data.f32;
   
+  float scale = cmd.info.scaled_dot_product_attention.scale;
+  
   // If it is causal, the mask will be triangular. Therefore we can just to
   // dense attention and explicitly apply the triangular mask. It will be slower
   // than implicit masks (sparse attention), but it works.
@@ -146,7 +149,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
         
         // Multiply Q * K.
         float QK[C];
-        float scale = simd_precise_rsqrt((float)D);
         for (int c = 0; c < C; ++c) {
           float attention_matrix_element = 0;
           
@@ -163,7 +165,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
           
           attention_matrix_element *= scale;
           QK[c] = attention_matrix_element;
-          K += K_leading_dim;
+          K += H * D;
         }
         
         // Apply explicit mask.
@@ -183,21 +185,20 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
         }
         float denominator = 0;
         for (int c = 0; c < C; ++c) {
-          float attention_matrix_element = QK[c];
-          attention_matrix_element = expf(attention_matrix_element - maximum_value);
+          float attention_matrix_element = expf(QK[c] - maximum_value);
           QK[c] = attention_matrix_element;
-          
           denominator += attention_matrix_element;
         }
         float denominator_reciprocal = 1 / denominator;
         for (int c = 0; c < C; ++c) {
-          float attention_matrix_element = QK[c];
-          attention_matrix_element *= denominator_reciprocal;
-          QK[c] = attention_matrix_element;
+          QK[c] *= denominator_reciprocal;
         }
         
         // Multiply P * V.
         float O_temp[D];
+        for (int d = 0; d < D; ++d) {
+          O_temp[d] = 0;
+        }
         for (int c = 0; c < C; ++c) {
           float attention_matrix_element = QK[c];
           
@@ -212,12 +213,12 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
             O_temp[d] += attention_matrix_element * V[d];
           }
           
-          V += V_leading_dim;
+          V += H * D;
         }
         memcpy(O, O_temp, D * sizeof(float));
         
-        Q += r * Q_leading_dim;
-        O += r * O_leading_dim;
+        Q += Q_leading_dim;
+        O += O_leading_dim;
       }
     } parallel_endfor
     
@@ -257,6 +258,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
       // Multiply O * W.
       float alpha = 1.0;
       float beta = 0.0;
+      
+#if __APPLE__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincompatible-pointer-types-discards-qualifiers"
       sgemm_(/*TRANSA*/"N",
@@ -273,6 +276,31 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
              /*C*/C,
              /*LDC*/&N);
 #pragma clang diagnostic pop
+#else
+      for (int m = 0; m < M; ++m) {
+        B = weights->data.f32;
+        for (int n = 0; n < N; ++n) {
+          float C_element = 0;
+          
+          const int K_floor = (K / 16) * 16;
+          for (int k = 0; k < K_floor; k += 16) {
+#pragma clang loop unroll_count(16)
+            for (int k_offset = 0; k_offset < 16; ++k_offset) {
+              C_element += A[k + k_offset] * B[k + k_offset];
+            }
+          }
+          for (int k = K_floor; k < K; ++k) {
+            C_element += A[k] * B[k];
+          }
+          
+          B += K;
+          C[n] = C_element;
+        }
+        A += K;
+        C += N;
+      }
+      C = feedforward_output->data.f32 + b * M * N;
+#endif
       
       // Apply bias.
       if (bias) {

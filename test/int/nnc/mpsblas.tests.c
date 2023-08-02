@@ -1127,63 +1127,95 @@ TEST_CASE("compare set with mps")
 
 TEST_CASE("scaled dot product attention with mps")
 {
-  int B = 3;
-  int R = 1;
-  int C = 1;
-  int H = 1;
-  int D = 3;
-  float scale = 1.0 / sqrt((float)D);
+  // Bypass error: variable-sized object may not be initialized
+#define num_long_trials 2
+#define num_short_trials 2
+#define num_trials (num_long_trials + num_short_trials)
   
-  // Unknown whether these dimensions are being placed into the correct slots in
-  // the argument list (would be nice if C had argument labels like Swift, so
-  // you could know what they mean).
-  int maybe_B = B; // batch size
-  int maybe_R = R; // attention matrix rows (output sequence length)
-  int maybe_C = C; // attention matrix columns (input sequence length)
-  int maybe_H = H; // head count
-  int maybe_D = D; // head size
+  for (int trial = 0; trial < num_trials; ++trial) {
+    int B_candidates[num_trials] = {  32,   3, 2, 1 };
+    int R_candidates[num_trials] = { 128,  61, 6, 2 };
+    int C_candidates[num_trials] = { 128,  49, 2, 1 };
+    int H_candidates[num_trials] = {   8,  13, 3, 1 };
+    int D_candidates[num_trials] = {  64, 191, 4, 8 };
+    
+    int B = B_candidates[trial];
+    int R = R_candidates[trial];
+    int C = C_candidates[trial];
+    int H = H_candidates[trial];
+    int D = D_candidates[trial];
+    float scale = 1.0 / sqrt((float)D);
+    
+    // Unknown whether these dimensions are being placed into the correct slots in
+    // the argument list (would be nice if C had argument labels like Swift, so
+    // you could know what they mean).
+    int maybe_B = B; // batch size
+    int maybe_R = R; // attention matrix rows (output sequence length)
+    int maybe_C = C; // attention matrix columns (input sequence length)
+    int maybe_H = H; // head count
+    int maybe_D = D; // head size
+    
+    GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+    ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+    ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+    ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+    
+    for (int i = 0; i < B * R * H * D; ++i) {
+      q_tensor->data.f32[i] = (float)(i) / (float)(B * R * H * D);
+    }
+    for (int i = 0; i < B * C * H * D; ++i) {
+      k_tensor->data.f32[i] = (float)(i) / (float)(B * C * H * D);
+    }
+    for (int i = 0; i < B * C * H * D; ++i) {
+      v_tensor->data.f32[i] = (float)(i) / (float)(B * C * H * D);
+    }
+    
+    ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+    ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, NULL, NULL, NULL), TENSOR_LIST(o_tensor, NULL), 0);
+    
+    // Why it there 000 in the beginning of the argument list for GPU_TENSOR_NHWC?
+    ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+    ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, H, D), 0);
+    ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, H, D), 0);
+    ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+    ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
+    
+    ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, NULL), 0);
+    
+    ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+    ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
+    
+    if (trial < num_long_trials) {
+      for (int i = 0; i < 50; i++)
+        printf("%d %f %f\n", i, o_tensor->data.f32[i], copy_of_gpu_o_tensor->data.f32[i]);
+    } else {
+      for (int i = 0; i < B * R * H * D; i++)
+        printf("%d %f \n", i, q_tensor->data.f32[i]);
+      for (int i = 0; i < B * C * H * D; i++)
+        printf("%d %f \n", i, k_tensor->data.f32[i]);
+      for (int i = 0; i < B * C * H * D; i++)
+        printf("%d %f \n", i, v_tensor->data.f32[i]);
+      for (int i = 0; i < B * R * H * D; i++)
+        printf("%d %f %f\n", i, o_tensor->data.f32[i], copy_of_gpu_o_tensor->data.f32[i]);
+    }
+    
+    REQUIRE_TENSOR_EQ(copy_of_gpu_o_tensor, o_tensor, "scaled dot product attention result should be the same");
+    
+    ccv_nnc_tensor_free(o_tensor);
+    ccv_nnc_tensor_free(gpu_o_tensor);
+    ccv_nnc_tensor_free(copy_of_gpu_o_tensor);
+    ccv_nnc_tensor_free(q_tensor);
+    ccv_nnc_tensor_free(k_tensor);
+    ccv_nnc_tensor_free(v_tensor);
+    ccv_nnc_tensor_free(gpu_q_tensor);
+    ccv_nnc_tensor_free(gpu_k_tensor);
+    ccv_nnc_tensor_free(gpu_v_tensor);
+  }
   
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, maybe_B, maybe_R, maybe_H, maybe_D), 0);
-	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, maybe_B, maybe_C, maybe_H, maybe_D), 0);
-	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, maybe_B, maybe_C, maybe_H, maybe_D), 0);
-	dsfmt_t dsfmt;
-	int i;
-	dsfmt_init_gen_rand(&dsfmt, 1);
-	for (i = 0; i < maybe_B * maybe_R * maybe_H * maybe_D; i++)
-    q_tensor->data.f32[i] = (float)(i) / (float)(maybe_B * maybe_R * maybe_H * maybe_D);
-	for (i = 0; i < maybe_B * maybe_C * maybe_H * maybe_D; i++)
-    k_tensor->data.f32[i] = (float)(i) / (float)(maybe_B * maybe_C * maybe_H * maybe_D);
-	for (i = 0; i < maybe_B * maybe_C * maybe_H * maybe_D; i++)
-    v_tensor->data.f32[i] = (float)(i) / (float)(maybe_B * maybe_C * maybe_H * maybe_D);
-	ccv_nnc_tensor_t* const dot = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, maybe_B, maybe_R, maybe_H, maybe_D), 0);
-	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(dot), 0);
-	ccv_nnc_tensor_t* const gq_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, maybe_B, maybe_R, maybe_H, maybe_D), 0);
-	ccv_nnc_tensor_t* const gk_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, maybe_B, maybe_C, maybe_H, maybe_D), 0);
-	ccv_nnc_tensor_t* const gv_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, maybe_B, maybe_C, maybe_H, maybe_D), 0);
-	ccv_nnc_tensor_t* const gdot = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, maybe_B, maybe_R, maybe_H, maybe_D), 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(gq_tensor, gk_tensor, gv_tensor), 0);
-	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gq_tensor, gk_tensor, gv_tensor), TENSOR_LIST(gdot), 0);
-	ccv_nnc_tensor_t* const rdot = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, maybe_B, maybe_R, maybe_H, maybe_D), 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gdot), TENSOR_LIST(rdot), 0);
-  for (i = 0; i < maybe_H * maybe_D; i++)
-    printf("%d %f \n", i, q_tensor->data.f32[i]);
-  for (i = 0; i < maybe_H * maybe_D; i++)
-    printf("%d %f \n", i, k_tensor->data.f32[i]);
-  for (i = 0; i < maybe_H * maybe_D; i++)
-    printf("%d %f \n", i, v_tensor->data.f32[i]);
-	for (i = 0; i < maybe_H * maybe_D; i++)
-		printf("%d %f %f\n", i, rdot->data.f32[i], dot->data.f32[i]);
-	REQUIRE_TENSOR_EQ(rdot, dot, "scaled dot product attention result should be the same");
-	ccv_nnc_tensor_free(dot);
-	ccv_nnc_tensor_free(gdot);
-	ccv_nnc_tensor_free(rdot);
-	ccv_nnc_tensor_free(q_tensor);
-	ccv_nnc_tensor_free(k_tensor);
-	ccv_nnc_tensor_free(v_tensor);
-	ccv_nnc_tensor_free(gq_tensor);
-	ccv_nnc_tensor_free(gk_tensor);
-	ccv_nnc_tensor_free(gv_tensor);
+#undef num_long_trials
+#undef num_short_trials
+#undef num_trials
+  
 }
 
 #include "case_main.h"
