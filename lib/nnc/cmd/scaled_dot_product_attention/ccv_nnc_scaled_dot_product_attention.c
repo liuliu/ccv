@@ -93,7 +93,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_back(const ccv_nnc
 }
 
 REGISTER_COMMAND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_scaled_dot_product_attention_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_scaled_dot_product_attention_cpu_ref.c, mps/ccv_nnc_scaled_dot_product_attention_mps.m)
 {
 	registry->bitmask = _ccv_nnc_scaled_dot_product_attention_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw;
@@ -101,7 +101,7 @@ REGISTER_COMMAND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD)(ccv_nnc_cmd_regis
 }
 
 REGISTER_COMMAND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_scaled_dot_product_attention_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_scaled_dot_product_attention_cpu_ref.c, mps/ccv_nnc_scaled_dot_product_attention_mps.m)
 {
 	registry->bitmask = _ccv_nnc_scaled_dot_product_attention_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_scaled_dot_product_attention_tensor_auto_back;

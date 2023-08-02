@@ -3,6 +3,7 @@
 
 #include "nnc/ccv_nnc.h"
 #include "ccv_nnc_mfa_defines.hpp"
+#include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 
 #ifdef __cplusplus
@@ -25,7 +26,7 @@ public:
   cache();
   ~cache();
   
-  void prepare(context* context, T hash, bool async);
+  void prepare(context* context, T hash);
 };
 
 class context {
@@ -35,19 +36,14 @@ public:
   
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
+  NS::SharedPtr<MTL::Buffer> scratch;
   
   context(MTL::Device* device);
   
-  // MFA keeps internal caches of pipeline state objects. If you're eagerly
-  // executing a command, call `sync_prepare_*` just before encoding it. This
-  // incurs non-negligible latency, which can be removed by compiling during
-  // graph compilation. Use `async_prepare_*` during graph compilation, which
-  // will transform the subsequent `sync_prepare_*` into a NOP. The async
-  // version has more latency but utilizes multicore CPU parallelism.
-  //
-  // After preparing the pipeline, call `encode_*`. Pass each tensor's backing
-  // `MTL::Buffer*` through a null-terminated list.
+  cache<attention::hash, attention::pipeline> attention_cache;
   cache<gemm::hash, gemm::pipeline> gemm_cache;
+  
+  MTL::Buffer* request_scratch(uint64_t size);
 };
 
 } // namespace mfa
