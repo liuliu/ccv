@@ -134,13 +134,13 @@ cc_binary(
 )
 
 cc_binary(
-  name = "mpsblas.tests",
-  srcs = ["mpsblas.tests.c"],
-  copts = ccv_default_copts(),
-  deps = [
-    "//test:case",
-    "//lib:nnc"
-  ]
+	name = "mpsblas.tests",
+	srcs = ["mpsblas.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
 )
 
 cc_binary(
