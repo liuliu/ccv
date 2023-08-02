@@ -1,1 +1,0 @@
--lm -lpthread -framework Accelerate -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal -lc++
