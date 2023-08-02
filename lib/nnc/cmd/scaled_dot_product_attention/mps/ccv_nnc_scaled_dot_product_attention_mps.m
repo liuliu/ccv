@@ -17,14 +17,14 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t* const attn_mask = (inputs[3] != NULL) ? (ccv_nnc_tensor_view_t*)inputs[3] : NULL;
-	ccv_nnc_tensor_view_t* const weights =(inputs[4] != NULL) ? (ccv_nnc_tensor_view_t*)inputs[4] : NULL;
-	ccv_nnc_tensor_view_t* const bias = (inputs[5] != NULL) ? (ccv_nnc_tensor_view_t*)inputs[5] : NULL;
+	ccv_nnc_tensor_view_t* const attn_mask = input_size > 3 ? (ccv_nnc_tensor_view_t*)inputs[3] : 0;
+	ccv_nnc_tensor_view_t* const weights = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
+	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(weights); }
-  
-  ccv_nnc_tensor_view_t* const saved_softmax = NULL;
-	ccv_nnc_tensor_view_t* const o = (ccv_nnc_tensor_view_t*)outputs[0];
+
+	ccv_nnc_tensor_view_t* const saved_softmax = NULL;
+	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	assert(q_nd == 3 || q_nd == 4);
 	const int k_nd = ccv_nnc_tensor_nd(k->info.dim);
@@ -212,8 +212,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		int *adim = odim;
 		ccv_nnc_tensor_view_t* const a = o; // left input matrix
 		ccv_nnc_tensor_view_t* const b = weights; // weights
-		ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[1];
-		assert(weights->info.format == CCV_TENSOR_FORMAT_NCHW);
+		ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
 
 		const int b_nd = ccv_nnc_tensor_nd(weights->info.dim);
 		assert(b_nd == 2);
@@ -222,12 +221,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		assert(c_nd == 3);
 
 		int cdim[CCV_NNC_MAX_DIM_ALLOC];
-		int cstride[CCV_NNC_MAX_DIM_ALLOC];
 		ccv_nnc_tensor_view_get_dim(c, cdim);
-		ccv_nnc_tensor_view_get_stride(c, cstride);
 
 		const int attention_batch_size = batch_size;
-		const int gemm_batch_size = cdim[0];
+		const int gemm_batch_size = cdim[1];
 		int gemm_is_batched = (gemm_batch_size > 1);
 		if (attention_is_batched) {
 			assert(gemm_is_batched);
@@ -240,8 +237,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		// The C matrix of the GEMM cannot be transposed, so the assume the C matrix
 		// is NHWC.
 		assert(c->info.format == CCV_TENSOR_FORMAT_NHWC);
-		int M = cdim[1];
-		int N = cdim[2];
+		int M = cdim[2];
+		int N = cdim[3];
 		int K = H * D;
 
 		assert(adim[0] == attention_batch_size);
@@ -264,12 +261,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			// vector doesn't either.
 			assert(bias_nd == 1);
 			assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
-
-			int biasdim[CCV_NNC_MAX_DIM_ALLOC];
-			int biasstride[CCV_NNC_MAX_DIM_ALLOC];
-			ccv_nnc_tensor_view_get_dim(bias, biasdim);
-			ccv_nnc_tensor_view_get_stride(bias, biasstride);
-			assert(biasdim[0] == N);
+			assert(bias->info.dim[0] == N);
 		}
 
 		ccv_nnc_mfa_gemm_params_t params = {
@@ -286,7 +278,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.fused_activation_function = 0,
 			.fused_bias = (bias ? 1 : 0),
 
-			.batch_dims_a = { 0 },
+			.batch_dims_a = { attention_batch_size },
 			.batch_dims_b = { 0 },
 			.batch_dims_d = { 0 },
 		};
