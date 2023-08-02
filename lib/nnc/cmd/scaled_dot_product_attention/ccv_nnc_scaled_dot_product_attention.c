@@ -53,11 +53,17 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	{
 		assert(output_size >= 3);
 		outputs[0] = inputs[0];
-		outputs[0].dim[1] = inputs[0].dim[2]; // sequence length matches query, embedding size matches value * num_head.
-		outputs[0].dim[2] = inputs[2].dim[v_nd - 1] * (q_nd == 4 ? inputs[0].dim[1] : 1);
+		outputs[0].dim[1] = inputs[0].dim[1]; // sequence length matches query, embedding size matches value * num_head.
+		outputs[0].dim[2] = inputs[2].dim[v_nd - 1] * (q_nd == 4 ? inputs[0].dim[2] : 1);
 		outputs[0].dim[3] = 0;
 		outputs[1] = inputs[0];
-		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 2]; // saved softmax should have sequence length of query x key.
+		if (q_nd == 4)
+		{
+			// Switch head v.s. sequence length.
+			outputs[1].dim[1] = outputs[1].dim[2];
+			outputs[1].dim[2] = inputs[0].dim[1];
+		}
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 3]; // saved softmax should have sequence length of query x key.
 		outputs[2] = inputs[0];
 		outputs[2].dim[q_nd - 1] = inputs[2].dim[v_nd - 1]; // sequence length matches query, embedding size matches value.
 	} else {
@@ -67,7 +73,13 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 			return;
 		assert(output_size > 1);
 		outputs[1] = inputs[0];
-		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 2]; // saved softmax should have sequence length of query x key.
+		if (q_nd == 4)
+		{
+			// Switch head v.s. sequence length.
+			outputs[1].dim[1] = outputs[1].dim[2];
+			outputs[1].dim[2] = inputs[0].dim[1];
+		}
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 3]; // saved softmax should have sequence length of query x key.
 	}
 }
 

@@ -3032,7 +3032,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	const ccv_nnc_tensor_param_t v_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
 	const int v_nd = ccv_nnc_tensor_nd(v_params.dim);
 	assert(v_nd == 3 || v_nd == 4);
-	const int hEv = (v_nd == 3 ? 1 : v_params.dim[1]) * v_params.dim[v_nd - 1];
+	const int hEv = (v_nd == 3 ? 1 : v_params.dim[2]) * v_params.dim[v_nd - 1];
 	ccv_nnc_tensor_param_t weights_params = q_params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
 	weights_params.dim[0] = hEv;
