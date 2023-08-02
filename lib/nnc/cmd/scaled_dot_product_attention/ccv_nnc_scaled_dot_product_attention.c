@@ -43,33 +43,48 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	assert(input_size >= 3);
 	assert(output_size >= 1);
 	const int q_nd = ccv_nnc_tensor_nd(inputs[0].dim);
-	assert(q_nd == 4);
+	assert(q_nd == 3 || q_nd == 4);
 	const int k_nd = ccv_nnc_tensor_nd(inputs[1].dim);
-	assert(k_nd == 4);
+	assert(k_nd == 3 || k_nd == 4);
 	const int v_nd = ccv_nnc_tensor_nd(inputs[2].dim);
-	assert(v_nd == 4);
+	assert(v_nd == 3 || v_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd);
-  assert(input_size == 6);
 	if (input_size > 4)
 	{
-		assert(output_size == 2);
+		assert(output_size >= 3);
 		outputs[0] = inputs[0];
-    outputs[0].dim[0] = inputs[0].dim[0];
-		outputs[0].dim[1] = inputs[0].dim[1];
-    outputs[0].dim[2] = inputs[2].dim[2];
-    outputs[0].dim[3] = inputs[3].dim[3];
-    
+		outputs[0].dim[1] = inputs[0].dim[1]; // sequence length matches query, embedding size matches value * num_head.
+		outputs[0].dim[2] = inputs[2].dim[v_nd - 1] * (q_nd == 4 ? inputs[0].dim[2] : 1);
+		outputs[0].dim[3] = 0;
 		outputs[1] = inputs[0];
-    outputs[1].dim[0] = inputs[0].dim[0];
-    outputs[1].dim[1] = inputs[0].dim[1];
-    outputs[1].dim[2] = inputs[0].dim[2] * inputs[0].dim[3];
+		if (q_nd == 4)
+		{
+			// Switch head v.s. sequence length.
+			outputs[1].dim[1] = outputs[1].dim[2];
+			outputs[1].dim[2] = inputs[0].dim[1];
+		}
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 3]; // saved softmax should have sequence length of query x key.
+		outputs[2] = inputs[0];
+		outputs[2].dim[q_nd - 1] = inputs[2].dim[v_nd - 1]; // sequence length matches query, embedding size matches value.
+	} else {
+		outputs[0] = inputs[0];
+		outputs[0].dim[q_nd - 1] = inputs[2].dim[v_nd - 1]; // sequence length matches query, embedding size matches value.
+		if (output_size == 1)
+			return;
+		assert(output_size > 1);
+		outputs[1] = inputs[0];
+		if (q_nd == 4)
+		{
+			// Switch head v.s. sequence length.
+			outputs[1].dim[1] = outputs[1].dim[2];
+			outputs[1].dim[2] = inputs[0].dim[1];
+		}
+		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 3]; // saved softmax should have sequence length of query x key.
 	}
 }
 
 static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-  exit(4934);
-  
 	assert(input_size >= 10);
 	assert(output_size >= 3);
 	int i;

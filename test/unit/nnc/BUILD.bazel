@@ -1,13 +1,13 @@
 load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
 
 cc_binary(
-  name = "attention.tests",
-  srcs = ["attention.tests.c"],
-  copts = ccv_default_copts(),
-  deps = [
-    "//test:case",
-    "//lib:nnc"
-  ]
+	name = "attention.tests",
+	srcs = ["attention.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
 )
 
 cc_binary(

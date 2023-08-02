@@ -144,11 +144,11 @@ cc_binary(
 )
 
 cc_binary(
-  name = "mpsdnn.tests",
-  srcs = ["mpsdnn.tests.c"],
-  copts = ccv_default_copts(),
-  deps = [
-    "//test:case",
-    "//lib:nnc"
-  ]
+	name = "mpsdnn.tests",
+	srcs = ["mpsdnn.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
 )
