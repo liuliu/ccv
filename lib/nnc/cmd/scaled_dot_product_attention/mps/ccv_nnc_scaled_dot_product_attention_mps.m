@@ -278,10 +278,14 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.fused_activation_function = 0,
 			.fused_bias = (bias ? 1 : 0),
 
-			.batch_dims_a = { attention_batch_size },
+			.batch_dims_a = { 0 },
 			.batch_dims_b = { 0 },
 			.batch_dims_d = { 0 },
 		};
+    if (gemm_is_batched) {
+      params.batch_dims_a[0] = gemm_batch_size;
+      params.batch_dims_a[1] = 0;
+    }
 		ccv_nnc_mfa_prepare_gemm(context, params);
 
 		mtl_buffer_t* bias_buffer = NULL;
