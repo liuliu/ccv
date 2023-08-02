@@ -53,19 +53,18 @@ mfa::cache<T, U>::~cache()
 // This is a workaround. If we use a template member function directly, the
 // symbols won't link.
 template <typename T, typename U>
-inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash, bool async)
+inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash)
 {
   if (map->find(hash) == map->end()) {
     if (METAL_LOG_LEVEL(context) >= 2) {
       std::cout << METAL_LOG_HEADER << "PSO cache miss." << std::endl;
-      std::cout << METAL_LOG_HEADER << "  Creating new PSO asynchronously: " << async << std::endl;
       std::cout << METAL_LOG_HEADER << "  Contents of map (before):" << std::endl;
       for (auto it = map->begin(); it != map->end(); ++it) {
         std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
       }
     }
     
-    auto* pipeline = new U(context, hash, async);
+    auto* pipeline = new U(context, hash);
     (*map)[hash] = pipeline;
     
     if (METAL_LOG_LEVEL(context) >= 2) {
@@ -78,15 +77,15 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
 }
 
 template <>
-void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash, bool async)
+void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash)
 {
-  _mfa_cache_prepare(&map, context, hash, async);
+  _mfa_cache_prepare(&map, context, hash);
 }
 
 template <>
-void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash, bool async)
+void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash)
 {
-  _mfa_cache_prepare(&map, context, hash, async);
+  _mfa_cache_prepare(&map, context, hash);
 }
 
 mfa::context::context(MTL::Device* device)
@@ -122,12 +121,6 @@ mfa::context::context(MTL::Device* device)
   }
   
   this->device = NS::RetainPtr(device);
-#if TARGET_OS_OSX
-  // This method is only available on macOS 13.3+. To make the code compatible
-  // with macOS 12, we need to call ObjC runtime functions that check whether
-  // the selector actually exists.
-  device->setShouldMaximizeConcurrentCompilation(true);
-#endif
   
   const char *external_metallib_path = nullptr;
 #if CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE

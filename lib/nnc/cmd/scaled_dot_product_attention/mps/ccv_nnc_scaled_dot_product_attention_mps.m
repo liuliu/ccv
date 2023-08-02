@@ -172,7 +172,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		params.batch_dims_mask[0] = batch_size;
 		params.batch_dims_mask[1] = 0;
 	}
-	ccv_nnc_mfa_sync_prepare_attention(context, params);
+	ccv_nnc_mfa_prepare_attention(context, params);
 
 	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 	mtl_buffer_t* mask_buffer = NULL;
@@ -290,7 +290,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.batch_dims_b = { 0 },
 			.batch_dims_d = { 0 },
 		};
-		ccv_nnc_mfa_sync_prepare_gemm(context, params);
+		ccv_nnc_mfa_prepare_gemm(context, params);
 
 		mtl_buffer_t* bias_buffer = NULL;
 		if (bias) {

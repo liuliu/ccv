@@ -51,8 +51,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 	}
 	@autoreleasepool {
-		// TODO: A lot of this logic is duplicated from GEMM. Find a way to abstract
-		// this into a separate function, which both operators call into.
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
@@ -261,7 +259,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				params.batch_dims_d[0] = 1;
 				params.batch_dims_d[1] = 0;
 			}
-			ccv_nnc_mfa_sync_prepare_gemm(context, params);
+			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 			mtl_buffer_t* bias_buffer = NULL;

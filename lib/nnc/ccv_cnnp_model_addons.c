@@ -3024,14 +3024,14 @@ typedef struct {
 
 static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
-	assert(input_size == 3 || input_size == 4);
-	assert(output_size == 1);
+	assert(input_size == 6);
+	assert(output_size == 2);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const self = (ccv_cnnp_model_scaled_dot_product_attention_t*)super;
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t k_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	const ccv_nnc_tensor_param_t v_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
 	const int v_nd = ccv_nnc_tensor_nd(v_params.dim);
-	assert(v_nd == 3 || v_nd == 4);
+	assert(v_nd == 4);
 	const int hEv = (v_nd == 3 ? 1 : v_params.dim[2]) * v_params.dim[v_nd - 1];
 	ccv_nnc_tensor_param_t weights_params = q_params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
@@ -3045,6 +3045,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.info.scaled_dot_product_attention.scale = self->scale;
 	cmd.info.scaled_dot_product_attention.is_causal = self->is_causal;
 	ccv_nnc_tensor_param_t output_params[3];
+  output_params[1].dim[0] = q_params.dim[0];
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_tensor_symbol_t saved_softmax;
 	ccv_nnc_tensor_symbol_t saved_v_proj = NO_TENSOR_SYMBOL;
@@ -3064,6 +3065,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
 			bias = self->bias;
 		}
+    output_params[1].dim[0] = q_params.dim[0];
 		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 				q_params,
 				k_params,
@@ -3073,8 +3075,9 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				bias_params,
 			}, 6, ccv_nnc_no_hint, output_params, 3);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
-		saved_softmax = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
-		saved_v_proj = ccv_nnc_tensor_symbol_new(graph, output_params[2], 0);
+    output_params[1].dim[0] = q_params.dim[0];
+		saved_v_proj = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+    output_params[1].dim[0] = q_params.dim[0];
 	} else {
 		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 				q_params,
@@ -3082,10 +3085,12 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				v_params,
 			}, 3, ccv_nnc_no_hint, output_params, 2);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
-		saved_softmax = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+    output_params[1].dim[0] = q_params.dim[0];
 	}
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax, saved_v_proj), "scaled_dot_product_attention");
+  output_params[1].dim[0] = q_params.dim[0];
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_v_proj), "scaled_dot_product_attention");
 	outputs[0] = output;
+  output_params[1].dim[0] = q_params.dim[0];
 }
 
 static void _ccv_cnnp_scaled_dot_product_attention_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)

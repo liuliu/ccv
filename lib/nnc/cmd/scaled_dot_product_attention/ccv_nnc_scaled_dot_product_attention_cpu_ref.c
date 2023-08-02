@@ -245,6 +245,19 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
     const int M = R;
     const int N = feedforward_output_dim[2];
     const int K = H * D;
+    if (!(B == feedforward_output_dim[0] && B == O_dim[0])) {
+      printf("\n");
+      printf("B %d feedforward_output_dim[0] %d", B, feedforward_output_dim[0]);
+      printf("\n");
+      printf("B %d O_dim[0] %d", B, O_dim[0]);
+      printf("\n");
+      printf("O_dim[0] %d O_dim[1] %d O_dim[2] %d O_dim[3] %d", O_dim[0], O_dim[1], O_dim[2], O_dim[3]);
+      printf("\n");
+      printf("feedforward_output_dim[0] %d feedforward_output_dim[1] %d feedforward_output_dim[2] %d", feedforward_output_dim[0], feedforward_output_dim[1], feedforward_output_dim[2]);
+      printf("\n");
+      exit(-4);
+    }
+    
     assert(B == feedforward_output_dim[0] && B == O_dim[0]);
     assert(M == feedforward_output_dim[1] && M == O_dim[1]);
     assert(N == feedforward_output_dim[1] && N == weights_dim[0]);

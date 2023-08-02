@@ -53,27 +53,15 @@ public:
 };
 
 class pipeline {
-  Dispatch::Semaphore* semaphore;
-  MTL::ComputePipelineState* pso;
+public:
+  NS::SharedPtr<MTL::ComputePipelineState> pso;
   
   simd::uchar2 flags;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
   
-public:
-  pipeline(context* context, hash hash, bool async);
-  ~pipeline();
-  
-  // This is a potentially blocking function. Call it before accessing any of
-  // the property getters.
-  void wait();
-  
-  MTL::ComputePipelineState* get_pso() const;
-  simd::uchar2 get_flags() const;
-  uint16_t get_threadgroup_memory_length() const;
-  MTL::Size get_grid_size() const;
-  MTL::Size get_group_size() const;
+  pipeline(context* context, hash hash);
 };
 
 } // namespace gemm
@@ -92,8 +80,7 @@ struct std::hash<ccv::nnc::mfa::gemm::hash>
 extern "C" {
 #endif // __cplusplus
 
-void ccv_nnc_mfa_async_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
-void ccv_nnc_mfa_sync_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
+void ccv_nnc_mfa_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
 void ccv_nnc_mfa_encode_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
 
 #ifdef __cplusplus

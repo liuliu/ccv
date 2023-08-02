@@ -7,14 +7,9 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-void ccv_nnc_mfa_async_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
+void ccv_nnc_mfa_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
 {
-  context->gemm_cache.prepare(context, mfa::gemm::hash(params), true);
-}
-
-void ccv_nnc_mfa_sync_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params)
-{
-  context->gemm_cache.prepare(context, mfa::gemm::hash(params), false);
+  context->gemm_cache.prepare(context, mfa::gemm::hash(params));
 }
 
 void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
@@ -26,10 +21,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   
   auto* pipeline = iterator->second;
-  pipeline->wait();
-  
-  auto* encoder = command_batch->startCommand(pipeline->get_pso());
-  encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
+  auto* encoder = command_batch->startCommand(pipeline->pso.get());
+  encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
@@ -130,9 +123,9 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
   }
   
-  auto grid_size = pipeline->get_grid_size();
+  auto grid_size = pipeline->grid_size;
   grid_size.depth = batch_sizes[0];
-  encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
+  encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
   command_batch->finishCommand(encoder);
 }
 
@@ -198,21 +191,14 @@ std::size_t std::hash<mfa::gemm::hash>::operator()(const mfa::gemm::hash& hash) 
   return seed;
 }
 
-mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool async) {
+mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   CCV_NNC_MFA_PRECONDITION(hash.alpha == 1.0)
   CCV_NNC_MFA_PRECONDITION(hash.beta == 0.0)
   CCV_NNC_MFA_PRECONDITION(hash.fused_activation_function == false)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  
-  if (async) {
-    flags[0] = false;
-    semaphore = new Dispatch::Semaphore(0);
-  } else {
-    flags[0] = true;
-    semaphore = nullptr;
-  }
+  this->flags[0] = true;
   this->flags[1] = hash.batched;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
@@ -326,72 +312,8 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash, bool 
   auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error)
   
-  if (async) {
-    context->device->newComputePipelineState(function.get(), [=](MTL::ComputePipelineState* pipeline, NS::Error* error) {
-      CCV_NNC_MFA_CHECK_ERROR(error)
-      
-      pipeline->retain();
-      pso = pipeline;
-      semaphore->signal();
-    });
-  } else {
-    pso = context->device->newComputePipelineState(function.get(), &error);
-    CCV_NNC_MFA_CHECK_ERROR(error)
-  }
+  pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
+  CCV_NNC_MFA_CHECK_ERROR(error)
   
   pool->drain();
-}
-
-mfa::gemm::pipeline::~pipeline() {
-  if (semaphore) {
-    delete semaphore;
-  }
-  pso->release();
-}
-
-void mfa::gemm::pipeline::wait() {
-  if (!flags[0]) {
-    semaphore->wait();
-    flags[0] = true;
-  }
-}
-
-MTL::ComputePipelineState* mfa::gemm::pipeline::get_pso() const {
-  if (flags[0]) {
-    return pso;
-  } else {
-    return nullptr;
-  }
-}
-
-simd::uchar2 mfa::gemm::pipeline::get_flags() const {
-  if (flags[0]) {
-    return flags;
-  } else {
-    return false;
-  }
-}
-
-uint16_t mfa::gemm::pipeline::get_threadgroup_memory_length() const {
-  if (flags[0]) {
-    return threadgroup_memory_length;
-  } else {
-    return UINT16_MAX;
-  }
-}
-
-MTL::Size mfa::gemm::pipeline::get_grid_size() const {
-  if (flags[0]) {
-    return grid_size;
-  } else {
-    return MTL::Size(0, UINT64_MAX, UINT64_MAX);
-  }
-}
-
-MTL::Size mfa::gemm::pipeline::get_group_size() const {
-  if (flags[0]) {
-    return group_size;
-  } else {
-    return MTL::Size(0, UINT64_MAX, UINT64_MAX);
-  }
 }

@@ -253,7 +253,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					params.batch_dims_d[D_batch_dim] = 0;
 				}
 			}
-			ccv_nnc_mfa_sync_prepare_gemm(context, params);
+			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			// Creating a new command buffer has a >10 µs penalty CPU-side. Still
 			// faster the >50 µs penalty for MPSGraph (probably why

@@ -7,14 +7,9 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-void ccv_nnc_mfa_async_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
+void ccv_nnc_mfa_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
 {
-  context->attention_cache.prepare(context, mfa::attention::hash(params), true);
-}
-
-void ccv_nnc_mfa_sync_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
-{
-  context->attention_cache.prepare(context, mfa::attention::hash(params), false);
+  context->attention_cache.prepare(context, mfa::attention::hash(params));
 }
 
 void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
@@ -26,7 +21,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   auto* pipeline = iterator->second;
-  pipeline->wait();
   auto encoder = command_batch->commandEncoder;
   
   int num_tensors = 0;
@@ -93,7 +87,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       byte_stride_mask = hash.R * hash.C * data_type_size;
     }
     if (batch_sizes[1] > 1) {
-      auto grid_size = pipeline->get_grid_size();
+      auto grid_size = pipeline->grid_size;
       byte_stride_block_mask = grid_size.width * grid_size.height * 1;
     }
     
@@ -110,12 +104,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   if (params.masked) {
-    command_batch->startCommand(pipeline->get_generate_block_mask_pso());
+    command_batch->startCommand(pipeline->generate_block_mask_pso.get());
     encoder->setThreadgroupMemoryLength(48, 0);
     encoder->useResource(tensors[4], MTL::ResourceUsageRead);
     encoder->setBuffer(tensors[4], tensor_offsets[4], 12);
     
-    auto grid_size = pipeline->get_grid_size();
+    auto grid_size = pipeline->grid_size;
     auto scratch_size = grid_size.width * grid_size.height * 1;
     grid_size.depth = batch_sizes[1];
     scratch_size *= batch_sizes[1];
@@ -123,12 +117,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     auto scratch = context->request_scratch(scratch_size);
     encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBuffer(scratch, 0, 13);
-    encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
+    encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
     command_batch->finishCommand(encoder);
   }
   
-  command_batch->startCommand(pipeline->get_attention_pso());
-  encoder->setThreadgroupMemoryLength(pipeline->get_threadgroup_memory_length(), 0);
+  command_batch->startCommand(pipeline->attention_pso.get());
+  encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);
   encoder->useResource(tensors[2], MTL::ResourceUsageRead);
@@ -137,10 +131,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
-  auto grid_size = pipeline->get_grid_size();
+  auto grid_size = pipeline->grid_size;
   grid_size.height = params.H;
   grid_size.depth = batch_sizes[0];
-  encoder->dispatchThreadgroups(grid_size, pipeline->get_group_size());
+  encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
   command_batch->finishCommand(encoder);
 }
 
@@ -206,18 +200,11 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   return seed;
 }
 
-mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash hash, bool async) {
+mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash hash) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  
-  if (async) {
-    flags[0] = false;
-    semaphore = new Dispatch::Semaphore(0);
-  } else {
-    flags[0] = true;
-    semaphore = nullptr;
-  }
+  this->flags[0] = true;
   this->flags[1] = hash.batched;
   this->flags[2] = hash.masked;
   
@@ -397,7 +384,7 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   
   auto swift_name = NS::String::string("attention", NS::UTF8StringEncoding);
   for (int i = 0; i < 2; ++i) {
-    MTL::ComputePipelineState** pso;
+    NS::SharedPtr<MTL::ComputePipelineState>* pso;
     if (i == 0) {
       pso = &attention_pso;
     } else {
@@ -414,85 +401,9 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error)
     
-    if (async) {
-      context->device->newComputePipelineState(function.get(), [=](MTL::ComputePipelineState* pipeline, NS::Error* error) {
-        CCV_NNC_MFA_CHECK_ERROR(error)
-        
-        pipeline->retain();
-        *pso = pipeline;
-        semaphore->signal();
-      });
-    } else {
-      *pso = context->device->newComputePipelineState(function.get(), &error);
-      CCV_NNC_MFA_CHECK_ERROR(error)
-    }
+    *pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error)
   }
   
   pool->drain();
-}
-
-mfa::attention::pipeline::~pipeline() {
-  if (semaphore) {
-    delete semaphore;
-  }
-  attention_pso->release();
-  generate_block_mask_pso->release();
-}
-
-void mfa::attention::pipeline::wait() {
-  if (!flags[0]) {
-    semaphore->wait();
-    if (flags[2]) {
-      semaphore->wait();
-    }
-    flags[0] = true;
-  }
-}
-
-MTL::ComputePipelineState* mfa::attention::pipeline::get_attention_pso() const {
-  if (flags[0]) {
-    return attention_pso;
-  } else {
-    return nullptr;
-  }
-}
-
-MTL::ComputePipelineState* mfa::attention::pipeline::get_generate_block_mask_pso() const {
-  if (flags[0]) {
-    return generate_block_mask_pso;
-  } else {
-    return nullptr;
-  }
-}
-
-simd::uchar4 mfa::attention::pipeline::get_flags() const {
-  if (flags[0]) {
-    return flags;
-  } else {
-    return false;
-  }
-}
-
-uint16_t mfa::attention::pipeline::get_threadgroup_memory_length() const {
-  if (flags[0]) {
-    return threadgroup_memory_length;
-  } else {
-    return UINT16_MAX;
-  }
-}
-
-MTL::Size mfa::attention::pipeline::get_grid_size() const {
-  if (flags[0]) {
-    return grid_size;
-  } else {
-    return MTL::Size(0, UINT64_MAX, UINT64_MAX);
-  }
-}
-
-MTL::Size mfa::attention::pipeline::get_group_size() const {
-  if (flags[0]) {
-    return group_size;
-  } else {
-    return MTL::Size(0, UINT64_MAX, UINT64_MAX);
-  }
 }
