@@ -280,7 +280,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 
 			.batch_dims_a = { attention_batch_size },
 			.batch_dims_b = { 0 },
-			.batch_dims_d = { gemm_batch_size },
+			.batch_dims_d = { 0 },
 		};
 		ccv_nnc_mfa_sync_prepare_gemm(context, params);
 

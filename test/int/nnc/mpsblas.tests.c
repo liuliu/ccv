@@ -1147,15 +1147,6 @@ TEST_CASE("scaled dot product attention with mps")
 		int D = D_candidates[trial];
 		float scale = 1.0 / sqrt((float)D);
 
-		// Unknown whether these dimensions are being placed into the correct slots in
-		// the argument list (would be nice if C had argument labels like Swift, so
-		// you could know what they mean).
-		int maybe_B = B; // batch size
-		int maybe_R = R; // attention matrix rows (output sequence length)
-		int maybe_C = C; // attention matrix columns (input sequence length)
-		int maybe_H = H; // head count
-		int maybe_D = D; // head size
-
 		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 		ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
 		ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
@@ -1264,9 +1255,7 @@ TEST_CASE("scaled dot product attention + unify head with mps")
 	ccv_nnc_tensor_t* const gr_tensor = ccv_nnc_tensor_from_symbol(g_tensor_arena, gr);
 	ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 128, 512), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gr_tensor), TENSOR_LIST(hr), 0);
-	printf("%f\n", bias_tensor->data.f32[0]);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, r_tensor->data.f32, hr->data.f32, 32 * 128 * 512, 1e-3, "graph computed result should match scaled dot product attention op result");
-	// REQUIRE_TENSOR_EQ(r_tensor, hr, "graph computed result should match scaled dot product attention op result");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, r_tensor->data.f32, hr->data.f32, 32 * 128 * 512, 1e-4, "graph computed result should match scaled dot product attention op result");
 	ccv_nnc_symbolic_graph_free(sdp_symbolic_graph);
 	ccv_nnc_tensor_arena_free(sdp_tensor_arena);
 	ccv_nnc_graph_exec_arena_free(sdp_graph_exec_arena);
