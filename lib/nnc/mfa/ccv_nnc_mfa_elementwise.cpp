@@ -7,7 +7,11 @@ using namespace ccv::nnc;
 
 mfa::elementwise::hash::hash(ccv_nnc_mfa_elementwise_params_t params) {
   data_type = params.data_type;
-  operation_id = params.operation_id;
+  if (std::string(params.operation_name) == "normalization") {
+    operation_id = 0;
+  } else {
+    CCV_NNC_MFA_PRECONDITION(false);
+  }
   reduction_dim = params.reduction_dim;
 }
 

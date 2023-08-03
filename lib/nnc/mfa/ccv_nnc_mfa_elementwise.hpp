@@ -2,8 +2,8 @@
 #define GUARD_ccv_nnc_mfa_elementwise_hpp
 
 typedef struct {
+  const char* operation_name;
   uint64_t data_type;
-  uint32_t operation_id;
   uint32_t reduction_dim;
   
   uint32_t batch_dims[CCV_NNC_MAX_DIM_ALLOC];
