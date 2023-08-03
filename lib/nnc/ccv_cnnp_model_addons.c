@@ -3120,6 +3120,11 @@ static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_c
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_isa = {
 	.build = _ccv_cnnp_scaled_dot_product_attention_build,
+	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
+};
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_isa = {
+	.build = _ccv_cnnp_scaled_dot_product_attention_build,
 	.init_states = _ccv_cnnp_scaled_dot_product_attention_init_states,
 	.add_to_parameter = _ccv_cnnp_scaled_dot_product_attention_add_to_parameter,
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
@@ -3128,7 +3133,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_isa = {
 ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_scaled_dot_product_attention_t* const model_scaled_dot_product_attention = (ccv_cnnp_model_scaled_dot_product_attention_t*)cccalloc(1, sizeof(ccv_cnnp_model_scaled_dot_product_attention_t));
-	model_scaled_dot_product_attention->super.isa = &ccv_cnnp_scaled_dot_product_attention_isa;
+	model_scaled_dot_product_attention->super.isa = fused_unify_head_weights ? &ccv_cnnp_scaled_dot_product_attention_fused_isa : &ccv_cnnp_scaled_dot_product_attention_isa;
 	model_scaled_dot_product_attention->super.input_size = has_attn_mask ? 4 : 3;
 	model_scaled_dot_product_attention->super.outputs = &model_scaled_dot_product_attention->output;
 	model_scaled_dot_product_attention->super.output_size = 1;

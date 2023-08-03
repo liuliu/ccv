@@ -236,6 +236,9 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     constants->setConstantValue(&generate_block_mask, MTL::DataTypeBool, 112);
     constants->setConstantValue(&grouped_query, MTL::DataTypeBool, 113);
   }
+
+  simd::ulong4 garbage(0);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 101);
   
   uint16_t R_simd;
   uint16_t C_simd;

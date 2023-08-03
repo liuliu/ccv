@@ -213,6 +213,11 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
   constants->setConstantValue(&hash.fused_activation_function, MTL::DataTypeBool, 101);
   constants->setConstantValue(&hash.fused_bias, MTL::DataTypeBool, 50001);
+  simd::ulong4 garbage(0);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 102);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 103);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 113);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 50000);
   
   // Eventually, this may incorporate the batch size.
   // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
