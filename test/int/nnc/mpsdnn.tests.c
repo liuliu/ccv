@@ -880,7 +880,7 @@ TEST_CASE("compare add gradient with mps")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
-TEST_CASE("broadcasting semantics for addbackward mps")
+TEST_CASE("broadcasting semantics for add backward mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_ADD_BACKWARD, CCV_NNC_BACKEND_MPS));
