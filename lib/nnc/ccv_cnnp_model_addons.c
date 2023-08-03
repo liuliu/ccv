@@ -537,7 +537,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_identity_isa = {
 ccv_cnnp_model_t* ccv_cnnp_identity(const char* const name)
 {
 	ccv_cnnp_model_identity_t* const model_identity = (ccv_cnnp_model_identity_t*)cccalloc(1, sizeof(ccv_cnnp_model_identity_t));
-	model_identity->super.isa = &ccv_cnnp_reshape_isa;
+	model_identity->super.isa = &ccv_cnnp_identity_isa;
 	model_identity->super.input_size = 1;
 	model_identity->super.outputs = &model_identity->output;
 	model_identity->super.output_size = 1;
