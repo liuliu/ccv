@@ -117,11 +117,13 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_contiguous =
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
-			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride));
+			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
+			(bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
 
 		const int is_same_dtype =
 			(a->info.datatype == w->info.datatype) &&
-			(a->info.datatype == b->info.datatype);
+			(a->info.datatype == b->info.datatype) &&
+			(bias ? (a->info.datatype == bias->info.datatype) : 1);
 		
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -157,6 +159,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		} else if (A_batch_size <= 0 || B_batch_size <= 0 || C_batch_size <= 0) {
 			// Invalid batch size.
 		} else {
+			// This does not check whether the D batch size matches the others. If it
+			// does not match, it will crash when encoding the GEMM command.
 			is_batched = 1;
 			if (A_batch_size == C_batch_size) {
 				if (A_batch_size == B_batch_size) {
@@ -169,7 +173,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (is_mfa_compatible_batch || !is_batched) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION) && !bias;
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
 
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
@@ -190,13 +194,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				{
 					ccv_nnc_mfa_log_message("  Unsupported data type.");
 				}
-				if (!(is_mfa_compatible_batch || !is_batched))
+				if (is_batched && !is_mfa_compatible_batch)
 				{
 					ccv_nnc_mfa_log_message("  Unsupported batch.");
-				}
-				if (!(!bias))
-				{
-					ccv_nnc_mfa_log_message("  Requires fused activations.");
 				}
 			}
 		}
@@ -211,13 +211,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows, // B_rows
 				.A_trans = (is_transpose_a ? 1 : 0),
 				.B_trans = (is_transpose_w ? 1 : 0),
+				.D_trans = 0,
 				.alpha = (float)1.0,
 				.beta = (float)0.0,
 				.batched = is_batched,
-				.fused_activation = 0,
+				.fused_activation_function = 0,
+				.fused_bias = (bias ? 1 : 0),
 				
 				.batch_dims_a = { 0 },
 				.batch_dims_b = { 0 },
+				.batch_dims_d = { 0 },
 			};
 			if (is_batched) {
 				// Create a null-terminated list of batch dimensions.
@@ -236,38 +239,45 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
 					params.batch_dims_b[B_batch_dim] = 0;
 				}
+
+				int D_batch_dim = 0;
+				if (bias) {
+					const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+					assert(bias_nd <= a_nd);
+					D_batch_dim = bias_nd == a_nd ? bias_nd - 2 : bias_nd - 1;
+				}
+				for (int i = 0; i < D_batch_dim; ++i) {
+					params.batch_dims_d[i] = biasdim[i];
+				}
+				if (D_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+					params.batch_dims_d[D_batch_dim] = 0;
+				}
 			}
-			ccv_nnc_mfa_sync_prepare_gemm(context, params);
+			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			// Creating a new command buffer has a >10 µs penalty CPU-side. Still
 			// faster the >50 µs penalty for MPSGraph (probably why
 			// MPSMatrixMultiplication is faster for GEMM).
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-			mtl_buffer_t* tensors[4] = {
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias) {
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			}
+			mtl_buffer_t* tensors[5] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
 				mpgetbuffer((ccv_nnc_tensor_t*)w), // B
 				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
-				NULL
+				bias_buffer, // D
+				NULL,
 			};
-			size_t tensor_offsets[3] = {
+			size_t tensor_offsets[4] = {
 				a->dataof, // A offset
 				w->dataof, // B offset
 				b->dataof, // C offset
+				bias ? bias->dataof : 0, // D offset
 			};
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
-
-			// TODO: Add this diagnostic once we consistently capture >>1 commands/batch.
-//			if (METAL_LOG_LEVEL(context) >= 3) {
-//				if (command_batch->batched_command_count == 0) {
-//					ccv_nnc_mfa_log_message("Encoded 0 commands in the batch.");
-//				} else if (command_batch->batched_command_count == 1) {
-//					ccv_nnc_mfa_log_message("Encoded 1 command in the batch.");
-//				} else {
-//					ccv_nnc_mfa_log_message("Encoded >1 commands in the batch.");
-//				}
-//			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-			// TODO: Try to use `fused_activation` for with bias case.
 		} else {
 			// Otherwise, incur the ~10-50 microsecond latency of MPS.
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);

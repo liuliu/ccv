@@ -47,11 +47,18 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_get_dim(k, kdim);
 	ccv_nnc_tensor_view_get_dim(v, vdim);
 	ccv_nnc_tensor_view_get_dim(c, cdim);
+	if (q_nd == 3)
+	{
+		qdim[0] = qdim[1], qdim[1] = qdim[2], qdim[2] = 1;
+		kdim[0] = kdim[1], kdim[1] = kdim[2], kdim[2] = 1;
+		vdim[0] = vdim[1], vdim[1] = vdim[2], vdim[2] = 1;
+		cdim[0] = cdim[1], cdim[1] = cdim[2], cdim[2] = 1;
+	}
 	assert(qdim[0] == kdim[0] && kdim[0] == vdim[0] && vdim[0] == cdim[0]);
-	assert(qdim[1] == kdim[1] && kdim[1] == vdim[1] && vdim[1] == cdim[1]);
+	assert(qdim[2] == kdim[2] && kdim[2] == vdim[2] && vdim[2] == cdim[2]);
 	assert(qdim[3] == kdim[3]);
-	assert(kdim[2] == vdim[2]);
-	assert(cdim[2] == qdim[2]);
+	assert(kdim[1] == vdim[1]);
+	assert(cdim[1] == qdim[1]);
 	assert(cdim[3] == vdim[3]);
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
 	int qstride[CCV_NNC_MAX_DIM_ALLOC];
@@ -64,26 +71,33 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_get_stride(k, kstride);
 	ccv_nnc_tensor_view_get_stride(v, vstride);
 	ccv_nnc_tensor_view_get_stride(c, cstride);
+	if (q_nd == 3)
+	{
+		qstride[0] = qstride[1], qstride[1] = qstride[2], qstride[2] = cstride[3];
+		kstride[0] = kstride[1], kstride[1] = kstride[2], kstride[2] = cstride[3];
+		vstride[0] = vstride[1], vstride[1] = vstride[2], vstride[2] = cstride[3];
+		cstride[0] = cstride[1], cstride[1] = cstride[2], cstride[2] = cstride[3];
+	}
 	if (saved_softmax)
 	{
 		ccv_nnc_tensor_view_get_dim(saved_softmax, ssdim);
 		ccv_nnc_tensor_view_get_stride(saved_softmax, ssstride);
 		assert(ssdim[0] == qdim[0]);
-		assert(ssdim[1] == qdim[1]);
-		assert(ssdim[2] == qdim[2]);
-		assert(ssdim[3] == kdim[2]);
+		assert(ssdim[1] == qdim[2]);
+		assert(ssdim[2] == qdim[1]);
+		assert(ssdim[3] == kdim[1]);
 	}
 	if (attn_mask)
 	{
 		ccv_nnc_tensor_view_get_dim(attn_mask, amdim);
 		ccv_nnc_tensor_view_get_stride(attn_mask, amstride);
 		assert(amdim[0] == qdim[0] || amdim[0] == 1);
-		assert(amdim[1] == qdim[1] || amdim[1] == 1);
-		assert(amdim[2] == qdim[2]);
-		assert(amdim[3] == kdim[2]);
+		assert(amdim[1] == qdim[2] || amdim[1] == 1);
+		assert(amdim[2] == qdim[1]);
+		assert(amdim[3] == kdim[1]);
 	}
 	int i[CCV_NNC_MAX_DIM + 2];
-	float* qk = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * qdim[2] * kdim[2], CCV_TENSOR_CPU_MEMORY);
+	float* qk = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * qdim[1] * kdim[1], CCV_TENSOR_CPU_MEMORY);
 	const float* const qp = q->data.f32;
 	const float* const kp = k->data.f32;
 	const float* const vp = v->data.f32;
@@ -100,36 +114,36 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		const float* const amp0 = amp && amdim[0] > 1 ? amp + i[0] * amstride[0] : amp;
 		float* const cp0 = cp + i[0] * cstride[0];
 		float* const ssp0 = ssp ? ssp + i[0] * ssstride[0] : 0;
-		for (i[1] = 0; i[1] < qdim[1]; i[1]++)
+		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
-			const float* const qp1 = qp0 + i[1] * qstride[1];
-			const float* const kp1 = kp0 + i[1] * kstride[1];
-			const float* const vp1 = vp0 + i[1] * vstride[1];
+			const float* const qp1 = qp0 + i[1] * qstride[2];
+			const float* const kp1 = kp0 + i[1] * kstride[2];
+			const float* const vp1 = vp0 + i[1] * vstride[2];
 			const float* const amp1 = amp && amdim[1] > 1 ? amp0 + i[1] * amstride[1] : amp0;
-			float* const cp1 = cp0 + i[1] * cstride[1];
+			float* const cp1 = cp0 + i[1] * cstride[2];
 			float* const ssp1 = ssp0 ? ssp0 + i[1] * ssstride[1] : 0;
 			// Compute Q @ K^T
-			parallel_for(x, qdim[2]) {
+			parallel_for(x, qdim[1]) {
 				int y, k;
-				const float* const qp2 = qp1 + x * qstride[2];
-				float* const cp2 = cp1 + x * cstride[2];
+				const float* const qp2 = qp1 + x * qstride[1];
+				float* const cp2 = cp1 + x * cstride[1];
 				float* const ssp2 = ssp0 ? ssp1 + x * ssstride[2] : 0;
-				float* const qk0 = qk + x * kdim[2];
+				float* const qk0 = qk + x * kdim[1];
 				const float* const amp2 = amp1 ? amp1 + x * amstride[2] : 0;
 				if (attn_mask)
 				{
-					for (y = 0; y < kdim[2]; y++)
+					for (y = 0; y < kdim[1]; y++)
 					{
-						const float* const kp2 = kp1 + y * kstride[2];
+						const float* const kp2 = kp1 + y * kstride[1];
 						float v = 0;
 						for (k = 0; k < qdim[3]; k++)
 							v += qp2[k * qstride[3]] * kp2[k * kstride[3]];
 						qk0[y] = scale * v + amp2[y * amstride[3]];
 					}
 				} else {
-					for (y = 0; y < kdim[2]; y++)
+					for (y = 0; y < kdim[1]; y++)
 					{
-						const float* const kp2 = kp1 + y * kstride[2];
+						const float* const kp2 = kp1 + y * kstride[1];
 						float v = 0;
 						for (k = 0; k < qdim[3]; k++)
 							v += qp2[k * qstride[3]] * kp2[k * kstride[3]];
@@ -139,41 +153,41 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				// Compute softmax on qk.
 				if (is_causal)
 				{
-					for (y = 0; y < ccv_min(x, kdim[2]); y++)
+					for (y = 0; y < ccv_min(x, kdim[1]); y++)
 						qk0[y] = 0;
-					if (x < kdim[2])
+					if (x < kdim[1])
 					{
 						double maxval = qk0[x];
-						for (y = x + 1; y < kdim[2]; y++)
+						for (y = x + 1; y < kdim[1]; y++)
 							if (qk0[y] > maxval)
 								maxval = qk0[y];
 						double sumval = 0;
-						for (y = x; y < kdim[2]; y++)
+						for (y = x; y < kdim[1]; y++)
 							sumval += (qk0[y] = expf(qk0[y] - maxval));
 						sumval = 1.0 / sumval;
-						for (y = x; y < kdim[2]; y++)
+						for (y = x; y < kdim[1]; y++)
 							qk0[y] *= sumval;
 					}
 				} else {
 					double maxval = qk0[0];
-					for (y = 1; y < kdim[2]; y++)
+					for (y = 1; y < kdim[1]; y++)
 						if (qk0[y] > maxval)
 							maxval = qk0[y];
 					double sumval = 0;
-					for (y = 0; y < kdim[2]; y++)
+					for (y = 0; y < kdim[1]; y++)
 						sumval += (qk0[y] = expf(qk0[y] - maxval));
 					sumval = 1.0 / sumval;
-					for (y = 0; y < kdim[2]; y++)
+					for (y = 0; y < kdim[1]; y++)
 						qk0[y] *= sumval;
 				}
 				if (saved_softmax)
-					for (y = 0; y < kdim[2]; y++)
+					for (y = 0; y < kdim[1]; y++)
 						ssp2[y] = qk0[y];
 				for (k = 0; k < vdim[3]; k++)
 					cp2[k * cstride[3]] = 0;
-				for (y = 0; y < kdim[2]; y++)
+				for (y = 0; y < kdim[1]; y++)
 				{
-					const float* const vp2 = vp1 + y * vstride[2];
+					const float* const vp2 = vp1 + y * vstride[1];
 					const float v = qk0[y];
 					for (k = 0; k < vdim[3]; k++)
 						cp2[k * cstride[3]] += v * vp2[k * vstride[3]];
@@ -183,7 +197,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	}
 	if (w)
 	{
-		const int num_heads = c_nd == 3 ? 1 : cdim[1];
+		const int num_heads = cdim[2];
 		ccv_nnc_tensor_view_t* const d = (ccv_nnc_tensor_view_t*)outputs[0];
 		const int w_nd = ccv_nnc_tensor_nd(w->info.dim);
 		assert(w_nd == 2);
@@ -194,7 +208,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		int dstride[CCV_NNC_MAX_DIM_ALLOC];
 		ccv_nnc_tensor_view_get_dim(d, ddim);
 		ccv_nnc_tensor_view_get_stride(d, dstride);
-		assert(ddim[2] == cdim[2]);
+		assert(ddim[2] == cdim[1]);
 		assert(ddim[3] == num_heads * cdim[3]);
 		assert(w->info.dim[1] == ddim[3]);
 		assert(w->info.dim[0] == ddim[3]);
@@ -208,11 +222,11 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			const float* const biasp = bias->data.f32;
 			for (i[0] = 0; i[0] < ddim[1]; i[0]++)
 			{
-				const float* const cp0 = c_nd == 4 ? cp + i[0] * cstride[0] : cp + i[0] * cstride[1];
+				const float* const cp0 = cp + i[0] * cstride[0];
 				float* const dp0 = dp + i[0] * dstride[1];
 				parallel_for(y, ddim[2]) {
 					int x, j, k;
-					const float* const cp1 = cp0 + y * cstride[2];
+					const float* const cp1 = cp0 + y * cstride[1];
 					float* const dp1 = dp0 + y * dstride[2];
 					for (x = 0; x < ddim[3]; x++)
 					{
@@ -220,7 +234,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 						float v = biasp[x];
 						for (j = 0; j < num_heads; j++)
 						{
-							const float* const cp2 = c_nd == 4 ? cp1 + j * cstride[1] : cp1;
+							const float* const cp2 = cp1 + j * cstride[2];
 							for (k = 0; k < cdim[3]; k++)
 								v += wp0[j * cdim[3] + k] * cp2[k * cstride[3]];
 						}
@@ -231,11 +245,11 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		} else {
 			for (i[0] = 0; i[0] < ddim[1]; i[0]++)
 			{
-				const float* const cp0 = c_nd == 4 ? cp + i[0] * cstride[0] : cp + i[0] * cstride[1];
+				const float* const cp0 = cp + i[0] * cstride[0];
 				float* const dp0 = dp + i[0] * dstride[1];
 				parallel_for(y, ddim[2]) {
 					int x, j, k;
-					const float* const cp1 = cp0 + y * cstride[2];
+					const float* const cp1 = cp0 + y * cstride[1];
 					float* const dp1 = dp0 + y * dstride[2];
 					for (x = 0; x < ddim[3]; x++)
 					{
@@ -243,7 +257,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 						float v = 0;
 						for (j = 0; j < num_heads; j++)
 						{
-							const float* const cp2 = c_nd == 4 ? cp1 + j * cstride[1] : cp1;
+							const float* const cp2 = cp1 + j * cstride[2];
 							for (k = 0; k < cdim[3]; k++)
 								v += wp0[j * cdim[3] + k] * cp2[k * cstride[3]];
 						}

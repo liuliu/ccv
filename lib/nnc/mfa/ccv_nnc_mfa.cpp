@@ -53,19 +53,18 @@ mfa::cache<T, U>::~cache()
 // This is a workaround. If we use a template member function directly, the
 // symbols won't link.
 template <typename T, typename U>
-inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash, bool async)
+inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash)
 {
   if (map->find(hash) == map->end()) {
     if (METAL_LOG_LEVEL(context) >= 2) {
       std::cout << METAL_LOG_HEADER << "PSO cache miss." << std::endl;
-      std::cout << METAL_LOG_HEADER << "  Creating new PSO asynchronously: " << async << std::endl;
       std::cout << METAL_LOG_HEADER << "  Contents of map (before):" << std::endl;
       for (auto it = map->begin(); it != map->end(); ++it) {
         std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
       }
     }
     
-    auto* pipeline = new mfa::gemm::pipeline(context, hash, async);
+    auto* pipeline = new U(context, hash);
     (*map)[hash] = pipeline;
     
     if (METAL_LOG_LEVEL(context) >= 2) {
@@ -78,9 +77,15 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
 }
 
 template <>
-void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash, bool async)
+void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash)
 {
-  _mfa_cache_prepare(&map, context, hash, async);
+  _mfa_cache_prepare(&map, context, hash);
+}
+
+template <>
+void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash)
+{
+  _mfa_cache_prepare(&map, context, hash);
 }
 
 mfa::context::context(MTL::Device* device)
@@ -116,22 +121,34 @@ mfa::context::context(MTL::Device* device)
   }
   
   this->device = NS::RetainPtr(device);
-#if TARGET_OS_OSX
-  // This method is only available on macOS 13.3+. To make the code compatible
-  // with macOS 12, we need to call ObjC runtime functions that check whether
-  // the selector actually exists.
-  device->setShouldMaximizeConcurrentCompilation(true);
+  
+  const char *external_metallib_path = nullptr;
+#if CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE
+  external_metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
 #endif
+  if (METAL_LOG_LEVEL(this) >= 1) {
+    if (external_metallib_path) {
+      std::cerr << METAL_LOG_HEADER << "Loading from path '" << external_metallib_path << "'." << std::endl;
+    } else {
+      std::cerr << METAL_LOG_HEADER << "Loading from embedded string." << std::endl;
+    }
+  }
   
   // Attempt to load the library, otherwise crash with a detailed log message.
   NS::Error* error;
+  if (external_metallib_path) {
+    auto string = NS::String::string(external_metallib_path, NS::UTF8StringEncoding);
+    auto url = NS::URL::fileURLWithPath(string);
+    this->library = NS::TransferPtr(device->newLibrary(url, &error));
+  } else {
 #if TARGET_OS_IPHONE
-  dispatch_data_t data = dispatch_data_create(libmfaios16_v0_2_metallib, sizeof(libmfaios16_v0_2_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfaios16_v1_0_1_metallib, sizeof(libmfaios16_v1_0_1_metallib), NULL, 0);
 #else
-  dispatch_data_t data = dispatch_data_create(libmfamacos13_v0_2_metallib, sizeof(libmfamacos13_v0_2_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfamacos13_v1_0_1_metallib, sizeof(libmfamacos13_v1_0_1_metallib), NULL, 0);
 #endif
-  this->library = NS::TransferPtr(device->newLibrary(data, &error));
-  dispatch_release(data);
+    this->library = NS::TransferPtr(device->newLibrary(data, &error));
+    dispatch_release(data);
+  }
   CCV_NNC_MFA_CHECK_ERROR(error)
   
   // Notify that this finished successfully, and is not just stalling on one of
@@ -140,29 +157,44 @@ mfa::context::context(MTL::Device* device)
     std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
   
+  this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
+  
   pool->drain();
 }
 
-MTL::CommandBatch::CommandBatch(MTL::CommandQueue* command_queue) {
-  command_buffer = command_queue->commandBuffer();
-  command_encoder = command_buffer->computeCommandEncoder();
+MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
+  if (size > scratch->length()) {
+    uint64_t padded_size = std::max(int64_t(0), int64_t(size) - 1);
+    uint64_t leading_zeroes = __builtin_clzll(padded_size);
+    uint64_t rounded_size = 1 << uint64_t(64 - leading_zeroes);
+    
+    auto buffer = device->newBuffer(rounded_size, 0);
+    CCV_NNC_MFA_PRECONDITION(buffer != nullptr);
+    this->scratch = NS::TransferPtr(buffer);
+  }
+  return scratch.get();
 }
 
-MTL::ComputeCommandEncoder* MTL::CommandBatch::start_command(MTL::ComputePipelineState* pso) {
-  CCV_NNC_MFA_PRECONDITION(command_active == 0)
-  command_active = 1;
-  command_encoder->setComputePipelineState(pso);
-  return command_encoder;
+MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
+  commandBuffer = commandQueue->commandBuffer();
+  commandEncoder = commandBuffer->computeCommandEncoder();
 }
 
-void MTL::CommandBatch::finish_command(MTL::ComputeCommandEncoder* command_encoder) {
-  CCV_NNC_MFA_PRECONDITION(command_active == 1)
-  command_active = 0;
-  batched_command_count += 1;
+MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand(MTL::ComputePipelineState* pso) {
+  CCV_NNC_MFA_PRECONDITION(commandActive == 0)
+  commandActive = 1;
+  commandEncoder->setComputePipelineState(pso);
+  return commandEncoder;
+}
+
+void MTL::CommandBatch::finishCommand(MTL::ComputeCommandEncoder* commandEncoder) {
+  CCV_NNC_MFA_PRECONDITION(commandActive == 1)
+  commandActive = 0;
+  batchedCommandCount += 1;
 }
 
 MTL::CommandBatch::~CommandBatch() {
-  CCV_NNC_MFA_PRECONDITION(command_active == 0)
-  command_encoder->endEncoding();
-  command_buffer->commit();
+  CCV_NNC_MFA_PRECONDITION(commandActive == 0)
+  commandEncoder->endEncoding();
+  commandBuffer->commit();
 }
