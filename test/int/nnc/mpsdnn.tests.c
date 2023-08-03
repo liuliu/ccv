@@ -1780,8 +1780,6 @@ TEST_CASE("mps backward convolution in nhwc format")
 
 TEST_CASE("compare groupnorm gradient with mps")
 {
-		ccv_cli_set_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
-
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GROUP_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_GROUP_NORM_BACKWARD, CCV_NNC_BACKEND_MPS) &&
 		(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS)));
@@ -1874,33 +1872,6 @@ TEST_CASE("compare groupnorm gradient with mps")
 	ccv_nnc_tensor_t* const dcx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcx);
 	ccv_nnc_tensor_t* const dcscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcscale);
 	ccv_nnc_tensor_t* const dcbias_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcbias);
-
-	printf("\n dbias_tensor\n");
-	ccv_nnc_print_tensor_info(dbias_tensor);
-	printf("\n dcbias_tensor\n");
-	ccv_nnc_print_tensor_info(dcbias_tensor);
-
-	printf("\n dscale_tensor\n");
-	ccv_nnc_print_tensor_info(dscale_tensor);
-	printf("\n dcscale_tensor\n");
-	ccv_nnc_print_tensor_info(dcscale_tensor);
-
-	
-	printf("\n dx_tensor\n");
-	ccv_nnc_print_tensor_info(dx_tensor);
-	printf("\n");
-	// for (i = 0; i < 2 * GN_C_DIM * 2 * LN_DIM; i++) {
-
-	// 	printf("%f, ", dx_tensor->data.f32[i]);
-	// }
-
-	printf("\n dcx_tensor\n");
-	ccv_nnc_print_tensor_info(dcx_tensor);
-	printf("\n");
-
-	// for (i = 0; i < 2 * GN_C_DIM * 2 * LN_DIM; i++) {
-	// 	printf("%f, ", dcx_tensor->data.f32[i]);
-	// }
 
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias_tensor->data.f32, dcbias_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");

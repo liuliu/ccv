@@ -212,27 +212,18 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			MPSGraphShapedType* mps_saved_inv_std_shape = ccv_nnc_mps_graph_tensor_input_shape(saved_inv_std, saved_inv_std->info.dim, saved_inv_std->stride);
 			[inputShapedTypes addObject:mps_saved_inv_std_shape];
 
-			NSMutableArray<NSNumber*>* axes = [NSMutableArray new];			
-			for (int k = 0; k < cmd.info.gnorm.reduce_count; k++) {
-				[axes addObject:@(cmd.info.gnorm.reduce_axis[k])];
-			}
-			// NSLog(@"cmd.info.gnorm.reduce_count:%@, >><<axes:%@,\n", , axes);
-			NSLog(@"cmd.info.gnorm.group_axis:%@, groups:%@,\n", @(cmd.info.gnorm.group_axis), @(cmd.info.gnorm.groups));
-
 			MPSGraphTensor* mps_dscale = nil;
 			MPSGraphTensor* mps_dbias = nil;
 			MPSGraphTensor* mps_h = nil;
 			
-			NSMutableArray<NSNumber*>* group_shape = [NSMutableArray new];  // [N,G,H,W]
 			NSMutableArray<NSNumber*>* group_broadcastable_shape = [NSMutableArray new];  // [N,G,1,H,W]
 			NSMutableArray<NSNumber*>* group_reducible_shape = [NSMutableArray new];  // [N,G,C/G,H,W]
 			int c_divide_g_axis = 0;
 			for (int i = 0; i < a_nd; i++) {
-				[group_shape addObject:@(saved_mean->info.dim[i])];
 				[group_reducible_shape addObject:@(saved_mean->info.dim[i])];
 				[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
 				if (a->info.dim[i] != saved_mean->info.dim[i]) {
-					c_divide_g_axis = i+1;
+					c_divide_g_axis = i+1; // axis of C/G in [N,G,C/G,H,W]
 					[group_broadcastable_shape addObject:@(1)];
 					[group_reducible_shape addObject:@(a->info.dim[i]/saved_mean->info.dim[i])];
 				}
@@ -263,7 +254,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				}
 				//  dscalep2[x] = ahp[x] * gp1[x]; no reduce
 				MPSGraphTensor* mps_dscale_original = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:mps_g name:nil];
-				NSLog(@"dscale_axes: reduce:%@", dscale_axes);
+
 				//  dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
 			}
