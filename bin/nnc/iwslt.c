@@ -146,31 +146,31 @@ static ccv_cnnp_model_t* _multihead_attention_new(const int k, const int h, cons
 	ccv_cnnp_model_io_t mask = ccv_cnnp_input();
 	ccv_cnnp_model_io_t keys = (m) ? ccv_cnnp_model_apply(tokeys, MODEL_IO_LIST(m)) : ccv_cnnp_model_apply(tokeys, MODEL_IO_LIST(x));
 	ccv_cnnp_model_io_t values = (m) ? ccv_cnnp_model_apply(tovalues, MODEL_IO_LIST(m)) : ccv_cnnp_model_apply(tovalues, MODEL_IO_LIST(x));
-	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
-	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
-	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, h, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
 	keys = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 2, 0), MODEL_IO_LIST(keys));
 	queries = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 2, 0), MODEL_IO_LIST(queries));
 	values = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 2, 0), MODEL_IO_LIST(values));
-	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
-	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
-	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
+	keys = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(keys));
+	queries = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(queries));
+	values = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * h, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(values));
 	ccv_cnnp_model_io_t dot = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, TRANSPOSE(1, 2), 0), MODEL_IO_LIST(queries, keys));
 	const float scale = 1. / sqrt(k);
 	dot = ccv_cnnp_model_apply(ccv_cnnp_scalar_mul(scale, 0), MODEL_IO_LIST(dot));
 	dot = ccv_cnnp_model_apply(ccv_cnnp_masked_fill(0, -1e9, 0), MODEL_IO_LIST(dot, mask));
-	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h * t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
+	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * h * t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
 	dot = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(dot));
 	if (dropout > 0)
 		dot = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(dot));
-	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * h, t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
+	dot = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * h, t, t), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(dot));
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0), MODEL_IO_LIST(dot, values));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(h, b, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(h, b, t, k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 2, 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, h * k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * t, h * k), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	ccv_cnnp_model_t* const unifyheads = ccv_cnnp_dense(k * h, 0, 1, 0);
 	out = ccv_cnnp_model_apply(unifyheads, MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	if (m)
 		return ccv_cnnp_model_new(MODEL_IO_LIST(x, m, mask), MODEL_IO_LIST(out), 1, 0);
 	else
@@ -189,11 +189,11 @@ static ccv_cnnp_model_t* _encoder_block_new(const int k, const int h, const int 
 	if (dropout)
 		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(out));
 	// feed-forward
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(ff, 0, 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k * h, 0, 1, 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(first, out));
 	if (dropout)
@@ -222,11 +222,11 @@ static ccv_cnnp_model_t* _decoder_block_new(const int k, const int h, const int 
 	if (dropout)
 		out = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(out));
 	// feed-forward
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(ff, 0, 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_relu(0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(k * h, 0, 1, 0), MODEL_IO_LIST(out));
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(t, b, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_layer_norm(1e-5, DIM_ALLOC(2), 1, 1, 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(first, out));
 	if (dropout)
@@ -249,7 +249,7 @@ ccv_cnnp_model_t* _encoder_decoder_new(const int tgt_vocab_size, const int layer
 	for (i = 0; i < layers; i++)
 		decoder_out = ccv_cnnp_model_apply(_decoder_block_new(k, h, b, t, ff, dropout), MODEL_IO_LIST(decoder_out, encoder_out, src_mask, tgt_mask));
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_transpose(0, 1, 0), MODEL_IO_LIST(decoder_out)); // t, b, d -> b, t, d
-	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
+	out = ccv_cnnp_model_apply(ccv_cnnp_reshape(0, DIM_ALLOC(b * t, k * h), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(out));
 	out = ccv_cnnp_model_apply(ccv_cnnp_dense(tgt_vocab_size, 1, 1, 0), MODEL_IO_LIST(out));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(src, tgt, src_mask, tgt_mask), MODEL_IO_LIST(out), 1, 0);
 }

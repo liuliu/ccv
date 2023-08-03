@@ -4132,13 +4132,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name);
 /**
  * Reshape an input into a different dimension.
+ * @param format Change the layout format for a given input, 0 is not to change.
  * @param dim The new dimension for the input.
  * @param ofs The offset on each of the dimension.
  * @param stride The line size of each dimension.
  * @param name The unique name of the model.
  * @return A reshape layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int format, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+/**
+ * Identity op that simply copy from input to output without using any data transfer / format conversion methods.
+ * @param name The unique name of the model.
+ * @return An identity layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const char* const name);
 /**
  * Permute the input. For example, [2, 0, 1] means moving dimension 2 to 0, dimension 0 to 1, dimension 1 to 2.
  * @param index The index for each dimensions from.
