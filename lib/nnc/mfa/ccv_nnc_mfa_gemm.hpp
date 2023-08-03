@@ -56,7 +56,6 @@ class pipeline {
 public:
   NS::SharedPtr<MTL::ComputePipelineState> pso;
   
-  simd::uchar2 flags;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;

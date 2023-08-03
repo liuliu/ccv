@@ -204,9 +204,6 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  this->flags[0] = true;
-  this->flags[1] = hash.batched;
-  this->flags[2] = hash.masked;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.R, MTL::DataTypeUInt, NS::UInteger(0));

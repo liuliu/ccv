@@ -108,15 +108,25 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		// MFA can support am_nd == 2 and broadcast batch=1 -> batch=batch_size, but
 		// wait until that occurs in practice before doing so.
 		const int am_nd = ccv_nnc_tensor_nd(attn_mask->info.dim);
-		assert(am_nd == 3); // [batch_size, R, C]
+		assert(am_nd == 3 || am_nd == 4); // [batch_size, R, C]
 
 		// MFA does not support attention mask broadcasting (where the R dimension
 		// of Q > 1, but the R dimension of the mask == 1).
 		ccv_nnc_tensor_view_get_dim(attn_mask, amdim);
 		ccv_nnc_tensor_view_get_stride(attn_mask, amstride);
-		assert(amdim[0] == batch_size);
-		assert(amdim[1] == R);
-		assert(amdim[2] == C);
+    if (am_nd == 3)
+    {
+      assert(amdim[1] == batch_size);
+      amdim[0] = amdim[1];
+      amdim[1] = 1;
+      assert(amdim[2] == R);
+      assert(amdim[3] == C);
+    } else {
+      assert(amdim[0] == batch_size);
+      assert(amdim[1] == 1);
+      assert(amdim[2] == R);
+      assert(amdim[3] == C);
+    }
 	}
 
 	const int is_same_dtype =
@@ -169,7 +179,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (attention_is_batched) {
 		params.batch_dims_q[0] = batch_size;
 		params.batch_dims_q[1] = 0;
-		params.batch_dims_mask[0] = batch_size;
+		params.batch_dims_mask[0] = amdim[0];
 		params.batch_dims_mask[1] = 0;
 	}
 	ccv_nnc_mfa_prepare_attention(context, params);
