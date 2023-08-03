@@ -3,8 +3,6 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
-#include <Foundation/Foundation.h>
-#include <stdio.h>
 #ifdef HAVE_MPS
 #include "nnc/mps/ccv_nnc_mps.h"
 #endif
@@ -148,7 +146,6 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				mps_b = [graph reductionSumWithTensor:mps_b axes:db_axes name:nil];
 				[resultTensors addObject:mps_b];
 			}
-			[graph dump];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
 		MPSGraphTensorData* data[] = {data_g};
