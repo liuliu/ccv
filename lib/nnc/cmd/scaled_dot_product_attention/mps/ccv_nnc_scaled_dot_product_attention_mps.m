@@ -52,15 +52,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_get_dim(v, vdim);
 	ccv_nnc_tensor_view_get_dim(o, odim);
 
-	int qstride[CCV_NNC_MAX_DIM_ALLOC];
-	int kstride[CCV_NNC_MAX_DIM_ALLOC];
-	int vstride[CCV_NNC_MAX_DIM_ALLOC];
-	int ostride[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_stride(q, qstride);
-	ccv_nnc_tensor_view_get_stride(k, kstride);
-	ccv_nnc_tensor_view_get_stride(v, vstride);
-	ccv_nnc_tensor_view_get_stride(o, ostride);
-
 	assert(q->info.format == CCV_TENSOR_FORMAT_NHWC);
 	assert(k->info.format == CCV_TENSOR_FORMAT_NHWC);
 	assert(v->info.format == CCV_TENSOR_FORMAT_NHWC);
@@ -85,13 +76,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	int H;
 	int D;
 	if (q_nd == 3) {
-		batch_size = qdim[0];
-		assert(batch_size == kdim[0]);
-		R = qdim[1];
-		C = kdim[1];
+		batch_size = qdim[1];
+		assert(batch_size == kdim[1]);
+		R = qdim[2];
+		C = kdim[2];
 		H = 1;
-		D = qdim[2];
-		assert(D == kdim[2]);
+		D = qdim[3];
+		assert(D == kdim[3]);
 	} else if (q_nd == 4) {
 		batch_size = qdim[0];
 		assert(batch_size == kdim[0]);
@@ -249,12 +240,18 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		int N = cdim[3];
 		int K = H * D;
 
-		assert(adim[0] == attention_batch_size);
-		assert(adim[1] == M);
+		if (o_nd == 3)
+		{
+			assert(adim[1] == attention_batch_size);
+			assert(adim[2] == M);
+		} else {
+			assert(adim[0] == attention_batch_size);
+			assert(adim[1] == M);
+		}
 		if (H > 1) {
 			assert(adim[2] * adim[3] == K);
 		} else {
-			assert(adim[2] == K);
+			assert(adim[3] == K);
 		}
 
 		// We assume the weights matrix is square.
