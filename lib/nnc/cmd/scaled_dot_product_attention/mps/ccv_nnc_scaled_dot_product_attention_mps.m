@@ -168,7 +168,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (attention_is_batched) {
 		params.batch_dims_q[0] = batch_size;
 		params.batch_dims_q[1] = 0;
-		params.batch_dims_mask[0] = amdim[0];
+		params.batch_dims_mask[0] = attn_mask ? amdim[0] : batch_size;
 		params.batch_dims_mask[1] = 0;
 	}
 	ccv_nnc_mfa_prepare_attention(context, params);
