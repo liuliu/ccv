@@ -43,6 +43,7 @@ public:
   
   cache<attention::hash, attention::pipeline> attention_cache;
   cache<gemm::hash, gemm::pipeline> gemm_cache;
+  cache<normalization::hash, normalization::pipeline> normalization_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

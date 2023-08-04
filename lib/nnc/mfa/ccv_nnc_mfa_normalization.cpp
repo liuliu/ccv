@@ -20,6 +20,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
+    encoder->setBuffer(tensors[num_tensors], tensor_offsets[num_tensors], NS::UInteger(num_tensors));
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 6);
@@ -80,28 +81,52 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     }
   }
   
-  if (hash.scale_translation_batched) {
+  if (params.scale_translation_batched) {
     uint64_t byte_stride_scale_translation = 0;
     if (batch_sizes[1] > 1) {
       auto grid_size = pipeline->grid_size;
-      byte_stride_scale_translation = hash.channels_count * data_type_size;
+      byte_stride_scale_translation = params.channel_count * data_type_size;
     }
     
-    simd::ulong4 matrix_offsets[batch_sizes[0]];
+    simd::ulong4 scale_translation_offsets[batch_sizes[0]];
     for (int i = 0; i < batch_sizes[0]; ++i) {
-      matrix_offsets[i] = simd::ulong4 {
+      scale_translation_offsets[i] = simd::ulong4 {
         i * byte_stride_scale_translation,
         i * byte_stride_scale_translation,
         0,
         0,
       };
     }
-    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
+    encoder->setBytes(scale_translation_offsets, batch_sizes[0] * 32, 10);
   }
   
-  if (!hash.layer_normalization) {
-    uint32_t seeds[batch_sizes[0]];
+  encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
+  encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[5], MTL::ResourceUsageRead);
+  
+  if (!params.layer_normalization && !params.reuse_saved_statistics) {
+    uint32_t batch_seeds[batch_sizes[0]];
+    for (int i = 0; i < batch_sizes[0]; ++i) {
+      batch_seeds[i] = uint32_t(drand48() * UINT32_MAX);
+    }
+    encoder->setBytes(batch_seeds, batch_sizes[0] * 4, 11);
+    
+    command_batch->startCommand(pipeline->sampling_pso.get());
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+    
+    auto grid_size = pipeline->grid_size;
+    grid_size.width = 1;
+    encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
+    command_batch->finishCommand(encoder);
   }
+  
+  command_batch->startCommand(pipeline->normalization_pso.get());
+  encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  encoder->dispatchThreadgroups(pipeline->grid_size, pipeline->group_size);
+  command_batch->finishCommand(encoder);
 }
 
 // MARK: - C++
@@ -111,7 +136,8 @@ mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   channel_count = params.channel_count;
   channel_groups = params.channel_groups;
   sequence_count = params.sequence_count;
-  is_layer_normalization = params.is_layer_normalization;
+  scale_translation_batched = params.scale_translation_batched;
+  layer_normalization = params.layer_normalization;
 }
 
 bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) const {
@@ -120,7 +146,8 @@ bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) 
   (channel_count == hash.channel_count) &&
   (channel_groups == hash.channel_groups) &&
   (sequence_count == hash.sequence_count) &&
-  (is_layer_normalization == hash.is_layer_normalization);
+  (scale_translation_batched == hash.scale_translation_batched) &&
+  (layer_normalization == hash.layer_normalization);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash) {
@@ -129,7 +156,8 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .channel_count = " << hash.channel_count << ',';
   os << " .channel_groups = " << hash.channel_groups << ',';
   os << " .sequence_count = " << hash.sequence_count << ',';
-  os << " .is_layer_normalization = " << hash.is_layer_normalization << " ";
+  os << " .scale_translation_batched = " << hash.scale_translation_batched << ',';
+  os << " .layer_normalization = " << hash.layer_normalization << " ";
   os << "}";
   return os;
 }
@@ -139,7 +167,7 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   using namespace mfa::hash;
   combine_64(seed, hash.data_type);
   combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
-  combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, uint32_t(hash.is_layer_normalization) }));
+  combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.layer_normalization, 0, 0 }) }));
   return seed;
 }
 
@@ -193,10 +221,10 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
     device real *channel_translations [[buffer(5)]],
   
   #if SCALE_TRANSLATION_BATCHED
-    constant ulong4 *matrix_offsets [[buffer(11)]],
+    constant ulong4 *scale_translation_offsets [[buffer(10)]],
   #endif
   #if SAMPLE_POPULATION
-    constant uint *batch_seeds [[buffer(10)]],
+    constant uint *batch_seeds [[buffer(11)]],
   #endif
 
     uint3 tgid [[threadgroup_position_in_grid]],
@@ -219,7 +247,7 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   
   #if SCALE_TRANSLATION_BATCHED
     {
-      ulong2 offsets = matrix_offsets[tgid.z].xy;
+      ulong2 offsets = scale_translation_offsets[tgid.z].xy;
       channel_scale = (device real*)((device uchar*)channel_scale + offsets[0]);
       channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
     }
@@ -241,8 +269,12 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
       float mean = saved_mean[saved_address];
       float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[saved_address];
       
-    #pragma clang loop unroll(full)
-      for (uint i = 0; i < sample_size; i += threadgroup_size) {
+      uint range_start = io_offset;
+      uint range_end = io_offset + sample_size;
+      range_end = min(range_end, population_count);
+      uint i_end = range_end - range_start;
+      
+      for (uint i = 0; i < i_end; i += threadgroup_size) {
         uint2 coords = population_coords(i);
         real scale = scales[coords.x];
         real translation = translations[coords.x];
@@ -388,7 +420,7 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   defines += "\n";
   
   uint16_t threadgroup_size;
-  if (hash.is_layer_normalization) {
+  if (hash.layer_normalization) {
     CCV_NNC_MFA_PRECONDITION(hash.channel_groups == 1);
     defines += "constant ushort sample_count = ";
     defines += std::to_string(hash.channel_count) + ";";
@@ -400,29 +432,37 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
       threadgroup_size = 256;
     }
     
-    this->grid_size = MTL::Size(
+    this->grid_size = MTL::Size(hash.sequence_count, 1, 1);
   } else {
     CCV_NNC_MFA_PRECONDITION(hash.channel_count % hash.channel_groups == 0);
     threadgroup_size = 512;
     
     uint16_t data_type_size = UINT16_MAX;
-
+    
     uint16_t sample_count = 16384;
     uint32_t channel_group_size = hash.channel_count / hash.channel_groups;
     uint32_t population_count = hash.sequence_count * channel_group_size;
     
-    // Aim to sample no more than 25% of the population.
-    if (sample_count >= 2 * population_count) {
+    // Aim to sample no more than 50% of the population, a tradeoff between
+    // sampling cost and accuracy. This only kicks in for asymptotically small
+    // population sizes, such as (16 * 16) / (1280 / 32).
+    //
+    // Such sizes could probably fit inside SRAM, but the cost of maintaining
+    // a separate code path for these cases outweighs the benefits.
+    if (sample_count >= 4 * population_count) {
       sample_count /= 8;
-    } else if (sample_count >= population_count) {
+    } else if (sample_count >= 2 * population_count) {
       sample_count /= 4;
-    } else if (sample_count * 2 >= population_count) {
+    } else if (sample_count >= population_count) {
       sample_count /= 2;
     }
     
     defines += "constant ushort sample_count = ";
     defines += std::to_string(sample_count) + ";";
     defines += "\n";
+    
+    uint x_dim = (hash.sequence_count + sample_count - 1) / sample_count * sample_count;
+    this->grid_size = MTL::Size(x_dim, hash.channel_groups, 1);
   }
   
   defines += "constant ushort threadgroup_size = ";
@@ -439,13 +479,13 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
     NS::SharedPtr<MTL::ComputePipelineState>* pso;
     std::string macro;
     if (i == 0) {
-      if (hash.is_layer_normalization) {
+      if (hash.layer_normalization) {
         continue;
       }
       macro = "SAMPLE_POPULATION";
       pso = &sampling_pso;
     } else {
-      if (hash.is_layer_normalization) {
+      if (hash.layer_normalization) {
         macro = "LAYER_NORMALIZATION";
       } else {
         macro = "GROUP_NORMALIZATION";
