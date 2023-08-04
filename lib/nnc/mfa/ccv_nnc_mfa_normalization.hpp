@@ -6,7 +6,7 @@ typedef struct {
   uint32_t channel_count;
   uint32_t channel_groups;
   uint32_t sequence_count;
-  uint8_t data_trans;
+  uint8_t is_layer_normalization;
   
   uint32_t batch_dims[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_normalization_params_t;
@@ -24,8 +24,10 @@ namespace normalization {
 class hash {
 public:
   uint64_t data_type;
-  uint32_t operation_id;
-  uint32_t reduction_dim;
+  uint32_t channel_count;
+  uint32_t channel_groups;
+  uint32_t sequence_count;
+  uint8_t is_layer_normalization;
   
   hash(ccv_nnc_mfa_normalization_params_t);
   
@@ -34,8 +36,10 @@ public:
 
 class pipeline {
 public:
-  NS::SharedPtr<MTL::ComputePipelineState> pso;
+  NS::SharedPtr<MTL::ComputePipelineState> sampling_pso;
+  NS::SharedPtr<MTL::ComputePipelineState> normalization_pso;
   
+  MTL::Size grid_size;
   MTL::Size group_size;
   
   pipeline(context* context, hash hash);

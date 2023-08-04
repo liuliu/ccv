@@ -7,26 +7,28 @@ using namespace ccv::nnc;
 
 mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   data_type = params.data_type;
-  if (std::string(params.operation_name) == "normalization") {
-    operation_id = 0;
-  } else {
-    CCV_NNC_MFA_PRECONDITION(false);
-  }
-  reduction_dim = params.reduction_dim;
+  channel_count = params.channel_count;
+  channel_groups = params.channel_groups;
+  sequence_count = params.sequence_count;
+  is_layer_normalization = params.is_layer_normalization;
 }
 
 bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) const {
   return
   (data_type == hash.data_type) &&
-  (operation_id == hash.operation_id) &&
-  (reduction_dim == hash.reduction_dim);
+  (channel_count == hash.channel_count) &&
+  (channel_groups == hash.channel_groups) &&
+  (sequence_count == hash.sequence_count) &&
+  (is_layer_normalization == hash.is_layer_normalization);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash) {
   os << "mfa::normalization::hash {";
   os << " .data_type = " << hash.data_type << ',';
-  os << " .operation_id = " << hash.operation_id << ',';
-  os << " .reduction_dim = " << hash.reduction_dim << " ";
+  os << " .channel_count = " << hash.channel_count << ',';
+  os << " .channel_groups = " << hash.channel_groups << ',';
+  os << " .sequence_count = " << hash.sequence_count << ',';
+  os << " .is_layer_normalization = " << hash.is_layer_normalization << " ";
   os << "}";
   return os;
 }
@@ -35,53 +37,22 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   std::size_t seed = 0;
   using namespace mfa::hash;
   combine_64(seed, hash.data_type);
-  combine_64(seed, pack_64(simd::uint2 { hash.operation_id, hash.reduction_dim }));
+  combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
+  combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, uint32_t(hash.is_layer_normalization) }));
   return seed;
 }
 
 mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization::hash hash) {
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
-  CCV_NNC_MFA_PRECONDITION(hash.operation_id == 0)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
-  std::string shader = "";
-  if (hash.data_type == MTL::DataTypeFloat) {
-    shader += std::string("typedef float real;");
-    shader += "\n";
-  } else {
-    shader += std::string("typedef half real;");
-    shader += "\n";
-  }
-  shader += "constant uint row_size = " + std::to_string(hash.reduction_dim) + ";";
-  shader += "\n";
-  
-  uint32_t group_size;
-  if (hash.reduction_dim <= 384) {
-    group_size = 128;
-  } else {
-    group_size = 256;
-  }
-  shader += "constant ushort threadgroup_size = " + std::to_string(group_size) + ";";
-  shader += "\n";
-  this->group_size = MTL::Size(group_size, 1, 1);
-  
-  // Two approaches: exact normalization and approximate normalization.
-  
-  // Exact normalization (layer normalization).
   std::string shader = R"(
   constant uint bulk_size = sample_count / threadgroup_size * threadgroup_size;
   constant uint padding_size = sample_count - bulk_size;
-  #if !LAYER_NORMALIZATION
-  constant uint channel_group_size = channel_count / channel_groups;
-  #endif
   
-  // Compute radical inverse of n to the base 2, then convert into an integer.
-  uint radinv2(uint n) {
-    float random = as_type<float>(0x3F800000 | ((reverse_bits(n)) >> 9)) - 1.0f;
-    uint index = uint(progress * float(channel_group_size * sequence_size));
-    return min(index, channel_group_size * sequence_size - 1);
-  }
+  constant uint channel_group_size = channel_count / channel_groups;
+  constant uint population_count = channel_group_size * sequence_count;
   
   // Partially sourced from:
   // https://github.com/nvpro-samples/gl_vk_raytrace_interop/blob/master/shaders/sampling.h
@@ -96,6 +67,13 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
       v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
     }
     return v0;
+  }
+  
+  // Compute radical inverse of n to the base 2, then convert into an integer.
+  uint radinv2(uint n) {
+    float random = as_type<float>(0x3F800000 | ((reverse_bits(n)) >> 9)) - 1.0f;
+    uint index = uint(progress * float(population_count));
+    return min(index, population_count - 1);
   }
   
   // Generate 2D coordinates within the population.
@@ -138,8 +116,6 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
     source += io_offset
     destination += io_offset
   
-    // TODO: For group normalization, save the mean and stddev inside the last
-    // control block that computes the variance.
   #if !LAYER_NORMALIZATION
     threadgroup real scales[channel_group_size];
     threadgroup real translations[channel_group_size];
@@ -218,8 +194,11 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
       threadgroup_barrier(mem_flags::mem_threadgroup);
       if (lid < (threadgroup_size / 32)) {
         float sum = quad_sum(partials[lid]);
-        if (group_size == 256) {
-           sum += simd_shuffle_xor(sum, 4);
+        if (threadgroup_size >= 256) {
+          sum += simd_shuffle_xor(sum, 4);
+        }
+        if (threadgroup_size >= 512) {
+          sum += simd_shuffle_xor(sum, 8);
         }
         partials[lid] = sum * (1.0 / float(sample_count));
       }
@@ -244,10 +223,13 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
       threadgroup_barrier(mem_flags::mem_threadgroup);
       if (lid < (threadgroup_size / 32)) {
         float variance = quad_sum(partials[lid]);
-        if (group_size == 256) {
+        if (threadgroup_size >= 256) {
           variance += simd_shuffle_xor(variance, 4);
         }
-  
+        if (threadgroup_size >= 512) {
+          variance += simd_shuffle_xor(variance, 8);
+        }
+        
         variance *= 1.0 / float(sample_count);
       #if !SAMPLE_POPULATION
         float standard_deviation_reciprocal = rsqrt(variance);
@@ -275,24 +257,122 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   }
   )";
   
-  // Approximate normalization (group normalization).
+  std::string defines = "";
+  if (hash.data_type == MTL::DataTypeFloat) {
+    defines += std::string("typedef float real;");
+    defines += "\n";
+  } else {
+    defines += std::string("typedef half real;");
+    defines += "\n";
+  }
   
-  // kernel void sample_population
+  defines += "constant uint channel_count = ";
+  defines += std::to_string(hash.channel_count) + ";";
+  defines += "\n";
   
-  // kernel void flash_normalization
+  defines += "constant uint channel_groups = ";
+  defines += std::to_string(hash.channel_groups) + ";";
+  defines += "\n";
   
-  NS::Error *error;
-  auto swift_string = NS::String::string(shader.c_str(),
-   NS::UTF8StringEncoding);
-  auto library = NS::TransferPtr(context->device->newLibrary(swift_string, nullptr, &error));
-  CCV_NNC_MFA_CHECK_ERROR(error)
+  defines += "constant uint sequence_count = ";
+  defines += std::to_string(hash.sequence_count) + ";";
+  defines += "\n";
   
-  auto swift_name = NS::String::string("normalization", NS::UTF8StringEncoding);
-  auto function = NS::TransferPtr(context->library->newFunction(swift_name));
-  CCV_NNC_MFA_PRECONDITION(function.get() != nullptr)
+  uint16_t threadgroup_size;
+  if (hash.is_layer_normalization) {
+    CCV_NNC_MFA_PRECONDITION(hash.channel_groups == 1);
+    defines += "constant ushort sample_count = ";
+    defines += std::to_string(hash.channel_count) + ";";
+    defines += "\n";
+    
+    if (hash.channel_count <= 384) {
+      threadgroup_size = 128;
+    } else {
+      threadgroup_size = 256;
+    }
+  } else {
+    CCV_NNC_MFA_PRECONDITION(hash.channel_count % hash.channel_groups == 0);
+    threadgroup_size = 512;
+    
+    uint16_t data_type_size = UINT16_MAX;
+    switch (hash.data_type) {
+      case MTL::DataTypeHalf: {
+        data_type_size = 2;
+        break;
+      }
+      case MTL::DataTypeFloat: {
+        data_type_size = 4;
+        break;
+      }
+      default: {
+        CCV_NNC_MFA_PRECONDITION(false)
+        break;
+      }
+    }
+    
+    // Allocate 64 KB of registers per threadgroup.
+    uint16_t thread_bytes = uint32_t(64 * 1024) / uint32_t(threadgroup_size);
+    uint16_t thread_elements = thread_bytes / data_type_size;
+    uint16_t sample_count = thread_elements * threadgroup_size;
+    
+    uint32_t channel_group_size = hash.channel_count / hash.channel_groups;
+    uint32_t population_count = hash.sequence_count * channel_group_size;
+    
+    // Aim to sample no more than 25% of the population.
+    if (sample_count >= 2 * population_count) {
+      sample_count /= 8;
+    } else if (sample_count >= population_count) {
+      sample_count /= 4;
+    } else if (sample_count * 2 >= population_count) {
+      sample_count /= 2;
+    }
+    
+    defines += "constant ushort sample_count = ";
+    defines += std::to_string(sample_count) + ";";
+    defines += "\n";
+  }
   
-  pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
-  CCV_NNC_MFA_CHECK_ERROR(error)
+  defines += "constant ushort threadgroup_size = ";
+  defines += std::to_string(threadgroup_size) + ";";
+  defines += "\n";
+  this->group_size = MTL::Size(threadgroup_size, 1, 1);
+  
+  for (int i = 0; i < 2; ++i) {
+    NS::SharedPtr<MTL::ComputePipelineState>* pso;
+    std::string macro;
+    if (i == 0) {
+      if (hash.is_layer_normalization) {
+        continue;
+      }
+      macro = "SAMPLE_POPULATION";
+      pso = &sampling_pso;
+    } else {
+      if (hash.is_layer_normalization) {
+        macro = "LAYER_NORMALIZATION";
+      } else {
+        macro = "GROUP_NORMALIZATION";
+      }
+      pso = &normalization_pso;
+    }
+    
+    std::string source = defines;
+    source += "#define " + macro + "1";
+    source += "\n";
+    source += shader;
+    
+    NS::Error *error;
+    auto swift_source = NS::String::string(source.c_str(),
+     NS::UTF8StringEncoding);
+    auto library = NS::TransferPtr(context->device->newLibrary(swift_source, nullptr, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error)
+    
+    auto swift_name = NS::String::string("normalization", NS::UTF8StringEncoding);
+    auto function = NS::TransferPtr(context->library->newFunction(swift_name));
+    CCV_NNC_MFA_PRECONDITION(function.get() != nullptr)
+    
+    *pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error)
+  }
   
   pool->drain();
 }
