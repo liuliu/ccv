@@ -51,7 +51,7 @@ REGISTER_COMMAND(CCV_NNC_MSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_MSE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_mse_cpu_ref.c, gpu/ccv_nnc_mse_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_mse_cpu_ref.c, gpu/ccv_nnc_mse_gpu_ref.cu, mps/ccv_nnc_mse_mps.m)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_mse_back_bitmask;
