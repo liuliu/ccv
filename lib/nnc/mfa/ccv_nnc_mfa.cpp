@@ -103,8 +103,9 @@ mfa::context::context(MTL::Device* device)
   const char* log_level_repr = getenv("CCV_METAL_LOG_LEVEL");
   if (log_level_repr) {
     int log_level_raw = atoi(log_level_repr);
+    std::cerr << std::endl;
     std::cerr << METAL_LOG_HEADER << "Using log level: " << log_level_raw << std::endl;
-    CCV_NNC_MFA_PRECONDITION(log_level_raw >= 0 && log_level_raw <= 3)
+    CCV_NNC_MFA_PRECONDITION(log_level_raw >= 0 && log_level_raw <= 4)
     
     this->log_level = uint16_t(log_level_raw);
   }

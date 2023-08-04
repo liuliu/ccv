@@ -77,6 +77,7 @@ typedef MTLCommandBatch mtl_command_batch_t;
 // 1 - metallib initialization
 // 2 - PSO creation
 // 3 - command encoding
+// 4 - generated shader code
 
 #if CCV_METAL_LOGGING_ENABLE
 
