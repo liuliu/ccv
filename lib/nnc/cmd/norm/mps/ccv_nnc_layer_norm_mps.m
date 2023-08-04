@@ -136,6 +136,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
       {
         use_mfa = false;
         fallback_reason = "Shape not handled yet (1).";
+        printf("(1)\n");
+        exit(8);
       }
       
       if (tensor_dim_count == 3) {
@@ -146,6 +148,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
         {
           use_mfa = false;
           fallback_reason = "Shape not handled yet (2).";
+          printf("(2)\n");
+          exit(8);
         }
         
         if (scale_dim[0] != 1 ||
@@ -155,6 +159,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
         {
           use_mfa = false;
           fallback_reason = "Shape not handled yet (3).";
+          printf("(3)\n");
+          exit(8);
         }
         
         if (source_dim[2] != destination_dim[2] ||
@@ -163,13 +169,22 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
         {
           use_mfa = false;
           fallback_reason = "Shape not handled yet (4).";
+          printf("(4)\n");
+          exit(8);
         }
         
         if (saved_mean_dim[2] != 1 ||
             saved_standard_deviation_reciprocal_dim[2] != 1)
         {
           use_mfa = false;
+          printf("%d %d %d\n", source_dim[0], source_dim[1], source_dim[2]);
+          printf("%d %d %d\n", destination_dim[0], destination_dim[1], destination_dim[2]);
+          printf("%d %d %d\n", saved_mean_dim[0], saved_mean_dim[1], saved_mean_dim[2]);
+          printf("%d %d %d\n", saved_standard_deviation_reciprocal_dim[0], saved_standard_deviation_reciprocal_dim[1], saved_standard_deviation_reciprocal_dim[2]);
+          printf("%d %d %d\n", scale_dim[0], scale_dim[1], scale_dim[2]);
+          printf("%d %d %d\n", bias_dim[0], bias_dim[1], bias_dim[2]);
           fallback_reason = "Shape not handled yet (5).";
+          exit(8);
         }
         
         channel_count = source_dim[2];
@@ -254,8 +269,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
         NULL,
       };
       size_t tensor_offsets[6] = {
-        0/*at.dataof*/, // source offset
-        0/*bt.dataof*/, // destination offset
+        at.dataof, // source offset
+        bt.dataof, // destination offset
         saved_meant.dataof, // saved_mean offset
         saved_inv_stdt.dataof, // saved_standard_deviation_reciprocal offset
         scalet.dataof, // channel_scales offset

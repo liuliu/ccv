@@ -242,9 +242,6 @@ kernel void normalization(
   ushort sidx [[simdgroup_index_in_threadgroup]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-destination[0] = 0.333;
-return;
-
 #if LAYER_NORMALIZATION
   uint io_offset = (tgid.z * sequence_count + tgid.x) * channel_count + lid;
 #else
