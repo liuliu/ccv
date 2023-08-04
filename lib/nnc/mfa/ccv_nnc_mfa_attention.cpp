@@ -44,6 +44,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       break;
   }
   
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
   simd::ushort2 num_batch_dims(0);
   simd::ulong2 batch_sizes(1);
   if (params.batched) {

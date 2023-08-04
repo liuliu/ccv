@@ -5,6 +5,107 @@ using namespace ccv::nnc;
 
 #include <string>
 
+// MARK: - C
+
+void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_normalization_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
+{
+  mfa::normalization::hash hash(params);
+  auto iterator = context->normalization_cache.map.find(hash);
+  if (iterator == context->normalization_cache.map.end()) {
+    mfa::precondition_failure("Normalization hash not cached.", __LINE__, __FILE__, __FUNCTION__);
+  }
+  
+  auto* pipeline = iterator->second;
+  auto encoder = command_batch->commandEncoder;
+  
+  int num_tensors = 0;
+  while (tensors[num_tensors] != nullptr) {
+    num_tensors += 1;
+  }
+  CCV_NNC_MFA_PRECONDITION(num_tensors == 6);
+  
+  uint16_t data_type_size = 0;
+  switch (params.data_type) {
+    case MTL::DataTypeHalf: {
+      data_type_size = 2;
+      break;
+    }
+    case MTL::DataTypeFloat: {
+      data_type_size = 4;
+      break;
+    }
+    default:
+      CCV_NNC_MFA_PRECONDITION(false);
+      break;
+  }
+  
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
+  simd::ushort2 num_batch_dims(0);
+  simd::ulong2 batch_sizes(1);
+  for (uint16_t operand = 0; operand < 2; ++operand) {
+    uint32_t* batch_dims;
+    if (operand == 0) {
+      batch_dims = params.batch_dims_data;
+    } else if (operand == 1) {
+      if (params.scale_translation_batched) {
+        batch_dims = params.batch_dims_scale_translation;
+      } else {
+        continue;
+      }
+    }
+    
+    for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+      if (batch_dims[i] == 0) {
+        break;
+      }
+      num_batch_dims[operand] += 1;
+      batch_sizes[operand] *= batch_dims[i];
+    }
+    
+    bool dims_match_data = true;
+    if (num_batch_dims[0] != num_batch_dims[operand]) {
+      dims_match_data = false;
+    } else if (batch_sizes[0] != batch_sizes[operand]) {
+      dims_match_data = false;
+    } else {
+      for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+        if (params.batch_dims_data[i] != batch_dims[i]) {
+          dims_match_data = false;
+        }
+      }
+    }
+    
+    if (!dims_match_data) {
+      CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
+    }
+  }
+  
+  if (hash.scale_translation_batched) {
+    uint64_t byte_stride_scale_translation = 0;
+    if (batch_sizes[1] > 1) {
+      auto grid_size = pipeline->grid_size;
+      byte_stride_scale_translation = hash.channels_count * data_type_size;
+    }
+    
+    simd::ulong4 matrix_offsets[batch_sizes[0]];
+    for (int i = 0; i < batch_sizes[0]; ++i) {
+      matrix_offsets[i] = simd::ulong4 {
+        i * byte_stride_scale_translation,
+        i * byte_stride_scale_translation,
+        0,
+        0,
+      };
+    }
+    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
+  }
+  
+  if (!hash.layer_normalization) {
+    uint32_t seeds[batch_sizes[0]];
+  }
+}
+
+// MARK: - C++
+
 mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   data_type = params.data_type;
   channel_count = params.channel_count;
@@ -90,20 +191,20 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
     device real *saved_standard_deviation_reciprocal [[buffer(3)],
     device real *channel_scales [[buffer(4)]],
     device real *channel_translations [[buffer(5)]],
-  #if SAMPLE_POPULATION
-    constant uint *batch_seeds [[buffer(6)]],
-  #endif
   
-  #if LAYER_NORMALIZATION
-    uint tgid [[threadgroup_position_in_grid]],
-  #else
-    uint3 tgid [[threadgroup_position_in_grid]],
+  #if SCALE_TRANSLATION_BATCHED
+    constant ulong4 *matrix_offsets [[buffer(11)]],
   #endif
+  #if SAMPLE_POPULATION
+    constant uint *batch_seeds [[buffer(10)]],
+  #endif
+
+    uint3 tgid [[threadgroup_position_in_grid]],
     ushort sidx [[simdgroup_index_in_threadgroup]],
     ushort lid [[thread_position_in_threadgroup]]
   ) {
   #if LAYER_NORMALIZATION
-    uint io_offset = tgid * row_size + lid;
+    uint io_offset = (tgid.z * sequence_count + tgid.x) * channel_count + lid;
   #else
     uint io_offset = tgid.z * sequence_size * channel_size;
     io_offset += tgid.y * channel_group_size;
@@ -115,6 +216,14 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   #endif
     source += io_offset
     destination += io_offset
+  
+  #if SCALE_TRANSLATION_BATCHED
+    {
+      ulong2 offsets = matrix_offsets[tgid.z].xy;
+      channel_scale = (device real*)((device uchar*)channel_scale + offsets[0]);
+      channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
+    }
+  #endif
   
   #if !LAYER_NORMALIZATION
     threadgroup real scales[channel_group_size];
@@ -290,31 +399,15 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
     } else {
       threadgroup_size = 256;
     }
+    
+    this->grid_size = MTL::Size(
   } else {
     CCV_NNC_MFA_PRECONDITION(hash.channel_count % hash.channel_groups == 0);
     threadgroup_size = 512;
     
     uint16_t data_type_size = UINT16_MAX;
-    switch (hash.data_type) {
-      case MTL::DataTypeHalf: {
-        data_type_size = 2;
-        break;
-      }
-      case MTL::DataTypeFloat: {
-        data_type_size = 4;
-        break;
-      }
-      default: {
-        CCV_NNC_MFA_PRECONDITION(false)
-        break;
-      }
-    }
-    
-    // Allocate 64 KB of registers per threadgroup.
-    uint16_t thread_bytes = uint32_t(64 * 1024) / uint32_t(threadgroup_size);
-    uint16_t thread_elements = thread_bytes / data_type_size;
-    uint16_t sample_count = thread_elements * threadgroup_size;
-    
+
+    uint16_t sample_count = 16384;
     uint32_t channel_group_size = hash.channel_count / hash.channel_groups;
     uint32_t population_count = hash.sequence_count * channel_group_size;
     
@@ -336,6 +429,11 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   defines += std::to_string(threadgroup_size) + ";";
   defines += "\n";
   this->group_size = MTL::Size(threadgroup_size, 1, 1);
+  
+  if (hash.scale_translation_batched) {
+    defines += "#define SCALE_TRANSLATION_BATCHED 1";
+    defines += "\n";
+  }
   
   for (int i = 0; i < 2; ++i) {
     NS::SharedPtr<MTL::ComputePipelineState>* pso;

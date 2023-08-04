@@ -40,6 +40,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
   simd::ushort4 num_batch_dims(0);
   simd::ulong4 batch_sizes(1);
   if (params.batched) {
