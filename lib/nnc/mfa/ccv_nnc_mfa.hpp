@@ -5,7 +5,7 @@
 #include "ccv_nnc_mfa_defines.hpp"
 #include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
-#include "ccv_nnc_mfa_elementwise.hpp"
+#include "ccv_nnc_mfa_normalization.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
