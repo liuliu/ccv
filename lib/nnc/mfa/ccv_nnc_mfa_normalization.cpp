@@ -124,7 +124,6 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     grid_size.width = 1;
     grid_size.depth = batch_sizes[0];
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
-    command_batch->finishCommand(encoder);
   }
   
   encoder->setComputePipelineState(pipeline->normalization_pso.get());

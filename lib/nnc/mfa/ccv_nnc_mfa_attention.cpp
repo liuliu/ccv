@@ -119,7 +119,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBuffer(scratch, 0, 13);
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
-    command_batch->finishCommand(encoder);
   }
   
   encoder->setComputePipelineState(pipeline->attention_pso.get());
