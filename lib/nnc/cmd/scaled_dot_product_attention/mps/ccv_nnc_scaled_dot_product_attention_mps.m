@@ -105,13 +105,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		ccv_nnc_tensor_view_get_dim(attn_mask, amdim);
 		if (am_nd == 3)
 		{
-			assert(amdim[1] == batch_size);
+			assert(amdim[1] == batch_size || amdim[1] == 1);
 			amdim[0] = amdim[1];
 			amdim[1] = 1;
 			assert(amdim[2] == R);
 			assert(amdim[3] == C);
 		} else {
-			assert(amdim[0] == batch_size);
+			assert(amdim[0] == batch_size || amdim[0] == 1);
 			assert(amdim[1] == 1);
 			assert(amdim[2] == R);
 			assert(amdim[3] == C);
