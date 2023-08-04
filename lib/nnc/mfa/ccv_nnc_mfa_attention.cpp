@@ -83,10 +83,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     
     uint64_t byte_stride_mask = 0;
     uint64_t byte_stride_block_mask = 0;
-    if (batch_sizes[0] > 1) {
-      byte_stride_mask = hash.R * hash.C * data_type_size;
-    }
     if (batch_sizes[1] > 1) {
+      byte_stride_mask = hash.R * hash.C * data_type_size;
       auto grid_size = pipeline->grid_size;
       byte_stride_block_mask = grid_size.width * grid_size.height * 1;
     }
