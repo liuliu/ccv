@@ -15,13 +15,21 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[0]);
 	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(outputs[1]);
 	ccv_nnc_tensor_view_t saved_inv_stdt = ccv_nnc_get_tensor_view(outputs[2]);
-	ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
-		&at,
-		&saved_meant,
-		&saved_inv_stdt,
-		&bt
-	}, 4);
 	@autoreleasepool {
+//    ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
+//      &at,
+//      &saved_meant,
+//      &saved_inv_stdt,
+//      &bt
+//    }, 3);
+    
+    ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
+      &at,
+      &saved_meant,
+      &saved_inv_stdt,
+      &bt
+    }, 4);
+    
     bool use_mfa = true;
     const char *fallback_reason = NULL;
     ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
@@ -34,11 +42,11 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
     uint32_t mtl_data_type = UINT32_MAX;
     if (use_mfa) {
       const int is_same_dtype =
-        (at.info.datatype == bt.info.datatype) &&
-        (at.info.datatype == saved_meant.info.datatype) &&
-        (at.info.datatype == saved_inv_stdt.info.datatype) &&
-        (at.info.datatype == scalet.info.datatype) &&
-        (at.info.datatype == biast.info.datatype);
+        (inputs[0]->info.datatype == outputs[0]->info.datatype) &&
+        (inputs[0]->info.datatype == outputs[1]->info.datatype) &&
+        (inputs[0]->info.datatype == outputs[2]->info.datatype) &&
+        (inputs[0]->info.datatype == inputs[1]->info.datatype) &&
+        (inputs[0]->info.datatype == inputs[2]->info.datatype);
       if (!is_same_dtype) {
         use_mfa = false;
         fallback_reason = "Mixed precision.";
@@ -63,13 +71,15 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
     
     int tensor_dim_count = -1;
     
+    const int source_nd = ccv_nnc_tensor_nd(inputs[0]->info.dim);
+    const int destination_nd = ccv_nnc_tensor_nd(outputs[0]->info.dim);
+    const int saved_mean_nd = ccv_nnc_tensor_nd(outputs[1]->info.dim);
+    const int saved_standard_deviation_reciprocal_nd = ccv_nnc_tensor_nd(outputs[2]->info.dim);
+    const int scale_nd = ccv_nnc_tensor_nd(inputs[1]->info.dim);
+    const int bias_nd = ccv_nnc_tensor_nd(inputs[2]->info.dim);
+    
+    
     if (use_mfa) {
-      const int source_nd = ccv_nnc_tensor_nd(at.info.dim);
-      const int destination_nd = ccv_nnc_tensor_nd(bt.info.dim);
-      const int saved_mean_nd = ccv_nnc_tensor_nd(saved_meant.info.dim);
-      const int saved_standard_deviation_reciprocal_nd = ccv_nnc_tensor_nd(saved_inv_stdt.info.dim);
-      const int scale_nd = ccv_nnc_tensor_nd(scalet.info.dim);
-      const int bias_nd = ccv_nnc_tensor_nd(biast.info.dim);
       
       if (source_nd == 3 &&
           destination_nd == 3 &&
@@ -93,14 +103,19 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
       {
         use_mfa = false;
         fallback_reason = "Unsupported input shape.";
+        
+        printf("Unsupported input shape. Failing.\n");
+        printf("%d %d %d\n", source_nd, destination_nd, saved_mean_nd);
+        printf("%d %d %d\n", saved_standard_deviation_reciprocal_nd, scale_nd, bias_nd);
+        exit(8);
       }
       
-      if (!CCV_IS_TENSOR_CONTIGUOUS(&at) ||
-          !CCV_IS_TENSOR_CONTIGUOUS(&bt) ||
-          !CCV_IS_TENSOR_CONTIGUOUS(&saved_meant) ||
-          !CCV_IS_TENSOR_CONTIGUOUS(&saved_inv_stdt) ||
-          !CCV_IS_TENSOR_CONTIGUOUS(&scalet) ||
-          !CCV_IS_TENSOR_CONTIGUOUS(&biast))
+      if (!CCV_IS_TENSOR_CONTIGUOUS(inputs[0]) ||
+          !CCV_IS_TENSOR_CONTIGUOUS(outputs[0]) ||
+          !CCV_IS_TENSOR_CONTIGUOUS(outputs[1]) ||
+          !CCV_IS_TENSOR_CONTIGUOUS(outputs[2]) ||
+          !CCV_IS_TENSOR_CONTIGUOUS(inputs[1]) ||
+          !CCV_IS_TENSOR_CONTIGUOUS(inputs[2]))
       {
         use_mfa = false;
         fallback_reason = "Strided.";
@@ -116,19 +131,20 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
     uint8_t data_batched = 0;
     uint8_t scale_translation_batched = 0;
     
+    int source_dim[CCV_NNC_MAX_DIM_ALLOC];
+    int destination_dim[CCV_NNC_MAX_DIM_ALLOC];
+    int saved_mean_dim[CCV_NNC_MAX_DIM_ALLOC];
+    int saved_standard_deviation_reciprocal_dim[CCV_NNC_MAX_DIM_ALLOC];
+    int scale_dim[CCV_NNC_MAX_DIM_ALLOC];
+    int bias_dim[CCV_NNC_MAX_DIM_ALLOC];
     if (use_mfa) {
-      int source_dim[CCV_NNC_MAX_DIM_ALLOC];
-      int destination_dim[CCV_NNC_MAX_DIM_ALLOC];
-      int saved_mean_dim[CCV_NNC_MAX_DIM_ALLOC];
-      int saved_standard_deviation_reciprocal_dim[CCV_NNC_MAX_DIM_ALLOC];
-      int scale_dim[CCV_NNC_MAX_DIM_ALLOC];
-      int bias_dim[CCV_NNC_MAX_DIM_ALLOC];
-      ccv_nnc_tensor_view_get_dim(&at, source_dim);
-      ccv_nnc_tensor_view_get_dim(&bt, destination_dim);
-      ccv_nnc_tensor_view_get_dim(&saved_meant, saved_mean_dim);
-      ccv_nnc_tensor_view_get_dim(&saved_inv_stdt, saved_standard_deviation_reciprocal_dim);
-      ccv_nnc_tensor_view_get_dim(&scalet, scale_dim);
-      ccv_nnc_tensor_view_get_dim(&biast, bias_dim);
+      
+      ccv_nnc_tensor_view_get_dim(inputs[0], source_dim);
+      ccv_nnc_tensor_view_get_dim(outputs[0], destination_dim);
+      ccv_nnc_tensor_view_get_dim(outputs[1], saved_mean_dim);
+      ccv_nnc_tensor_view_get_dim(outputs[2], saved_standard_deviation_reciprocal_dim);
+      ccv_nnc_tensor_view_get_dim(inputs[1], scale_dim);
+      ccv_nnc_tensor_view_get_dim(inputs[2], bias_dim);
       
       if (source_dim[0] != destination_dim[0] ||
           source_dim[0] != saved_mean_dim[0] ||
@@ -170,7 +186,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
           use_mfa = false;
           fallback_reason = "Shape not handled yet (4).";
           printf("(4)\n");
-          exit(8);
+//          exit(8);
         }
         
         if (saved_mean_dim[2] != 1 ||
@@ -233,6 +249,17 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
     }
     
     if (use_mfa) {
+      printf("Dimensions:\n");
+      printf("%d %d %d\n", source_nd, destination_nd, saved_mean_nd);
+      printf("%d %d %d\n", saved_standard_deviation_reciprocal_nd, scale_nd, bias_nd);
+      printf("Dimensions arrays:\n");
+      printf("%d %d %d %d\n", source_dim[0], source_dim[1], source_dim[2], source_dim[3]);
+      printf("%d %d %d %d\n", destination_dim[0], destination_dim[1], destination_dim[2], destination_dim[3]);
+      printf("%d %d %d %d\n", saved_mean_dim[0], saved_mean_dim[1], saved_mean_dim[2], saved_mean_dim[3]);
+      printf("%d %d %d %d\n", saved_standard_deviation_reciprocal_dim[0], saved_standard_deviation_reciprocal_dim[1], saved_standard_deviation_reciprocal_dim[2], saved_standard_deviation_reciprocal_dim[3]);
+      printf("%d %d %d %d\n", scale_dim[0], scale_dim[1], scale_dim[2], scale_dim[3]);
+      printf("%d %d %d %d\n", bias_dim[0], bias_dim[1], bias_dim[2], bias_dim[3]);
+      
       ccv_nnc_mfa_normalization_params_t params = {
         .data_type = mtl_data_type,
         .channel_count = (uint32_t)channel_count,
@@ -279,6 +306,13 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
       ccv_nnc_mfa_encode_normalization(context, params, command_batch, tensors, tensor_offsets);
       ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
     } else {
+      ccv_nnc_tensor_view_alignment((ccv_nnc_tensor_view_t*[]){
+        &at,
+        &saved_meant,
+        &saved_inv_stdt,
+        &bt
+      }, 4);
+      
       MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
       ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
       int indices[3];

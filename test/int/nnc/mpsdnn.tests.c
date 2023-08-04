@@ -646,6 +646,14 @@ TEST_CASE("compare layer norm with mps")
 	ccv_nnc_graph_run(cpu_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
 	// Note that MPS and my other implementations treat epsilon differently.
+  
+  for (int i = 0; i < 40; ++i) {
+    prinf("%d %d", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
+  }
+  for (int i = 0; i < 40; ++i) {
+    
+  }
+  
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 2 * 2 * 10, 1e-4, "layer norm result from mps should match the one from reference implementation");
 	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);

@@ -20,6 +20,39 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     mfa::precondition_failure("Normalization hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
+//  {
+//    auto destination = tensors[1];
+//    auto contents = (float*)destination->contents();
+//    
+//    std::string shader = R"(
+//kernel void test(device float *destination [[buffer(1)]],
+//                 uint tid [[thread_position_in_grid]])
+//{
+//  destination[tid] = 0.333;
+//}
+//)";
+//    
+//    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+//    
+//    NS::Error* error;
+//    auto swift_name = NS::String::string("test", NS::UTF8StringEncoding);
+//    auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
+//    CCV_NNC_MFA_CHECK_ERROR(error)
+//    
+//    auto pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
+//    CCV_NNC_MFA_CHECK_ERROR(error)
+//    
+//    auto encoder = command_batch->startCommand();
+//    encoder->setComputePipelineState(pso.get());
+//    
+//    // Next try changing the offset from (0) to (tensor_offsets[1]).
+//    encoder->setBuffer(destination, 0, 1);
+//    encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(32, 1, 1));
+//    command_batch->finishCommand(encoder);
+//    
+//    return;
+//  }
+//  
   auto* pipeline = iterator->second;
   auto encoder = command_batch->startCommand();
   
@@ -519,7 +552,7 @@ kernel void normalization(
     CCV_NNC_MFA_CHECK_ERROR(error)
     
     auto swift_name = NS::String::string("normalization", NS::UTF8StringEncoding);
-    auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
+    auto function = NS::TransferPtr(library->newFunction(swift_name, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error)
     
     *pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
