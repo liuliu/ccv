@@ -20,10 +20,17 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     mfa::precondition_failure("Normalization hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
-//  {
-//    auto destination = tensors[1];
-//    auto contents = (float*)destination->contents();
-//    
+  {
+    for (int i = 0; i < 6; ++i) {
+      auto destination = tensors[i];
+      auto contents = (float*)destination->contents();
+      contents[0] = ((float)i + 1) / 7;
+      contents[1] = ((float)i + 1) / 7;
+      contents[2] = ((float)i + 1) / 7;
+    }
+    
+    
+    
 //    std::string shader = R"(
 //kernel void test(device float *destination [[buffer(1)]],
 //                 uint tid [[thread_position_in_grid]])
@@ -49,10 +56,10 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
 //    encoder->setBuffer(destination, 0, 1);
 //    encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(32, 1, 1));
 //    command_batch->finishCommand(encoder);
-//    
-//    return;
-//  }
-//  
+    
+    return;
+  }
+  
   auto* pipeline = iterator->second;
   auto encoder = command_batch->startCommand();
   
@@ -275,6 +282,9 @@ kernel void normalization(
   ushort sidx [[simdgroup_index_in_threadgroup]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
+  saved_mean[0] = 1;
+return;
+
 #if LAYER_NORMALIZATION
   uint io_offset = (tgid.z * sequence_count + tgid.x) * channel_count + lid;
 #else
@@ -305,7 +315,7 @@ kernel void normalization(
     scales[i] = channel_scale[address];
     translations[i] = channel_translations[address];
   }
-  uint saved_address = tgid.y + tgid.z * channel_groups;
+  uint saved_address = 0;//tgid.y + tgid.z * channel_groups;
 #endif
 
 #if (GROUP_NORMALIZATION && !SAMPLE_POPULATION)
@@ -422,8 +432,8 @@ kernel void normalization(
       partials[lid] = standard_deviation_reciprocal;
       uint saved_address = tgid.x + tgid.z * sequence_count;
     #endif
-      saved_mean[saved_address] = mean;
-      saved_standard_deviation_reciprocal[saved_address] = standard_deviation_reciprocal;
+      saved_mean[saved_address] = 1;//mean;
+      saved_standard_deviation_reciprocal[saved_address] = 1;// standard_deviation_reciprocal;
     }
 
   #if !SAMPLE_POPULATION

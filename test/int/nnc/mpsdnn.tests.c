@@ -591,11 +591,22 @@ TEST_CASE("compare layer norm with mps")
 	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "scale");
 	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "bias");
 	ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_mean");
+  ccv_nnc_tensor_symbol_t host_saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_mean");
+  
 	ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_inv_std");
+  ccv_nnc_tensor_symbol_t host_saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_inv_std");
+  
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(bx), "transfer x");
+  
+  
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(bx, scale, bias), TENSOR_SYMBOL_LIST(by, saved_mean, saved_inv_std), "layer_norm");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(by), TENSOR_SYMBOL_LIST(y), "transfer y");
-	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	
+  
+  ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_mean), TENSOR_SYMBOL_LIST(host_saved_mean), "transfer saved_mean");
+  ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_inv_std), TENSOR_SYMBOL_LIST(host_saved_inv_std), "transfer saved_inv_std");
+  ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+  
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
@@ -616,11 +627,17 @@ TEST_CASE("compare layer norm with mps")
 		scaledata[i] = dsfmt_genrand_open_close(&dsfmt);
 		biasdata[i] = dsfmt_genrand_open_close(&dsfmt);
 	}
+  
+  
+  
+  
 	ccv_nnc_tensor_t scale_tensor = ccv_nnc_tensor(scaledata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
 	ccv_nnc_tensor_t bias_tensor = ccv_nnc_tensor(biasdata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(&scale_tensor, &bias_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, scale), ccv_nnc_tensor_from_symbol(tensor_arena, bias)), 0);
 	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+  ccv_nnc_tensor_t* const host_saved_mean_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_mean);
+  
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_graph_free(graph);
@@ -647,11 +664,17 @@ TEST_CASE("compare layer norm with mps")
 	ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
 	// Note that MPS and my other implementations treat epsilon differently.
   
+  printf("\nDestination:\n");
   for (int i = 0; i < 40; ++i) {
-    prinf("%d %d", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
+    printf("%f %f\n", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
   }
-  for (int i = 0; i < 40; ++i) {
-    
+  printf("\nSaved mean:\n");
+  for (int i = 0; i < 1; ++i) {
+    printf("%f %f\n", host_saved_mean_tensor->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_mean)->data.f32[i]);
+  }
+  printf("\nSaved std dev recip:\n");
+  for (int i = 0; i < 1; ++i) {
+    printf("%f %f\n", ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_inv_std)->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_inv_std)->data.f32[i]);
   }
   
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 2 * 2 * 10, 1e-4, "layer norm result from mps should match the one from reference implementation");
