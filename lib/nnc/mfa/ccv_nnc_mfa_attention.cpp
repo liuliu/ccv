@@ -21,7 +21,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   auto* pipeline = iterator->second;
-  auto encoder = command_batch->commandEncoder;
+  auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
@@ -105,7 +105,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   if (params.masked) {
-    command_batch->startCommand(pipeline->generate_block_mask_pso.get());
+    encoder->setComputePipelineState(pipeline->generate_block_mask_pso.get());
     encoder->setThreadgroupMemoryLength(48, 0);
     encoder->useResource(tensors[4], MTL::ResourceUsageRead);
     encoder->setBuffer(tensors[4], tensor_offsets[4], 12);
@@ -122,7 +122,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     command_batch->finishCommand(encoder);
   }
   
-  command_batch->startCommand(pipeline->attention_pso.get());
+  encoder->setComputePipelineState(pipeline->attention_pso.get());
   encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

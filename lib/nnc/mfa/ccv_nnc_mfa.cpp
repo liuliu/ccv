@@ -187,10 +187,9 @@ MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
   commandEncoder = commandBuffer->computeCommandEncoder();
 }
 
-MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand(MTL::ComputePipelineState* pso) {
+MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand() {
   CCV_NNC_MFA_PRECONDITION(commandActive == 0)
   commandActive = 1;
-  commandEncoder->setComputePipelineState(pso);
   return commandEncoder;
 }
 

@@ -21,7 +21,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   
   auto* pipeline = iterator->second;
-  auto* encoder = command_batch->startCommand(pipeline->pso.get());
+  auto encoder = command_batch->startCommand();
+  encoder->setComputePipelineState(pipeline->pso.get());
   encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   
   int num_tensors = 0;

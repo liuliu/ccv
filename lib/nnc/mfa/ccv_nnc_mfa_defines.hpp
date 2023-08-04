@@ -46,7 +46,7 @@ public:
   CommandBatch(MTL::CommandQueue* commandQueue);
   ~CommandBatch();
   
-  MTL::ComputeCommandEncoder* startCommand(MTL::ComputePipelineState* pso);
+  MTL::ComputeCommandEncoder* startCommand();
   void finishCommand(MTL::ComputeCommandEncoder* commandEncoder);
 };
 } // namespace MTL

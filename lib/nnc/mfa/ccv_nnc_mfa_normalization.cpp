@@ -21,7 +21,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   }
   
   auto* pipeline = iterator->second;
-  auto encoder = command_batch->commandEncoder;
+  auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
@@ -116,7 +116,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     }
     encoder->setBytes(batch_seeds, batch_sizes[0] * 4, 11);
     
-    command_batch->startCommand(pipeline->sampling_pso.get());
+    encoder->setComputePipelineState(pipeline->sampling_pso.get());
     encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
     encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
     
@@ -127,7 +127,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     command_batch->finishCommand(encoder);
   }
   
-  command_batch->startCommand(pipeline->normalization_pso.get());
+  encoder->setComputePipelineState(pipeline->normalization_pso.get());
   encoder->useResource(tensors[2], MTL::ResourceUsageRead);
   encoder->useResource(tensors[3], MTL::ResourceUsageRead);
   
