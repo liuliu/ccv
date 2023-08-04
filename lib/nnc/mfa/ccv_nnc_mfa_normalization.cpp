@@ -122,6 +122,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     
     auto grid_size = pipeline->grid_size;
     grid_size.width = 1;
+    grid_size.depth = batch_sizes[0];
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
     command_batch->finishCommand(encoder);
   }
@@ -129,7 +130,11 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   command_batch->startCommand(pipeline->normalization_pso.get());
   encoder->useResource(tensors[2], MTL::ResourceUsageRead);
   encoder->useResource(tensors[3], MTL::ResourceUsageRead);
-  encoder->dispatchThreadgroups(pipeline->grid_size, pipeline->group_size);
+  
+  auto grid_size = pipeline->grid_size;
+  grid_size.depth = batch_sizes[0];
+  CCV_NNC_MFA_PRECONDITION(grid_size.depth > 0);
+  encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
   command_batch->finishCommand(encoder);
 }
 
