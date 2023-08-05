@@ -3,9 +3,6 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
-#include <Foundation/Foundation.h>
-#include <MacTypes.h>
-#include <stdio.h>
 #ifdef HAVE_MPS
 #include "nnc/mps/ccv_nnc_mps.h"
 #endif

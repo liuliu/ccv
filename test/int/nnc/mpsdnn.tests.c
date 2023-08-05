@@ -2101,7 +2101,7 @@ TEST_CASE("compare groupnorm gradient with mps")
 	ccv_nnc_tensor_free(dbias_tensor);
 }
 
-TEST_CASE("broadcasting semantics for mulbackward1")
+TEST_CASE("broadcasting semantics for mul backward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_MPS));
@@ -2151,7 +2151,7 @@ TEST_CASE("broadcasting semantics for mulbackward1")
 	ccv_nnc_tensor_free(gdb);
 }
 
-TEST_CASE("broadcasting semantics for mulbackward2 (no input grad)")
+TEST_CASE("broadcasting semantics for mul backward (no input grad)")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_MPS));
