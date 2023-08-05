@@ -7,24 +7,44 @@ def _ccv_setting_impl(repository_ctx):
     linkopts = []
     cuda_deps = []
     cuda_linkopts = []
-
-
-
+    if repository_ctx.attr.have_cblas:
+        defines.append("HAVE_CBLAS")
+        linkopts += ["-lcblas", "-latlas"]
+    if repository_ctx.attr.have_libpng:
+        defines.append("HAVE_LIBPNG")
+        linkopts.append("-lpng")
+    if repository_ctx.attr.have_libjpeg:
+        defines.append("HAVE_LIBJPEG")
+        linkopts.append("-ljpeg")
+    if repository_ctx.attr.have_fftw3:
+        defines.append("HAVE_FFTW3")
+        linkopts += ["-lfftw3", "-lfftw3f"]
     if repository_ctx.attr.have_pthread:
         defines.append("HAVE_PTHREAD")
         linkopts.append("-lpthread")
-        
-        
-
+    if repository_ctx.attr.have_accelerate_framework:
         defines.append("HAVE_ACCELERATE_FRAMEWORK")
         linkopts += ["-framework", "Accelerate"]
-
-
-
+    if repository_ctx.attr.have_gsl:
+        defines.append("HAVE_GSL")
+        linkopts += ["-lgsl", "-lgslcblas"]
+    if repository_ctx.attr.have_cudnn:
+        defines.append("HAVE_CUDNN")
+        cuda_linkopts.append("-lcudnn")
+    if repository_ctx.attr.have_nccl:
+        defines.append("HAVE_NCCL")
+        cuda_linkopts.append("-lnccl")
+        cuda_deps.append("@local_config_nccl//:nccl")
     if repository_ctx.attr.use_system_cub:
         defines.append("USE_SYSTEM_CUB")
-
-
+    if repository_ctx.attr.use_openmp:
+        defines.append("USE_OPENMP")
+        copts.append("-fopenmp")
+        linkopts.append("-fopenmp")
+    if repository_ctx.attr.use_dispatch:
+        defines.append("USE_DISPATCH")
+        copts.append("-fblocks") 
+        linkopts += ["-ldispatch", "-lBlocksRuntime"]
     config = {
         "%{ccv_setting_defines}": str(defines),
         "%{ccv_setting_copts}": str(copts),
