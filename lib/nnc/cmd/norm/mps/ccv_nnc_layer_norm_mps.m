@@ -136,6 +136,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				.sequence_count = (uint32_t)sequence_count,
 				.scale_translation_batched = scale_translation_batched,
 				.layer_normalization = true,
+				.epsilon = cmd.info.lnorm.epsilon,
 
 				.batch_dims_data = { 0 },
 				.batch_dims_scale_translation = { 0 },
