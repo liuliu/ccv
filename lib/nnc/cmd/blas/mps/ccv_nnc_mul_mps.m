@@ -3,6 +3,8 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
+#include <Foundation/Foundation.h>
+#include <stdio.h>
 #ifdef HAVE_MPS
 #include "nnc/mps/ccv_nnc_mps.h"
 #endif
@@ -121,8 +123,12 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const int g_nd = ccv_max(b2_nd, b1_nd);
 	const int offset = CCV_NNC_MAX_DIM + 2 - g_nd;
 	NSMutableArray<NSNumber*>* mps_g_shape = [NSMutableArray new];	
-	for (int i = offset; i < CCV_NNC_MAX_DIM + 2; i++)
-		[mps_g_shape addObject:@(gdim[i])];
+	for (int i = offset; i < CCV_NNC_MAX_DIM + 2; i++){
+		[mps_g_shape addObject:@(gdim[i])]; // still need mps_g_shape for target broadcast shape
+		gdim[i-offset] = gdim[i]; // move forward to align info.dim format 
+	}               
+	const int* gdim_a = gdim;
+
 
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
@@ -198,10 +204,9 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];	
 				const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 				for (int i = 0; i < a_nd; i++) {
-					if (a->info.dim[i] != mps_g_shape[i].integerValue)
+					if (a->info.dim[i] != gdim_a[i])
 						[da_axes addObject:@(i)];
 				}
-
 				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
 				[resultTensors addObject:mps_a];
 
@@ -217,7 +222,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					NSMutableArray<NSNumber*>* dh_axes = [NSMutableArray new];	
 					const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
 					for (int i = 0; i < h_nd; i++) {
-						if (h->info.dim[i] != mps_g_shape[i].integerValue)
+						if (h->info.dim[i] != gdim_a[i])
 							[dh_axes addObject:@(i)];
 					}
 					mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
