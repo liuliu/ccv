@@ -581,6 +581,8 @@ TEST_CASE("compare relu with mps in half precision")
 
 TEST_CASE("compare layer norm with mps")
 {
+  CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+  
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
@@ -629,7 +631,7 @@ TEST_CASE("compare layer norm with mps")
 	}
   
   
-  
+
   
 	ccv_nnc_tensor_t scale_tensor = ccv_nnc_tensor(scaledata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
 	ccv_nnc_tensor_t bias_tensor = ccv_nnc_tensor(biasdata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
@@ -665,7 +667,7 @@ TEST_CASE("compare layer norm with mps")
 	// Note that MPS and my other implementations treat epsilon differently.
   
   printf("\nDestination:\n");
-  for (int i = 0; i < 40; ++i) {
+  for (int i = 0; i < 80; ++i) {
     printf("%f %f\n", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
   }
   printf("\nSaved mean:\n");

@@ -6,12 +6,13 @@ typedef struct {
   uint32_t channel_count;
   uint32_t channel_groups;
   uint32_t sequence_count;
+  float epsilon;
   uint8_t scale_translation_batched;
   uint8_t layer_normalization;
+  uint8_t reuse_saved_statistics;
   
   uint32_t batch_dims_data[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dims_scale_translation[CCV_NNC_MAX_DIM_ALLOC];
-  uint8_t reuse_saved_statistics;
 } ccv_nnc_mfa_normalization_params_t;
 
 #ifdef __cplusplus
@@ -30,8 +31,10 @@ public:
   uint32_t channel_count;
   uint32_t channel_groups;
   uint32_t sequence_count;
+  float epsilon;
   uint8_t scale_translation_batched;
   uint8_t layer_normalization;
+  uint8_t reuse_saved_statistics;
   
   hash(ccv_nnc_mfa_normalization_params_t);
   

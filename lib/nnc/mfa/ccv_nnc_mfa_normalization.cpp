@@ -20,46 +20,6 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     mfa::precondition_failure("Normalization hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
-  {
-    for (int i = 0; i < 6; ++i) {
-      auto destination = tensors[i];
-      auto contents = (float*)destination->contents();
-      contents[0] = ((float)i + 1) / 7;
-      contents[1] = ((float)i + 1) / 7;
-      contents[2] = ((float)i + 1) / 7;
-    }
-    
-    
-    
-//    std::string shader = R"(
-//kernel void test(device float *destination [[buffer(1)]],
-//                 uint tid [[thread_position_in_grid]])
-//{
-//  destination[tid] = 0.333;
-//}
-//)";
-//    
-//    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-//    
-//    NS::Error* error;
-//    auto swift_name = NS::String::string("test", NS::UTF8StringEncoding);
-//    auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
-//    CCV_NNC_MFA_CHECK_ERROR(error)
-//    
-//    auto pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
-//    CCV_NNC_MFA_CHECK_ERROR(error)
-//    
-//    auto encoder = command_batch->startCommand();
-//    encoder->setComputePipelineState(pso.get());
-//    
-//    // Next try changing the offset from (0) to (tensor_offsets[1]).
-//    encoder->setBuffer(destination, 0, 1);
-//    encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(32, 1, 1));
-//    command_batch->finishCommand(encoder);
-    
-    return;
-  }
-  
   auto* pipeline = iterator->second;
   auto encoder = command_batch->startCommand();
   
@@ -144,31 +104,18 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     encoder->setBytes(scale_translation_offsets, batch_sizes[0] * 32, 10);
   }
   
+  encoder->setComputePipelineState(pipeline->normalization_pso.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
-  encoder->useResource(tensors[4], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[5], MTL::ResourceUsageRead);
-  
-  if (!params.layer_normalization && !params.reuse_saved_statistics) {
-    uint32_t batch_seeds[batch_sizes[0]];
-    for (int i = 0; i < batch_sizes[0]; ++i) {
-      batch_seeds[i] = uint32_t(drand48() * UINT32_MAX);
-    }
-    encoder->setBytes(batch_seeds, batch_sizes[0] * 4, 11);
-    
-    encoder->setComputePipelineState(pipeline->sampling_pso.get());
+  if (params.reuse_saved_statistics) {
+    encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  } else {
     encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
     encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
-    
-    auto grid_size = pipeline->grid_size;
-    grid_size.width = 1;
-    grid_size.depth = batch_sizes[0];
-    encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
   }
-  
-  encoder->setComputePipelineState(pipeline->normalization_pso.get());
-  encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[5], MTL::ResourceUsageRead);
   
   auto grid_size = pipeline->grid_size;
   grid_size.depth = batch_sizes[0];
@@ -184,8 +131,10 @@ mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   channel_count = params.channel_count;
   channel_groups = params.channel_groups;
   sequence_count = params.sequence_count;
+  epsilon = params.epsilon;
   scale_translation_batched = params.scale_translation_batched;
   layer_normalization = params.layer_normalization;
+  reuse_saved_statistics = params.reuse_saved_statistics;
 }
 
 bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) const {
@@ -194,8 +143,10 @@ bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) 
   (channel_count == hash.channel_count) &&
   (channel_groups == hash.channel_groups) &&
   (sequence_count == hash.sequence_count) &&
+  (epsilon == hash.epsilon) &&
   (scale_translation_batched == hash.scale_translation_batched) &&
   (layer_normalization == hash.layer_normalization);
+  (reuse_saved_statistics == hash.reuse_saved_statistics);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash) {
@@ -204,8 +155,10 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .channel_count = " << hash.channel_count << ',';
   os << " .channel_groups = " << hash.channel_groups << ',';
   os << " .sequence_count = " << hash.sequence_count << ',';
+  os << " .epsilon = " << double(hash.epsilon) << ',';
   os << " .scale_translation_batched = " << bool(hash.scale_translation_batched) << ',';
-  os << " .layer_normalization = " << bool(hash.layer_normalization) << " ";
+  os << " .layer_normalization = " << bool(hash.layer_normalization) << ',';
+  os << " .reuse_saved_statistics = " << bool(hash.layer_normalization) << " ";
   os << "}";
   return os;
 }
@@ -215,53 +168,26 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   using namespace mfa::hash;
   combine_64(seed, hash.data_type);
   combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
-  combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.layer_normalization, 0, 0 }) }));
+  combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.layer_normalization, hash.reuse_saved_statistics, 0 }));
   return seed;
 }
 
 mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization::hash hash) {
+  // FlashNorm not supported for group normalization yet.
+  CCV_NNC_MFA_PRECONDITION(hash.layer_normalization);
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
   std::string shader = R"(
+constant uint channel_group_size = channel_count / channel_groups;
+constant uint population_count = channel_group_size * sequence_count;
 constant uint bulk_size = sample_count / threadgroup_size * threadgroup_size;
 constant uint padding_size = sample_count - bulk_size;
 
-constant uint channel_group_size = channel_count / channel_groups;
-constant uint population_count = channel_group_size * sequence_count;
-
 #include <metal_stdlib>
 using namespace metal;
-
-// Partially sourced from:
-// https://github.com/nvpro-samples/gl_vk_raytrace_interop/blob/master/shaders/sampling.h
-uint tea(uint val0, uint val1) {
-  uint v0 = val0;
-  uint v1 = val1;
-  uint s0 = 0;
-  
-  for (uint n = 0; n < 9; n++) {
-    s0 += 0x9e3779b9;
-    v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
-    v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
-  }
-  return v0;
-}
-
-// Compute radical inverse of n to the base 2, then convert into an integer.
-uint radinv2(uint n) {
-  float random = as_type<float>(0x3F800000 | ((reverse_bits(n)) >> 9)) - 1.0f;
-  uint index = uint(random * float(population_count));
-  return min(index, population_count - 1);
-}
-
-// Generate 2D coordinates within the population.
-uint2 population_coords(uint index) {
-  uint x = index % channel_group_size;
-  uint y = index - x * channel_group_size;
-  return uint2(x, y);
-}
 
 kernel void normalization(
   device real *source [[buffer(0)]],
@@ -270,34 +196,23 @@ kernel void normalization(
   device real *saved_standard_deviation_reciprocal [[buffer(3)]],
   device real *channel_scales [[buffer(4)]],
   device real *channel_translations [[buffer(5)]],
-
+  
 #if SCALE_TRANSLATION_BATCHED
   constant ulong4 *scale_translation_offsets [[buffer(10)]],
 #endif
-#if SAMPLE_POPULATION
-  constant uint *batch_seeds [[buffer(11)]],
-#endif
-
+  
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort sidx [[simdgroup_index_in_threadgroup]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-  saved_mean[0] = 1;
-return;
-
-#if LAYER_NORMALIZATION
-  uint io_offset = (tgid.z * sequence_count + tgid.x) * channel_count + lid;
-#else
-  uint io_offset = tgid.z * sequence_count * channel_size;
-  io_offset += tgid.y * channel_group_size;
-  io_offset += tgid.x * sequence_group_size;
-
-  uint channel_offset = tgid.y * channel_group_size;
-  channel_scale += channel_offset;
-  channel_translation += channel_offset;
-#endif
-  source += io_offset;
-  destination += io_offset;
+  uint threadgroup_index = tgid.z * sequence_count + tgid.x;
+  {
+    uint io_offset = threadgroup_index * channel_count + lid;
+    source += io_offset;
+    destination += io_offset;
+  }
+  channel_scales += lid;
+  channel_translations += lid;
 
 #if SCALE_TRANSLATION_BATCHED
   {
@@ -306,150 +221,81 @@ return;
     channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
   }
 #endif
-
-#if !LAYER_NORMALIZATION
-  threadgroup real scales[channel_group_size];
-  threadgroup real translations[channel_group_size];
-  for (ushort i = lid; i < channel_group_size; i += threadgroup_size) {
-    uint address = tgid.y * channel_group_size + i;
-    scales[i] = channel_scale[address];
-    translations[i] = channel_translations[address];
+  
+  const uint cache_bulk_size = bulk_size / threadgroup_size;
+  real cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
+  real cache_padding;
+  threadgroup float partials[threadgroup_size / 32];
+  
+  float sum = 0;
+#pragma clang loop unroll(full)
+  for (uint i = 0; i < bulk_size; i += threadgroup_size) {
+    cache_bulk[i / threadgroup_size] = source[i];
+    sum += cache_bulk[i / threadgroup_size];
   }
-  uint saved_address = 0;//tgid.y + tgid.z * channel_groups;
-#endif
-
-#if (GROUP_NORMALIZATION && !SAMPLE_POPULATION)
-  {
-    float mean = saved_mean[saved_address];
-    float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[saved_address];
-    
-    uint range_start = io_offset;
-    uint range_end = io_offset + sample_size;
-    range_end = min(range_end, population_count);
-    uint i_end = range_end - range_start;
-    
-    for (uint i = 0; i < i_end; i += threadgroup_size) {
-      uint2 coords = population_coords(i);
-      real scale = scales[coords.x];
-      real translation = translations[coords.x];
-      
-      uint io_offset = coords.y * channel_count + coords.x;
-      real source_value = source[io_offset];
-      source_value = source_value * scale + translation;
-      source_value -= mean;
-      source_value *= standard_deviation_reciprocal;
-      destination[io_offset] = source_value;
-    }
+  if (padding_size > 0 && lid < padding_size) {
+    cache_padding = source[bulk_size];
+    sum += cache_padding;
   }
-#else
-  {
-    const uint cache_bulk_size = bulk_size / threadgroup_size;
-    real cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
-    real cache_padding;
-    threadgroup float partials[threadgroup_size / 32];
-  #if SAMPLE_POPULATION
-    threadgroup uint group_seed[1];
-    if (lid == 0) {
-      group_seed[0] = tea(batch_seeds[tgid.z], tgid.y);
+  partials[sidx] = simd_sum(sum);
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (lid < (threadgroup_size / 32)) {
+    float sum = quad_sum(partials[lid]);
+    if (threadgroup_size >= 256) {
+      sum += simd_shuffle_xor(sum, 4);
     }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    
-    uint seed = group_seed[0] + lid;
-  #endif
-    
-    float sum = 0;
-  #pragma clang loop unroll(full)
-    for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-  #if SAMPLE_POPULATION
-      uint2 coords = population_coords(radinv2(seed + i));
-      real scale = scales[coords.x];
-      real translation = translations[coords.x];
-      real source_value = source[coords.y * channel_count + coords.x];
-  #else
-      real scale = channel_scales[lid + i];
-      real translation = channel_translations[lid + i];
-      real source_value = source[i];
-  #endif
-      source_value = source_value * scale + translation;
-      cache_bulk[i / threadgroup_size] = source_value;
-      sum += cache_bulk[i / threadgroup_size];
-    }
-  #if !SAMPLE_POPULATION
-    if (padding_size > 0 && lid < padding_size) {
-      real scale = channel_scales[lid + bulk_size];
-      real translation = channel_translations[lid + bulk_size];
-      real source_value = source[bulk_size];
-      
-      source_value = source_value * scale + translation;
-      cache_padding = source[bulk_size];
-      sum += cache_padding;
-    }
-  #endif
-    partials[sidx] = simd_sum(sum);
-    
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (lid < (threadgroup_size / 32)) {
-      float sum = quad_sum(partials[lid]);
-      if (threadgroup_size >= 256) {
-        sum += simd_shuffle_xor(sum, 4);
-      }
-      if (threadgroup_size >= 512) {
-        sum += simd_shuffle_xor(sum, 8);
-      }
-      partials[lid] = sum * (1.0 / float(sample_count));
-    }
-    
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float mean = partials[sidx];
-    float variance = 0;
-  #pragma clang loop unroll(full)
-    for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-      cache_bulk[i / threadgroup_size] -= mean;
-      real deviation = cache_bulk[i / threadgroup_size];
-      variance = fma(deviation, deviation, variance);
-    }
-  #if !SAMPLE_POPULATION
-    if (padding_size > 0 && lid < padding_size) {
-      cache_padding -= mean;
-      variance += fma(cache_padding, cache_padding, variance);
-    }
-  #endif
-    partials[sidx] = simd_sum(variance);
-    
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (lid < (threadgroup_size / 32)) {
-      float variance = quad_sum(partials[lid]);
-      if (threadgroup_size >= 256) {
-        variance += simd_shuffle_xor(variance, 4);
-      }
-      if (threadgroup_size >= 512) {
-        variance += simd_shuffle_xor(variance, 8);
-      }
-      
-      variance *= 1.0 / float(sample_count);
-    #if !SAMPLE_POPULATION
-      float standard_deviation_reciprocal = rsqrt(variance);
-      partials[lid] = standard_deviation_reciprocal;
-      uint saved_address = tgid.x + tgid.z * sequence_count;
-    #endif
-      saved_mean[saved_address] = 1;//mean;
-      saved_standard_deviation_reciprocal[saved_address] = 1;// standard_deviation_reciprocal;
-    }
-
-  #if !SAMPLE_POPULATION
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float standard_deviation_reciprocal = partials[sidx];
-  #pragma clang loop unroll(full)
-    for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-      real deviation = cache_bulk[i / threadgroup_size];
-      destination[i] = deviation * standard_deviation_reciprocal;
-    }
-    if (padding_size > 0 && lid < padding_size) {
-      destination[bulk_size] = cache_padding * standard_deviation_reciprocal;
-    }
-  #endif
+    partials[lid] = sum / float(sample_count);
   }
-#endif
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float mean = partials[sidx];
+  float variance = 0;
+#pragma clang loop unroll(full)
+  for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
+    cache_bulk[slot] -= mean;
+    variance += cache_bulk[slot] * cache_bulk[slot];
+  }
+  if (padding_size > 0 && lid < padding_size) {
+    cache_padding -= mean;
+    variance += cache_padding * cache_padding;
+  }
+  partials[sidx] = simd_sum(variance);
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (lid < (threadgroup_size / 32)) {
+    float variance = quad_sum(partials[lid]);
+    if (threadgroup_size >= 256) {
+      variance += simd_shuffle_xor(variance, 4);
+    }
+    variance /= float(sample_count);
+    
+    float standard_deviation_reciprocal = rsqrt(variance);
+    partials[lid] = standard_deviation_reciprocal;
+    
+    saved_mean[threadgroup_index] = mean;
+    saved_standard_deviation_reciprocal[threadgroup_index] =  standard_deviation_reciprocal;
+  }
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float standard_deviation_reciprocal = partials[sidx];
+#pragma clang loop unroll(full)
+  for (uint i = 0; i < bulk_size; i += threadgroup_size) {
+    real deviation = cache_bulk[i / threadgroup_size];
+    deviation *= standard_deviation_reciprocal;
+
+    real scale = channel_scales[i];
+    real translation = channel_translations[i];
+    destination[i] = 0.5;//scale * deviation + translation;
+  }
+  if (padding_size > 0 && lid < padding_size) {
+    real deviation = cache_padding;
+    deviation *= standard_deviation_reciprocal;
+
+    real scale = channel_scales[bulk_size];
+    real translation = channel_translations[bulk_size];
+    destination[bulk_size] = scale * deviation + translation;
+  }
 }
 )";
   
