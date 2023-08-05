@@ -21,7 +21,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   
   auto* pipeline = iterator->second;
-  auto* encoder = command_batch->startCommand(pipeline->pso.get());
+  auto encoder = command_batch->startCommand();
+  encoder->setComputePipelineState(pipeline->pso.get());
   encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   
   int num_tensors = 0;
@@ -40,6 +41,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
   simd::ushort4 num_batch_dims(0);
   simd::ulong4 batch_sizes(1);
   if (params.batched) {
@@ -198,8 +200,6 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   CCV_NNC_MFA_PRECONDITION(hash.fused_activation_function == false)
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  this->flags[0] = true;
-  this->flags[1] = hash.batched;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.M, MTL::DataTypeUInt, NS::UInteger(0));
@@ -223,7 +223,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   // BxMxN > 1,000,000 -> 48x48, only if M >= 88 and N >= 88
   // BxMxN > 4,000,000 -> 64x64, only if M >= 120 and N >= 120
   uint64_t C_elements = uint64_t(hash.M) * uint64_t(hash.N);
-  if (flags[1]) {
+  if (hash.batched) {
     C_elements *= 2;
   }
   int is_half = (hash.data_type == MTL::DataTypeHalf); // SD v1 attention

@@ -21,7 +21,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   auto* pipeline = iterator->second;
-  auto encoder = command_batch->commandEncoder;
+  auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
@@ -44,6 +44,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       break;
   }
   
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
   simd::ushort2 num_batch_dims(0);
   simd::ulong2 batch_sizes(1);
   if (params.batched) {
@@ -102,7 +103,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   if (params.masked) {
-    command_batch->startCommand(pipeline->generate_block_mask_pso.get());
+    encoder->setComputePipelineState(pipeline->generate_block_mask_pso.get());
     encoder->setThreadgroupMemoryLength(48, 0);
     encoder->useResource(tensors[4], MTL::ResourceUsageRead);
     encoder->setBuffer(tensors[4], tensor_offsets[4], 12);
@@ -116,10 +117,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBuffer(scratch, 0, 13);
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
-    command_batch->finishCommand(encoder);
   }
   
-  command_batch->startCommand(pipeline->attention_pso.get());
+  encoder->setComputePipelineState(pipeline->attention_pso.get());
   encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);
@@ -202,9 +202,6 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  this->flags[0] = true;
-  this->flags[1] = hash.batched;
-  this->flags[2] = hash.masked;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.R, MTL::DataTypeUInt, NS::UInteger(0));

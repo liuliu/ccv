@@ -56,7 +56,6 @@ public:
   NS::SharedPtr<MTL::ComputePipelineState> attention_pso;
   NS::SharedPtr<MTL::ComputePipelineState> generate_block_mask_pso;
   
-  simd::uchar4 flags;
   uint16_t threadgroup_memory_length;
   MTL::Size grid_size;
   MTL::Size group_size;
