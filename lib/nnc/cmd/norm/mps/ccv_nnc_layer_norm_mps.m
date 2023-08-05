@@ -134,13 +134,13 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				.channel_count = (uint32_t)channel_count,
 				.channel_groups = (uint32_t)channel_groups,
 				.sequence_count = (uint32_t)sequence_count,
+        .epsilon = cmd.info.lnorm.epsilon,
 				.scale_translation_batched = scale_translation_batched,
 				.layer_normalization = true,
-				.epsilon = cmd.info.lnorm.epsilon,
-
+        .reuse_saved_statistics = false,
+				
 				.batch_dims_data = { 0 },
 				.batch_dims_scale_translation = { 0 },
-				.reuse_saved_statistics = 0,
 			};
 
 			// Create a null-terminated list of batch dimensions.

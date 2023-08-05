@@ -235,6 +235,10 @@ kernel void normalization(
     cache_padding = source[bulk_size];
     sum += cache_padding;
   }
+#if REUSE_SAVED_STATISTICS
+  float mean = saved_mean[threadgroup_index];
+  float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[threadgroup_index];
+#else
   partials[sidx] = simd_sum(sum);
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -251,9 +255,9 @@ kernel void normalization(
   float variance = 0;
 #pragma clang loop unroll(full)
   for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
-    float whitened = float(cache_bulk[slot]) - mean;
-    variance += whitened * whitened;
-    cache_bulk[slot] = real(whitened);
+    float centered = float(cache_bulk[slot]) - mean;
+    variance += centered * centered;
+    cache_bulk[slot] = real(centered);
   }
   if (padding_size > 0 && lid < padding_size) {
     cache_padding -= mean;
@@ -278,6 +282,8 @@ kernel void normalization(
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
   float standard_deviation_reciprocal = partials[sidx];
+#endif
+
 #pragma clang loop unroll(full)
   for (uint i = 0; i < bulk_size; i += threadgroup_size) {
     real deviation = cache_bulk[i / threadgroup_size];
@@ -375,6 +381,11 @@ kernel void normalization(
   
   if (hash.scale_translation_batched) {
     defines += "#define SCALE_TRANSLATION_BATCHED 1";
+    defines += "\n";
+  }
+  
+  if (hash.reuse_saved_statistics) {
+    defines += "#define REUSE_SAVED_STATISTICS 1";
     defines += "\n";
   }
   
