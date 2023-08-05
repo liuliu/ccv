@@ -236,7 +236,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batch_dims_b = { 0 },
 				.batch_dims_d = { 0 },
 			};
-      
+
 			if (is_batched) {
 				// Create a null-terminated list of batch dimensions.
 				int A_batch_dim = a_nd - 3;

@@ -138,7 +138,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				.scale_translation_batched = scale_translation_batched,
 				.layer_normalization = true,
 				.reuse_saved_statistics = false,
-				
+
 				.batch_dims_data = { 0 },
 				.batch_dims_scale_translation = { 0 },
 			};
@@ -347,7 +347,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				// gp1[x] * scalep2[x]
 				mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
 
-				// inv_n 
+				// inv_n
 				MPSGraphTensor* sizeReciprocalTensor = [graph reciprocalWithTensor:[graph constantWithScalar:n dataType:mps_a.dataType] name:nil];
 
 				// gssp = gp1[x] * scalep2[x] * inv_stdp2[x]
@@ -369,7 +369,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				gssrp_ahp_ahgssrp = [graph additionWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:gssr name:nil];
 
 				// inv_n * (gssrp2[x] + ahp[x] * ahgssrp2[x])
-				gssrp_ahp_ahgssrp = [graph multiplicationWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:sizeReciprocalTensor name:nil]; 
+				gssrp_ahp_ahgssrp = [graph multiplicationWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:sizeReciprocalTensor name:nil];
 
 				// h = gssp[x] - inv_n * (gssrp2[x] + ahp[x] * ahgssrp2[x])
 				mps_h = [graph subtractionWithPrimaryTensor:gss secondaryTensor:gssrp_ahp_ahgssrp name:nil];
@@ -377,7 +377,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 			if (mps_h) {
 				[resultTensors addObject:mps_h];
-			} 
+			}
 
 			if (mps_dscale) {
 				[resultTensors addObject:mps_dscale];

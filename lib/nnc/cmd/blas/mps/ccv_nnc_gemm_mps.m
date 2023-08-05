@@ -124,7 +124,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(a->info.datatype == w->info.datatype) &&
 			(a->info.datatype == b->info.datatype) &&
 			(bias ? (a->info.datatype == bias->info.datatype) : 1);
-		
+
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
 		switch (a->info.datatype) {
@@ -146,7 +146,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_same_batch =
 			(a_batch_size == w_batch_size) &&
 			(a_batch_size == b_batch_size);
-		
+
 		// NNC uses the convention B = A * W.
 		// MFA uses the convention C = A * B.
 		int is_batched = 0;
@@ -217,7 +217,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batched = is_batched,
 				.fused_activation_function = 0,
 				.fused_bias = (bias ? 1 : 0),
-				
+
 				.batch_dims_a = { 0 },
 				.batch_dims_b = { 0 },
 				.batch_dims_d = { 0 },
@@ -231,7 +231,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
 					params.batch_dims_a[A_batch_dim] = 0;
 				}
-				
+
 				int B_batch_dim = w_nd - 2;
 				for (int i = 0; i < B_batch_dim; ++i) {
 					params.batch_dims_b[i] = w->info.dim[i];
@@ -281,7 +281,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		} else {
 			// Otherwise, incur the ~10-50 microsecond latency of MPS.
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-			
+
 			// If all conditions are met, use MPSMatrixMultiplication.
 			if (is_contiguous && is_same_dtype && is_same_batch && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && !bias)
 			{

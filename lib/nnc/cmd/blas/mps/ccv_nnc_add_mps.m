@@ -122,7 +122,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(g->info.datatype)];
 				mps_a = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_p name:nil];
 			}
-			NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];	
+			NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];
 			for (int i = 0; i < a_nd; i++) {
 				if (a->info.dim[i] != g->info.dim[i])
 					[da_axes addObject:@(i)];
@@ -137,7 +137,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					MPSGraphTensor* mps_q = [graph constantWithScalar:q dataType:ccv_nnc_mps_datatype(g->info.datatype)];
 					mps_b = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_q name:nil];
 				}
-				NSMutableArray<NSNumber*>* db_axes = [NSMutableArray new];	
+				NSMutableArray<NSNumber*>* db_axes = [NSMutableArray new];
 				const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 				for (int i = 0; i < b_nd; i++) {
 					if (b->info.dim[i] != g->info.dim[i])

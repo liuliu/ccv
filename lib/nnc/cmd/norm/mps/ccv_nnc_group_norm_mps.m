@@ -149,7 +149,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 9);
 	assert(output_size >= 1);
-	
+
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[3];
 	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[4];
@@ -215,7 +215,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			MPSGraphTensor* mps_dscale = nil;
 			MPSGraphTensor* mps_dbias = nil;
 			MPSGraphTensor* mps_h = nil;
-			
+
 			NSMutableArray<NSNumber*>* group_broadcastable_shape = [NSMutableArray new];  // [N,G,1,H,W]
 			NSMutableArray<NSNumber*>* group_reducible_shape = [NSMutableArray new];  // [N,G,C/G,H,W]
 			int c_divide_g_axis = 0;
@@ -245,9 +245,9 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 			// ahp[x] = (ap1[x] - meanp2[0]) * inv_stdp2[0];
 			MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:x_minus_mean secondaryTensor:mps_saved_inv_std name:nil];
-			
+
 			if (dscale) {
-				NSMutableArray<NSNumber*>* dscale_axes = [NSMutableArray new];	
+				NSMutableArray<NSNumber*>* dscale_axes = [NSMutableArray new];
 				for (int i = 0; i < a_nd; i++) {
 					if (a->info.dim[i] != dscale->info.dim[i])
 						[dscale_axes addObject:@(i)];
@@ -260,7 +260,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 
 			if (dbias) {
-				NSMutableArray<NSNumber*>* dbias_axes = [NSMutableArray new];	
+				NSMutableArray<NSNumber*>* dbias_axes = [NSMutableArray new];
 				for (int i = 0; i < a_nd; i++) {
 					if (a->info.dim[i] != dbias->info.dim[i])
 						[dbias_axes addObject:@(i)];
@@ -268,21 +268,21 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				mps_dbias = [graph reductionSumWithTensor:mps_g axes:dbias_axes name:nil];
 			}
 
-			if (h) {							
+			if (h) {
 				// gp1[x] * scalep2[x]
 				mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
 
-				// inv_n 
-				MPSGraphTensor* sizeReciprocalTensor = [graph reciprocalWithTensor:[graph constantWithScalar:n dataType:mps_a.dataType] name:nil];          
+				// inv_n
+				MPSGraphTensor* sizeReciprocalTensor = [graph reciprocalWithTensor:[graph constantWithScalar:n dataType:mps_a.dataType] name:nil];
 
 				// gssp = gp1[x] * scalep2[x] * inv_stdp2[x]
 				MPSGraphTensor* gss = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_saved_inv_std name:nil];
 
 				// gssr = gss reduce by group
-				//  [N,C,H,W] -->  [N,G,C/G,H,W] 
+				//  [N,C,H,W] -->  [N,G,C/G,H,W]
 				MPSGraphTensor* gssr = [graph reshapeTensor:gss withShape:group_reducible_shape name:nil];
 
-				// [N,G,C/G,H,W] --> [N,G,1,H,W] 
+				// [N,G,C/G,H,W] --> [N,G,1,H,W]
 				gssr = [graph reductionSumWithTensor:gssr axes:@[@(c_divide_g_axis)] name:nil];
 
 				// [N,G,1,H,W] --> [N,G,C/G,H,W] broadcast
@@ -293,12 +293,12 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				// ah[x] * gss[x]
 				MPSGraphTensor* ahgss = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:gss name:nil];
-						
+
 				// ah[x] * gssp[x]; ahgssr reduce by group
-				// [N,C,H,W] -->  [N,G,C/G,H,W] 
+				// [N,C,H,W] -->  [N,G,C/G,H,W]
 				MPSGraphTensor* ahgssr = [graph reshapeTensor:ahgss withShape:group_reducible_shape name:nil];
 
-				// [N,G,C/G,H,W] --> [N,G,1,H,W] 
+				// [N,G,C/G,H,W] --> [N,G,1,H,W]
 				ahgssr = [graph reductionSumWithTensor:ahgssr axes:@[@(c_divide_g_axis)] name:nil];
 
 				// [N,G,1,H,W] --> [N,G,C/G,H,W] broadcast
@@ -314,15 +314,15 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				gssrp_ahp_ahgssrp = [graph additionWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:gssr name:nil];
 
 				// inv_n * (gssrp2[x] + ahp[x] * ahgssrp2[x])
-				gssrp_ahp_ahgssrp = [graph multiplicationWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:sizeReciprocalTensor name:nil]; 
+				gssrp_ahp_ahgssrp = [graph multiplicationWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:sizeReciprocalTensor name:nil];
 
 				// h = gssp[x] - inv_n * (gssrp2[x] + ahp[x] * ahgssrp2[x])
-				mps_h = [graph subtractionWithPrimaryTensor:gss secondaryTensor:gssrp_ahp_ahgssrp name:nil];				
+				mps_h = [graph subtractionWithPrimaryTensor:gss secondaryTensor:gssrp_ahp_ahgssrp name:nil];
 			}
 
 			if (mps_h) {
 				[resultTensors addObject:mps_h];
-			} 
+			}
 
 			if (mps_dscale) {
 				[resultTensors addObject:mps_dscale];
