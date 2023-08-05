@@ -231,7 +231,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batched = is_batched,
 				.fused_activation_function = 0,
 				.fused_bias = (bias ? 1 : 0),
-        
+
 				.batch_dims_a = { 0 },
 				.batch_dims_b = { 0 },
 				.batch_dims_d = { 0 },
