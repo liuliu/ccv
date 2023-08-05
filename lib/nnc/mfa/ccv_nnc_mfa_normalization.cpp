@@ -251,8 +251,9 @@ kernel void normalization(
   float variance = 0;
 #pragma clang loop unroll(full)
   for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
-    cache_bulk[slot] -= mean;
-    variance += cache_bulk[slot] * cache_bulk[slot];
+    float whitened = float(cache_bulk[slot]) - mean;
+    variance += whitened * whitened;
+    cache_bulk[slot] = real(whitened);
   }
   if (padding_size > 0 && lid < padding_size) {
     cache_padding -= mean;
