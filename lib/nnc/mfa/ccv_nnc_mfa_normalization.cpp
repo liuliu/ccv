@@ -181,8 +181,6 @@ mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
   std::string shader = R"(
-constant uint channel_group_size = channel_count / channel_groups;
-constant uint population_count = channel_group_size * sequence_count;
 constant uint bulk_size = sample_count / threadgroup_size * threadgroup_size;
 constant uint padding_size = sample_count - bulk_size;
 
@@ -286,7 +284,7 @@ kernel void normalization(
 
     real scale = channel_scales[i];
     real translation = channel_translations[i];
-    destination[i] = 0.5;//scale * deviation + translation;
+    destination[i] = scale * deviation + translation;
   }
   if (padding_size > 0 && lid < padding_size) {
     real deviation = cache_padding;
@@ -310,10 +308,6 @@ kernel void normalization(
   
   defines += "constant uint channel_count = ";
   defines += std::to_string(hash.channel_count) + ";";
-  defines += "\n";
-  
-  defines += "constant uint channel_groups = ";
-  defines += std::to_string(hash.channel_groups) + ";";
   defines += "\n";
   
   defines += "constant uint sequence_count = ";
@@ -340,6 +334,7 @@ kernel void normalization(
     this->grid_size = MTL::Size(hash.sequence_count, 1, 1);
   } else {
     CCV_NNC_MFA_PRECONDITION(hash.channel_count % hash.channel_groups == 0);
+
     threadgroup_size = 512;
     
     uint16_t sample_count = 16384;
@@ -359,6 +354,10 @@ kernel void normalization(
     } else if (sample_count >= population_count) {
       sample_count /= 2;
     }
+
+    defines += "constant uint channel_groups = ";
+    defines += std::to_string(hash.channel_groups) + ";";
+    defines += "\n";
     
     defines += "constant ushort sample_count = ";
     defines += std::to_string(sample_count) + ";";
