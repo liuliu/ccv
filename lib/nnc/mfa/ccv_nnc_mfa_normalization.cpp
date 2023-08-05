@@ -268,7 +268,7 @@ kernel void normalization(
     if (threadgroup_size >= 256) {
       variance += simd_shuffle_xor(variance, 4);
     }
-    variance /= float(sample_count);
+    variance = variance / float(sample_count) + epsilon;
     
     float standard_deviation_reciprocal = rsqrt(variance);
     partials[lid] = standard_deviation_reciprocal;
@@ -318,6 +318,10 @@ kernel void normalization(
   
   defines += "constant uint sequence_count = ";
   defines += std::to_string(hash.sequence_count) + ";";
+  defines += "\n";
+  
+  defines += "constant float epsilon = ";
+  defines += std::to_string(hash.epsilon) + ";";
   defines += "\n";
   
   uint16_t threadgroup_size;

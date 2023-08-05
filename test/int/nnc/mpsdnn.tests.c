@@ -581,110 +581,274 @@ TEST_CASE("compare relu with mps in half precision")
 
 TEST_CASE("compare layer norm with mps")
 {
-  CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
   
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
-		ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "host x");
-	ccv_nnc_tensor_symbol_t bx = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 2, 2, 10), "x");
-	ccv_nnc_tensor_symbol_t by = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 2, 2, 10), "y");
-	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "host y");
-	ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "scale");
-	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "bias");
-	ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_mean");
-  ccv_nnc_tensor_symbol_t host_saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_mean");
+  //  CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+  {
+    
+    GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+                      ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
+    ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+    ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "host x");
+    ccv_nnc_tensor_symbol_t bx = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 2, 2, 10), "x");
+    ccv_nnc_tensor_symbol_t by = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 2, 2, 10), "y");
+    ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "host y");
+    ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "scale");
+    ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 2, 2, 10), "bias");
+    ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_mean");
+    ccv_nnc_tensor_symbol_t host_saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_mean");
+    
+    ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_inv_std");
+    ccv_nnc_tensor_symbol_t host_saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_inv_std");
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(bx), "transfer x");
+    
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(bx, scale, bias), TENSOR_SYMBOL_LIST(by, saved_mean, saved_inv_std), "layer_norm");
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(by), TENSOR_SYMBOL_LIST(y), "transfer y");
+    
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_mean), TENSOR_SYMBOL_LIST(host_saved_mean), "transfer saved_mean");
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_inv_std), TENSOR_SYMBOL_LIST(host_saved_inv_std), "transfer saved_inv_std");
+    ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+    
+    ccv_nnc_graph_t* graph = 0;
+    ccv_nnc_tensor_arena_t* tensor_arena = 0;
+    ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+    ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+    SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+    GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+    dsfmt_t dsfmt;
+    float xdata[2 * 2 * 2 * 10];
+    ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+    int i;
+    dsfmt_init_gen_rand(&dsfmt, 1);
+    for (i = 0; i < 2 * 2 * 2 * 10; i++)
+      x_tensor->data.f32[i] = xdata[i] = dsfmt_genrand_open_close(&dsfmt);
+    float scaledata[1 * 2 * 2 * 10];
+    float biasdata[1 * 2 * 2 * 10];
+    for (i = 0; i < 1 * 2 * 2 * 10; i++)
+    {
+      scaledata[i] = dsfmt_genrand_open_close(&dsfmt);
+      biasdata[i] = dsfmt_genrand_open_close(&dsfmt);
+    }
+    
+    
+    
+    
+    ccv_nnc_tensor_t scale_tensor = ccv_nnc_tensor(scaledata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
+    ccv_nnc_tensor_t bias_tensor = ccv_nnc_tensor(biasdata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
+    ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(&scale_tensor, &bias_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, scale), ccv_nnc_tensor_from_symbol(tensor_arena, bias)), 0);
+    ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+    ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+    ccv_nnc_tensor_t* const host_saved_mean_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_mean);
+    
+    ccv_nnc_symbolic_graph_free(symbolic_graph);
+    ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+    ccv_nnc_graph_free(graph);
+    ccv_nnc_symbolic_graph_t* const cpu_symbolic_graph = ccv_nnc_symbolic_graph_new();
+    ccv_nnc_tensor_symbol_t cx = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "x");
+    ccv_nnc_tensor_symbol_t cy = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "y");
+    ccv_nnc_tensor_symbol_t cscale = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), "scale");
+    ccv_nnc_tensor_symbol_t cbias = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), "bias");
+    ccv_nnc_tensor_symbol_t csaved_mean = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 1, 1, 1), "saved_mean");
+    ccv_nnc_tensor_symbol_t csaved_inv_std = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 1, 1, 1), "saved_inv_std");
+    ccv_nnc_graph_exec_symbol_new(cpu_symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(cx, cscale, cbias), TENSOR_SYMBOL_LIST(cy, csaved_mean, csaved_inv_std), "layer_norm");
+    ccv_nnc_graph_exec_symbol_autogen(cpu_symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+    ccv_nnc_graph_t* cpu_graph = 0;
+    ccv_nnc_tensor_arena_t* cpu_tensor_arena = 0;
+    ccv_nnc_graph_exec_arena_t* cpu_graph_exec_arena = 0;
+    ccv_nnc_symbolic_graph_compile(cpu_symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(cpu_symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(cpu_symbolic_graph), &cpu_graph, &cpu_tensor_arena, &cpu_graph_exec_arena);
+    ccv_nnc_tensor_t* const cx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cx);
+    memcpy(cx_tensor->data.f32, xdata, sizeof(float) * 2 * 2 * 2 * 10);
+    ccv_nnc_tensor_t* const cscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cscale);
+    memcpy(cscale_tensor->data.f32, scaledata, sizeof(float) * 1 * 2 * 2 * 10);
+    ccv_nnc_tensor_t* const cbias_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cbias);
+    memcpy(cbias_tensor->data.f32, biasdata, sizeof(float) * 1 * 2 * 2 * 10);
+    ccv_nnc_graph_run(cpu_graph, 0, TRAVERSE_FULL, 0, 0);
+    ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
+    // Note that MPS and my other implementations treat epsilon differently.
+    
+    //  printf("\nDestination:\n");
+    //  for (int i = 0; i < 80; ++i) {
+    //    printf("%f %f\n", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
+    //  }
+    //  printf("\nSaved mean:\n");
+    //  for (int i = 0; i < 1; ++i) {
+    //    printf("%f %f\n", host_saved_mean_tensor->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_mean)->data.f32[i]);
+    //  }
+    //  printf("\nSaved std dev recip:\n");
+    //  for (int i = 0; i < 1; ++i) {
+    //    printf("%f %f\n", ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_inv_std)->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_inv_std)->data.f32[i]);
+    //  }
+    
+    REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 2 * 2 * 10, 1e-4, "layer norm result from mps should match the one from reference implementation");
+    ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
+    ccv_nnc_tensor_arena_free(tensor_arena);
+    ccv_nnc_tensor_arena_free(cpu_tensor_arena);
+    ccv_nnc_graph_exec_arena_free(cpu_graph_exec_arena);
+    ccv_nnc_graph_free(cpu_graph);
+    
+  }
   
-	ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "saved_inv_std");
-  ccv_nnc_tensor_symbol_t host_saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 1, 1, 1), "host_saved_inv_std");
   
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(bx), "transfer x");
+  //}
+  //
+  //TEST_CASE("compare layer norm with mps v2")
+  //{
   
-  
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(bx, scale, bias), TENSOR_SYMBOL_LIST(by, saved_mean, saved_inv_std), "layer_norm");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(by), TENSOR_SYMBOL_LIST(y), "transfer y");
-	
-  
-  ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_mean), TENSOR_SYMBOL_LIST(host_saved_mean), "transfer saved_mean");
-  ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_inv_std), TENSOR_SYMBOL_LIST(host_saved_inv_std), "transfer saved_inv_std");
-  ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-  
-	ccv_nnc_graph_t* graph = 0;
-	ccv_nnc_tensor_arena_t* tensor_arena = 0;
-	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
-	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	dsfmt_t dsfmt;
-	float xdata[2 * 2 * 2 * 10];
-	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
-	int i;
-	dsfmt_init_gen_rand(&dsfmt, 1);
-	for (i = 0; i < 2 * 2 * 2 * 10; i++)
-		x_tensor->data.f32[i] = xdata[i] = dsfmt_genrand_open_close(&dsfmt);
-	float scaledata[1 * 2 * 2 * 10];
-	float biasdata[1 * 2 * 2 * 10];
-	for (i = 0; i < 1 * 2 * 2 * 10; i++)
-	{
-		scaledata[i] = dsfmt_genrand_open_close(&dsfmt);
-		biasdata[i] = dsfmt_genrand_open_close(&dsfmt);
-	}
-  
-  
+  //  CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
+  {
+    
+    
+    GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+                      ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
 
-  
-	ccv_nnc_tensor_t scale_tensor = ccv_nnc_tensor(scaledata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
-	ccv_nnc_tensor_t bias_tensor = ccv_nnc_tensor(biasdata, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(&scale_tensor, &bias_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, scale), ccv_nnc_tensor_from_symbol(tensor_arena, bias)), 0);
-	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
-	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
-  ccv_nnc_tensor_t* const host_saved_mean_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_mean);
-  
-	ccv_nnc_symbolic_graph_free(symbolic_graph);
-	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
-	ccv_nnc_graph_free(graph);
-	ccv_nnc_symbolic_graph_t* const cpu_symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t cx = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "x");
-	ccv_nnc_tensor_symbol_t cy = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), "y");
-	ccv_nnc_tensor_symbol_t cscale = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), "scale");
-	ccv_nnc_tensor_symbol_t cbias = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 2, 2, 10), "bias");
-	ccv_nnc_tensor_symbol_t csaved_mean = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 1, 1, 1), "saved_mean");
-	ccv_nnc_tensor_symbol_t csaved_inv_std = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 1, 1, 1), "saved_inv_std");
-	ccv_nnc_graph_exec_symbol_new(cpu_symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(cx, cscale, cbias), TENSOR_SYMBOL_LIST(cy, csaved_mean, csaved_inv_std), "layer_norm");
-	ccv_nnc_graph_exec_symbol_autogen(cpu_symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_graph_t* cpu_graph = 0;
-	ccv_nnc_tensor_arena_t* cpu_tensor_arena = 0;
-	ccv_nnc_graph_exec_arena_t* cpu_graph_exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(cpu_symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(cpu_symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(cpu_symbolic_graph), &cpu_graph, &cpu_tensor_arena, &cpu_graph_exec_arena);
-	ccv_nnc_tensor_t* const cx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cx);
-	memcpy(cx_tensor->data.f32, xdata, sizeof(float) * 2 * 2 * 2 * 10);
-	ccv_nnc_tensor_t* const cscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cscale);
-	memcpy(cscale_tensor->data.f32, scaledata, sizeof(float) * 1 * 2 * 2 * 10);
-	ccv_nnc_tensor_t* const cbias_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cbias);
-	memcpy(cbias_tensor->data.f32, biasdata, sizeof(float) * 1 * 2 * 2 * 10);
-	ccv_nnc_graph_run(cpu_graph, 0, TRAVERSE_FULL, 0, 0);
-	ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
-	// Note that MPS and my other implementations treat epsilon differently.
-  
-  printf("\nDestination:\n");
-  for (int i = 0; i < 80; ++i) {
-    printf("%f %f\n", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
+    
+    ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+    ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 320), "host x");
+    ccv_nnc_tensor_symbol_t bx = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 320), "x");
+    ccv_nnc_tensor_symbol_t by = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 320), "y");
+    ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 320), "host y");
+    ccv_nnc_tensor_symbol_t scale = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 1, 320), "scale");
+    ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 1, 1, 320), "bias");
+    ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 1), "saved_mean");
+    ccv_nnc_tensor_symbol_t host_saved_mean = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 1), "host_saved_mean");
+    
+    ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 1), "saved_inv_std");
+    ccv_nnc_tensor_symbol_t host_saved_inv_std = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 2, 4096, 1), "host_saved_inv_std");
+
+    printf("\nCheckpoint (2)\n");
+    
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(bx), "transfer x");
+    
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(bx, scale, bias), TENSOR_SYMBOL_LIST(by, saved_mean, saved_inv_std), "layer_norm");
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(by), TENSOR_SYMBOL_LIST(y), "transfer y");
+    
+    
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_mean), TENSOR_SYMBOL_LIST(host_saved_mean), "transfer saved_mean");
+    ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(saved_inv_std), TENSOR_SYMBOL_LIST(host_saved_inv_std), "transfer saved_inv_std");
+    ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+    
+    printf("\nCheckpoint (3)\n");
+    
+    
+    ccv_nnc_graph_t* graph = 0;
+    ccv_nnc_tensor_arena_t* tensor_arena = 0;
+    ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+    ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+    SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+    GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+    dsfmt_t dsfmt;
+    
+    
+    // Memory leak :-) :-) :-)
+    float* xdata = malloc(2 * 4096 * 320 * sizeof(float));
+    float* scaledata = malloc(1 * 1 * 320 * sizeof(float));
+    float* biasdata = malloc(1 * 1 * 320 * sizeof(float));
+    
+    ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+   
+    int i;
+    
+    dsfmt_init_gen_rand(&dsfmt, 1);
+    
+    for (i = 0; i < 2 * 4096 * 320; i++)
+      x_tensor->data.f32[i] = xdata[i] = dsfmt_genrand_open_close(&dsfmt);
+   
+    
+    for (i = 0; i < 1 * 1 * 320; i++)
+    {
+      scaledata[i] = dsfmt_genrand_open_close(&dsfmt);
+      biasdata[i] = dsfmt_genrand_open_close(&dsfmt);
+    }
+    
+    
+    
+    printf("\nCheckpoint (4)\n");
+    
+    
+    
+    ccv_nnc_tensor_t scale_tensor = ccv_nnc_tensor(scaledata, CPU_TENSOR_NHWC(32F, 1, 1, 320), 0);
+    ccv_nnc_tensor_t bias_tensor = ccv_nnc_tensor(biasdata, CPU_TENSOR_NHWC(32F, 1, 1, 320), 0);
+    ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(&scale_tensor, &bias_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, scale), ccv_nnc_tensor_from_symbol(tensor_arena, bias)), 0);
+    ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+    ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+    ccv_nnc_tensor_t* const host_saved_mean_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_mean);
+    
+    
+    printf("\nCheckpoint (5)\n");
+    
+    
+    ccv_nnc_symbolic_graph_free(symbolic_graph);
+    ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+    ccv_nnc_graph_free(graph);
+    ccv_nnc_symbolic_graph_t* const cpu_symbolic_graph = ccv_nnc_symbolic_graph_new();
+    ccv_nnc_tensor_symbol_t cx = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 320), "x");
+    ccv_nnc_tensor_symbol_t cy = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 320), "y");
+    ccv_nnc_tensor_symbol_t cscale = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 1, 320), "scale");
+    ccv_nnc_tensor_symbol_t cbias = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 1, 320), "bias");
+    ccv_nnc_tensor_symbol_t csaved_mean = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 1), "saved_mean");
+    ccv_nnc_tensor_symbol_t csaved_inv_std = ccv_nnc_tensor_symbol_new(cpu_symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 4096, 1), "saved_inv_std");
+    ccv_nnc_graph_exec_symbol_new(cpu_symbolic_graph, CMD_LAYER_NORM_FORWARD(1e-6, 1, 2, 3), TENSOR_SYMBOL_LIST(cx, cscale, cbias), TENSOR_SYMBOL_LIST(cy, csaved_mean, csaved_inv_std), "layer_norm");
+    ccv_nnc_graph_exec_symbol_autogen(cpu_symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+    
+    
+    
+    
+    printf("\nCheckpoint (6)\n");
+    
+    
+    
+    ccv_nnc_graph_t* cpu_graph = 0;
+    ccv_nnc_tensor_arena_t* cpu_tensor_arena = 0;
+    ccv_nnc_graph_exec_arena_t* cpu_graph_exec_arena = 0;
+    ccv_nnc_symbolic_graph_compile(cpu_symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(cpu_symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(cpu_symbolic_graph), &cpu_graph, &cpu_tensor_arena, &cpu_graph_exec_arena);
+    ccv_nnc_tensor_t* const cx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cx);
+    memcpy(cx_tensor->data.f32, xdata, sizeof(float) * 2 * 4096 * 320);
+    ccv_nnc_tensor_t* const cscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cscale);
+    memcpy(cscale_tensor->data.f32, scaledata, sizeof(float) * 1 * 1 * 320);
+    ccv_nnc_tensor_t* const cbias_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cbias);
+    memcpy(cbias_tensor->data.f32, biasdata, sizeof(float) * 1 * 1 * 320);
+    ccv_nnc_graph_run(cpu_graph, 0, TRAVERSE_FULL, 0, 0);
+    ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
+    
+    
+    
+    printf("\nCheckpoint (7)\n");
+    
+    
+    // Note that MPS and my other implementations treat epsilon differently.
+    
+      printf("\nDestination:\n");
+      for (int i = 0; i < 80; ++i) {
+        printf("%f %f\n", y_tensor->data.f32[i], cy_tensor->data.f32[i]);
+      }
+      printf("\nSaved mean:\n");
+      for (int i = 0; i < 1; ++i) {
+        printf("%f %f\n", host_saved_mean_tensor->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_mean)->data.f32[i]);
+      }
+      printf("\nSaved std dev recip:\n");
+      for (int i = 0; i < 1; ++i) {
+        printf("%f %f\n", ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_inv_std)->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_inv_std)->data.f32[i]);
+      }
+    
+    
+    printf("\nCheckpoint (8)\n");
+    
+    
+    REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 4096 * 320, 1e-4, "layer norm result from mps should match the one from reference implementation");
+    ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
+    ccv_nnc_tensor_arena_free(tensor_arena);
+    ccv_nnc_tensor_arena_free(cpu_tensor_arena);
+    ccv_nnc_graph_exec_arena_free(cpu_graph_exec_arena);
+    ccv_nnc_graph_free(cpu_graph);
+     
+    /*
+     */
   }
-  printf("\nSaved mean:\n");
-  for (int i = 0; i < 1; ++i) {
-    printf("%f %f\n", host_saved_mean_tensor->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_mean)->data.f32[i]);
-  }
-  printf("\nSaved std dev recip:\n");
-  for (int i = 0; i < 1; ++i) {
-    printf("%f %f\n", ccv_nnc_tensor_from_symbol(tensor_arena, host_saved_inv_std)->data.f32[i], ccv_nnc_tensor_from_symbol(cpu_tensor_arena, csaved_inv_std)->data.f32[i]);
-  }
-  
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 2 * 2 * 10, 1e-4, "layer norm result from mps should match the one from reference implementation");
-	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
-	ccv_nnc_tensor_arena_free(tensor_arena);
-	ccv_nnc_tensor_arena_free(cpu_tensor_arena);
-	ccv_nnc_graph_exec_arena_free(cpu_graph_exec_arena);
-	ccv_nnc_graph_free(cpu_graph);
+
 }
 
 TEST_CASE("compare group norm with mps")
