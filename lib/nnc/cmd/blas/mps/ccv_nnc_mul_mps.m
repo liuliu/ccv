@@ -154,23 +154,23 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
 				[inputShapedTypes addObject:mps_g_shape];
 
-			MPSGraphTensor* mps_a = mps_g;
-			if (p != 1)
-			{
-				MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(g->info.datatype)];
-				mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+				MPSGraphTensor* mps_a = mps_g;
+				if (p != 1)
+				{
+					MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(g->info.datatype)];
+					mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
 
-			}
-			mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_b1 name:nil];
+				}
+				mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_b1 name:nil];
 
-			NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];
-			const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-			for (int i = 0; i < a_nd; i++) {
-				if (a->info.dim[i] != g->info.dim[i])
-					[da_axes addObject:@(i)];
-			}
-			mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
-			[resultTensors addObject:mps_a];
+				NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];
+				const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+				for (int i = 0; i < a_nd; i++) {
+					if (a->info.dim[i] != g->info.dim[i])
+						[da_axes addObject:@(i)];
+				}
+				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
+				[resultTensors addObject:mps_a];
 
 				if (h) {
 					MPSGraphTensor* mps_h = mps_g;
@@ -193,21 +193,38 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				
 			} else {
 				// empty mps_g for target broadcast shape with 1.0 for each elements	 
-				MPSGraphTensor* mps_g = [graph constantWithScalar:1.0 shape:mps_g_shape dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+				MPSGraphTensor* mps_g = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+
 				MPSGraphTensor* mps_a = mps_g;
 				if (p != 1)
 				{
 					MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(b1->info.datatype)];
 					mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
 				}
+
+				// reshape
+				if (mps_b1.shape.count < mps_g_shape.count) {
+					NSMutableArray<NSNumber*>* b1_broadcastable_shape = mps_b1.shape.mutableCopy; 
+					// padding left as [1, ..., 1, N] until b1 and g aligned, before broadcast
+					for (int i = 0; i < mps_g_shape.count - mps_b1.shape.count; i++) {
+						[b1_broadcastable_shape insertObject:@(1) atIndex:0]; 
+					}
+					mps_b1 = [graph reshapeTensor:mps_b1 withShape:b1_broadcastable_shape name:nil];
+				}
+				// broadcast
+				mps_b1 = [graph broadcastTensor:mps_b1 toShape:mps_g_shape name:nil];
+				// multiply 
 				mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_b1 name:nil];
+
 				NSMutableArray<NSNumber*>* da_axes = [NSMutableArray new];	
 				const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 				for (int i = 0; i < a_nd; i++) {
 					if (a->info.dim[i] != gdim_a[i])
 						[da_axes addObject:@(i)];
 				}
+				// reduce
 				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
+
 				[resultTensors addObject:mps_a];
 
 				if (h) {
@@ -217,6 +234,19 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(b2->info.datatype)];
 						mps_h = [graph multiplicationWithPrimaryTensor:mps_h secondaryTensor:mps_p name:nil];
 					}
+
+					// reshape
+					if (mps_b2.shape.count < mps_g_shape.count) {
+						// padding left as [1, ..., 1, N] until b2 and g aligned, before broadcast
+						NSMutableArray<NSNumber*>* b2_broadcastable_shape = mps_b2.shape.mutableCopy;
+						for (int i = 0; i < mps_g_shape.count - mps_b2.shape.count; i++) {
+							[b2_broadcastable_shape insertObject:@(1) atIndex:0];
+						}
+						mps_b2 = [graph reshapeTensor:mps_b2 withShape:b2_broadcastable_shape name:nil];
+					}
+					// broadcast
+					mps_b2 = [graph broadcastTensor:mps_b2 toShape:mps_g_shape name:nil];
+					// multiply
 					mps_h = [graph multiplicationWithPrimaryTensor:mps_h secondaryTensor:mps_b2 name:nil];
 
 					NSMutableArray<NSNumber*>* dh_axes = [NSMutableArray new];	
@@ -225,7 +255,9 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						if (h->info.dim[i] != gdim_a[i])
 							[dh_axes addObject:@(i)];
 					}
+					// reduce
 					mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
+
 					[resultTensors addObject:mps_h];
 				}
 			}			
