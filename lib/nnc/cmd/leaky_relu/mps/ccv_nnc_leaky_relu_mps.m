@@ -63,7 +63,7 @@ static int _ccv_nnc_leaky_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
                                              sourceTensor:mps_b
                                               alphaTensor:alpha_tensor
                                                      name:nil];
-			
+
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);

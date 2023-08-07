@@ -107,7 +107,7 @@ static int _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			MPSGraphTensor* mulSumTensor = [graph reductionSumWithTensor:mulTensor axis:-1 name:nil];
 			MPSGraphTensor* gradSubTensor = [graph subtractionWithPrimaryTensor:mps_g secondaryTensor:mulSumTensor name:nil];
 			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:gradSubTensor name:nil];
-			
+
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);

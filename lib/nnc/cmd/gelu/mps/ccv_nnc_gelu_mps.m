@@ -122,7 +122,7 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphTensor* right_derivative = [graph multiplicationWithPrimaryTensor:left secondaryTensor:tanh_derivative name:nil];
 				right_derivative = [graph multiplicationWithPrimaryTensor:right_derivative secondaryTensor:inner_derivative name:nil];
 				mps_h = [graph additionWithPrimaryTensor:left_derivative secondaryTensor:right_derivative name:nil];
-				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h name:nil];			
+				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h name:nil];
 			} else {
 				float kBeta = 0.797884560802865355;
 				MPSGraphTensor* halff = [graph constantWithScalar:-0.5f dataType:dataType];
@@ -134,9 +134,9 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphTensor* pdf = [graph multiplicationWithPrimaryTensor:pdfMul secondaryTensor:betaf name:nil];
 				pdf = [graph multiplicationWithPrimaryTensor:inputTensor secondaryTensor:pdf name:nil];
 				pdf = [graph additionWithPrimaryTensor:pdf secondaryTensor:cdf name:nil];
-				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:pdf name:nil];			
+				mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:pdf name:nil];
 			}
-			
+
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);

@@ -410,6 +410,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const sup
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	int format;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	int stride[CCV_NNC_MAX_DIM_ALLOC];
@@ -421,6 +422,8 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	assert(output_size == 1);
 	ccv_cnnp_model_reshape_t* const self = (ccv_cnnp_model_reshape_t*)super;
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (self->format > 0)
+		params.format = self->format;
 	assert(ccv_nnc_dimension_count(self->dim) <= ccv_nnc_tensor_count(params));
 	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
 	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -490,7 +493,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_reshape_isa = {
 	.copy = _ccv_cnnp_reshape_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_reshape(const int format, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
 {
 	ccv_cnnp_model_reshape_t* const model_reshape = (ccv_cnnp_model_reshape_t*)cccalloc(1, sizeof(ccv_cnnp_model_reshape_t));
 	model_reshape->super.isa = &ccv_cnnp_reshape_isa;
@@ -498,6 +501,7 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const i
 	model_reshape->super.outputs = &model_reshape->output;
 	model_reshape->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_reshape->super, name);
+	model_reshape->format = format;
 	memcpy(model_reshape->dim, dim, sizeof(model_reshape->dim));
 	memcpy(model_reshape->ofs, ofs, sizeof(model_reshape->ofs));
 	if (stride[0] != 0)
@@ -508,7 +512,43 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const i
 static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_reshape_t* const self = (const ccv_cnnp_model_reshape_t*)super;
-	return ccv_cnnp_reshape(self->dim, self->ofs, self->stride, self->super.name);
+	return ccv_cnnp_reshape(self->format, self->dim, self->ofs, self->stride, self->super.name);
+}
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_identity_t;
+
+static void _ccv_cnnp_identity_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	outputs[0] = inputs[0];
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_identity_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_identity_isa = {
+	.build = _ccv_cnnp_identity_build,
+	.copy = _ccv_cnnp_identity_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_identity(const char* const name)
+{
+	ccv_cnnp_model_identity_t* const model_identity = (ccv_cnnp_model_identity_t*)cccalloc(1, sizeof(ccv_cnnp_model_identity_t));
+	model_identity->super.isa = &ccv_cnnp_identity_isa;
+	model_identity->super.input_size = 1;
+	model_identity->super.outputs = &model_identity->output;
+	model_identity->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_identity->super, name);
+	return (ccv_cnnp_model_t*)model_identity;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_identity_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_identity_t* const self = (const ccv_cnnp_model_identity_t*)super;
+	return ccv_cnnp_identity(self->super.name);
 }
 
 typedef struct {
@@ -3120,6 +3160,11 @@ static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_c
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_isa = {
 	.build = _ccv_cnnp_scaled_dot_product_attention_build,
+	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
+};
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_isa = {
+	.build = _ccv_cnnp_scaled_dot_product_attention_build,
 	.init_states = _ccv_cnnp_scaled_dot_product_attention_init_states,
 	.add_to_parameter = _ccv_cnnp_scaled_dot_product_attention_add_to_parameter,
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
@@ -3128,7 +3173,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_isa = {
 ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_scaled_dot_product_attention_t* const model_scaled_dot_product_attention = (ccv_cnnp_model_scaled_dot_product_attention_t*)cccalloc(1, sizeof(ccv_cnnp_model_scaled_dot_product_attention_t));
-	model_scaled_dot_product_attention->super.isa = &ccv_cnnp_scaled_dot_product_attention_isa;
+	model_scaled_dot_product_attention->super.isa = fused_unify_head_weights ? &ccv_cnnp_scaled_dot_product_attention_fused_isa : &ccv_cnnp_scaled_dot_product_attention_isa;
 	model_scaled_dot_product_attention->super.input_size = has_attn_mask ? 4 : 3;
 	model_scaled_dot_product_attention->super.outputs = &model_scaled_dot_product_attention->output;
 	model_scaled_dot_product_attention->super.output_size = 1;

@@ -21,7 +21,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   auto* pipeline = iterator->second;
-  auto encoder = command_batch->commandEncoder;
+  auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
@@ -44,6 +44,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       break;
   }
   
+  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
   simd::ushort2 num_batch_dims(0);
   simd::ulong2 batch_sizes(1);
   if (params.batched) {
@@ -83,10 +84,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     
     uint64_t byte_stride_mask = 0;
     uint64_t byte_stride_block_mask = 0;
-    if (batch_sizes[0] > 1) {
-      byte_stride_mask = hash.R * hash.C * data_type_size;
-    }
     if (batch_sizes[1] > 1) {
+      byte_stride_mask = hash.R * hash.C * data_type_size;
       auto grid_size = pipeline->grid_size;
       byte_stride_block_mask = grid_size.width * grid_size.height * 1;
     }
@@ -104,7 +103,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   }
   
   if (params.masked) {
-    command_batch->startCommand(pipeline->generate_block_mask_pso.get());
+    encoder->setComputePipelineState(pipeline->generate_block_mask_pso.get());
     encoder->setThreadgroupMemoryLength(48, 0);
     encoder->useResource(tensors[4], MTL::ResourceUsageRead);
     encoder->setBuffer(tensors[4], tensor_offsets[4], 12);
@@ -118,10 +117,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBuffer(scratch, 0, 13);
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
-    command_batch->finishCommand(encoder);
   }
   
-  command_batch->startCommand(pipeline->attention_pso.get());
+  encoder->setComputePipelineState(pipeline->attention_pso.get());
   encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);
@@ -204,9 +202,6 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
-  this->flags[0] = true;
-  this->flags[1] = hash.batched;
-  this->flags[2] = hash.masked;
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.R, MTL::DataTypeUInt, NS::UInteger(0));
@@ -236,6 +231,9 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     constants->setConstantValue(&generate_block_mask, MTL::DataTypeBool, 112);
     constants->setConstantValue(&grouped_query, MTL::DataTypeBool, 113);
   }
+
+  simd::ulong4 garbage(0);
+  constants->setConstantValue(&garbage, MTL::DataTypeBool, 101);
   
   uint16_t R_simd;
   uint16_t C_simd;

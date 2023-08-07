@@ -571,7 +571,7 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases"
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	ccv_cnnp_model_t* const linear = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_dense(1, 1, 1, 0),
-		ccv_cnnp_reshape(DIM_ALLOC(1), DIM_ALLOC(), DIM_ALLOC(), 0),
+		ccv_cnnp_reshape(0, DIM_ALLOC(1), DIM_ALLOC(), DIM_ALLOC(), 0),
 	), 1, 0);
 	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(0.2485), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(a), 0, 0);
@@ -631,9 +631,9 @@ TEST_CASE("dynamic graph to accumulate gradients cross cnnp models with aliases"
 TEST_CASE("dynamic graph to use cnnp model for permute and reshape")
 {
 	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_reshape(DIM_ALLOC(4, 3, 2), DIM_ALLOC(), DIM_ALLOC(), 0),
+		ccv_cnnp_reshape(0, DIM_ALLOC(4, 3, 2), DIM_ALLOC(), DIM_ALLOC(), 0),
 		ccv_cnnp_permute(DIM_ALLOC(2, 0, 1), 0),
-		ccv_cnnp_reshape(DIM_ALLOC(2 * 4, 3), DIM_ALLOC(), DIM_ALLOC(), 0),
+		ccv_cnnp_reshape(0, DIM_ALLOC(2 * 4, 3), DIM_ALLOC(), DIM_ALLOC(), 0),
 	), 1, 0);
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 4, 3, 2));

@@ -3713,6 +3713,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
  * The prototype for the writer function when exporting parameters out.
  * @param tensor The tensor to be written to disk.
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_write`` method.
+ * @param options The IO options that can do data encode / decode before persistence.
  * @param name The name give to a particular parameter.
  */
 typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
@@ -3721,6 +3722,7 @@ typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, 
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.
  * @param name The name give to a particular parameter.
  * @param dir The directory for a particular parameter if it is file-backed.
+ * @param options The IO options that can do data encode / decode before persistence.
  * @param tensor_out The tensor to be loaded.
  */
 typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out);
@@ -4132,13 +4134,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint, const char* const name);
 /**
  * Reshape an input into a different dimension.
+ * @param format Change the layout format for a given input, 0 is not to change.
  * @param dim The new dimension for the input.
  * @param ofs The offset on each of the dimension.
  * @param stride The line size of each dimension.
  * @param name The unique name of the model.
  * @return A reshape layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int format, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+/**
+ * Identity op that simply copy from input to output without using any data transfer / format conversion methods.
+ * @param name The unique name of the model.
+ * @return An identity layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const char* const name);
 /**
  * Permute the input. For example, [2, 0, 1] means moving dimension 2 to 0, dimension 0 to 1, dimension 1 to 2.
  * @param index The index for each dimensions from.
@@ -4312,7 +4321,6 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_argmax(const int axis, const char* c
 /**
  * A argmin model.
  * @param axis The axis to be reduced.
- * @param axis_count The size of the axis array.
  * @param name The unique name of the model.
  * @return A min indices model.
  */

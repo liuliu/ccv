@@ -88,6 +88,12 @@ void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* con
   _mfa_cache_prepare(&map, context, hash);
 }
 
+template <>
+void mfa::cache<mfa::normalization::hash, mfa::normalization::pipeline>::prepare(mfa::context* context, mfa::normalization::hash hash)
+{
+  _mfa_cache_prepare(&map, context, hash);
+}
+
 mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
@@ -97,8 +103,9 @@ mfa::context::context(MTL::Device* device)
   const char* log_level_repr = getenv("CCV_METAL_LOG_LEVEL");
   if (log_level_repr) {
     int log_level_raw = atoi(log_level_repr);
+    std::cerr << std::endl;
     std::cerr << METAL_LOG_HEADER << "Using log level: " << log_level_raw << std::endl;
-    CCV_NNC_MFA_PRECONDITION(log_level_raw >= 0 && log_level_raw <= 3)
+    CCV_NNC_MFA_PRECONDITION(log_level_raw >= 0 && log_level_raw <= 4)
     
     this->log_level = uint16_t(log_level_raw);
   }
@@ -180,10 +187,9 @@ MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
   commandEncoder = commandBuffer->computeCommandEncoder();
 }
 
-MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand(MTL::ComputePipelineState* pso) {
+MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand() {
   CCV_NNC_MFA_PRECONDITION(commandActive == 0)
   commandActive = 1;
-  commandEncoder->setComputePipelineState(pso);
   return commandEncoder;
 }
 
