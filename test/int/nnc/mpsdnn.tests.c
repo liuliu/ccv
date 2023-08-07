@@ -2276,4 +2276,60 @@ TEST_CASE("broadcasting semantics for mul backward (no input grad) for a")
 	ccv_nnc_tensor_free(gdb);
 }
 
+TEST_CASE("mps scalarmul forward, backward")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_BACKWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_tensor_t* const gx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(x), 0);
+	ccv_nnc_cmd_exec(CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(gx), 0);
+
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_tensor_t* const gy = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
+	ccv_nnc_tensor_t* const cy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gy), TENSOR_LIST(cy), 0);
+	REQUIRE_TENSOR_EQ(y, cy, "scalar mul forward should be equal");
+
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(x), TENSOR_LIST(y), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_FORWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(gx), TENSOR_LIST(gy), 0);
+
+	ccv_nnc_tensor_t* const dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_tensor_t* const gdx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_BACKWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(y), TENSOR_LIST(dx), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_BACKWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(gy), TENSOR_LIST(gdx), 0);
+
+	ccv_nnc_tensor_t* const cdx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gdx), TENSOR_LIST(cdx), 0);
+
+	REQUIRE_TENSOR_EQ(cdx, dx, "scalar mul backward should be equal");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(gx);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(gy);
+	ccv_nnc_tensor_free(dx);
+	ccv_nnc_tensor_free(gdx);
+	ccv_nnc_tensor_free(cdx);
+}
+
+TEST_CASE("mps scalarmul backward, no input")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_BACKWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+
+	ccv_nnc_tensor_t* const dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_tensor_t* const gdx = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_BACKWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(0), TENSOR_LIST(dx), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_BACKWARD(1.1), ccv_nnc_no_hint, 0, TENSOR_LIST(0), TENSOR_LIST(gdx), 0);
+
+	ccv_nnc_tensor_t* const cdx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gdx), TENSOR_LIST(cdx), 0);
+
+	REQUIRE_TENSOR_EQ(cdx, dx, "scalar mul backward without input should be equal");
+	ccv_nnc_tensor_free(dx);
+	ccv_nnc_tensor_free(gdx);
+	ccv_nnc_tensor_free(cdx);
+}
+
 #include "case_main.h"
