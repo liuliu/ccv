@@ -2347,7 +2347,7 @@ TEST_CASE("mps scalarmul backward, no input")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gdx), TENSOR_LIST(dx), 0);
 
 	for (int i = 0; i < 4; i++)
-  		REQUIRE(dx->data.f32[i] - 1.1 < 1e-5, "scalar mul backward without input should be 1.1 ");
+  		REQUIRE_EQ_WITH_TOLERANCE(dx->data.f32[i], 1.1, 1e-5, "scalar mul backward without input should be 1.1 ");
 	ccv_nnc_tensor_free(gdx);
 	ccv_nnc_tensor_free(dx);
 }
