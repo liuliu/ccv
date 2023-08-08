@@ -231,14 +231,14 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, bdim_r, bstride_r);
 				[inputShapedTypes addObject:mps_b_shape];
 				
-				MPSGraphTensor* inputSizeTensor = [graph constantWithScalar:0 shape:@[@(bdim_r[CCV_NNC_MAX_DIM-1]), @(bdim_r[CCV_NNC_MAX_DIM])] dataType:ccv_nnc_mps_datatype(b->info.datatype)];
+				MPSGraphTensor* inputSizeTensor = [graph constantWithScalar:0 shape:inputSize dataType:ccv_nnc_mps_datatype(b->info.datatype)];
 				MPSGraphTensor* mps_a = [graph resizeWithGradientTensor:mps_b 
                                        input:inputSizeTensor
                                         mode:MPSGraphResizeBilinear 
                                 centerResult:YES
                                 alignCorners:NO 
-                                      layout:MPSGraphTensorNamedDataLayoutNCHW
-                                        name:nil];
+                                      layout:MPSGraphTensorNamedDataLayoutNHWC
+=                                        name:nil];
 
 				[resultTensors addObject:mps_a];
 			});
@@ -323,7 +323,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
                                         mode:MPSGraphResizeNearest
                                 centerResult:YES
                                 alignCorners:NO 
-                                      layout:MPSGraphTensorNamedDataLayoutNCHW
+                                      layout:MPSGraphTensorNamedDataLayoutNHWC
                                         name:nil];
 
 				[resultTensors addObject:mps_a];
