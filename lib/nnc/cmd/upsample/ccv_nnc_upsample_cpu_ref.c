@@ -222,7 +222,7 @@ static void _ccv_nnc_init_bi_coeffs(const int ss, const int sz, const float s, c
 	{
 		const float xs = (i + 0.5) * s - 0.5;
 		coeff[i].si[0] = (int)xs;
-		coeff[i].si[1] = ccv_min(coeff[i].si[0] + 1, ss - 1);
+		coeff[i].si[1] = ccv_min((int)(xs + 1), ss - 1);
 		coeff[i].sc[1] = xs - coeff[i].si[0];
 		coeff[i].sc[0] = 1.0 - coeff[i].sc[1];
 	}
@@ -275,7 +275,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ycoeff[yd].si[0];
-					const int ysi1 = (ysi0 + 1 < adim[2]) ? 1 : 0;
+					const int ysi1 = ycoeff[yd].si[1] - ysi0;
 					const float ysc0 = ycoeff[yd].sc[0];
 					const float ysc1 = ycoeff[yd].sc[1];
 					if (pysi0 < ysi0) // Move to ay1 line.
@@ -315,7 +315,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ycoeff[yd].si[0];
-				const int ysi1 = (ysi0 + 1 < adim[1]) ? 1 : 0;
+				const int ysi1 = ycoeff[yd].si[1] - ysi0;
 				const float ysc0 = ycoeff[yd].sc[0];
 				const float ysc1 = ycoeff[yd].sc[1];
 				if (pysi0 < ysi0) // Move to ay1 line.
@@ -395,7 +395,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
 					const int ysi0 = ycoeff[yd].si[0];
-					const int ysi1 = (ysi0 + 1 < adim[2]) ? 1 : 0;
+					const int ysi1 = ycoeff[yd].si[1] - ysi0;
 					const float ysc0 = ycoeff[yd].sc[0];
 					const float ysc1 = ycoeff[yd].sc[1];
 					if (pysi0 < ysi0) // Move to ay1 line.
@@ -437,7 +437,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
 				const int ysi0 = ycoeff[yd].si[0];
-				const int ysi1 = (ysi0 + 1 < adim[1]) ? 1 : 0;
+				const int ysi1 = ycoeff[yd].si[1] - ysi0;
 				const float ysc0 = ycoeff[yd].sc[0];
 				const float ysc1 = ycoeff[yd].sc[1];
 				if (pysi0 < ysi0) // Move to ay1 line.
