@@ -142,7 +142,7 @@ mfa::context::context(MTL::Device* device)
   }
   
   // Attempt to load the library, otherwise crash with a detailed log message.
-  NS::Error* error = NULL;
+  NS::Error* error = nullptr;
   if (external_metallib_path) {
     auto string = NS::String::string(external_metallib_path, NS::UTF8StringEncoding);
     auto url = NS::URL::fileURLWithPath(string);
@@ -156,7 +156,9 @@ mfa::context::context(MTL::Device* device)
     this->library = NS::TransferPtr(device->newLibrary(data, &error));
     dispatch_release(data);
   }
-  CCV_NNC_MFA_CHECK_ERROR(error)
+  if (!this->library) {
+    CCV_NNC_MFA_CHECK_ERROR(error)
+  }
   
   // Notify that this finished successfully, and is not just stalling on one of
   // the previous lines of code.
