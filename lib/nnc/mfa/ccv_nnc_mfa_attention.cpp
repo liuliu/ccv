@@ -395,7 +395,7 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
       }
     }
     
-    NS::Error *error;
+    NS::Error *error = NULL;
     auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error)
     

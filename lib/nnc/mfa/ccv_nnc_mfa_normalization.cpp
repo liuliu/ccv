@@ -416,7 +416,7 @@ kernel void normalization(
     }
     source += shader;
     
-    NS::Error *error;
+    NS::Error *error = NULL;
     auto swift_source = NS::String::string(source.c_str(),
      NS::UTF8StringEncoding);
     auto library = NS::TransferPtr(context->device->newLibrary(swift_source, nullptr, &error));
