@@ -361,11 +361,11 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* dw = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	ccv_nnc_tensor_view_t* bias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
 
-	const ccv_nnc_tensor_view_t* a = dw ? (const ccv_nnc_tensor_view_t*)inputs[1] : 0;
+	const ccv_nnc_tensor_view_t* a = input_size > 1 ? (const ccv_nnc_tensor_view_t*)inputs[1] : 0;
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
-	const ccv_nnc_tensor_view_t* w = h ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
+	const ccv_nnc_tensor_view_t* w = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 
-	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0));
+	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // // It is a 2-d or 3-d array
 	const int is_transpose_a = a ? ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a) : 0;
 	const int is_transpose_w = w ? ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b) : 0;
 
