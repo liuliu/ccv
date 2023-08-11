@@ -40,6 +40,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		// softmax. If this is required, fall back to MPSGraph (if will never occur
 		// during inference).
 		assert(false);
+		return CCV_NNC_EXEC_INVALID;
 	}
 
 	int qdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -142,179 +143,181 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		}
 	}
 
-	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
-	if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION)) {
-		assert(false); // MFA is required.
-		return CCV_NNC_EXEC_INVALID;
-	}
-
-	int attention_is_batched = (batch_size > 1);
-	ccv_nnc_mfa_attention_params_t params = {
-		.data_type = mtl_data_type,
-		.R = (uint32_t)R,
-		.C = (uint32_t)C,
-		.H = (uint32_t)H,
-		.D = (uint32_t)D,
-		.Q_trans = false,
-		.K_trans = true,
-		.V_trans = false,
-		.O_trans = false,
-		.alpha = cmd.info.scaled_dot_product_attention.scale,
-		.batched = (attention_is_batched ? 1 : 0),
-		.masked = (attn_mask != NULL ? 1 : 0),
-
-		.batch_dims_q = { 0 },
-		.batch_dims_mask = { 0 },
-	};
-	if (attention_is_batched) {
-		params.batch_dims_q[0] = batch_size;
-		params.batch_dims_q[1] = 0;
-		params.batch_dims_mask[0] = attn_mask ? amdim[0] : batch_size;
-		params.batch_dims_mask[1] = 0;
-	}
-	ccv_nnc_mfa_prepare_attention(context, params);
-
-	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-	mtl_buffer_t* mask_buffer = NULL;
-	if (params.masked) {
-		mask_buffer = mpgetbuffer((ccv_nnc_tensor_t*)attn_mask);
-	}
-	mtl_buffer_t* tensors[6] = {
-		mpgetbuffer((ccv_nnc_tensor_t*)q),
-		mpgetbuffer((ccv_nnc_tensor_t*)k),
-		mpgetbuffer((ccv_nnc_tensor_t*)v),
-		mpgetbuffer((ccv_nnc_tensor_t*)o),
-		mask_buffer,
-		NULL,
-	};
-	size_t tensor_offsets[5] = {
-		q->dataof,
-		k->dataof,
-		v->dataof,
-		o->dataof,
-		attn_mask ? attn_mask->dataof : 0,
-	};
-	ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
-
-	// NNC notation:
-	// D = C * W^T + bias
-	//
-	// MFA notation:
-	// A <- O
-	// B <- feedforward weights
-	// D <- bias
-	// C = A * B^T + D
-	//
-	// For MFA, C is the output of GEMM, not the output of attention. D stands for
-	// "data" (arbitrary user-defined data). In this case, the user-defined data
-	// is the bias vector.
-	if (weights) {
-		int *adim = odim;
-		ccv_nnc_tensor_view_t* const a = o; // left input matrix
-		ccv_nnc_tensor_view_t* const b = weights; // weights
-		ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
-
-		const int b_nd = ccv_nnc_tensor_nd(weights->info.dim);
-		assert(b_nd == 2);
-		assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
-		const int c_nd = ccv_nnc_tensor_nd(c->info.dim);
-		assert(c_nd == 3);
-
-		int cdim[CCV_NNC_MAX_DIM_ALLOC];
-		ccv_nnc_tensor_view_get_dim(c, cdim);
-
-		const int attention_batch_size = batch_size;
-		const int gemm_batch_size = cdim[1];
-		int gemm_is_batched = (gemm_batch_size > 1);
-		if (attention_is_batched) {
-			assert(gemm_is_batched);
-			assert(attention_batch_size == gemm_batch_size);
-		}
-		if (!gemm_is_batched) {
-			assert(!attention_is_batched);
+	@autoreleasepool {
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION)) {
+			assert(false); // MFA is required.
+			return CCV_NNC_EXEC_INVALID;
 		}
 
-		// The C matrix of the GEMM cannot be transposed, so the assume the C matrix
-		// is NHWC.
-		assert(c->info.format == CCV_TENSOR_FORMAT_NHWC);
-		int M = cdim[2];
-		int N = cdim[3];
-		int K = H * D;
-
-		if (o_nd == 3)
-		{
-			assert(adim[1] == attention_batch_size);
-			assert(adim[2] == M);
-		} else {
-			assert(adim[0] == attention_batch_size);
-			assert(adim[1] == M);
-		}
-		if (H > 1) {
-			assert(adim[2] * adim[3] == K);
-		} else {
-			assert(adim[3] == K);
-		}
-
-		// We assume the weights matrix is square.
-		assert(K == N);
-		assert(b->info.dim[0] == N);
-		assert(b->info.dim[1] == K);
-
-		if (bias) {
-			const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
-
-			// Since the weights matrix doesn't have a batch dimension, the bias
-			// vector doesn't either.
-			assert(bias_nd == 1);
-			assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
-			assert(bias->info.dim[0] == N);
-		}
-
-		ccv_nnc_mfa_gemm_params_t params = {
+		int attention_is_batched = (batch_size > 1);
+		ccv_nnc_mfa_attention_params_t params = {
 			.data_type = mtl_data_type,
-			.M = (uint32_t)M,
-			.N = (uint32_t)N,
-			.K = (uint32_t)K,
-			.A_trans = false,
-			.B_trans = true,
-			.D_trans = false,
-			.alpha = (float)1.0,
-			.beta = (float)0.0,
-			.batched = (gemm_is_batched ? 1 : 0),
-			.fused_activation_function = 0,
-			.fused_bias = (bias ? 1 : 0),
+			.R = (uint32_t)R,
+			.C = (uint32_t)C,
+			.H = (uint32_t)H,
+			.D = (uint32_t)D,
+			.Q_trans = false,
+			.K_trans = true,
+			.V_trans = false,
+			.O_trans = false,
+			.alpha = cmd.info.scaled_dot_product_attention.scale,
+			.batched = (attention_is_batched ? 1 : 0),
+			.masked = (attn_mask != NULL ? 1 : 0),
 
-			.batch_dims_a = { 0 },
-			.batch_dims_b = { 0 },
-			.batch_dims_d = { 0 },
+			.batch_dims_q = { 0 },
+			.batch_dims_mask = { 0 },
 		};
-		if (gemm_is_batched) {
-			params.batch_dims_a[0] = gemm_batch_size;
-			params.batch_dims_a[1] = 0;
+		if (attention_is_batched) {
+			params.batch_dims_q[0] = batch_size;
+			params.batch_dims_q[1] = 0;
+			params.batch_dims_mask[0] = attn_mask ? amdim[0] : batch_size;
+			params.batch_dims_mask[1] = 0;
 		}
-		ccv_nnc_mfa_prepare_gemm(context, params);
+		ccv_nnc_mfa_prepare_attention(context, params);
 
-		mtl_buffer_t* bias_buffer = NULL;
-		if (bias) {
-			bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		mtl_buffer_t* mask_buffer = NULL;
+		if (params.masked) {
+			mask_buffer = mpgetbuffer((ccv_nnc_tensor_t*)attn_mask);
 		}
-		mtl_buffer_t* tensors[5] = {
-			mpgetbuffer((ccv_nnc_tensor_t*)a), // A
-			mpgetbuffer((ccv_nnc_tensor_t*)b), // B
-			mpgetbuffer((ccv_nnc_tensor_t*)c), // C
-			bias_buffer, // D
+		mtl_buffer_t* tensors[6] = {
+			mpgetbuffer((ccv_nnc_tensor_t*)q),
+			mpgetbuffer((ccv_nnc_tensor_t*)k),
+			mpgetbuffer((ccv_nnc_tensor_t*)v),
+			mpgetbuffer((ccv_nnc_tensor_t*)o),
+			mask_buffer,
 			NULL,
 		};
-		size_t tensor_offsets[4] = {
-			a->dataof, // A offset
-			b->dataof, // B offset
-			c->dataof, // C offset
-			bias ? bias->dataof : 0, // D offset
+		size_t tensor_offsets[5] = {
+			q->dataof,
+			k->dataof,
+			v->dataof,
+			o->dataof,
+			attn_mask ? attn_mask->dataof : 0,
 		};
-		ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
-	}
+		ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
 
-	ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		// NNC notation:
+		// D = C * W^T + bias
+		//
+		// MFA notation:
+		// A <- O
+		// B <- feedforward weights
+		// D <- bias
+		// C = A * B^T + D
+		//
+		// For MFA, C is the output of GEMM, not the output of attention. D stands for
+		// "data" (arbitrary user-defined data). In this case, the user-defined data
+		// is the bias vector.
+		if (weights) {
+			int *adim = odim;
+			ccv_nnc_tensor_view_t* const a = o; // left input matrix
+			ccv_nnc_tensor_view_t* const b = weights; // weights
+			ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+
+			const int b_nd = ccv_nnc_tensor_nd(weights->info.dim);
+			assert(b_nd == 2);
+			assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
+			const int c_nd = ccv_nnc_tensor_nd(c->info.dim);
+			assert(c_nd == 3);
+
+			int cdim[CCV_NNC_MAX_DIM_ALLOC];
+			ccv_nnc_tensor_view_get_dim(c, cdim);
+
+			const int attention_batch_size = batch_size;
+			const int gemm_batch_size = cdim[1];
+			int gemm_is_batched = (gemm_batch_size > 1);
+			if (attention_is_batched) {
+				assert(gemm_is_batched);
+				assert(attention_batch_size == gemm_batch_size);
+			}
+			if (!gemm_is_batched) {
+				assert(!attention_is_batched);
+			}
+
+			// The C matrix of the GEMM cannot be transposed, so the assume the C matrix
+			// is NHWC.
+			assert(c->info.format == CCV_TENSOR_FORMAT_NHWC);
+			int M = cdim[2];
+			int N = cdim[3];
+			int K = H * D;
+
+			if (o_nd == 3)
+			{
+				assert(adim[1] == attention_batch_size);
+				assert(adim[2] == M);
+			} else {
+				assert(adim[0] == attention_batch_size);
+				assert(adim[1] == M);
+			}
+			if (H > 1) {
+				assert(adim[2] * adim[3] == K);
+			} else {
+				assert(adim[3] == K);
+			}
+
+			// We assume the weights matrix is square.
+			assert(K == N);
+			assert(b->info.dim[0] == N);
+			assert(b->info.dim[1] == K);
+
+			if (bias) {
+				const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+
+				// Since the weights matrix doesn't have a batch dimension, the bias
+				// vector doesn't either.
+				assert(bias_nd == 1);
+				assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
+				assert(bias->info.dim[0] == N);
+			}
+
+			ccv_nnc_mfa_gemm_params_t params = {
+				.data_type = mtl_data_type,
+				.M = (uint32_t)M,
+				.N = (uint32_t)N,
+				.K = (uint32_t)K,
+				.A_trans = false,
+				.B_trans = true,
+				.D_trans = false,
+				.alpha = (float)1.0,
+				.beta = (float)0.0,
+				.batched = (gemm_is_batched ? 1 : 0),
+				.fused_activation_function = 0,
+				.fused_bias = (bias ? 1 : 0),
+
+				.batch_dims_a = { 0 },
+				.batch_dims_b = { 0 },
+				.batch_dims_d = { 0 },
+			};
+			if (gemm_is_batched) {
+				params.batch_dims_a[0] = gemm_batch_size;
+				params.batch_dims_a[1] = 0;
+			}
+			ccv_nnc_mfa_prepare_gemm(context, params);
+
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias) {
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			}
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+				mpgetbuffer((ccv_nnc_tensor_t*)b), // B
+				mpgetbuffer((ccv_nnc_tensor_t*)c), // C
+				bias_buffer, // D
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof, // A offset
+				b->dataof, // B offset
+				c->dataof, // C offset
+				bias ? bias->dataof : 0, // D offset
+			};
+			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+		}
+
+		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
