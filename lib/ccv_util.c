@@ -896,6 +896,82 @@ static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k
 	}
 }
 
+void ccv_set_sparse_matrix_cell_from_vector(ccv_sparse_matrix_t* mat, ccv_sparse_matrix_vector_t* const vector, int vidx, const void* data)
+{
+	const size_t cell_size = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
+	if (mat->type & CCV_DENSE_VECTOR)
+	{
+		memcpy(vector->data.u8 + vidx * cell_size, data, cell_size);
+		return;
+	}
+	if ((vector->rnum + 1) * 10llu > vector->size * 9llu) // expand when reached 90%.
+		_ccv_sparse_matrix_vector_inc_size(mat, vector);
+	// Align to 4 bytes.
+	const size_t cell_size_aligned = (CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type) + 3) & -4;
+	const size_t index_size = sizeof(ccv_sparse_matrix_index_t) + cell_size_aligned;
+	uint8_t* const index = (uint8_t*)vector->index;
+	const int prime_index = vector->prime_index;
+	const uint32_t size = vector->size;
+	uint32_t idx = _ccv_sparse_matrix_index_for_hash(vidx, prime_index);
+	uint32_t k = 2;
+	for (; k < 255; ++idx, ++k)
+	{
+		if (idx >= size)
+			idx = 0;
+		ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
+		uint32_t j = index_idx->ifbit;
+		if (k > j)
+		{
+			++vector->rnum;
+			index_idx->ifbit = k;
+			if (!j)
+			{
+				index_idx->i = vidx;
+				// Assign it out.
+				memcpy(index_idx + 1, data, cell_size);
+			} else {
+				_ccv_move_sparse_matrix_cell(index, j /* This is j not k because we are replacing it. */, idx, vidx, size, prime_index, index_size, cell_size_aligned);
+				memcpy(index_idx + 1, data, cell_size);
+			}
+			return;
+		}
+		if (index_idx->i == vidx)
+		{
+			memcpy(index_idx + 1, data, cell_size);
+			return;
+		}
+	}
+	// Above or equal to 255, we need to fetch the key to recompute the distance every time now.
+	for (;; ++idx, ++k)
+	{
+		if (idx >= size)
+			idx = 0;
+		ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
+		uint32_t j = index_idx->ifbit;
+		if (j == 0xff)
+			j = _ccv_sparse_matrix_index_for_hash(index_idx->i + size - idx, prime_index) + 2;
+		if (k > j)
+		{
+			++vector->rnum;
+			index_idx->ifbit = k > 0xff ? 0xff : k;
+			if (!j)
+			{
+				index_idx->i = vidx;
+				memcpy(index_idx + 1, data, cell_size);
+			} else {
+				_ccv_move_sparse_matrix_cell(index, j /* This is j not k because we are replacing it. */, idx, vidx, size, prime_index, index_size, cell_size_aligned);
+				memcpy(index_idx + 1, data, cell_size);
+			}
+			return;
+		}
+		if (index_idx->i == vidx)
+		{
+			memcpy(index_idx + 1, data, cell_size);
+			return;
+		}
+	}
+}
+
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, const void* data)
 {
 	assert(data);

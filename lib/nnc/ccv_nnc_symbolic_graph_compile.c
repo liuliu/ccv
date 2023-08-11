@@ -2017,7 +2017,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-		if (!node->outgoings)
+		if (!node->outgoings || term)
 			continue;
 		for (i = 0; i < node->outgoings->rnum; i++)
 		{
@@ -2026,18 +2026,22 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, idx);
 			/* If not found, set, if the current node is the destination node, no need 
 			 * set itself as parent of subsequent nodes because its terminal nature. */
-			if (!term && (!cell.i32 || cell.i32[0] == 0))
+			if (!cell.i32 || cell.i32[0] == 0)
 				ccv_set_sparse_matrix_cell(exec_dep, outgoing, idx, &one);
-			for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */
+			if (buf_size > 0)
 			{
-				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2]);
-				/* If not found, set */
-				if (!cell.i32 || cell.i32[0] == 0)
-					ccv_set_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2], &buf[j * 2 + 1]);
-				else {
-					/* Otherwise, set to the longest one */
-					int32_t dep = ccv_max(cell.i32[0], buf[j * 2 + 1]);
-					ccv_set_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2], &dep);
+				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, outgoing);
+				for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */
+				{
+					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell_from_vector(exec_dep, vector, buf[j * 2]);
+					/* If not found, set */
+					if (!cell.i32 || cell.i32[0] == 0)
+						ccv_set_sparse_matrix_cell_from_vector(exec_dep, vector, buf[j * 2], &buf[j * 2 + 1]);
+					else {
+						/* Otherwise, set to the longest one */
+						int32_t dep = ccv_max(cell.i32[0], buf[j * 2 + 1]);
+						ccv_set_sparse_matrix_cell_from_vector(exec_dep, vector, buf[j * 2], &dep);
+					}
 				}
 			}
 		}
