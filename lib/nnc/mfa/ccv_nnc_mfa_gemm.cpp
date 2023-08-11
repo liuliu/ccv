@@ -313,12 +313,16 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   grid_size = MTL::Size(ceil_divide(hash.N, N_group), ceil_divide(hash.M, M_group), 1);
   group_size = MTL::Size(32 * M_splits * N_splits, 1, 1);
   
-  NS::Error* error;
+  NS::Error* error = nullptr;
   auto function = NS::TransferPtr(context->library->newFunction(swift_name, constants.get(), &error));
-  CCV_NNC_MFA_CHECK_ERROR(error)
+  if (!function) {
+    CCV_NNC_MFA_CHECK_ERROR(error)
+  }
   
   pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
-  CCV_NNC_MFA_CHECK_ERROR(error)
+  if (!pso) {
+    CCV_NNC_MFA_CHECK_ERROR(error)
+  }
   
   pool->drain();
 }

@@ -416,18 +416,24 @@ kernel void normalization(
     }
     source += shader;
     
-    NS::Error *error;
+    NS::Error *error = nullptr;
     auto swift_source = NS::String::string(source.c_str(),
      NS::UTF8StringEncoding);
     auto library = NS::TransferPtr(context->device->newLibrary(swift_source, nullptr, &error));
-    CCV_NNC_MFA_CHECK_ERROR(error)
+    if (!library) {
+      CCV_NNC_MFA_CHECK_ERROR(error)
+    }
     
     auto swift_name = NS::String::string("normalization", NS::UTF8StringEncoding);
     auto function = NS::TransferPtr(library->newFunction(swift_name, constants.get(), &error));
-    CCV_NNC_MFA_CHECK_ERROR(error)
+    if (!function) {
+      CCV_NNC_MFA_CHECK_ERROR(error)
+    }
     
     *pso = NS::TransferPtr(context->device->newComputePipelineState(function.get(), &error));
-    CCV_NNC_MFA_CHECK_ERROR(error)
+    if (!*pso) {
+      CCV_NNC_MFA_CHECK_ERROR(error)
+    }
   }
   
   pool->drain();

@@ -145,6 +145,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 	if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION)) {
 		assert(false); // MFA is required.
+		return CCV_NNC_EXEC_INVALID;
 	}
 
 	int attention_is_batched = (batch_size > 1);
