@@ -177,11 +177,10 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int* bdim_r = bdim;
 	int* bstride_r = bstride;
 	NSMutableArray<NSNumber*>* inputSize = [NSMutableArray new];	
-
 	for (int i = 0; i < CCV_NNC_MAX_DIM + 2; i++) {
 		[inputSize addObject:@(adim_r[i])];
 	}
-
+	
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		@autoreleasepool {
@@ -206,16 +205,17 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
                                         name:nil];
 
 				[resultTensors addObject:mps_a];
-				[graph dump];
 			});
-			printf("CCV_TENSOR_FORMAT_NCHW\n");
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim_r, bstride_r);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a, (int*[]){ adim_r }, (int*[]){ astride_r }, 1);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
-		printf("CCV_TENSOR_FORMAT_NHWC\n");
+		assert(inputSize.count == 4);
+		// for unknown reason, MPS handling NHWC as NHCW... 
+		// explicitly transpose input and output for NHWC
+		[inputSize exchangeObjectAtIndex:2 withObjectAtIndex:3];
 		@autoreleasepool {
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
@@ -226,7 +226,8 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[inputTensors addObject:mps_input_b];
 				MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, bdim_r, bstride_r);
 				[inputShapedTypes addObject:mps_b_shape];
-
+				// NHWC to NHCW
+				mps_b = [graph transposeTensor:mps_b dimension:-1 withDimension:-2 name:nil];
 				MPSGraphTensor* inputSizeTensor = [graph constantWithScalar:0 shape:inputSize dataType:ccv_nnc_mps_datatype(b->info.datatype)];
 
 				MPSGraphTensor* mps_a = [graph resizeWithGradientTensor:mps_b 
@@ -236,9 +237,9 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
                                 alignCorners:NO 
                                       layout:MPSGraphTensorNamedDataLayoutNHWC
                                         name:nil];
-
+				// NHCW to NHWC
+				mps_a = [graph transposeTensor:mps_a dimension:-1 withDimension:-2 name:nil];
 				[resultTensors addObject:mps_a];
-				[graph dump];
 			});
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim_r, bstride_r);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a , (int*[]){ adim_r }, (int*[]){ astride_r }, 1);
@@ -312,6 +313,11 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		}
 	} else {
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC);
+		assert(inputSize.count == 4);
+		// for unknown reason, MPS handling NHWC as NHCW... 
+		// explicitly transpose input and output for NHWC
+		[inputSize exchangeObjectAtIndex:2 withObjectAtIndex:3]; 
+
 		@autoreleasepool {
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
@@ -324,6 +330,8 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[inputShapedTypes addObject:mps_b_shape];
 				
 				MPSGraphTensor* inputSizeTensor = [graph constantWithScalar:0 shape:inputSize dataType:ccv_nnc_mps_datatype(b->info.datatype)];
+				// NHWC to NHCW
+				mps_b = [graph transposeTensor:mps_b dimension:-1 withDimension:-2 name:nil];
 
 				MPSGraphTensor* mps_a = [graph resizeWithGradientTensor:mps_b 
                                        input:inputSizeTensor 
@@ -332,6 +340,8 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
                                 alignCorners:NO 
                                       layout:MPSGraphTensorNamedDataLayoutNHWC
                                         name:nil];
+				// NHCW to NHWC
+				mps_a = [graph transposeTensor:mps_a dimension:-1 withDimension:-2 name:nil];
 
 				[resultTensors addObject:mps_a];
 			});
