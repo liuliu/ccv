@@ -122,15 +122,15 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const int b1_nd = ccv_nnc_tensor_nd(b2->info.dim);
 	const int g_nd = ccv_max(b2_nd, b1_nd);
 	const int offset = CCV_NNC_MAX_DIM + 2 - g_nd;
-	NSMutableArray<NSNumber*>* mps_g_shape = [NSMutableArray new];	
-	for (int i = offset; i < CCV_NNC_MAX_DIM + 2; i++){
-		[mps_g_shape addObject:@(gdim[i])]; // still need mps_g_shape for target broadcast shape
-		gdim[i-offset] = gdim[i]; // move forward to align info.dim format 
-	}               
-	const int* gdim_a = gdim;
-
 
 	@autoreleasepool {
+		NSMutableArray<NSNumber*>* mps_g_shape = [[NSMutableArray new] autorelease];	
+		for (int i = offset; i < CCV_NNC_MAX_DIM + 2; i++){
+			[mps_g_shape addObject:@(gdim[i])]; // still need mps_g_shape for target broadcast shape
+			gdim[i-offset] = gdim[i]; // move forward to align info.dim format 
+		}               
+		const int* gdim_a = gdim;
+
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
 		int indices[3];
@@ -170,6 +170,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						[da_axes addObject:@(i)];
 				}
 				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
+				[da_axes release];
 				[resultTensors addObject:mps_a];
 
 				if (h) {
@@ -188,6 +189,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							[dh_axes addObject:@(i)];
 					}
 					mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
+					[dh_axes release];
 					[resultTensors addObject:mps_h];
 				}
 				
@@ -210,6 +212,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						[b1_broadcastable_shape insertObject:@(1) atIndex:0]; 
 					}
 					mps_b1 = [graph reshapeTensor:mps_b1 withShape:b1_broadcastable_shape name:nil];
+					[b1_broadcastable_shape release];
 				}
 				// broadcast
 				mps_b1 = [graph broadcastTensor:mps_b1 toShape:mps_g_shape name:nil];
@@ -224,7 +227,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				}
 				// reduce
 				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
-
+				[da_axes release];
 				[resultTensors addObject:mps_a];
 
 				if (h) {
@@ -243,6 +246,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							[b2_broadcastable_shape insertObject:@(1) atIndex:0];
 						}
 						mps_b2 = [graph reshapeTensor:mps_b2 withShape:b2_broadcastable_shape name:nil];
+						[b2_broadcastable_shape release];
 					}
 					// broadcast
 					mps_b2 = [graph broadcastTensor:mps_b2 toShape:mps_g_shape name:nil];
@@ -257,7 +261,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					}
 					// reduce
 					mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
-
+					[dh_axes release];
 					[resultTensors addObject:mps_h];
 				}
 			}			

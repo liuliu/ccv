@@ -128,6 +128,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					[da_axes addObject:@(i)];
 			}
 			mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
+			[da_axes release];
 			[resultTensors addObject:mps_a];
 
 			if (b) {
@@ -144,6 +145,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						[db_axes addObject:@(i)];
 				}
 				mps_b = [graph reductionSumWithTensor:mps_b axes:db_axes name:nil];
+				[db_axes release];
 				[resultTensors addObject:mps_b];
 			}
 		});

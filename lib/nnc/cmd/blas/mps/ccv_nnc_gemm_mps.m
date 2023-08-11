@@ -418,6 +418,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 							[axes addObject:@(i)];
 					}
 					mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
+					[h_target_shape release];
+					[axes release];
 				}
 				[resultTensors addObject:mps_h];
 			});
@@ -472,6 +474,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 							[axes addObject:@(i)];
 					}
 					mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
+					[dw_target_shape release];
+					[axes release];
 				}
 
 				[resultTensors addObject:mps_dw];
@@ -512,6 +516,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						[axes addObject:@(i)];
 				}
 				MPSGraphTensor* mps_db = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
+				[bias_target_shape release];
+				[axes release];
 				[resultTensors addObject:mps_db];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
