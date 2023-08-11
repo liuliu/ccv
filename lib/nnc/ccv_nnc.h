@@ -2641,6 +2641,27 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 
 /** @} */
 
+/**
+ * @defgroup level_3_5_memory_reduction Memory Reduction
+ * @{
+ */
+
+/**
+ * Investigate memory reduction opportunities on the graph. Right now, we are looking at datatype
+ * conversions that resulted larger datatype, and these larger ones kept during backward pass.
+ * For these cases, we will keep the smaller one instead, and reconvert to larger datatype prior
+ * to the backward pass.
+ *
+ * @param graph The symbolic graph.
+ * @param sources The source execution node symbols array.
+ * @param source_size The size of source node symbols array.
+ * @param destinations The destinations execution node symbols array.
+ * @param destination_size The size of destination node symbols array.
+ */
+void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+
+/** @} */
+
 /** @} */
 
 /**
