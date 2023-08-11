@@ -332,6 +332,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				//	dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
+				[dscale_axes release];
 			}
 
 			if (dbias) {
@@ -341,6 +342,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 						[dbias_axes addObject:@(i)];
 				}
 				mps_dbias = [graph reductionSumWithTensor:mps_g axes:dbias_axes name:nil];
+				[dbias_axes release];
 			}
 
 			if (h) {
@@ -364,7 +366,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				// gssr = gss reduce
 				MPSGraphTensor* gssr = [graph reductionSumWithTensor:gss axes:axes name:nil];
-
+				[axes release];
 				// gssrp2[x] + ahp[x] * ahgssrp2[x]
 				gssrp_ahp_ahgssrp = [graph additionWithPrimaryTensor:gssrp_ahp_ahgssrp secondaryTensor:gssr name:nil];
 

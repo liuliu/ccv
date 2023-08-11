@@ -51,6 +51,7 @@ static int _ccv_nnc_mse_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				assert(cmd.info.mse.reduce_op == CCV_NNC_MSE_REDUCE_SUM);
 				mps_c = [graph reductionSumWithTensor:diff_square_tensor axes:axes name:nil];
 			}
+			[axes release];
 			[resultTensors addObject:mps_c];
 		});
 
@@ -123,7 +124,7 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					}
 				}
 				mps_g = [graph reshapeTensor:mps_g withShape:g_broadcastable_shape name:nil];
-
+				[g_broadcastable_shape release];
 				if (ha) {
 					MPSGraphTensor* diff = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_b name:nil];
 					MPSGraphTensor* mps_ha = [graph multiplicationWithPrimaryTensor:diff secondaryTensor:mps_g name:nil];

@@ -71,6 +71,7 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				for (i = 0; i < nd; i++)
 					[shape addObject:@(at.info.dim[i])];
 				mps_a = [graph reshapeTensor:mps_a withShape:shape name:nil];
+				[shape release];
 				mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape((ccv_nnc_tensor_view_t*)inputs[0], inputs[0]->info.dim, ((ccv_nnc_tensor_view_t*)inputs[0])->stride);
 			} else {
 				mps_a = ccv_nnc_mps_graph_tensor_input(graph, &at, at.info.dim, at.stride, &mps_input_a);
@@ -122,6 +123,7 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				for (i = 0; i < nd; i++)
 					[shape addObject:@(outputs[0]->info.dim[i])];
 				mps_b = [graph reshapeTensor:mps_b withShape:shape name:nil];
+				[shape release];
 			}
 			[resultTensors addObject:mps_b];
 			[resultTensors addObject:mps_saved_mean];
@@ -239,7 +241,6 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			mps_saved_inv_std = [graph broadcastTensor:mps_saved_inv_std toShape:group_reducible_shape name:nil];
 			mps_saved_inv_std = [graph reshapeTensor:mps_saved_inv_std withShape:mps_a.shape name:nil];
 
-
 			// ap1[x] - meanp2[0]
 			MPSGraphTensor* x_minus_mean = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_saved_mean name:nil];
 
@@ -257,6 +258,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				//  dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
+				[dscale_axes release];
 			}
 
 			if (dbias) {
@@ -266,6 +268,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 						[dbias_axes addObject:@(i)];
 				}
 				mps_dbias = [graph reductionSumWithTensor:mps_g axes:dbias_axes name:nil];
+				[dbias_axes release];
 			}
 
 			if (h) {
@@ -318,6 +321,9 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				// h = gssp[x] - inv_n * (gssrp2[x] + ahp[x] * ahgssrp2[x])
 				mps_h = [graph subtractionWithPrimaryTensor:gss secondaryTensor:gssrp_ahp_ahgssrp name:nil];
+
+				[group_broadcastable_shape release];
+				[group_reducible_shape release];
 			}
 
 			if (mps_h) {

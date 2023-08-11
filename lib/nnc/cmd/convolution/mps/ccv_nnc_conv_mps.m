@@ -408,7 +408,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 																				outputShape:mps_dw_shape.shape
 															forwardConvolutionDescriptor:dw_descriptor
 																					name:nil];
-
 				[resultTensors addObject:mps_dw];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
@@ -435,7 +434,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						[axes addObject:@(i)];
 				}
 				MPSGraphTensor* mps_db = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
-
+				[axes release];
 				[resultTensors addObject:mps_db];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
