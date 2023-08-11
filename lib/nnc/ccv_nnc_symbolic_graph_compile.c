@@ -2031,6 +2031,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (buf_size > 0)
 			{
 				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, outgoing);
+				assert(vector);
 				for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell_from_vector(exec_dep, vector, buf[j * 2]);

@@ -38,7 +38,7 @@ static ccv_sparse_matrix_t* _ccv_nnc_exec_dep_new(const ccv_nnc_symbolic_graph_t
 			continue;
 		for (i = 0; i < node->outgoings->rnum; i++)
 		{
-			int outgoing = *(int*)ccv_array_get(node->outgoings, i);
+			const int outgoing = *(int*)ccv_array_get(node->outgoings, i);
 			const int32_t one = 1;
 			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, idx);
 			/* If not found, set, if the current node is the destination node, no need 
@@ -48,6 +48,7 @@ static ccv_sparse_matrix_t* _ccv_nnc_exec_dep_new(const ccv_nnc_symbolic_graph_t
 			if (buf_size > 0)
 			{
 				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, outgoing);
+				assert(vector);
 				for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell_from_vector(exec_dep, vector, buf[j * 2]);
