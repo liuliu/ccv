@@ -376,7 +376,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(w); // when calculate h, w must exist
 			// [output gradient]
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)g, (ccv_nnc_tensor_t*)w }, 2, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)h }, 1);
-			int indices[1];
+			int indices[2];
 
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 				MPSGraphTensor* mps_input_g;
