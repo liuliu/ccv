@@ -102,8 +102,7 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 					tensor_symbol_info[d].r_assign_ref || tensor_symbol_info[d].r_bypass_ref)
 				continue;
 			tensor_marked[d >> 5] |= (1u << (d & 0x1f));
-		}
-		if (ccv_nnc_cmd_is_backward(node->cmd))
+		} else if (ccv_nnc_cmd_is_backward(node->cmd))
 			for (i = 0; i < node->input_size; i++)
 			{
 				const int d = node->inputs[i];

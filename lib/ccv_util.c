@@ -410,15 +410,6 @@ static uint32_t _ccv_sparse_matrix_size_for_index(const int prime_index)
 	return _ccv_sparse_prime[prime_index - 1];
 }
 
-static uint32_t _ccv_sparse_matrix_k_from_index(const uint32_t hash, const int prime_index, const uint32_t size, const uint32_t k)
-{
-	uint32_t idx = _ccv_sparse_matrix_index_for_hash(hash, prime_index);
-	if (k > idx)
-		return k - idx + 2;
-	else
-		return size + k - idx + 2;
-}
-
 static void _ccv_init_sparse_matrix_vector(ccv_sparse_matrix_vector_t* vector, const ccv_sparse_matrix_t* const mat)
 {
 	if (mat->type & CCV_DENSE_VECTOR)
@@ -483,7 +474,7 @@ static inline void _ccv_move_sparse_matrix_vector(ccv_sparse_matrix_index_t* con
 		}
 		uint32_t j = index[idx].ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index[idx].i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index[idx].i + size - idx, prime_index)) + 2;
 		if (k > j)
 		{
 			index[idx].ifbit = k > 0xff ? 0xff : k;
@@ -533,7 +524,7 @@ static ccv_sparse_matrix_vector_t* _ccv_get_or_add_sparse_matrix_vector(ccv_spar
 			idx = 0;
 		uint32_t j = index[idx].ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index[idx].i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index[idx].i + size - idx, prime_index)) + 2;
 		if (k > j)
 		{
 			++mat->rnum;
@@ -576,7 +567,7 @@ ccv_sparse_matrix_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix
 			idx = 0;
 		uint32_t j = index[idx].ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index[idx].i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index[idx].i + size - idx, prime_index)) + 2;
 		if (k > j)
 			return 0;
 		if (index[idx].i == i)
@@ -622,7 +613,7 @@ ccv_numeric_data_t ccv_get_sparse_matrix_cell_from_vector(const ccv_sparse_matri
 		ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
 		uint32_t j = index_idx->ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index_idx->i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index_idx->i + size - idx, prime_index)) + 2;
 		if (k > j)
 			return cell;
 		if (index_idx->i == vidx)
@@ -721,7 +712,7 @@ static void _ccv_sparse_matrix_vector_inc_size(const ccv_sparse_matrix_t* const 
 					break;
 				}
 				if (j == 0xff)
-					j = _ccv_sparse_matrix_k_from_index(index_idx->i, prime_index, new_size, idx) + 2; // This is valid because on overflow, unsigned is well defined.
+					j = (new_size - _ccv_sparse_matrix_index_for_hash((index_idx->i + new_size - idx), prime_index)) + 2; // This is valid because on overflow, unsigned is well defined.
 				if (k <= j) // j could be either a valid one or 1, in any case, this will pass.
 					continue;
 				index_idx->ifbit = k > 0xff ? 0xff : k;
@@ -811,7 +802,7 @@ static void _ccv_sparse_matrix_inc_size(ccv_sparse_matrix_t* mat)
 					break;
 				}
 				if (j == 0xff)
-					j = _ccv_sparse_matrix_k_from_index(index[idx].i, prime_index, new_size, idx); // This is valid because on overflow, unsigned is well defined.
+					j = (new_size - _ccv_sparse_matrix_index_for_hash((index[idx].i + new_size - idx), prime_index)) + 2; // This is valid because on overflow, unsigned is well defined.
 				if (k <= j) // j could be either a valid one or 1, in any case, this will pass.
 					continue;
 				index[idx].ifbit = k > 0xff ? 0xff : k;
@@ -886,7 +877,7 @@ static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k
 		}
 		uint32_t j = index_idx->ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index_idx->i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index_idx->i + size - idx, prime_index)) + 2;
 		if (k > j)
 		{
 			index_idx->ifbit = k > 0xff ? 0xff : k;
@@ -958,7 +949,7 @@ void ccv_set_sparse_matrix_cell_from_vector(ccv_sparse_matrix_t* mat, ccv_sparse
 		ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
 		uint32_t j = index_idx->ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index_idx->i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index_idx->i + size - idx, prime_index)) + 2;
 		if (k > j)
 		{
 			++vector->rnum;
@@ -989,7 +980,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, cons
 	// This will handle initialize a vector if it doesn't already exist.
 	if ((mat->rnum + 1) * 10llu > mat->size * 9llu) // expand when reached 90%.
 		_ccv_sparse_matrix_inc_size(mat);
-	ccv_sparse_matrix_vector_t* vector = _ccv_get_or_add_sparse_matrix_vector(mat, hidx);
+	ccv_sparse_matrix_vector_t* const vector = _ccv_get_or_add_sparse_matrix_vector(mat, hidx);
 	const size_t cell_size = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
 	if (mat->type & CCV_DENSE_VECTOR)
 	{
@@ -1041,7 +1032,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, cons
 		ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
 		uint32_t j = index_idx->ifbit;
 		if (j == 0xff)
-			j = _ccv_sparse_matrix_k_from_index(index_idx->i, prime_index, size, idx);
+			j = (size - _ccv_sparse_matrix_index_for_hash(index_idx->i + size - idx, prime_index)) + 2;
 		if (k > j)
 		{
 			++vector->rnum;
