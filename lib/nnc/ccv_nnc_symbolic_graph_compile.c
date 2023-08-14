@@ -257,6 +257,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 	int* const assigned = (int*)cccalloc(tensor_block_size, sizeof(int));
 	uint64_t* const allocated_offset = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
 	uint64_t* const allocated_size = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
+	uint32_t* const tensor_block_cannot_insert = (uint32_t*)cccalloc(((tensor_block_size + 31) >> 5), sizeof(uint32_t));
 	int num_assigned = 0; 
 	// I can do a bit optimization here to assign out const tensor first, but heck, this just works for now.
 	// Allocation graph (assuming there is a source node, and a destination node, which is 0, and (tensor_block_size + 1)
@@ -312,6 +313,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 				if (a.oc == last_oc) // Not useful to check another one with the same oc.
 					continue;
 				last_oc = a.oc;
+				if ((tensor_block_cannot_insert[a.index >> 5] & (1u << (a.index & 0x1f))))
+					continue;
 				// Now, determine the order between a and c. After this, we can always check whether y
 				// can hop to the earliest one and if the latest one can hop to x.
 				// The earliest one will be called p and the latest one will be called q.
@@ -320,6 +323,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 				if (tensor_blocks[a.index].companion_ref)
 				{
 					const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
+					if ((tensor_block_cannot_insert[companion_ref >> 5] & (1u << (companion_ref & 0x1f))))
+						continue;
 					const ccv_numeric_data_t b_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, p, companion_ref);
 					if (b_hop_p.i32 && b_hop_p.i32[0] > 0)
 						p = companion_ref;
@@ -427,6 +432,13 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 				{
 					min_i = i;
 					break;
+				}
+				// There is no space to insert this block, mark it as such.
+				tensor_block_cannot_insert[a.index >> 5] |= (1u << (a.index & 0x1f));
+				if (tensor_blocks[a.index].companion_ref)
+				{
+					const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
+					tensor_block_cannot_insert[companion_ref >> 5] |= (1u << (companion_ref & 0x1f));
 				}
 			}
 		}
@@ -548,8 +560,32 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 			if (val[0] > 0)
 				ccv_set_sparse_matrix_cell(alloc, strings[i], min_x, val);
 		}
+		if (min_i == -1)
+		{
+			// If we decide to insert a new edge, simply marking anyone who is not interfere with it to redo.
+			const int p = strings[0] - 1;
+			const int q = strings[string_size - 1] - 1;
+			const int type = tensor_blocks[p].type;
+#define for_block(y, val) do { \
+				if (((int*)val)[0] > 0 && !assigned[y] && tensor_blocks[y].type == type && tensor_blocks[y].size <= a.size) \
+					tensor_block_cannot_insert[y >> 5] &= ~(1u << (y & 0x1f)); \
+			} while(0)
+			ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(tensor_dt, p);
+			if (y_vector)
+				CCV_SPARSE_VECTOR_FOREACH(tensor_dt, y_vector, for_block);
+#undef for_block
+#define for_block(x, val) do { \
+				if (((int*)val)[0] > 0 && !assigned[x] && tensor_blocks[x].type == type && tensor_blocks[x].size <= a.size) \
+					tensor_block_cannot_insert[x >> 5] &= ~(1u << (x & 0x1f)); \
+			} while(0)
+			ccv_sparse_matrix_vector_t* const x_vector = ccv_get_sparse_matrix_vector(tensor_df, q);
+			if (x_vector)
+				CCV_SPARSE_VECTOR_FOREACH(tensor_df, x_vector, for_block);
+#undef for_block
+		}
 		j += string_size;
 	}
+	ccfree(tensor_block_cannot_insert);
 	ccfree(buf);
 	ccv_array_free(opt);
 	ccv_matrix_free(tensor_df);

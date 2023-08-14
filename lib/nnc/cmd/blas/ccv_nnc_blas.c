@@ -34,6 +34,9 @@ static int _ccv_nnc_gemm_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int i
 	// No bias.
 	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1) | (0 << 2) | (0 << 3)) && output_bitmasks[0] == ((0 << 0) | (1u << 1) | (0 << 2)))
 		return 1;
+	// Bias, no weight.
+	if ((input_bitmasks[0] & 5u) == ((1u << 0) | (0 << 1) | (1u << 2) | (0 << 3)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (1u << 2)))
+		return 1;
 	// No bias, No weight.
 	if ((input_bitmasks[0] & 5u) == ((1u << 0) | (0 << 1) | (1u << 2) | (0 << 3)) && output_bitmasks[0] == ((1u << 0) | (0u << 1) | (0 << 2)))
 		return 1;
