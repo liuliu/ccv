@@ -29,7 +29,7 @@ void mfa::fatal_error(NS::Error* error, int line, const char *file_name, const c
     std::cerr << METAL_LOG_HEADER << "Failure reason: " << failure_reason->cString(NS::UTF8StringEncoding) << std::endl;
   }
   std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
-  exit(-1);
+  __builtin_trap();
 }
 
 void mfa::precondition_failure(const char *message, int line, const char *file_name, const char *function_name) {
@@ -42,5 +42,5 @@ void mfa::precondition_failure(const char *message, int line, const char *file_n
   }
   std::cerr << "\e[0m" << std::endl;
   std::cerr << METAL_LOG_HEADER << "Quitting now." << std::endl;
-  exit(-1);
+  __builtin_trap();
 }
