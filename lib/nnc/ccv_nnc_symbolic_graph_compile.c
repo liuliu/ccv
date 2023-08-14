@@ -306,13 +306,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 		};
 		if (j > 0)
 		{
-			int last_oc = (opt->rnum > 0) ? ((ccv_nnc_tensor_opt_t*)ccv_array_get(opt, 0))->oc + 1 : 0;
 			for (i = 0; i < opt->rnum; i++)
 			{
 				ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
-				if (a.oc == last_oc) // Not useful to check another one with the same oc.
-					continue;
-				last_oc = a.oc;
 				if ((tensor_block_cannot_insert[a.index >> 5] & (1u << (a.index & 0x1f))))
 					continue;
 				// Now, determine the order between a and c. After this, we can always check whether y
