@@ -904,7 +904,7 @@ void ccv_set_sparse_matrix_cell_from_vector(ccv_sparse_matrix_t* mat, ccv_sparse
 		memcpy(vector->data.u8 + vidx * cell_size, data, cell_size);
 		return;
 	}
-	if ((vector->rnum + 1) * 10llu > vector->size * 9llu) // expand when reached 90%.
+	if ((vector->rnum + 1) * 10llu > vector->size * 8llu) // expand when reached 90%.
 		_ccv_sparse_matrix_vector_inc_size(mat, vector);
 	// Align to 4 bytes.
 	const size_t cell_size_aligned = (CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type) + 3) & -4;
@@ -978,7 +978,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, cons
 	const int hidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row;
 	const int vidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? row : col;
 	// This will handle initialize a vector if it doesn't already exist.
-	if ((mat->rnum + 1) * 10llu > mat->size * 9llu) // expand when reached 90%.
+	if ((mat->rnum + 1) * 10llu > mat->size * 8llu) // expand when reached 90%.
 		_ccv_sparse_matrix_inc_size(mat);
 	ccv_sparse_matrix_vector_t* const vector = _ccv_get_or_add_sparse_matrix_vector(mat, hidx);
 	const size_t cell_size = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
@@ -987,7 +987,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, cons
 		memcpy(vector->data.u8 + vidx * cell_size, data, cell_size);
 		return;
 	}
-	if ((vector->rnum + 1) * 10llu > vector->size * 9llu) // expand when reached 90%.
+	if ((vector->rnum + 1) * 10llu > vector->size * 8llu) // expand when reached 90%.
 		_ccv_sparse_matrix_vector_inc_size(mat, vector);
 	// Align to 4 bytes.
 	const size_t cell_size_aligned = (CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type) + 3) & -4;
