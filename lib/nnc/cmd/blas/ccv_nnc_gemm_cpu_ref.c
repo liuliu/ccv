@@ -305,10 +305,12 @@ static inline void _ccv_nnc_gbmm_h(const float* const g, const int g_nd, const i
 	int i;
 	for (i = 0; i < dim; i++)
 	{
+		// Only zero h if we are not doing h again.
+		const int zero_h_override = (i == 0 || (i * hstride[0] > 0 && h_nd > 3)) ? zero_h : 0;
 		_ccv_nnc_gbmm_h(
 			g + i * gstride[0], g_nd - 1, gdim + 1, gstride + 1,
 			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
-			h_nd > 3 ? h + i * hstride[0] : h, zero_h, h_nd > 3 ? h_nd - 1 : h_nd, h_nd > 3 ? hdim + 1 : hdim, h_nd > 3 ? hstride + 1 : hstride,
+			h_nd > 3 ? h + i * hstride[0] : h, zero_h_override, h_nd > 3 ? h_nd - 1 : h_nd, h_nd > 3 ? hdim + 1 : hdim, h_nd > 3 ? hstride + 1 : hstride,
 			g_batch_size, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_cols_inc, w_cols_inc, h_cols_inc, g_rows_inc, w_rows_inc, h_rows_inc);
 	}
 }
