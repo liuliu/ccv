@@ -151,7 +151,11 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
 		MPSGraphTensorData* data[] = {data_g};
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]]], (ccv_nnc_tensor_view_t* []){ a, b }, (int*[]){ a->info.dim,b->info.dim }, (int*[]){ a->stride, b->stride }, 2);
+		if (b) {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]]], (ccv_nnc_tensor_view_t* []){ a, b }, (int*[]){ a->info.dim,b->info.dim }, (int*[]){ a->stride, b->stride }, 2);
+		} else {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]]], (ccv_nnc_tensor_view_t* []){ a }, (int*[]){ a->info.dim}, (int*[]){ a->stride }, 1);
+		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
