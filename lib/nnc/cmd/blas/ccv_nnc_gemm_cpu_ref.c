@@ -327,7 +327,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
 	const static int no_transpose[2] = {};
 	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->stride : 0, g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
-	int n, i;
 	if (bias)
 	{
 		if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
