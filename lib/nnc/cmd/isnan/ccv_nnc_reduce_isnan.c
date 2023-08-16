@@ -20,14 +20,14 @@ static int _ccv_nnc_reduce_isnan_forw_bitmask(const ccv_nnc_cmd_param_t cmd, con
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_ISNAN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_isnan_cpu_ref.c, gpu/ccv_nnc_reduce_isnan_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_reduce_isnan_cpu_ref.c, gpu/ccv_nnc_reduce_isnan_gpu_cudnn.cu, mps/ccv_nnc_reduce_isnan_mps.m)
 {
 	registry->bitmask = _ccv_nnc_reduce_isnan_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_ISNAN_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_isnan_cpu_ref.c, gpu/ccv_nnc_reduce_isnan_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_reduce_isnan_cpu_ref.c, gpu/ccv_nnc_reduce_isnan_gpu_cudnn.cu, mps/ccv_nnc_reduce_isnan_mps.m)
 {
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
