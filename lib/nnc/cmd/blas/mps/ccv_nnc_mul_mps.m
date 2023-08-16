@@ -278,7 +278,11 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			inputs_array = @[data[indices[0]], data[indices[1]]];
 		}
 
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, inputs_array, (ccv_nnc_tensor_view_t* []){ a, h }, (int*[]){ a->info.dim, h->info.dim }, (int*[]){ a->stride, h->stride }, 2);
+		if (h) {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, inputs_array, (ccv_nnc_tensor_view_t* []){ a, h }, (int*[]){ a->info.dim, h->info.dim }, (int*[]){ a->stride, h->stride }, 2);
+		} else {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, inputs_array, (ccv_nnc_tensor_view_t* []){ a }, (int*[]){ a->info.dim }, (int*[]){ a->stride }, 1);
+		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
