@@ -37,7 +37,7 @@ static void _ccv_nnc_adam_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_ADAM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_adam_cpu_ref.c, gpu/ccv_nnc_adam_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_adam_cpu_ref.c, gpu/ccv_nnc_adam_gpu_ref.cu, mps/ccv_nnc_adam_mps.m)
 {
 	registry->bitmask = _ccv_nnc_adam_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_adam_tensor_auto_forw;
@@ -45,7 +45,7 @@ REGISTER_COMMAND(CCV_NNC_ADAM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_ADAM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_adam_cpu_ref.c, gpu/ccv_nnc_adam_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_adam_cpu_ref.c, gpu/ccv_nnc_adam_gpu_ref.cu, mps/ccv_nnc_adam_mps.m)
 {
 	registry->bitmask = _ccv_nnc_adam_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_adam_tensor_auto_back;
@@ -55,7 +55,7 @@ REGISTER_COMMAND(CCV_NNC_ADAM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 #define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
 
 REGISTER_COMMAND(CCV_NNC_ADAMW_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_adamw_cpu_ref.c, gpu/ccv_nnc_adamw_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_adamw_cpu_ref.c, gpu/ccv_nnc_adamw_gpu_ref.cu, mps/ccv_nnc_adamw_mps.m)
 {
 	registry->bitmask = _ccv_nnc_adam_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_adam_tensor_auto_forw;
@@ -63,7 +63,7 @@ REGISTER_COMMAND(CCV_NNC_ADAMW_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_ADAMW_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_adamw_cpu_ref.c, gpu/ccv_nnc_adamw_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_adamw_cpu_ref.c, gpu/ccv_nnc_adamw_gpu_ref.cu, mps/ccv_nnc_adamw_mps.m)
 {
 	registry->bitmask = _ccv_nnc_adam_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_adam_tensor_auto_back;
