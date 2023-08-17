@@ -158,7 +158,11 @@ static int _ccv_nnc_mse_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
 		MPSGraphTensorData* data[] = {data_a, data_b, data_g};
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ ha, hb }, (int*[]){ ha->info.dim, hb->info.dim }, (int*[]){ ha->stride, hb->stride }, 2);
+		if (hb) {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ ha, hb }, (int*[]){ ha->info.dim, hb->info.dim }, (int*[]){ ha->stride, hb->stride }, 2);
+		} else {
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ ha }, (int*[]){ ha->info.dim }, (int*[]){ ha->stride }, 1);
+		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
