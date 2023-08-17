@@ -328,6 +328,7 @@ static inline khint32_t _kh_graph_key_executable_hash_func(const ccv_nnc_mps_gra
 	data = (uint32_t*)&key.hint;
 	for (i = 0; i < sizeof(key.hint) / sizeof(uint32_t); i++)
 		h = twang_32from64(((uint64_t)h << 32) | data[i]);
+	h = twang_32from64(((uint64_t)h << 32) | key.index);
 	h = twang_32from64(((uint64_t)h << 32) | key.input_size);
 	h = twang_32from64(((uint64_t)h << 32) | key.output_size);
 	for (i = 0; i < key.input_size; i++)
@@ -359,7 +360,7 @@ static inline khint32_t _kh_graph_key_executable_hash_func(const ccv_nnc_mps_gra
 
 static inline int _kh_graph_key_executable_hash_equal(const ccv_nnc_mps_graph_key_t a, const ccv_nnc_mps_graph_key_t b)
 {
-	if (a.cmd != b.cmd || a.flags != b.flags || a.input_size != b.input_size || a.output_size != b.output_size)
+	if (a.cmd != b.cmd || a.flags != b.flags || a.index != b.index || a.input_size != b.input_size || a.output_size != b.output_size)
 		return 0;
 	if (memcmp(&a.params, &b.params, sizeof(a.params)) != 0)
 		return 0;
@@ -460,10 +461,11 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 	return kh_val(g_graph_executable_cache, k).exec;
 }
 
-ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	ccv_nnc_mps_graph_key_t key = {
 		.cmd = cmd.cmd,
+		.index = index,
 		.hint = hint,
 		.params = cmd.info,
 		.inputs = 0,

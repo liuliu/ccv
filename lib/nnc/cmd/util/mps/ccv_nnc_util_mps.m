@@ -101,7 +101,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
-			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs + i, 1, outputs + i, 1);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs + i, 1, outputs + i, 1);
 			int indices[1];
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 				MPSGraphTensor* mps_input_a;
@@ -146,7 +146,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
-			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, 0, 0, outputs + i, 1);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)
@@ -171,7 +171,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
-			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, 0, 0, outputs + i, 1);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
 			for (j = 0; j < nd; j++)

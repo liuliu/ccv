@@ -53,6 +53,7 @@ typedef struct {
 	ccv_nnc_cmd_param_t params;
 	ccv_nnc_hint_t hint;
 	int flags;
+	int index;
 	int input_size;
 	int output_size;
 	ccv_nnc_mps_graph_tensor_shape_t* inputs;
@@ -68,7 +69,7 @@ CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buff
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
-CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 CCV_WARN_UNUSED(MPSDataType) ccv_nnc_mps_datatype(const int datatype); // Get the datatype corresponding to MPS datatype.
 CCV_WARN_UNUSED(MPSGraphTensorNamedDataLayout) ccv_nnc_mps_tensor_data_layout(const int format); // Get the format corresponding to MPS data layout.
 CCV_WARN_UNUSED(MPSGraphTensor*) ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input);
