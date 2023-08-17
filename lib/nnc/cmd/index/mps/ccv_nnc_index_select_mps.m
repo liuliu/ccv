@@ -24,7 +24,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	assert(ccv_nnc_tensor_nd(b->info.dim) <= 2);
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, hint, flags, inputs, input_size, outputs, output_size);
+		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int idx[2];
 		int indices_dim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 		int indices_stride[CCV_NNC_MAX_DIM_ALLOC] = {0};
