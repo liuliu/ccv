@@ -179,6 +179,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					mps_b1 = [graph reshapeTensor:mps_b1 withShape:b1_broadcastable_shape name:nil];
 					[b1_broadcastable_shape release];
 				}
+				// broadcast
+				mps_b1 = [graph broadcastTensor:mps_b1 toShape:mps_g_shape name:nil];
 				// multiply 
 				mps_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_b1 name:nil];
 
@@ -245,6 +247,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 					mps_b2 = [graph reshapeTensor:mps_b2 withShape:b2_broadcastable_shape name:nil];
 					[b2_broadcastable_shape release];
 				}
+				// broadcast
+				mps_b2 = [graph broadcastTensor:mps_b2 toShape:mps_g_shape name:nil];
 				// multiply
 				mps_h = [graph multiplicationWithPrimaryTensor:mps_h secondaryTensor:mps_b2 name:nil];
 
