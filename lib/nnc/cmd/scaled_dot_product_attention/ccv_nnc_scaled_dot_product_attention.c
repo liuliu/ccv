@@ -85,7 +85,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 
 static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size >= 10);
+	assert(input_size >= 6);
 	assert(output_size >= 3);
 	int i;
 	for (i = 0; i < output_size; i++)

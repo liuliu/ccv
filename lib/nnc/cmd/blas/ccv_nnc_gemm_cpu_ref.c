@@ -183,6 +183,138 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static inline void _ccv_nnc_bmm_dbias(const float* const g, float* const dbias, const int g_batch_size, const int g_batch_inc, const int dbias_batch_inc, const int g_rows, const int g_cols, const int g_cols_inc, const int dbias_cols_inc, const int g_rows_inc, const int dbias_rows_inc)
+{
+	int n, i, j;
+	for (n = 0; n < g_batch_size; n++)
+	{
+		const float* const gp = g + n * g_batch_inc;
+		float* const bp = dbias + n * dbias_batch_inc;
+		for (i = 0; i < g_rows; i++)
+		{
+			const float* const gpi = gp + i * g_rows_inc;
+			float* const bpi = bp + i * dbias_rows_inc;
+			for (j = 0; j < g_cols; j++)
+				bpi[j * dbias_cols_inc] += gpi[j * g_cols_inc];
+		}
+	}
+}
+
+static inline void _ccv_nnc_gbmm_dbias(const float* const g, const int g_nd, const int* const gdim, const int* const gstride, float* const dbias, const int dbias_nd, const int* const dbiasdim, const int* const dbiasstride, const int g_batch_size, const int g_batch_inc, const int dbias_batch_inc, const int g_rows, const int g_cols, const int g_cols_inc, const int dbias_cols_inc, const int g_rows_inc, const int dbias_rows_inc)
+{
+	if (g_nd <= 3)
+	{
+		_ccv_nnc_bmm_dbias(g, dbias, g_batch_size, g_batch_inc, dbias_batch_inc, g_rows, g_cols, g_cols_inc, dbias_cols_inc, g_rows_inc, dbias_rows_inc);
+		return;
+	}
+	const int dim = gdim[0];
+	if (dbias_nd > 3)
+		{ assert(dbiasdim[0] == 1 || dim == dbiasdim[0]); }
+	int i;
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm_dbias(
+			g + i * gstride[0], g_nd - 1, gdim + 1, gstride + 1,
+			dbias_nd > 3 ? dbias + i * dbiasstride[0] : dbias, dbias_nd > 3 ? dbias_nd - 1 : dbias_nd, dbias_nd > 3 ? dbiasdim + 1 : dbiasdim, dbias_nd > 3 ? dbiasstride + 1 : dbiasstride,
+			g_batch_size, g_batch_inc, dbias_batch_inc, g_rows, g_cols, g_cols_inc, dbias_cols_inc, g_rows_inc, dbias_rows_inc);
+	}
+}
+
+static inline void _ccv_nnc_bmm_dw(const float* const g, const float* const a, float* const dw, const int g_batch_size, const int g_batch_inc, const int a_batch_inc, const int dw_batch_inc, const int a_rows, const int a_cols, const int g_cols, const int g_cols_inc, const int a_cols_inc, const int dw_cols_inc, const int g_rows_inc, const int a_rows_inc, const int dw_rows_inc)
+{
+	int n, i;
+	for (n = 0; n < g_batch_size; n++)
+	{
+		const float* const gp = g + n * g_batch_inc;
+		const float* const ap = a + n * a_batch_inc;
+		float* const dwp = dw + n * dw_batch_inc;
+		for (i = 0; i < a_rows; i++)
+		{
+			const float* const gpi = gp + i * g_rows_inc;
+			const float* const api = ap + i * a_rows_inc;
+			parallel_for(j, g_cols) {
+				const float v = gpi[j * g_cols_inc];
+				float* dwpj = dwp + j * dw_cols_inc;
+				int k;
+				for (k = 0; k < a_cols; k++)
+					dwpj[k * dw_rows_inc] += api[k * a_cols_inc] * v;
+			} parallel_endfor
+		}
+	}
+}
+
+static inline void _ccv_nnc_gbmm_dw(const float* const g, const int g_nd, const int* const gdim, const int* const gstride, const float* const a, const int a_nd, const int* const adim, const int* const astride, float* const dw, const int dw_nd, const int* const dwdim, const int* const dwstride, const int g_batch_size, const int g_batch_inc, const int a_batch_inc, const int dw_batch_inc, const int a_rows, const int a_cols, const int g_cols, const int g_cols_inc, const int a_cols_inc, const int dw_cols_inc, const int g_rows_inc, const int a_rows_inc, const int dw_rows_inc)
+{
+	if (g_nd <= 3)
+	{
+		_ccv_nnc_bmm_dw(g, a, dw, g_batch_size, g_batch_inc, a_batch_inc, dw_batch_inc, a_rows, a_cols, g_cols, g_cols_inc, a_cols_inc, dw_cols_inc, g_rows_inc, a_rows_inc, dw_rows_inc);
+		return;
+	}
+	const int dim = gdim[0];
+	if (a_nd > 3)
+		{ assert(adim[0] == 1 || dim == adim[0]); }
+	if (dw_nd > 3)
+		{ assert(dwdim[0] == 1 || dim == dwdim[0]); }
+	int i;
+	for (i = 0; i < dim; i++)
+	{
+		_ccv_nnc_gbmm_dw(
+			g + i * gstride[0], g_nd - 1, gdim + 1, gstride + 1,
+			a_nd > 3 ? a + i * astride[0] : a, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
+			dw_nd > 3 ? dw + i * dwstride[0] : dw, dw_nd > 3 ? dw_nd - 1 : dw_nd, dw_nd > 3 ? dwdim + 1 : dwdim, dw_nd > 3 ? dwstride + 1 : dwstride,
+			g_batch_size, g_batch_inc, a_batch_inc, dw_batch_inc, a_rows, a_cols, g_cols, g_cols_inc, a_cols_inc, dw_cols_inc, g_rows_inc, a_rows_inc, dw_rows_inc);
+	}
+}
+
+static inline void _ccv_nnc_bmm_h(const float* const g, const float* const w, float* const h, const int zero_h, const int g_batch_size, const int g_batch_inc, const int w_batch_inc, const int h_batch_inc, const int h_rows, const int h_cols, const int g_cols, const int g_cols_inc, const int w_cols_inc, const int h_cols_inc, const int g_rows_inc, const int w_rows_inc, const int h_rows_inc)
+{
+	int n, i;
+	for (n = 0; n < g_batch_size; n++)
+	{
+		const float* const gp = g + n * g_batch_inc;
+		const float* const wp = w + n * w_batch_inc;
+		float* const hp = h + n * h_batch_inc;
+		for (i = 0; i < h_rows; i++)
+		{
+			const float* const gpi = gp + i * g_rows_inc;
+			float* const hpi = hp + i * h_rows_inc;
+			parallel_for(j, h_cols) {
+				const float* const wpj = wp + j * w_rows_inc;
+				float v = zero_h ? 0 : hpi[j * h_cols_inc];
+				int k;
+				for (k = 0; k < g_cols; k++)
+					v += wpj[k * w_cols_inc] * gpi[k * g_cols_inc];
+				hpi[j * h_cols_inc] = v;
+			} parallel_endfor
+		}
+	}
+}
+
+static inline void _ccv_nnc_gbmm_h(const float* const g, const int g_nd, const int* const gdim, const int* const gstride, const float* const w, const int w_nd, const int* const wdim, const int* const wstride, float* const h, const int zero_h, const int h_nd, const int* const hdim, const int* const hstride, const int g_batch_size, const int g_batch_inc, const int w_batch_inc, const int h_batch_inc, const int h_rows, const int h_cols, const int g_cols, const int g_cols_inc, const int w_cols_inc, const int h_cols_inc, const int g_rows_inc, const int w_rows_inc, const int h_rows_inc)
+{
+	if (g_nd <= 3)
+	{
+		_ccv_nnc_bmm_h(g, w, h, zero_h, g_batch_size, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_cols_inc, w_cols_inc, h_cols_inc, g_rows_inc, w_rows_inc, h_rows_inc);
+		return;
+	}
+	const int dim = gdim[0];
+	if (w_nd > 3)
+		{ assert(wdim[0] == 1 || dim == wdim[0]); }
+	if (h_nd > 3)
+		{ assert(hdim[0] == 1 || dim == hdim[0]); }
+	int i;
+	for (i = 0; i < dim; i++)
+	{
+		// Only zero h if we are not doing h again.
+		const int zero_h_override = (i == 0 || (i * hstride[0] > 0 && h_nd > 3)) ? zero_h : 0;
+		_ccv_nnc_gbmm_h(
+			g + i * gstride[0], g_nd - 1, gdim + 1, gstride + 1,
+			w_nd > 3 ? w + i * wstride[0] : w, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
+			h_nd > 3 ? h + i * hstride[0] : h, zero_h_override, h_nd > 3 ? h_nd - 1 : h_nd, h_nd > 3 ? hdim + 1 : hdim, h_nd > 3 ? hstride + 1 : hstride,
+			g_batch_size, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_cols_inc, w_cols_inc, h_cols_inc, g_rows_inc, w_rows_inc, h_rows_inc);
+	}
+}
+
 static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// inputs: gradient, forw prop input, [w]
@@ -195,7 +327,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
 	const static int no_transpose[2] = {};
 	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->stride : 0, g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
-	int n, i;
 	if (bias)
 	{
 		if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -208,19 +339,23 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			bias_batch_inc = 0;
 		if (bias_rows == 1 && g_rows > 1)
 			bias_rows_inc = 0;
-		int j;
-		for (n = 0; n < g_batch_size; n++)
-		{
-			const float* const gp = g->data.f32 + n * g_batch_inc;
-			float* const bp = bias->data.f32 + n * bias_batch_inc;
-			for (i = 0; i < g_rows; i++)
-			{
-				const float* const gpi = gp + i * g_rows_inc;
-				float* const bpi = bp + i * bias_rows_inc;
-				for (j = 0; j < g_cols; j++)
-					bpi[j * bias_cols_inc] += gpi[j * g_cols_inc];
-			}
+		int gstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		const int* gstride;
+		if (CCV_IS_TENSOR_VIEW(g))
+			gstride = g->stride;
+		else {
+			ccv_nnc_tensor_get_stride(g->info.dim, gstride_from_dim);
+			gstride = gstride_from_dim;
 		}
+		int biasstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		const int* biasstride;
+		if (CCV_IS_TENSOR_VIEW(bias))
+			biasstride = bias->stride;
+		else {
+			ccv_nnc_tensor_get_stride(bias->info.dim, biasstride_from_dim);
+			biasstride = biasstride_from_dim;
+		}
+		_ccv_nnc_gbmm_dbias(g->data.f32, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, bias->data.f32, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, g_batch_size, g_batch_inc, bias_batch_inc, g_rows, g_cols, g_cols_inc, bias_cols_inc, g_rows_inc, bias_rows_inc);
 	}
 	if (dw)
 	{
@@ -240,24 +375,31 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(dw_batch_size == g_batch_size || dw_batch_size == 1);
 		if (dw_batch_size == 1 && g_batch_size > 1)
 			dw_batch_inc = 0;
-		for (n = 0; n < g_batch_size; n++)
-		{
-			const float* const gp = g->data.f32 + n * g_batch_inc;
-			const float* const ap = a->data.f32 + n * a_batch_inc;
-			float* const dwp = dw->data.f32 + n * dw_batch_inc;
-			for (i = 0; i < a_rows; i++)
-			{
-				const float* const gpi = gp + i * g_rows_inc;
-				const float* const api = ap + i * a_rows_inc;
-				parallel_for(j, g_cols) {
-					const float v = gpi[j * g_cols_inc];
-					float* dwpj = dwp + j * dw_cols_inc;
-					int k;
-					for (k = 0; k < a_cols; k++)
-						dwpj[k * dw_rows_inc] += api[k * a_cols_inc] * v;
-				} parallel_endfor
-			}
+		int gstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int astride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int dwstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		const int* gstride;
+		if (CCV_IS_TENSOR_VIEW(g))
+			gstride = g->stride;
+		else {
+			ccv_nnc_tensor_get_stride(g->info.dim, gstride_from_dim);
+			gstride = gstride_from_dim;
 		}
+		const int* astride;
+		if (CCV_IS_TENSOR_VIEW(a))
+			astride = a->stride;
+		else {
+			ccv_nnc_tensor_get_stride(a->info.dim, astride_from_dim);
+			astride = astride_from_dim;
+		}
+		const int* dwstride;
+		if (CCV_IS_TENSOR_VIEW(dw))
+			dwstride = dw->stride;
+		else {
+			ccv_nnc_tensor_get_stride(dw->info.dim, dwstride_from_dim);
+			dwstride = dwstride_from_dim;
+		}
+		_ccv_nnc_gbmm_dw(g->data.f32, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, a->data.f32, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, dw->data.f32, ccv_nnc_tensor_nd(dw->info.dim), dw->info.dim, dwstride, g_batch_size, g_batch_inc, a_batch_inc, dw_batch_inc, a_rows, a_cols, g_cols, g_cols_inc, a_cols_inc, dw_cols_inc, g_rows_inc, a_rows_inc, dw_rows_inc);
 	}
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
@@ -276,25 +418,31 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(w_batch_size == g_batch_size || w_batch_size == 1);
 		if (w_batch_size == 1 && g_batch_size > 1)
 			w_batch_inc = 0;
-		for (n = 0; n < g_batch_size; n++)
-		{
-			const float* const gp = g->data.f32 + n * g_batch_inc;
-			const float* const wp = w->data.f32 + n * w_batch_inc;
-			float* const hp = h->data.f32 + n * h_batch_inc;
-			for (i = 0; i < h_rows; i++)
-			{
-				const float* const gpi = gp + i * g_rows_inc;
-				float* const hpi = hp + i * h_rows_inc;
-				parallel_for(j, h_cols) {
-					const float* const wpj = wp + j * w_rows_inc;
-					float v = zero_h ? 0 : hpi[j * h_cols_inc];
-					int k;
-					for (k = 0; k < g_cols; k++)
-						v += wpj[k * w_cols_inc] * gpi[k * g_cols_inc];
-					hpi[j * h_cols_inc] = v;
-				} parallel_endfor
-			}
+		int gstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int wstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		int hstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
+		const int* gstride;
+		if (CCV_IS_TENSOR_VIEW(g))
+			gstride = g->stride;
+		else {
+			ccv_nnc_tensor_get_stride(g->info.dim, gstride_from_dim);
+			gstride = gstride_from_dim;
 		}
+		const int* wstride;
+		if (CCV_IS_TENSOR_VIEW(w))
+			wstride = w->stride;
+		else {
+			ccv_nnc_tensor_get_stride(w->info.dim, wstride_from_dim);
+			wstride = wstride_from_dim;
+		}
+		const int* hstride;
+		if (CCV_IS_TENSOR_VIEW(h))
+			hstride = h->stride;
+		else {
+			ccv_nnc_tensor_get_stride(h->info.dim, hstride_from_dim);
+			hstride = hstride_from_dim;
+		}
+		_ccv_nnc_gbmm_h(g->data.f32, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, w->data.f32, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, h->data.f32, zero_h, ccv_nnc_tensor_nd(h->info.dim), h->info.dim, hstride, g_batch_size, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_cols_inc, w_cols_inc, h_cols_inc, g_rows_inc, w_rows_inc, h_rows_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

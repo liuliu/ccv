@@ -366,13 +366,18 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w, w->info.dim, w->stride);
 				[inputShapedTypes addObject:mps_w_shape];
 
-				MPSGraphShapedType* mps_h_shape = ccv_nnc_mps_graph_tensor_input_shape(h, h->info.dim, h->stride);
+				NSMutableArray<NSNumber*>* h_shape = [NSMutableArray new];
+				const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
+				int i;
+				for (i = 0; i < h_nd; i++)
+					[h_shape addObject:@(h->info.dim[i])];
 				MPSGraphConvolution2DOpDescriptor* descriptor = [MPSGraphConvolution2DOpDescriptor descriptorWithStrideInX:hint.stride.dim[1] strideInY:hint.stride.dim[0] dilationRateInX:1 dilationRateInY:1 groups:cmd.info.convolution.groups paddingLeft:hint.border.begin[1] paddingRight:hint.border.end[1] paddingTop:hint.border.begin[0] paddingBottom:hint.border.end[0] paddingStyle:MPSGraphPaddingStyleExplicit dataLayout:ccv_nnc_mps_tensor_data_layout(g->info.format) weightsLayout:MPSGraphTensorNamedDataLayoutOIHW];
 				MPSGraphTensor* mps_h = [graph convolution2DDataGradientWithIncomingGradientTensor:mps_g
 																			weightsTensor:mps_w
-																				outputShape:mps_h_shape.shape
+																				outputShape:h_shape
 															forwardConvolutionDescriptor:descriptor
 																					name:nil];
+				[h_shape release];
 				[resultTensors addObject:mps_h];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
@@ -399,14 +404,19 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
 
-				MPSGraphShapedType* mps_dw_shape = ccv_nnc_mps_graph_tensor_input_shape(dw, dw->info.dim, dw->stride);
+				NSMutableArray<NSNumber*>* dw_shape = [NSMutableArray new];
+				const int dw_nd = ccv_nnc_tensor_nd(dw->info.dim);
+				int i;
+				for (i = 0; i < dw_nd; i++)
+					[dw_shape addObject:@(dw->info.dim[i])];
 				MPSGraphConvolution2DOpDescriptor* dw_descriptor = [MPSGraphConvolution2DOpDescriptor descriptorWithStrideInX:hint.stride.dim[1] strideInY:hint.stride.dim[0] dilationRateInX:1 dilationRateInY:1 groups:cmd.info.convolution.groups paddingLeft:hint.border.begin[1] paddingRight:hint.border.end[1] paddingTop:hint.border.begin[0] paddingBottom:hint.border.end[0] paddingStyle:MPSGraphPaddingStyleExplicit dataLayout:ccv_nnc_mps_tensor_data_layout(g->info.format) weightsLayout:MPSGraphTensorNamedDataLayoutOIHW];
 
 				MPSGraphTensor* mps_dw = [graph convolution2DWeightsGradientWithIncomingGradientTensor:mps_g
 																				sourceTensor:mps_a
-																				outputShape:mps_dw_shape.shape
+																				outputShape:dw_shape
 															forwardConvolutionDescriptor:dw_descriptor
 																					name:nil];
+				[dw_shape release];
 				[resultTensors addObject:mps_dw];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
