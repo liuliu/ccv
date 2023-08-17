@@ -140,7 +140,7 @@ TEST_CASE("reduce mean forward noop")
 
 TEST_CASE("reduce mean backward")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MEAN_BACKWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
 	hb->data.f32[0] = 1;

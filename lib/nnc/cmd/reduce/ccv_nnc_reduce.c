@@ -54,7 +54,7 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_FORWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_mean_cpu_ref.c, gpu/ccv_nnc_reduce_mean_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_reduce_mean_cpu_ref.c, gpu/ccv_nnc_reduce_mean_gpu_cudnn.cu, mps/ccv_nnc_reduce_mean_mps.m)
 {
 	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
