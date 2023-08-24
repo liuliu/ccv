@@ -323,6 +323,162 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 
 static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	assert(input_size >= 6);
+	assert(!cmd.info.scaled_dot_product_attention.is_causal);
+	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];
+	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[4];
+	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[5];
+	ccv_nnc_tensor_view_t* const dq = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const dk = (ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t* const dv = (ccv_nnc_tensor_view_t*)outputs[2];
+	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
+	assert(q_nd == 3 || q_nd == 4);
+	const int k_nd = ccv_nnc_tensor_nd(k->info.dim);
+	assert(k_nd == 3 || k_nd == 4);
+	const int v_nd = ccv_nnc_tensor_nd(v->info.dim);
+	assert(v_nd == 3 || v_nd == 4);
+	const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
+	assert(g_nd == 3 || g_nd == 4);
+	const int dq_nd = ccv_nnc_tensor_nd(dq->info.dim);
+	assert(dq_nd == 3 || dq_nd == 4);
+	assert(dq_nd == q_nd);
+	const int dk_nd = ccv_nnc_tensor_nd(dk->info.dim);
+	assert(dk_nd == 3 || dk_nd == 4);
+	assert(dk_nd == k_nd);
+	const int dv_nd = ccv_nnc_tensor_nd(dv->info.dim);
+	assert(dv_nd == 3 || dv_nd == 4);
+	assert(dv_nd == v_nd);
+	assert(q_nd == k_nd && k_nd == v_nd && v_nd == g_nd);
+	// Assuming this is float 32.
+	int qdim[CCV_NNC_MAX_DIM_ALLOC];
+	int kdim[CCV_NNC_MAX_DIM_ALLOC];
+	int vdim[CCV_NNC_MAX_DIM_ALLOC];
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
+	int dqdim[CCV_NNC_MAX_DIM_ALLOC];
+	int dkdim[CCV_NNC_MAX_DIM_ALLOC];
+	int dvdim[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_dim(q, qdim);
+	ccv_nnc_tensor_view_get_dim(k, kdim);
+	ccv_nnc_tensor_view_get_dim(v, vdim);
+	ccv_nnc_tensor_view_get_dim(g, gdim);
+	ccv_nnc_tensor_view_get_dim(dq, dqdim);
+	ccv_nnc_tensor_view_get_dim(dk, dkdim);
+	ccv_nnc_tensor_view_get_dim(dv, dvdim);
+	if (q_nd == 3)
+	{
+		qdim[0] = qdim[1], qdim[1] = qdim[2], qdim[2] = 1;
+		kdim[0] = kdim[1], kdim[1] = kdim[2], kdim[2] = 1;
+		vdim[0] = vdim[1], vdim[1] = vdim[2], vdim[2] = 1;
+		gdim[0] = gdim[1], gdim[1] = gdim[2], gdim[2] = 1;
+		dqdim[0] = dqdim[1], dqdim[1] = dqdim[2], dqdim[2] = 1;
+		dkdim[0] = dkdim[1], dkdim[1] = dkdim[2], dkdim[2] = 1;
+		dvdim[0] = dvdim[1], dvdim[1] = dvdim[2], dvdim[2] = 1;
+	}
+	assert(qdim[0] == kdim[0] && kdim[0] == vdim[0] && vdim[0] == gdim[0]);
+	assert(qdim[2] == kdim[2] && kdim[2] == vdim[2] && vdim[2] == gdim[2]);
+	assert(qdim[3] == kdim[3]);
+	assert(kdim[1] == vdim[1]);
+	assert(gdim[1] == qdim[1]);
+	assert(gdim[3] == vdim[3]);
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int qstride[CCV_NNC_MAX_DIM_ALLOC];
+	int kstride[CCV_NNC_MAX_DIM_ALLOC];
+	int vstride[CCV_NNC_MAX_DIM_ALLOC];
+	int gstride[CCV_NNC_MAX_DIM_ALLOC];
+	int dqstride[CCV_NNC_MAX_DIM_ALLOC];
+	int dkstride[CCV_NNC_MAX_DIM_ALLOC];
+	int dvstride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_view_get_stride(q, qstride);
+	ccv_nnc_tensor_view_get_stride(k, kstride);
+	ccv_nnc_tensor_view_get_stride(v, vstride);
+	ccv_nnc_tensor_view_get_stride(g, gstride);
+	ccv_nnc_tensor_view_get_stride(dq, dqstride);
+	ccv_nnc_tensor_view_get_stride(dk, dkstride);
+	ccv_nnc_tensor_view_get_stride(dv, dvstride);
+	if (q_nd == 3)
+	{
+		qstride[0] = qstride[1], qstride[1] = qstride[2], qstride[2] = qstride[3];
+		kstride[0] = kstride[1], kstride[1] = kstride[2], kstride[2] = kstride[3];
+		vstride[0] = vstride[1], vstride[1] = vstride[2], vstride[2] = vstride[3];
+		gstride[0] = gstride[1], gstride[1] = gstride[2], gstride[2] = gstride[3];
+		dqstride[0] = dqstride[1], dqstride[1] = dqstride[2], dqstride[2] = dqstride[3];
+		dkstride[0] = dkstride[1], dkstride[1] = dkstride[2], dkstride[2] = dkstride[3];
+		dvstride[0] = dvstride[1], dvstride[1] = dvstride[2], dvstride[2] = dvstride[3];
+	}
+	@autoreleasepool {
+		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+		int indices[4];
+		const int* gdim_r = gdim;
+		const int* gstride_r = gstride;
+		const int* qdim_r = qdim;
+		const int* qstride_r = qstride;
+		const int* kdim_r = kdim;
+		const int* kstride_r = kstride;
+		const int* vdim_r = vdim;
+		const int* vstride_r = vstride;
+		const float scale = cmd.info.scaled_dot_product_attention.scale;
+
+		MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+			MPSGraphTensor* mps_input_g;
+			MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, gdim_r, gstride_r, &mps_input_g);
+			[inputTensors addObject:mps_input_g];
+			MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, gdim_r, gstride_r);
+			[inputShapedTypes addObject:mps_g_shape];
+
+			MPSGraphTensor* mps_input_q;
+			MPSGraphTensor* mps_q = ccv_nnc_mps_graph_tensor_input(graph, q, qdim_r, qstride_r, &mps_input_q);
+			[inputTensors addObject:mps_input_q];
+			MPSGraphShapedType* mps_q_shape = ccv_nnc_mps_graph_tensor_input_shape(q, qdim_r, qstride_r);
+			[inputShapedTypes addObject:mps_q_shape];
+
+			MPSGraphTensor* mps_input_k;
+			MPSGraphTensor* mps_k = ccv_nnc_mps_graph_tensor_input(graph, k, kdim_r, kstride_r, &mps_input_k);
+			[inputTensors addObject:mps_input_k];
+			MPSGraphShapedType* mps_k_shape = ccv_nnc_mps_graph_tensor_input_shape(k, kdim_r, kstride_r);
+			[inputShapedTypes addObject:mps_k_shape];
+
+			MPSGraphTensor* mps_input_v;
+			MPSGraphTensor* mps_v = ccv_nnc_mps_graph_tensor_input(graph, v, vdim_r, vstride_r, &mps_input_v);
+			[inputTensors addObject:mps_input_v];
+			MPSGraphShapedType* mps_v_shape = ccv_nnc_mps_graph_tensor_input_shape(v, vdim_r, vstride_r);
+			[inputShapedTypes addObject:mps_v_shape];
+
+			MPSGraphTensor* mps_scale = [graph constantWithScalar:scale dataType:ccv_nnc_mps_datatype(q->info.datatype)];
+			mps_q = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph transposeTensor:mps_q dimension:1 withDimension:2 name:nil] name:nil];
+			mps_k = [graph transposeTensor:mps_k dimension:1 withDimension:2 name:nil];
+			MPSGraphTensor* mps_kt = [graph transposeTensor:mps_k dimension:2 withDimension:3 name:nil];
+			mps_v = [graph transposeTensor:mps_v dimension:1 withDimension:2 name:nil];
+			MPSGraphTensor* mps_qk = [graph matrixMultiplicationWithPrimaryTensor:mps_q secondaryTensor:mps_kt name:nil];
+			MPSGraphTensor* mps_softmax = [graph softMaxWithTensor:mps_qk axis:3 name:nil];
+			mps_g = [graph transposeTensor:mps_g dimension:1 withDimension:2 name:nil];
+			MPSGraphTensor* mps_softmaxt = [graph transposeTensor:mps_softmax dimension:2 withDimension:3 name:nil];
+			MPSGraphTensor* mps_dv = [graph matrixMultiplicationWithPrimaryTensor:mps_softmaxt secondaryTensor:mps_g name:nil];
+			mps_v = [graph transposeTensor:mps_v dimension:2 withDimension:3 name:nil];
+			MPSGraphTensor* mps_dsoftmax = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_v name:nil];
+			MPSGraphTensor* mulTensor = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:mps_dsoftmax name:nil];
+			MPSGraphTensor* mulSumTensor = [graph reductionSumWithTensor:mulTensor axis:-1 name:nil];
+			MPSGraphTensor* gradSubTensor = [graph subtractionWithPrimaryTensor:mps_dsoftmax secondaryTensor:mulSumTensor name:nil];
+			MPSGraphTensor* mps_dqk = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:gradSubTensor name:nil];
+			MPSGraphTensor* mps_dq = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_k name:nil] name:nil];
+			mps_dqk = [graph transposeTensor:mps_dqk dimension:2 withDimension:3 name:nil];
+			MPSGraphTensor* mps_dk = [graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_q name:nil];
+			mps_dq = [graph transposeTensor:mps_dq dimension:1 withDimension:2 name:nil];
+			[resultTensors addObject:mps_dq];
+			mps_dk = [graph transposeTensor:mps_dk dimension:1 withDimension:2 name:nil];
+			[resultTensors addObject:mps_dk];
+			mps_dv = [graph transposeTensor:mps_dv dimension:1 withDimension:2 name:nil];
+			[resultTensors addObject:mps_dv];
+		});
+		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, gdim, gstride);
+		MPSGraphTensorData* data_q = ccv_nnc_mps_graph_tensor_data(q, qdim, qstride);
+		MPSGraphTensorData* data_k = ccv_nnc_mps_graph_tensor_data(k, kdim, kstride);
+		MPSGraphTensorData* data_v = ccv_nnc_mps_graph_tensor_data(v, vdim, vstride);
+		MPSGraphTensorData* data[] = {data_g, data_q, data_k, data_v};
+		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]]], (ccv_nnc_tensor_view_t*[]){ dq, dk, dv }, (int*[]){ dqdim, dkdim, dvdim }, (int*[]){ dqstride, dkstride, dvstride }, 3);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
