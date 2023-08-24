@@ -61,14 +61,6 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 		}
 
-		int tensor_dim_count = -1;
-		const int source_nd = ccv_nnc_tensor_nd(inputs[0]->info.dim);
-		const int destination_nd = ccv_nnc_tensor_nd(outputs[0]->info.dim);
-		const int saved_mean_nd = ccv_nnc_tensor_nd(outputs[1]->info.dim);
-		const int saved_standard_deviation_reciprocal_nd = ccv_nnc_tensor_nd(outputs[2]->info.dim);
-		const int scale_nd = ccv_nnc_tensor_nd(inputs[1]->info.dim);
-		const int bias_nd = ccv_nnc_tensor_nd(inputs[2]->info.dim);
-
 		if (use_mfa) {
 			if (!CCV_IS_TENSOR_CONTIGUOUS(inputs[0]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[0]) ||
@@ -255,7 +247,6 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_nd(g->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_nd(h->info.dim) <= CCV_NNC_MAX_DIM + 2);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 
 	// Assuming this is float 32.
 	int adim[CCV_NNC_MAX_DIM_ALLOC];

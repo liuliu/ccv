@@ -163,7 +163,6 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_nd(g->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
 	assert(ccv_nnc_tensor_nd(h->info.dim) <= CCV_NNC_MAX_DIM + 2);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 
 	// Assuming this is float 32.
 	int adim[CCV_NNC_MAX_DIM_ALLOC];
