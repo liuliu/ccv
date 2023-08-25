@@ -1125,6 +1125,31 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 	return [data autorelease];
 }
 
+MPSGraphTensorData* ccv_nnc_mps_graph_constant_data(const float val, const int datatype)
+{
+	id<MTLBuffer> buffer;
+	assert(datatype == CCV_16F || datatype == CCV_32F);
+	if (datatype == CCV_16F)
+	{
+		uint16_t half_bytes;
+		ccv_float_to_half_precision(&val, &half_bytes, 1);
+#ifdef __x86_64__
+		buffer = [ccv_nnc_default_device() newBufferWithBytes:&half_bytes length:sizeof(uint16_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate | MTLResourceHazardTrackingModeTracked];
+#else
+		buffer = [ccv_nnc_default_device() newBufferWithBytes:&half_bytes length:sizeof(uint16_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
+#endif
+	} else {
+#ifdef __x86_64__
+		buffer = [ccv_nnc_default_device() newBufferWithBytes:&val length:sizeof(float) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate | MTLResourceHazardTrackingModeTracked];
+#else
+		buffer = [ccv_nnc_default_device() newBufferWithBytes:&val length:sizeof(float) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
+#endif
+	}
+	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(datatype)];
+	[buffer release];
+	return [data autorelease];
+}
+
 void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command_buffer, ccv_nnc_tensor_view_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor);

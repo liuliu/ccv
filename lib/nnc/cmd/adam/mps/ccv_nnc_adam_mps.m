@@ -27,40 +27,6 @@ static int _ccv_nnc_adam_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const float rate_inv_bias_correction1 = rate / (1 - powf(beta1, step));
 	const float inv_bias_correction2 = 1. / (1 - powf(beta2, step));
 	@autoreleasepool {
-		id<MTLBuffer> rate_inv_bias_correction1_buffer;
-		id<MTLBuffer> inv_bias_correction2_buffer;
-		if (m->info.datatype == CCV_16F)
-		{
-			uint16_t rate_inv_bias_correction1_bytes;
-			ccv_float_to_half_precision(&rate_inv_bias_correction1, &rate_inv_bias_correction1_bytes, 1);
-#ifdef __x86_64__
-			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1_bytes length:sizeof(uint16_t) options:MTLResourceStorageModePrivate];
-#else
-			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1_bytes length:sizeof(uint16_t) options:MTLResourceStorageModeShared];
-#endif
-		} else {
-#ifdef __x86_64__
-			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1 length:sizeof(float) options:MTLResourceStorageModePrivate];
-#else
-			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1 length:sizeof(float) options:MTLResourceStorageModeShared];
-#endif
-		}
-		if (v->info.datatype == CCV_16F)
-		{
-			uint16_t inv_bias_correction2_bytes;
-			ccv_float_to_half_precision(&inv_bias_correction2, &inv_bias_correction2_bytes, 1);
-#ifdef __x86_64__
-			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2_bytes length:sizeof(uint16_t) options:MTLResourceStorageModePrivate];
-#else
-			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2_bytes length:sizeof(uint16_t) options:MTLResourceStorageModeShared];
-#endif
-		} else {
-#ifdef __x86_64__
-			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2 length:sizeof(float) options:MTLResourceStorageModePrivate];
-#else
-			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2 length:sizeof(float) options:MTLResourceStorageModeShared];
-#endif
-		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_cmd_t cmd_without_step = cmd;
 		cmd_without_step.info.adam.step = 0;
@@ -118,12 +84,10 @@ static int _ccv_nnc_adam_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		MPSGraphTensorData* data_m = ccv_nnc_mps_graph_tensor_data(m, m->info.dim, m->stride);
 		MPSGraphTensorData* data_v = ccv_nnc_mps_graph_tensor_data(v, v->info.dim, v->stride);
-		MPSGraphTensorData* data_rate_inv_bias_correction1 = [[MPSGraphTensorData alloc] initWithMTLBuffer:rate_inv_bias_correction1_buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(m->info.datatype)];
-		MPSGraphTensorData* data_inv_bias_correction2 = [[MPSGraphTensorData alloc] initWithMTLBuffer:inv_bias_correction2_buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(v->info.datatype)];
+		MPSGraphTensorData* data_rate_inv_bias_correction1 = ccv_nnc_mps_graph_constant_data(rate_inv_bias_correction1, m->info.datatype);
+		MPSGraphTensorData* data_inv_bias_correction2 = ccv_nnc_mps_graph_constant_data(inv_bias_correction2, v->info.datatype);
 		MPSGraphTensorData* data[] = {data_g, data_a, data_m, data_v, data_rate_inv_bias_correction1, data_inv_bias_correction2};
 		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]], data[indices[4]], data[indices[5]]], (ccv_nnc_tensor_view_t* []){ b, n, u }, (int*[]){ b->info.dim, n->info.dim, u->info.dim }, (int*[]){ b->stride, n->stride, u->stride }, 3);
-		[data_rate_inv_bias_correction1 release];
-		[data_inv_bias_correction2 release];
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
