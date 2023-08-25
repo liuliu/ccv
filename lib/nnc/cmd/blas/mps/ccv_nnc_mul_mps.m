@@ -317,7 +317,7 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			else
 				ccv_nnc_mps_export_data(data_a, command_buffer, c, c->info.dim, c->stride);
 			[graph release];
-		} else {
+		} else if (p == 0.5 || p == 2 || p == 1.0 / 3 || p == 3 || p == 0.1 || p == 10) { // Only create specialized kernels for special p values.
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 			int indices[1];
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
@@ -332,6 +332,47 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1);
+		} else {
+			ccv_nnc_cmd_t cmd_without_p = cmd;
+			cmd_without_p.info.blas.a[0] = 0;
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd_without_p, 1, hint, flags, inputs, input_size, outputs, output_size);
+			int indices[2];
+			id<MTLBuffer> p_buffer;
+			if (a->info.datatype == CCV_16F)
+			{
+				uint16_t p_bytes;
+				ccv_float_to_half_precision(&p, &p_bytes, 1);
+#ifdef __x86_64__
+				p_buffer = [ccv_nnc_default_device() newBufferWithBytes:&p_bytes length:sizeof(uint16_t) options:MTLResourceStorageModePrivate];
+#else
+				p_buffer = [ccv_nnc_default_device() newBufferWithBytes:&p_bytes length:sizeof(uint16_t) options:MTLResourceStorageModeShared];
+#endif
+			} else {
+#ifdef __x86_64__
+				p_buffer = [ccv_nnc_default_device() newBufferWithBytes:&p length:sizeof(float) options:MTLResourceStorageModePrivate];
+#else
+				p_buffer = [ccv_nnc_default_device() newBufferWithBytes:&p length:sizeof(float) options:MTLResourceStorageModeShared];
+#endif
+			}
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				[inputTensors addObject:mps_input_a];
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				[inputShapedTypes addObject:mps_a_shape];
+				MPSGraphTensor* mps_p = [graph placeholderWithShape:@[@1] dataType:ccv_nnc_mps_datatype(a->info.datatype) name:nil];
+				[inputTensors addObject:mps_p];
+				MPSGraphShapedType* mps_p_shape = [[MPSGraphShapedType alloc] initWithShape:@[@1] dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+				[inputShapedTypes addObject:mps_p_shape];
+				[mps_p_shape release];
+				MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+				[resultTensors addObject:mps_c];
+			});
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			MPSGraphTensorData* data_p = [[MPSGraphTensorData alloc] initWithMTLBuffer:p_buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+			MPSGraphTensorData* data[] = {data_a, data_p};
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1);
+			[data_p release];
 		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
