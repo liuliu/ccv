@@ -317,7 +317,7 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			else
 				ccv_nnc_mps_export_data(data_a, command_buffer, c, c->info.dim, c->stride);
 			[graph release];
-		} else if (p == 0.5 || p == 2 || p == 1.0 / 3 || p == 3 || p == 0.1 || p == 10) { // Only create specialized kernels for special p values.
+		} else if (p == 0.5 || p == 2 || p == 1.0 / 3 || p == 3 || p == 1.0 / 10 || p == 10) { // Only create specialized kernels for special p values.
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 			int indices[1];
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
