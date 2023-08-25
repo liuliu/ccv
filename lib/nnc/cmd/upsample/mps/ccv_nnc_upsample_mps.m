@@ -244,11 +244,11 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim_r, bstride_r);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a , (int*[]){ adim_r }, (int*[]){ astride_r }, 1);
 
-			
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 			
 		}
 	}
+	[inputSize release];
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -350,6 +350,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	}
+	[inputSize release];
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
