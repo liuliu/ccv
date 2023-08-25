@@ -3712,6 +3712,7 @@ enum {
  * to the given file path. If it is not initialized, this method will try to load tensors off the
  * disk. Under the hood, it calls ccv_cnnp_model_write / ccv_cnnp_model_read when appropriate.
  * @param model The composed model.
+ * @param handle The SQLite handle.
  * @param fn The file name.
  * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
  * @param options The IO options that can do data encode / decode before persistence.
@@ -3733,11 +3734,12 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 /**
  * The prototype for the writer function when exporting parameters out.
  * @param tensor The tensor to be written to disk.
+ * @param sql The sql to be executed.
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_write`` method.
  * @param options The IO options that can do data encode / decode before persistence.
  * @param name The name give to a particular parameter.
  */
-typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
+typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, const char* const sql, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * The prototype for the reader function to load parameters.
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.

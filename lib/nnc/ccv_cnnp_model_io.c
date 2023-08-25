@@ -14,20 +14,24 @@
 #define SQLITE_ENFORCE assert
 #endif
 
-static inline int _model_tensor_write(const ccv_cnnp_model_t* const self, const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
+static inline int _model_tensor_write(const ccv_cnnp_model_t* const self, const ccv_nnc_tensor_t* const tensor, const char* const sql, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
 	if (self->rw.writer)
-		return self->rw.writer(tensor, handle, name, options);
-	return ccv_nnc_tensor_write(tensor, handle, name, options);
+		return self->rw.writer(tensor, sql, handle, name, options);
+	if (sql)
+	{
+		sqlite3* conn = (sqlite3*)handle;
+		SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, sql, 0, 0, 0));
+		return CCV_IO_FINAL;
+	} else
+		return ccv_nnc_tensor_write(tensor, handle, name, options);
 }
 
 int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
-	sqlite3* conn = (sqlite3*)handle;
-	assert(conn);
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data); // The model has to be compiled.
-	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, "BEGIN", 0, 0, 0));
+	_model_tensor_write(model, 0, "BEGIN", handle, 0, options);
 	int i, j;
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	const int parameter_size = compiled_data->parameters->rnum;
@@ -40,7 +44,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 			snprintf(internal_name, 2048 + 16, "__%s__[%s]", name, id);
 		else
 			snprintf(internal_name, 2048 + 16, "%s", id);
-		_model_tensor_write(model, compiled_data->tensors.parameters[i], conn, internal_name, options);
+		_model_tensor_write(model, compiled_data->tensors.parameters[i], 0, handle, internal_name, options);
 	}
 	for (i = 0; i < parallel_count; i++)
 		for (j = 0; j < internal_size; j++)
@@ -50,9 +54,9 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 				snprintf(internal_name, 2048 + 16, "__%s__[%s(%d)]", name, id, i);
 			else
 				snprintf(internal_name, 2048 + 16, "%s(%d)", id, i);
-			_model_tensor_write(model, compiled_data->tensors.internals[i * internal_size + j], conn, internal_name, options);
+			_model_tensor_write(model, compiled_data->tensors.internals[i * internal_size + j], 0, handle, internal_name, options);
 		}
-	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, "COMMIT", 0, 0, 0));
+	_model_tensor_write(model, 0, "COMMIT", handle, 0, options);
 	return CCV_IO_FINAL;
 }
 
