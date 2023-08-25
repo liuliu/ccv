@@ -273,7 +273,6 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	assert(a->info.format == b->info.format);
 	assert(a->info.datatype == b->info.datatype);
 	int* adim_r = adim;
-	int* astride_r = astride;
 	int* bdim_r = bdim;
 	int* bstride_r = bstride;
 	NSMutableArray<NSNumber*>* inputSize = [NSMutableArray new];	
