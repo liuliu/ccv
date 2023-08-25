@@ -28,9 +28,45 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const float inv_bias_correction2 = 1. / (1 - powf(beta2, step));
 	const float rate_decay = rate * decay;
 	@autoreleasepool {
+		id<MTLBuffer> rate_inv_bias_correction1_buffer;
+		id<MTLBuffer> inv_bias_correction2_buffer;
+		if (m->info.datatype == CCV_16F)
+		{
+			uint16_t rate_inv_bias_correction1_bytes;
+			ccv_float_to_half_precision(&rate_inv_bias_correction1, &rate_inv_bias_correction1_bytes, 1);
+#ifdef __x86_64__
+			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1_bytes length:sizeof(uint16_t) options:MTLResourceStorageModePrivate];
+#else
+			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1_bytes length:sizeof(uint16_t) options:MTLResourceStorageModeShared];
+#endif
+		} else {
+#ifdef __x86_64__
+			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1 length:sizeof(float) options:MTLResourceStorageModePrivate];
+#else
+			rate_inv_bias_correction1_buffer = [ccv_nnc_default_device() newBufferWithBytes:&rate_inv_bias_correction1 length:sizeof(float) options:MTLResourceStorageModeShared];
+#endif
+		}
+		if (v->info.datatype == CCV_16F)
+		{
+			uint16_t inv_bias_correction2_bytes;
+			ccv_float_to_half_precision(&inv_bias_correction2, &inv_bias_correction2_bytes, 1);
+#ifdef __x86_64__
+			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2_bytes length:sizeof(uint16_t) options:MTLResourceStorageModePrivate];
+#else
+			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2_bytes length:sizeof(uint16_t) options:MTLResourceStorageModeShared];
+#endif
+		} else {
+#ifdef __x86_64__
+			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2 length:sizeof(float) options:MTLResourceStorageModePrivate];
+#else
+			inv_bias_correction2_buffer = [ccv_nnc_default_device() newBufferWithBytes:&inv_bias_correction2 length:sizeof(float) options:MTLResourceStorageModeShared];
+#endif
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
-		int indices[4];
+		ccv_nnc_cmd_t cmd_without_step = cmd;
+		cmd_without_step.info.adam.step = 0;
+		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd_without_step, 0, hint, flags, inputs, input_size, outputs, output_size);
+		int indices[6];
 		MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 			MPSGraphTensor* mps_input_g;
 			MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
@@ -52,6 +88,16 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			[inputTensors addObject:mps_input_v];
 			MPSGraphShapedType* mps_v_shape = ccv_nnc_mps_graph_tensor_input_shape(v, v->info.dim, v->stride);
 			[inputShapedTypes addObject:mps_v_shape];
+			MPSGraphTensor* mps_rate_inv_bias_correction1 = [graph placeholderWithShape:@[@1] dataType:ccv_nnc_mps_datatype(m->info.datatype) name:nil];
+			[inputTensors addObject:mps_rate_inv_bias_correction1];
+			MPSGraphShapedType* mps_rate_inv_bias_correction1_shape = [[MPSGraphShapedType alloc] initWithShape:@[@1] dataType:ccv_nnc_mps_datatype(m->info.datatype)];
+			[inputShapedTypes addObject:mps_rate_inv_bias_correction1_shape];
+			[mps_rate_inv_bias_correction1_shape release];
+			MPSGraphTensor* mps_inv_bias_correction2 = [graph placeholderWithShape:@[@1] dataType:ccv_nnc_mps_datatype(v->info.datatype) name:nil];
+			[inputTensors addObject:mps_inv_bias_correction2];
+			MPSGraphShapedType* mps_inv_bias_correction2_shape = [[MPSGraphShapedType alloc] initWithShape:@[@1] dataType:ccv_nnc_mps_datatype(v->info.datatype)];
+			[inputShapedTypes addObject:mps_inv_bias_correction2_shape];
+			[mps_inv_bias_correction2_shape release];
 			MPSGraphTensor* mps_scale = [graph constantWithScalar:scale dataType:ccv_nnc_mps_datatype(g->info.datatype)];
 			mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
 			MPSGraphTensor* mps_beta1 = [graph constantWithScalar:beta1 dataType:ccv_nnc_mps_datatype(m->info.datatype)];
@@ -60,8 +106,6 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			MPSGraphTensor* mps_1_beta2 = [graph constantWithScalar:1 - beta2 dataType:ccv_nnc_mps_datatype(g->info.datatype)];
 			mps_m = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_m secondaryTensor:mps_beta1 name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_1_beta1 name:nil] name:nil];
 			mps_v = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_v secondaryTensor:mps_beta2 name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:[graph squareWithTensor:mps_g name:nil] secondaryTensor:mps_1_beta2 name:nil] name:nil];
-			MPSGraphTensor* mps_rate_inv_bias_correction1 = [graph constantWithScalar:rate_inv_bias_correction1 dataType:ccv_nnc_mps_datatype(m->info.datatype)];
-			MPSGraphTensor* mps_inv_bias_correction2 = [graph constantWithScalar:inv_bias_correction2 dataType:ccv_nnc_mps_datatype(v->info.datatype)];
 			MPSGraphTensor* mps_epsilon = [graph constantWithScalar:epsilon dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			MPSGraphTensor* mps_rate_decay = [graph constantWithScalar:rate_decay dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 			MPSGraphTensor* mps_rate_decay_x_a = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_rate_decay name:nil];
@@ -74,8 +118,12 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		MPSGraphTensorData* data_m = ccv_nnc_mps_graph_tensor_data(m, m->info.dim, m->stride);
 		MPSGraphTensorData* data_v = ccv_nnc_mps_graph_tensor_data(v, v->info.dim, v->stride);
-		MPSGraphTensorData* data[] = {data_g, data_a, data_m, data_v};
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]]], (ccv_nnc_tensor_view_t* []){ b, n, u }, (int*[]){ b->info.dim, n->info.dim, u->info.dim }, (int*[]){ b->stride, n->stride, u->stride }, 3);
+		MPSGraphTensorData* data_rate_inv_bias_correction1 = [[MPSGraphTensorData alloc] initWithMTLBuffer:rate_inv_bias_correction1_buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(m->info.datatype)];
+		MPSGraphTensorData* data_inv_bias_correction2 = [[MPSGraphTensorData alloc] initWithMTLBuffer:inv_bias_correction2_buffer shape:@[@1] dataType:ccv_nnc_mps_datatype(v->info.datatype)];
+		MPSGraphTensorData* data[] = {data_g, data_a, data_m, data_v, data_rate_inv_bias_correction1, data_inv_bias_correction2};
+		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]], data[indices[4]], data[indices[5]]], (ccv_nnc_tensor_view_t* []){ b, n, u }, (int*[]){ b->info.dim, n->info.dim, u->info.dim }, (int*[]){ b->stride, n->stride, u->stride }, 3);
+		[data_rate_inv_bias_correction1 release];
+		[data_inv_bias_correction2 release];
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;

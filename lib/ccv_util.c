@@ -1431,15 +1431,15 @@ static uint8_t _ccv_shift_table[512] = {
 	0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0xd,
 };
 
-void ccv_float_to_half_precision(float* f, uint16_t* h, size_t len)
+void ccv_float_to_half_precision(const float* f, uint16_t* h, size_t len)
 {
 	int i;
-	uint32_t* u = (uint32_t*)f;
+	const uint32_t* u = (const uint32_t*)f;
 	for (i = 0; i < len; i++)
 		h[i] = _ccv_base_table[(u[i] >> 23) & 0x1ff] + ((u[i] & 0x007fffff) >> _ccv_shift_table[(u[i] >> 23) & 0x1ff]);
 }
 
-void ccv_double_to_half_precision(double* f, uint16_t* h, size_t len)
+void ccv_double_to_half_precision(const double* f, uint16_t* h, size_t len)
 {
 	int i;
 	for (i = 0; i < len; i++)
@@ -1447,7 +1447,7 @@ void ccv_double_to_half_precision(double* f, uint16_t* h, size_t len)
 		union {
 			float v;
 			uint32_t p;
-		} u = { .v = (float)f[i] };
+		} u = { .v = (const float)f[i] };
 		h[i] = _ccv_base_table[(u.p >> 23) & 0x1ff] + ((u.p & 0x007fffff) >> _ccv_shift_table[(u.p >> 23) & 0x1ff]);
 	}
 }
@@ -1733,7 +1733,7 @@ static uint16_t _ccv_offset_table[64] = {
 	0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400, 0x400,
 };
 
-void ccv_half_precision_to_float(uint16_t* h, float* f, size_t len)
+void ccv_half_precision_to_float(const uint16_t* h, float* f, size_t len)
 {
 	int i;
 	uint32_t* u = (uint32_t*)f;
@@ -1741,7 +1741,7 @@ void ccv_half_precision_to_float(uint16_t* h, float* f, size_t len)
 		u[i] = _ccv_mantissa_table[_ccv_offset_table[h[i] >> 10] + (h[i] & 0x3ff)] + _ccv_exponent_table[h[i] >> 10];
 }
 
-void ccv_half_precision_to_double(uint16_t* h, double* f, size_t len)
+void ccv_half_precision_to_double(const uint16_t* h, double* f, size_t len)
 {
 	int i;
 	for (i = 0; i < len; i++)
