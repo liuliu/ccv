@@ -25,8 +25,8 @@ static int _ccv_nnc_random_normal(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	const float mean = cmd.info.blas.a[1];
 	for (i = 0; i < count + 1; i += 2)
 	{
-		const double r0 = dsfmt_genrand_open_open(&dsfmt);
-		const double r1 = dsfmt_genrand_open_open(&dsfmt);
+		const double r0 = 1.0 - dsfmt_genrand_close_open(&dsfmt);
+		const double r1 = dsfmt_genrand_close_open(&dsfmt);
 		const float mag = std * sqrt(-2.0 * log(r0));
 		const float z0  = mag * cos(CCV_PI * 2 * r1) + mean;
 		const float z1  = mag * sin(CCV_PI * 2 * r1) + mean;
