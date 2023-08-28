@@ -353,7 +353,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 }
 
 static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
-{	
+{
 	// inputs: gradient g, forw prop input a, [w]
 	// outputs: output gradient h, weight updates dw, bias updates bias
 	assert(input_size >= 2 && output_size >= 2);
@@ -366,166 +366,486 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* w = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // // It is a 2-d or 3-d array
-	const int is_transpose_a = a ? ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a) : 0;
-	const int is_transpose_w = w ? ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b) : 0;
+	const int is_transpose_a = a || h ? ccv_nnc_is_matrix_transpose(a ? a->info : h->info, cmd.info.blas.transpose_a) : 0;
+	const int is_transpose_w = w || dw ? ccv_nnc_is_matrix_transpose(w ? w->info : dw->info, cmd.info.blas.transpose_b) : 0;
 
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		
-		if (h) {
-			assert(w); // when calculate h, w must exist
-			// [output gradient]
-			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
-			int indices[2];
+		const int is_contiguous =
+			(!CCV_IS_TENSOR_VIEW(g) || ccv_nnc_tensor_view_is_contiguous(g->info.dim, g->stride)) &&
+			(w ? (!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) : 1) &&
+			(dw ? (!CCV_IS_TENSOR_VIEW(dw) || ccv_nnc_tensor_view_is_contiguous(dw->info.dim, dw->stride)) : 1) &&
+			(a ? (!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(a->info.dim, a->stride)) : 1) &&
+			(h ? (!CCV_IS_TENSOR_VIEW(h) || ccv_nnc_tensor_view_is_contiguous(h->info.dim, h->stride)) : 1);
 
-			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
-				MPSGraphTensor* mps_input_g;
-				MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
-				[inputTensors addObject:mps_input_g];
-				MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
-				[inputShapedTypes addObject:mps_g_shape];
+		const int is_same_dtype =
+			(w ? (g->info.datatype == w->info.datatype) : 1) &&
+			(dw ? (g->info.datatype == dw->info.datatype) : 1) &&
+			(a ? (g->info.datatype == a->info.datatype) : 1) &&
+			(h ? (g->info.datatype == h->info.datatype) : 1);
 
-				MPSGraphTensor* mps_input_w;
-				MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w, w->info.dim, w->stride, &mps_input_w);
-				[inputTensors addObject:mps_input_w];
-				MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w, w->info.dim, w->stride);
-				[inputShapedTypes addObject:mps_w_shape];
+		int is_supported_dtype = 0;
+		uint32_t mtl_data_type = UINT32_MAX;
+		switch (g->info.datatype) {
+			case CCV_16F: {
+				is_supported_dtype = 1;
+				mtl_data_type = 16;
+				break;
+			}
+			case CCV_32F: {
+				is_supported_dtype = 1;
+				mtl_data_type = 3;
+				break;
+			}
+			default: {
+				break;
+			}
+		}
+		int i;
+		int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
+		int dw_batch_size, dw_rows, dw_cols, dw_batch_inc, dw_rows_inc, dw_cols_inc;
+		int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
+		const static int no_transpose[2] = {};
+		if (w)
+			ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->stride : 0, w->info.dim, cmd.info.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+		if (dw)
+			ccv_nnc_tensor_get_matrix_params(dw->info, CCV_IS_TENSOR_VIEW(dw) ? dw->stride : 0, dw->info.dim, cmd.info.blas.transpose_b, &dw_batch_size, &dw_rows, &dw_cols, &dw_batch_inc, &dw_rows_inc, &dw_cols_inc);
+		ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->stride : 0, g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
+		const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
+		g_batch_size = g_nd < 3 ? 1 : g->info.dim[g_nd - 3];
+		for (i = 0; i < g_nd - 3; i++)
+			g_batch_size *= g->info.dim[i];
+		const int w_nd = w ? ccv_nnc_tensor_nd(w->info.dim) : 1;
+		w_batch_size = w_nd < 3 ? 1 : w->info.dim[w_nd - 3];
+		for (i = 0; i < w_nd - 3; i++)
+			w_batch_size *= w->info.dim[i];
+		const int dw_nd = dw ? ccv_nnc_tensor_nd(dw->info.dim) : 1;
+		dw_batch_size = dw_nd < 3 ? 1 : dw->info.dim[dw_nd - 3];
+		for (i = 0; i < dw_nd - 3; i++)
+			dw_batch_size *= dw->info.dim[i];
+		const int a_nd = a ? ccv_nnc_tensor_nd(a->info.dim) : 1;
+		int a_batch_size = a_nd < 3 ? 1 : a->info.dim[a_nd - 3];
+		for (i = 0; i < a_nd - 3; i++)
+			a_batch_size *= a->info.dim[i];
+		const int h_nd = h ? ccv_nnc_tensor_nd(h->info.dim) : 1;
+		int h_batch_size = h_nd < 3 ? 1 : h->info.dim[h_nd - 3];
+		for (i = 0; i < h_nd - 3; i++)
+			h_batch_size *= h->info.dim[i];
 
-				if (!is_transpose_w)
-					mps_w = [graph transposeTensor:mps_w dimension:-2 withDimension:-1 name:nil];
+		const int is_same_batch =
+			(w ? g_batch_size == w_batch_size : 1) &&
+			(a ? g_batch_size == a_batch_size : 1) &&
+			(dw ? g_batch_size == dw_batch_size : 1) &&
+			(h ? g_batch_size == h_batch_size : 1);
 
-				MPSGraphShapedType* mps_h_target_shape = ccv_nnc_mps_graph_tensor_input_shape(h, h->info.dim, h->stride);
+		// NNC uses the convention B = A * W.
+		// MFA uses the convention C = A * B.
+		int is_batched = g_batch_size > 1;
 
-				MPSGraphTensor* mps_h = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_w name:nil];
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		const int is_mfa_supported =
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && is_same_batch && !bias && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
+		if (is_mfa_supported)
+		{
+			ccv_nnc_mfa_gemm_params_t h_params;
+			// On supported devices, use Metal directly.
+			if (h)
+			{
 				if (is_transpose_a)
-					mps_h = [graph transposeTensor:mps_h dimension:-2 withDimension:-1 name:nil];
+				{
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)w_rows, // C_rows
+						.N = (uint32_t)g_rows, // C_cols
+						.K = (uint32_t)w_cols, // B_rows
+						.A_trans = 1,
+						.B_trans = (is_transpose_w ? 1 : 0),
+						.D_trans = 0,
+						.alpha = (float)1.0,
+						.beta = (float)0.0,
+						.batched = is_batched,
+						.fused_activation_function = 0,
+						.fused_bias = 0,
 
-				const NSUInteger mps_h_nd = mps_h.shape.count; 
-				const NSUInteger h_target_nd = mps_h_target_shape.shape.count;  
+						.batch_dims_a = { 0 },
+						.batch_dims_b = { 0 },
+						.batch_dims_d = { 0 },
+					};
+					if (is_batched) {
+						// Create a null-terminated list of batch dimensions.
+						int A_batch_dim = w_nd - 2;
+						for (int i = 0; i < A_batch_dim; ++i) {
+							params.batch_dims_a[i] = w->info.dim[i];
+						}
+						if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_a[A_batch_dim] = 0;
+						}
 
-				// if target h nd smaller than current mps_h_nd (for example, doing batch), mps_h needs to be reduced 
-				if (h_target_nd < mps_h_nd) {
-					NSMutableArray<NSNumber*>* h_target_shape = mps_h_target_shape.shape.mutableCopy;
-					NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-
-					for ( int i = 0; i < mps_h_nd - h_target_nd; i++) {
-						[h_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
+						int B_batch_dim = g_nd - 2;
+						for (int i = 0; i < B_batch_dim; ++i) {
+							params.batch_dims_b[i] = g->info.dim[i];
+						}
+						if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_b[B_batch_dim] = 0;
+						}
 					}
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					h_params = params;
+				} else {
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)g_rows, // C_rows
+						.N = (uint32_t)w_rows, // C_cols
+						.K = (uint32_t)w_cols, // B_rows
+						.A_trans = 0,
+						.B_trans = (is_transpose_w ? 0 : 1),
+						.D_trans = 0,
+						.alpha = (float)1.0,
+						.beta = (float)0.0,
+						.batched = is_batched,
+						.fused_activation_function = 0,
+						.fused_bias = 0,
 
-					int i;
-					for (i = 0; i < mps_h_nd; i++) {
-						if (mps_h.shape[i].integerValue != h_target_shape[i].integerValue)
-							[axes addObject:@(i)];
+						.batch_dims_a = { 0 },
+						.batch_dims_b = { 0 },
+						.batch_dims_d = { 0 },
+					};
+					if (is_batched) {
+						// Create a null-terminated list of batch dimensions.
+						int A_batch_dim = g_nd - 2;
+						for (int i = 0; i < A_batch_dim; ++i) {
+							params.batch_dims_a[i] = g->info.dim[i];
+						}
+						if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_a[A_batch_dim] = 0;
+						}
+
+						int B_batch_dim = w_nd - 2;
+						for (int i = 0; i < B_batch_dim; ++i) {
+							params.batch_dims_b[i] = w->info.dim[i];
+						}
+						if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_b[B_batch_dim] = 0;
+						}
 					}
-					mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
-					[h_target_shape release];
-					[axes release];
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					h_params = params;
 				}
-				[resultTensors addObject:mps_h];
-			});
-			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
-			MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
-			MPSGraphTensorData* data[] = {data_g, data_w};
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &h, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1);
-		}
+			}
 
-		if (dw) {
-			assert(a); // when calculate dw, a must exist
-
-			// [weight updates]
-			ccv_nnc_mps_graph_key_t dw_key = ccv_nnc_mps_graph_key_new(cmd, 1, hint, flags, inputs, input_size, outputs, output_size);
-			int dw_indices[2];
-
-			MPSGraphExecutable* executable_dw = ccv_nnc_mps_graph_executable_cache(dw_key, dw_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
-				MPSGraphTensor* mps_input_g;
-				MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
-				[inputTensors addObject:mps_input_g];
-				MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
-				[inputShapedTypes addObject:mps_g_shape];
-
-				MPSGraphTensor* mps_input_a;
-				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-				[inputTensors addObject:mps_input_a];
-				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
-				[inputShapedTypes addObject:mps_a_shape];
-				if (!is_transpose_a)
-					mps_a = [graph transposeTensor:mps_a dimension:-2 withDimension:-1 name:nil];
-			
-				MPSGraphShapedType* mps_dw_target_shape = ccv_nnc_mps_graph_tensor_input_shape(dw, dw->info.dim, dw->stride);
-				
-				MPSGraphTensor* mps_dw = [graph matrixMultiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_g name:nil];
+			ccv_nnc_mfa_gemm_params_t dw_params;
+			// On supported devices, use Metal directly.
+			if (dw)
+			{
 				if (is_transpose_w)
-					mps_dw = [graph transposeTensor:mps_dw dimension:-2 withDimension:-1 name:nil];
-				
-				const NSUInteger mps_dw_nd = mps_dw.shape.count; 
-				const NSUInteger dw_target_nd = mps_dw_target_shape.shape.count;  
+				{
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)dw_cols, // C_rows
+						.N = (uint32_t)dw_rows, // C_cols
+						.K = (uint32_t)g_rows, // B_rows
+						.A_trans = 1,
+						.B_trans = (is_transpose_a ? 1 : 0),
+						.D_trans = 0,
+						.alpha = (float)1.0,
+						.beta = (float)0.0,
+						.batched = is_batched,
+						.fused_activation_function = 0,
+						.fused_bias = 0,
 
-				// if target dw nd smaller than current mupltiplication nd (like we are doing batch), mps_dw needs to be reduced
-				if ( dw_target_nd < mps_dw_nd ) {
-					NSMutableArray<NSNumber*>* dw_target_shape = mps_dw_target_shape.shape.mutableCopy;
+						.batch_dims_a = { 0 },
+						.batch_dims_b = { 0 },
+						.batch_dims_d = { 0 },
+					};
+					if (is_batched) {
+						// Create a null-terminated list of batch dimensions.
+						int A_batch_dim = a_nd - 2;
+						for (int i = 0; i < A_batch_dim; ++i) {
+							params.batch_dims_a[i] = a->info.dim[i];
+						}
+						if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_a[A_batch_dim] = 0;
+						}
+
+						int B_batch_dim = g_nd - 2;
+						for (int i = 0; i < B_batch_dim; ++i) {
+							params.batch_dims_b[i] = g->info.dim[i];
+						}
+						if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_b[B_batch_dim] = 0;
+						}
+					}
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					dw_params = params;
+				} else {
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)dw_rows, // C_rows
+						.N = (uint32_t)dw_cols, // C_cols
+						.K = (uint32_t)g_rows, // B_rows
+						.A_trans = (is_transpose_a ? 0 : 1),
+						.B_trans = 0,
+						.D_trans = 0,
+						.alpha = (float)1.0,
+						.beta = (float)0.0,
+						.batched = is_batched,
+						.fused_activation_function = 0,
+						.fused_bias = 0,
+
+						.batch_dims_a = { 0 },
+						.batch_dims_b = { 0 },
+						.batch_dims_d = { 0 },
+					};
+					if (is_batched) {
+						// Create a null-terminated list of batch dimensions.
+						int A_batch_dim = g_nd - 2;
+						for (int i = 0; i < A_batch_dim; ++i) {
+							params.batch_dims_a[i] = g->info. dim[i];
+						}
+						if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_a[A_batch_dim] = 0;
+						}
+
+						int B_batch_dim = a_nd - 2;
+						for (int i = 0; i < B_batch_dim; ++i) {
+							params.batch_dims_b[i] = a->info.dim[i];
+						}
+						if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+							params.batch_dims_b[B_batch_dim] = 0;
+						}
+					}
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					dw_params = params;
+				}
+			}
+
+			// Creating a new command buffer has a >10 µs penalty CPU-side. Still
+			// faster the >50 µs penalty for MPSGraph (probably why
+			// MPSMatrixMultiplication is faster for GEMM).
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			if (h)
+			{
+				if (is_transpose_a)
+				{
+					mtl_buffer_t* tensors[4] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)w), // A
+						mpgetbuffer((ccv_nnc_tensor_t*)g), // B
+						mpgetbuffer((ccv_nnc_tensor_t*)h), // C
+						NULL,
+					};
+					size_t tensor_offsets[4] = {
+						w->dataof, // A offset
+						g->dataof, // B offset
+						h->dataof, // C offset
+						0, // D offset
+					};
+					ccv_nnc_mfa_encode_gemm(context, h_params, command_batch, tensors, tensor_offsets);
+				} else {
+					mtl_buffer_t* tensors[4] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)g), // A
+						mpgetbuffer((ccv_nnc_tensor_t*)w), // B
+						mpgetbuffer((ccv_nnc_tensor_t*)h), // C
+						NULL,
+					};
+					size_t tensor_offsets[4] = {
+						g->dataof, // A offset
+						w->dataof, // B offset
+						h->dataof, // C offset
+						0, // D offset
+					};
+					ccv_nnc_mfa_encode_gemm(context, h_params, command_batch, tensors, tensor_offsets);
+				}
+			}
+			if (dw)
+			{
+				if (is_transpose_w)
+				{
+					mtl_buffer_t* tensors[4] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)g), // A
+						mpgetbuffer((ccv_nnc_tensor_t*)a), // B
+						mpgetbuffer((ccv_nnc_tensor_t*)dw), // C
+						NULL,
+					};
+					size_t tensor_offsets[4] = {
+						g->dataof, // A offset
+						a->dataof, // B offset
+						dw->dataof, // C offset
+						0, // D offset
+					};
+					ccv_nnc_mfa_encode_gemm(context, dw_params, command_batch, tensors, tensor_offsets);
+				} else {
+					mtl_buffer_t* tensors[4] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+						mpgetbuffer((ccv_nnc_tensor_t*)g), // B
+						mpgetbuffer((ccv_nnc_tensor_t*)dw), // C
+						NULL,
+					};
+					size_t tensor_offsets[4] = {
+						a->dataof, // A offset
+						g->dataof, // B offset
+						dw->dataof, // C offset
+						0, // D offset
+					};
+					ccv_nnc_mfa_encode_gemm(context, dw_params, command_batch, tensors, tensor_offsets);
+				}
+			}
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else {
+			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+
+			if (h) {
+				assert(w); // when calculate h, w must exist
+				// [output gradient]
+				ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+				int indices[2];
+
+				MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+					MPSGraphTensor* mps_input_g;
+					MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
+					[inputTensors addObject:mps_input_g];
+					MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
+					[inputShapedTypes addObject:mps_g_shape];
+
+					MPSGraphTensor* mps_input_w;
+					MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w, w->info.dim, w->stride, &mps_input_w);
+					[inputTensors addObject:mps_input_w];
+					MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w, w->info.dim, w->stride);
+					[inputShapedTypes addObject:mps_w_shape];
+
+					if (!is_transpose_w)
+						mps_w = [graph transposeTensor:mps_w dimension:-2 withDimension:-1 name:nil];
+
+					MPSGraphShapedType* mps_h_target_shape = ccv_nnc_mps_graph_tensor_input_shape(h, h->info.dim, h->stride);
+
+					MPSGraphTensor* mps_h = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_w name:nil];
+					if (is_transpose_a)
+						mps_h = [graph transposeTensor:mps_h dimension:-2 withDimension:-1 name:nil];
+
+					const NSUInteger mps_h_nd = mps_h.shape.count;
+					const NSUInteger h_target_nd = mps_h_target_shape.shape.count;
+
+					// if target h nd smaller than current mps_h_nd (for example, doing batch), mps_h needs to be reduced
+					if (h_target_nd < mps_h_nd) {
+						NSMutableArray<NSNumber*>* h_target_shape = mps_h_target_shape.shape.mutableCopy;
+						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
+
+						for ( int i = 0; i < mps_h_nd - h_target_nd; i++) {
+							[h_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
+						}
+
+						int i;
+						for (i = 0; i < mps_h_nd; i++) {
+							if (mps_h.shape[i].integerValue != h_target_shape[i].integerValue)
+								[axes addObject:@(i)];
+						}
+						mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
+						[h_target_shape release];
+						[axes release];
+					}
+					[resultTensors addObject:mps_h];
+				});
+				MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
+				MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
+				MPSGraphTensorData* data[] = {data_g, data_w};
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &h, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1);
+			}
+
+			if (dw) {
+				assert(a); // when calculate dw, a must exist
+
+				// [weight updates]
+				ccv_nnc_mps_graph_key_t dw_key = ccv_nnc_mps_graph_key_new(cmd, 1, hint, flags, inputs, input_size, outputs, output_size);
+				int dw_indices[2];
+
+				MPSGraphExecutable* executable_dw = ccv_nnc_mps_graph_executable_cache(dw_key, dw_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+					MPSGraphTensor* mps_input_g;
+					MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
+					[inputTensors addObject:mps_input_g];
+					MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
+					[inputShapedTypes addObject:mps_g_shape];
+
+					MPSGraphTensor* mps_input_a;
+					MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+					[inputTensors addObject:mps_input_a];
+					MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+					[inputShapedTypes addObject:mps_a_shape];
+					if (!is_transpose_a)
+						mps_a = [graph transposeTensor:mps_a dimension:-2 withDimension:-1 name:nil];
+
+					MPSGraphShapedType* mps_dw_target_shape = ccv_nnc_mps_graph_tensor_input_shape(dw, dw->info.dim, dw->stride);
+
+					MPSGraphTensor* mps_dw = [graph matrixMultiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_g name:nil];
+					if (is_transpose_w)
+						mps_dw = [graph transposeTensor:mps_dw dimension:-2 withDimension:-1 name:nil];
+
+					const NSUInteger mps_dw_nd = mps_dw.shape.count;
+					const NSUInteger dw_target_nd = mps_dw_target_shape.shape.count;
+
+					// if target dw nd smaller than current mupltiplication nd (like we are doing batch), mps_dw needs to be reduced
+					if ( dw_target_nd < mps_dw_nd ) {
+						NSMutableArray<NSNumber*>* dw_target_shape = mps_dw_target_shape.shape.mutableCopy;
+						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
+						for ( int i = 0; i < mps_dw_nd - dw_target_nd; i++) {
+							[dw_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
+						}
+
+						int i;
+						for (i = 0; i < mps_dw_nd; i++) {
+							if (mps_dw.shape[i].integerValue != dw_target_shape[i].integerValue)
+								[axes addObject:@(i)];
+						}
+						mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
+						[dw_target_shape release];
+						[axes release];
+					}
+
+					[resultTensors addObject:mps_dw];
+
+				});
+				MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
+				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+				MPSGraphTensorData* data[] = {data_g, data_a};
+				ccv_nnc_mps_graph_executable_result(executable_dw, command_buffer, @[data[dw_indices[0]], data[dw_indices[1]]], &dw , (int*[]){ dw->info.dim }, (int*[]){ dw->stride }, 1);
+			}
+
+			if (bias) {
+				// [bias updates]
+				ccv_nnc_mps_graph_key_t db_key = ccv_nnc_mps_graph_key_new(cmd, 2, hint, flags, inputs, input_size, outputs, output_size);
+				int db_indices[1];
+
+				MPSGraphExecutable* executable_db = ccv_nnc_mps_graph_executable_cache(db_key, db_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+					MPSGraphTensor* mps_input_g;
+					MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
+					[inputTensors addObject:mps_input_g];
+					MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
+					[inputShapedTypes addObject:mps_g_shape];
+
+					MPSGraphShapedType* mps_bias_shape = ccv_nnc_mps_graph_tensor_input_shape(bias, bias->info.dim, bias->stride);
+
+					NSMutableArray<NSNumber*>* bias_target_shape = mps_bias_shape.shape.mutableCopy;
 					NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-					for ( int i = 0; i < mps_dw_nd - dw_target_nd; i++) {
-						[dw_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
+					const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
+					const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+
+					// make bias_target_shape has same dim as g before finding reduce axis
+					for ( int i = 0; i < g_nd - bias_nd; i++) {
+						[bias_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
 					}
 
 					int i;
-					for (i = 0; i < mps_dw_nd; i++) {
-						if (mps_dw.shape[i].integerValue != dw_target_shape[i].integerValue)
+					for (i = 0; i < g_nd; i++) {
+						if (g->info.dim[i] != bias_target_shape[i].integerValue)
 							[axes addObject:@(i)];
 					}
-					mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
-					[dw_target_shape release];
+					MPSGraphTensor* mps_db = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
+					[bias_target_shape release];
 					[axes release];
-				}
-
-				[resultTensors addObject:mps_dw];
-				
-			});
-			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data[] = {data_g, data_a};
-			ccv_nnc_mps_graph_executable_result(executable_dw, command_buffer, @[data[dw_indices[0]], data[dw_indices[1]]], &dw , (int*[]){ dw->info.dim }, (int*[]){ dw->stride }, 1);
+					[resultTensors addObject:mps_db];
+				});
+				MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
+				ccv_nnc_mps_graph_executable_result(executable_db, command_buffer, @[data_g], &bias , (int*[]){ bias->info.dim  }, (int*[]){ bias->info.dim }, 1);
+			}
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
-
-		if (bias) {
-			// [bias updates]
-			ccv_nnc_mps_graph_key_t db_key = ccv_nnc_mps_graph_key_new(cmd, 2, hint, flags, inputs, input_size, outputs, output_size);
-			int db_indices[1];
-
-			MPSGraphExecutable* executable_db = ccv_nnc_mps_graph_executable_cache(db_key, db_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
-				MPSGraphTensor* mps_input_g;
-				MPSGraphTensor* mps_g = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_g);
-				[inputTensors addObject:mps_input_g];
-				MPSGraphShapedType* mps_g_shape = ccv_nnc_mps_graph_tensor_input_shape(g, g->info.dim, g->stride);
-				[inputShapedTypes addObject:mps_g_shape];
-
-				MPSGraphShapedType* mps_bias_shape = ccv_nnc_mps_graph_tensor_input_shape(bias, bias->info.dim, bias->stride);
-				
-				NSMutableArray<NSNumber*>* bias_target_shape = mps_bias_shape.shape.mutableCopy;
-				NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-				const int g_nd = ccv_nnc_tensor_nd(g->info.dim); 
-				const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);  
-
-				// make bias_target_shape has same dim as g before finding reduce axis
-				for ( int i = 0; i < g_nd - bias_nd; i++) {
-					[bias_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-				}
-				
-				int i;
-				for (i = 0; i < g_nd; i++) {
-					if (g->info.dim[i] != bias_target_shape[i].integerValue)
-						[axes addObject:@(i)];
-				}
-				MPSGraphTensor* mps_db = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
-				[bias_target_shape release];
-				[axes release];
-				[resultTensors addObject:mps_db];
-			});
-			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
-			ccv_nnc_mps_graph_executable_result(executable_db, command_buffer, @[data_g], &bias , (int*[]){ bias->info.dim  }, (int*[]){ bias->info.dim }, 1);
-		}
-
-		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 
 	return CCV_NNC_EXEC_SUCCESS;
