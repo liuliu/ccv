@@ -41,10 +41,10 @@ static int _ccv_nnc_random_normal(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			} after:^NSArray<MPSGraphTensor*>*(NSArray<MPSGraphTensor*>* bodyBlockArguments) {
 				return @[bodyBlockArguments[1]];
 			} name:nil];
-			[shape release];
-			[axes release];
 			ccv_nnc_mps_graph_result(graph, command_buffer, @{}, mps_r[0], a, a->info.dim, a->stride);
 			[graph release];
+			[shape release];
+			[axes release];
 		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
