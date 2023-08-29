@@ -303,14 +303,21 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 	uint64_t* const tensor_hash = (uint64_t*)cccalloc(simplify->tensor_symbol_info_size, sizeof(uint64_t));
 	int i;
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		// If already marked as dead, skip.
+		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
+		for (i = 0; i < node->input_size; i++)
+		{
+			assert(node->inputs[i] < simplify->tensor_symbol_info_size);
+			// If no hash for the input, use the index + 1 as the hash.
+			if (node->inputs[i] >= 0 && tensor_hash[node->inputs[i]] == 0)
+				tensor_hash[node->inputs[i]] = node->inputs[i] + 1;
+		}
 		// We cannot support graph / custom command (we cannot model them properly).
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD ||
 			node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
 			node->cmd.cmd == CCV_NNC_CUSTOM_FORWARD ||
 			node->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
-			continue;
-		// If already marked as dead, skip.
-		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
 			continue;
 		uint64_t hashout, hashin[3];
 		siphash((uint8_t*)&hashin[0], (const uint8_t*)&node->cmd.info, sizeof(node->cmd.info), key_siphash);
@@ -322,9 +329,6 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		for (i = 0; i < node->input_size; i++)
 		{
 			assert(node->inputs[i] < simplify->tensor_symbol_info_size);
-			// If no hash for the input, use the index + 1 as the hash.
-			if (node->inputs[i] >= 0 && tensor_hash[node->inputs[i]] == 0)
-				tensor_hash[node->inputs[i]] = node->inputs[i] + 1;
 			if (node->inputs[i] >= 0)
 			{
 				// Hash using the tensor hash.

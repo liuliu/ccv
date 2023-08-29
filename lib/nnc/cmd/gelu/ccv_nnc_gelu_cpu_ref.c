@@ -43,7 +43,7 @@ static int _ccv_nnc_gelu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size >= 2);
 	const ccv_nnc_tensor_t* g = inputs[0]; // gradient
 	assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 	const ccv_nnc_tensor_t* a = inputs[1];
