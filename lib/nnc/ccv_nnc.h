@@ -3712,7 +3712,6 @@ enum {
  * to the given file path. If it is not initialized, this method will try to load tensors off the
  * disk. Under the hood, it calls ccv_cnnp_model_write / ccv_cnnp_model_read when appropriate.
  * @param model The composed model.
- * @param handle The SQLite handle.
  * @param fn The file name.
  * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
  * @param options The IO options that can do data encode / decode before persistence.

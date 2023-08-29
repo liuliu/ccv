@@ -785,7 +785,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, cons
  * Set cell for a vector of a sparse matrix.
  * @param mat The sparse matrix.
  * @param vector The vector.
- * @param index The index of the cell.
+ * @param vidx The index of the vector.
  * @param data The data pointer.
  */
 void ccv_set_sparse_matrix_cell_from_vector(ccv_sparse_matrix_t* mat, ccv_sparse_matrix_vector_t* const vector, int vidx, const void* data);
