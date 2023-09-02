@@ -352,7 +352,7 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		if (info->inputs[i])
 		{
 			ccv_nnc_tensor_t* const tensor = CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) ? _ccv_nnc_any_tensor_from_tensor_multiview((ccv_nnc_tensor_multiview_t*)info->inputs[i]) : info->inputs[i];
-			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor->info.type), tensor_formats |= tensor->info.format, tensor_datatypes |= tensor->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor->info.type), tensor_formats |= tensor->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(tensor->info.datatype);
 		}
 	info->cmd.backend = ccv_nnc_cmd_find_backend(info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	info->input_size = input_size;
@@ -415,7 +415,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 			if (info.inputs[i])
 			{
 				ccv_nnc_tensor_t* const tensor = CCV_IS_TENSOR_MULTIVIEW(info.inputs[i]) ? _ccv_nnc_any_tensor_from_tensor_multiview((ccv_nnc_tensor_multiview_t*)info.inputs[i]) : info.inputs[i];
-				tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor->info.type), tensor_formats |= tensor->info.format, tensor_datatypes |= tensor->info.datatype;
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor->info.type), tensor_formats |= tensor->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(tensor->info.datatype);
 			}
 		info.cmd.backend = ccv_nnc_cmd_find_backend(info.cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	}

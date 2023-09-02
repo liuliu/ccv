@@ -49,7 +49,7 @@ enum {
 	CCV_64S = 0x08000,
 	CCV_64F = 0x10000,
 	CCV_16F = 0x20000,
-	CCV_8S  = 0x40000, // We can still squeeze in 1 more type, which probably will be 8F. (0xFF000 are for data types).
+	CCV_QX  = 0x40000, // QX is a catch-all for quantized models (anything less than or equal to 1-byte). We can still squeeze in 1 more primitive type, which probably will be 8F or BF16. (0xFF000 are for data types).
 };
 
 enum {
@@ -74,7 +74,7 @@ static const ssize_t _ccv_get_data_type_size[] = {
 #define CCV_MAX_CHANNEL (0xFFF)
 #define CCV_GET_CHANNEL(x) ((x) & 0xFFF)
 #define CCV_GET_STEP(cols, type) (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4)
-#define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F | CCV_16F | CCV_8S)
+#define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F | CCV_16F | CCV_QX)
 
 enum {
 	CCV_MATRIX_DENSE  = 0x00100000,

@@ -26,11 +26,11 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor->info = params;
 		if (tfb)
 		{
-			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | params.datatype | params.dim[2];
+			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
 			// This corresponding to mat->step
-			tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[2]));
+			tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 		} else // This won't be recognized by ccv_dense_matrix_t
-			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | params.datatype;
+			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
 		tensor->data.u8 = (uint8_t*)ptr;
 		return tensor;
 	}
@@ -77,11 +77,11 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	tensor->info = params;
 	if (tfb)
 	{
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[2];
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
 		// This corresponding to mat->step
-		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[2]));
+		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 	} else
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
 	return tensor;
 }
 
@@ -100,11 +100,11 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const cc
 #endif
 	if (tfb)
 	{
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[2];
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
 		// This corresponding to mat->step
-		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[2]));
+		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 	} else
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
 	if (size <= tensor->data_size) // Nothing.
 	{
 #ifdef HAVE_CUDA
@@ -177,11 +177,11 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	}
 	if (tfb)
 	{
-		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[2];
+		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
 		// This corresponding to mat->step
-		tensor.info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[2]));
+		tensor.info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 	} else // This won't be recognized by ccv_dense_matrix_t
-		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
+		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
 	tensor.data.u8 = (uint8_t*)ptr;
 	tensor.data_size = 0;
 	return tensor;

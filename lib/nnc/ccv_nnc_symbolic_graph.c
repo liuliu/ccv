@@ -838,7 +838,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
 			tensor_auto = tensor_auto || ccv_nnc_is_tensor_auto(tensor_info->info);
-			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(tensor_info->info.datatype);
 		}
 	}
 	for (i = 0; i < output_size; i++)
@@ -849,7 +849,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
 			tensor_auto = tensor_auto || ccv_nnc_is_tensor_auto(tensor_info->info);
-			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(tensor_info->info.datatype);
 		}
 	}
 	// If there is no auto tensor, we try to find backend (we don't know which backend if the tensor is auto).

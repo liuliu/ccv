@@ -362,10 +362,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
 	for (i = 0; i < input_size; i++)
 		if (inputs[i])
-			tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= inputs[i]->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(inputs[i]->info.datatype);
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
-			tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(outputs[i]->info.datatype);
 	// In this case, we cannot determine the type of the tensor, skip auto-tune.
 	if (!tensor_memory)
 		return cmd;
@@ -682,10 +682,10 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
 		for (i = 0; i < input_size; i++)
 			if (inputs[i])
-				tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= inputs[i]->info.datatype;
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(inputs[i]->info.datatype);
 		for (i = 0; i < output_size; i++)
 			if (outputs[i])
-				tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= CCV_GET_DATA_TYPE(outputs[i]->info.datatype);
 		backend = ccv_nnc_cmd_find_backend(cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	}
 	assert(backend != CCV_NNC_NO_BACKEND);
