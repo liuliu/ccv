@@ -80,6 +80,7 @@ typedef struct {
 	int type;
 	int format;
 	int datatype;
+	int reserved; // This is reserved, for quantized tensor, this might be used in some ways.
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_tensor_param_t;
 
@@ -131,10 +132,11 @@ typedef struct {
 			int resides;
 			int format;
 			int datatype;
+			int reserved3;
 			int rows;
 			int cols;
 			int channels;
-			int reserved3; /* This reserved bit need to be zero'ed such that later dim is not cared. */
+			int reserved4; /* This reserved bit need to be zero'ed such that later dim is not cared. */
 			int step;
 			union {
 				unsigned char u8;
