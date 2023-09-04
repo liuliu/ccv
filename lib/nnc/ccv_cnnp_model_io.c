@@ -60,10 +60,12 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 	return CCV_IO_FINAL;
 }
 
-static inline int _model_tensor_read(const ccv_cnnp_model_t* const self, void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out)
+static inline int _model_tensor_read(const ccv_cnnp_model_t* const self, void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t info, ccv_nnc_tensor_t** const tensor_out)
 {
 	if (self->rw.reader)
-		return self->rw.reader(handle, name, dir, options, tensor_out);
+		return self->rw.reader(handle, name, dir, options, info, tensor_out);
+	if (!*tensor_out)
+		*tensor_out = ccv_nnc_tensor_new(0, info, 0);
 	return ccv_nnc_tensor_read(handle, name, dir, options, tensor_out);
 }
 
@@ -75,7 +77,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 	assert(compiled_data); // The model has to be compiled.
 	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
-		ccv_cnnp_model_tensors_init(model_out, compiled_data);
+		ccv_cnnp_model_tensors_init_0(model_out, compiled_data);
 	int i, j;
 	const int parallel_count = ccv_max(model_out->parallel_count, 1);
 	const int parameter_size = compiled_data->parameters->rnum;
@@ -89,10 +91,27 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 			snprintf(internal_name, 2048 + 16, "__%s__[%s]", name, id);
 		else
 			snprintf(internal_name, 2048 + 16, "%s", id);
-		if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
+		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
+		const int d = parameter.d;
+		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
+		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
+		if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, info, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
 		{
-			const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
 			compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+			// Create this tensor for other data parallel allocations.
+			info = compiled_data->tensors.parameters[i]->info; // In case we loaded a different info.
+			for (j = 1; j < parallel_count; j++)
+				if (!compiled_data->tensors.parameters[i + j * parameter_size])
+				{
+					if (j != device_id)
+						CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+					else
+						CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+					compiled_data->tensors.parameters[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
+				}
+				// No need to copy over, this is done in ccv_cnnp_model.c's copy_tensors method.
 		}
 	}
 	for (i = 0; i < parallel_count; i++)
@@ -103,12 +122,23 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 				snprintf(internal_name, 2048 + 16, "__%s__[%s(%d)]", name, id, i);
 			else
 				snprintf(internal_name, 2048 + 16, "%s(%d)", id, i);
-			if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, compiled_data->tensors.internals + i * internal_size + j) == CCV_IO_FINAL)
+			const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, j);
+			const int d = retained.d;
+			ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(retained.graph, retained);
+			if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+				CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+			if (i > 0)
 			{
-				const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, i))->d;
-				compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
+				if (i != device_id)
+					CCV_TENSOR_SET_DEVICE_ID(info.type, i);
+				else
+					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 			}
+			if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, info, compiled_data->tensors.internals + i * internal_size + j) == CCV_IO_FINAL)
+				compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
 		}
+	ccv_cnnp_model_tensors_init_1(model_out, compiled_data);
 	return CCV_IO_FINAL;
 }
 

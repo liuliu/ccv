@@ -3745,9 +3745,10 @@ typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, 
  * @param name The name give to a particular parameter.
  * @param dir The directory for a particular parameter if it is file-backed.
  * @param options The IO options that can do data encode / decode before persistence.
+ * @param info The recommended tensor params.
  * @param tensor_out The tensor to be loaded.
  */
-typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out);
+typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Set IO interceptor for loading weights from / to the model to replace the default SQLite reader / writer.
  * @param model The model.
