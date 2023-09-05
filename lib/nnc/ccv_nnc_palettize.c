@@ -1,5 +1,10 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_internal.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
+#endif
 
 size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
 {
@@ -203,10 +208,9 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 	}
 }
 
-void ccv_nnc_depalettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
+static void _ccv_nnc_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
-	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 	const int num_blocks = (output_length + number_in_blocks - 1) / number_in_blocks;
 	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
 	uint8_t* const u8 = (uint8_t*)output;
@@ -948,5 +952,20 @@ void ccv_nnc_depalettize(const void* input, const int datatype, const int memory
 				}
 			} parallel_endfor
 		}
+	}
+}
+
+void ccv_nnc_depalettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
+{
+	assert(memory_type == CCV_TENSOR_CPU_MEMORY || memory_type == CCV_TENSOR_GPU_MEMORY);
+	if (memory_type == CCV_TENSOR_CPU_MEMORY)
+		_ccv_nnc_depalettize(input, datatype, input_length, qbits, number_in_blocks, output, output_length);
+	else {
+#ifdef HAVE_CUDA
+		ccv_nnc_compat_depalettize(input, datatype, input_length, qbits, number_in_blocks, output, output_length, 0);
+#elif defined(HAVE_MPS)
+#else
+		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+#endif
 	}
 }

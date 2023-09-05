@@ -3,7 +3,7 @@ include ../../config.mk
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
-SRCS := ccv_nnc_compat.cu
+SRCS := ccv_nnc_compat.cu ccv_nnc_palettize.cu
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(SRCS)))
 

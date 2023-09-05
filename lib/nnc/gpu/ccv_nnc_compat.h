@@ -46,7 +46,10 @@ CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_init_stream_signal(ccv_nnc_str
 void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
+
+// Misc.
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
+void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
 #ifdef __cplusplus
 }
 #endif
