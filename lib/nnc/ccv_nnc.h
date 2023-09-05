@@ -844,6 +844,31 @@ void ccv_nnc_set_profiler(int state);
  * @param state 1 is on, 0 is off. Default to off.
  */
 void ccv_nnc_set_memory_efficient(int state);
+/**
+ * Quantize a given memory region of a given datatype / memory resides, into nbits palette.
+ * @param input The input memory region, it can be CCV_64F, CCV_32F or CCV_16F.
+ * @param datatype The datatype, it can be CCV_64F, CCV_32F or CCV_16F.
+ * @param memory_type Where the memory resides. Right now only support CPU_MEMORY.
+ * @param input_length How many elements in the input.
+ * @param qbits How many bits for the palette. Right now only 4 / 5 / 6 / 7 / 8 bits supported.
+ * @param number_in_blocks How many elements share a palette.
+ * @param output The output memory region.
+ * @param output_length The maximum size of the output.
+ * @return The actual length in bytes of the output.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_palettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length);
+/**
+ * Dequantize a given memory region of a given datatype / memory resides, from built-in nbits palette.
+ * @param input The input memory region.
+ * @param datatype The datatype, it can be CCV_64F, CCV_32F or CCV_16F.
+ * @param memory_type Where the memory resides. It can be either CPU_MEMORY or GPU_MEMORY.
+ * @param input_length The size of the input in bytes.
+ * @param qbits How many bits for the palette. Right now only 4 / 5 / 6 / 7 / 8 bits supported.
+ * @param number_in_blocks How many elements share a palette.
+ * @param output The output memory region, it can be CCV_64F, CCV_32F or CCV_16F.
+ * @param output_length How many elements in the output.
+ */
+void ccv_nnc_depalettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length);
 
 /** @} */
 
