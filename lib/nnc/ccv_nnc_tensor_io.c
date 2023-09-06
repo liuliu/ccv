@@ -430,7 +430,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			}
 		}
 #elif defined(HAVE_MPS)
-		if (!options || options->decode)
+		if (!options || !options->decode)
 		{
 			if (CCV_TENSOR_GET_MEMORY(tensor_params.type) == CCV_TENSOR_GPU_MEMORY)
 			{
@@ -473,7 +473,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			}
 		}
 #else
-		if (!options || options->decode)
+		if (!options || !options->decode)
 			memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 		else {
 			size_t decoded_size = data_size;
