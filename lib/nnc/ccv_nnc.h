@@ -621,7 +621,7 @@ CCV_WARN_UNUSED(char*) ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a
  * @param decoded_size The size of the buffer to be decoded.
  * @return 1 if it is processed, 0 otherwise.
  */
-typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size);
+typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, const ccv_nnc_tensor_param_t tensor_params, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size);
 /**
  * Method to encode tensor into a give buffer.
  * @param data The data that needs to be encoded.
@@ -661,10 +661,11 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
  * @param name The name to find the tensor in the database.
  * @param dir If the dir is provided, the tensor we read will be backed by a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
  * @param options If provided, we will use this to decode any data that identifier != 0.
+ * @param tensor_params If provided, we will use this to create the tensor if tensor_out is not provided.
  * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, ccv_nnc_tensor_t** const tensor_out);
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Swap a tensor to be backed by a file instead. Currently, once swapped, there is no way to swap back.
  * @param tensor The tensor.

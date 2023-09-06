@@ -30,9 +30,9 @@ TEST_CASE("tensor persistence, to / from GPU")
 	handle = 0;
 	sqlite3_open("tensors_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = 0;
-	ccv_nnc_tensor_read(handle, "x", 0, 0, &tensor1);
+	ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "x", 0, 0, &tensor2);
+	ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &tensor2);
 	sqlite3_close(handle);
 	ccv_nnc_tensor_t* const tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1), TENSOR_LIST(tensor1c), 0);
@@ -59,10 +59,16 @@ static int _tensor_xor_encode(const void* const data, const size_t data_size, co
 	return 1;
 }
 
-static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, const ccv_nnc_tensor_param_t tensor_params, ccv_nnc_tensor_t** const tensor_out, void* decoded, size_t* const decoded_size)
 {
 	if (identifier != 1)
 		return 0;
+	if (!tensor_out[0])
+	{
+		tensor_out[0] = ccv_nnc_tensor_new(0, tensor_params, 0);
+		if (!decoded)
+			decoded = tensor_out[0]->data.u8;
+	}
 	unsigned char* const u8 = (unsigned char*)data;
 	unsigned char* const u8dec = (unsigned char*)decoded;
 	const size_t expected_size = *decoded_size;
@@ -78,7 +84,7 @@ static int _tensor_noop_encode(const void* const data, const size_t data_size, c
 	return 0;
 }
 
-static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, const ccv_nnc_tensor_param_t tensor_params, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size)
 {
 	return 0;
 }
@@ -105,9 +111,9 @@ TEST_CASE("tensor persistence with encoder / decoder, to / from GPU")
 	handle = 0;
 	sqlite3_open("tensors_de_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = 0;
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor1);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor2);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor2);
 	sqlite3_close(handle);
 	ccv_nnc_tensor_t* tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1), TENSOR_LIST(tensor1c), 0);
@@ -144,9 +150,9 @@ TEST_CASE("tensor persistence with noop encoder / decoder, to / from GPU")
 	handle = 0;
 	sqlite3_open("tensors_noop_de_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = 0;
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor1);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor2);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor2);
 	sqlite3_close(handle);
 	ccv_nnc_tensor_t* tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1), TENSOR_LIST(tensor1c), 0);
@@ -186,10 +192,10 @@ TEST_CASE("tensor persistence with type coercion, to / from GPU")
 	sqlite3_open("tensors_tc_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "x", 0, 0, &tensor1);
+	ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* tensor2c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 10), 0);
-	ccv_nnc_tensor_read(handle, "y", 0, 0, &tensor2);
+	ccv_nnc_tensor_read(handle, "y", 0, 0, 0, &tensor2);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1, tensor2), TENSOR_LIST(tensor1c, tensor2c), 0);
 	sqlite3_close(handle);
 	float* tensor1_ref = (float*)ccmalloc(sizeof(float) * 10);
@@ -243,10 +249,10 @@ TEST_CASE("tensor persistence with type coercion and encoder / decoder, to / fro
 	sqlite3_open("tensors_tc_de_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "x", 0, &options, &tensor1);
+	ccv_nnc_tensor_read(handle, "x", 0, &options, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* tensor2c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 10), 0);
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor2);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor2);
 	sqlite3_close(handle);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1, tensor2), TENSOR_LIST(tensor1c, tensor2c), 0);
 	float* tensor1_ref = (float*)ccmalloc(sizeof(float) * 10);
@@ -300,10 +306,10 @@ TEST_CASE("tensor persistence with type coercion and noop encoder / decoder, to 
 	sqlite3_open("tensors_tc_noop_de_g.sqlite3", &handle);
 	ccv_nnc_tensor_t* tensor1 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* tensor1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
-	ccv_nnc_tensor_read(handle, "x", 0, &options, &tensor1);
+	ccv_nnc_tensor_read(handle, "x", 0, &options, 0, &tensor1);
 	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* tensor2c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 10), 0);
-	ccv_nnc_tensor_read(handle, "y", 0, &options, &tensor2);
+	ccv_nnc_tensor_read(handle, "y", 0, &options, 0, &tensor2);
 	sqlite3_close(handle);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor1, tensor2), TENSOR_LIST(tensor1c, tensor2c), 0);
 	float* tensor1_ref = (float*)ccmalloc(sizeof(float) * 10);
