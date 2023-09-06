@@ -403,7 +403,7 @@ TEST_CASE("cudnn backward convolution in half precision")
 	assert(cmd.backend >= 0);
 	cmd.algorithm = -1;
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	cmd = ccv_nnc_cmd_autotune(cmd, 1 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(gg, ga, gw), TENSOR_LIST(gh, gdw, gdbias), stream_context);
+	cmd = ccv_nnc_cmd_autotune(cmd, 512 * 1024 * 1024, hint, 0, TENSOR_LIST(gg, ga, gw), TENSOR_LIST(gh, gdw, gdbias), stream_context);
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(gg, ga, gw), TENSOR_LIST(gh, gdw, gdbias), stream_context));
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);

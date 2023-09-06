@@ -173,7 +173,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert((input_size >= 2 && output_size >= 1));
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const int is_w_nhwc = (output_size > 1 && outputs[1]) ? outputs[1]->info.format == CCV_TENSOR_FORMAT_NHWC : inputs[2]->info.format == CCV_TENSOR_FORMAT_NHWC;
 	const int w_datatype = (output_size > 1 && outputs[1]) ? outputs[1]->info.datatype : inputs[2]->info.datatype;
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, (is_w_nhwc && w_datatype == CCV_16F) ? CCV_32F : w_datatype);
@@ -182,6 +181,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	static const float one = 1, zero = 0;
 	if (output_size > 1 && outputs[1])
 	{
+		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 		const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
 		cudnnConvolutionBwdFilterAlgo_t filter_algo;
 		// Choose an algorithm
@@ -244,6 +244,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 			}
 		}
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	}
 	// If h is available, therefore, we need to propagate the gradients back
@@ -295,7 +296,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_cudnn_deinit_filter_descriptor(w);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
 	}
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	return CCV_NNC_EXEC_SUCCESS;
