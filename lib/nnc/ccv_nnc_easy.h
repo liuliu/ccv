@@ -207,18 +207,41 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 	return ccv_nnc_dimension_count(params.dim);
 }
 
+static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_palettize(const ccv_nnc_tensor_param_t params, const int qbits, const int number_in_blocks)
+{
+	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F);
+	ccv_nnc_tensor_param_t new_params = params;
+	assert(qbits >= 4 && qbits <= 8);
+	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | ((qbits << 8) & 0xf00);
+	new_params.reserved = number_in_blocks;
+	return new_params;
+}
+
 static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
 {
+	const ssize_t count = (ssize_t)ccv_nnc_tensor_count(params);
+	ssize_t data_size;
+	if (CCV_GET_DATA_TYPE(params.datatype) == CCV_QX)
+	{
+		// Our QX right now only does palettization. Hence, we need to get the palette datatype.
+		const int palette_datatype = (params.datatype & 0xff) << 12;
+		const int number_in_blocks = params.reserved;
+		const int num_blocks = (int)((count + number_in_blocks - 1) / number_in_blocks);
+		const int qbits = (params.datatype & 0xf00) >> 8;
+		assert(qbits >= 4 && qbits <= 8);
+		data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(palette_datatype) * num_blocks + (count + 7) * qbits / 8;
+	} else
+		data_size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * count;
 #ifdef HAVE_CUDA // For CUDA, we align to 128-bytes.
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
-		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 127) & -128);
+		return ((data_size + 127) & -128);
 	else
 #elif defined(HAVE_MPS) // For MPS, we have to align to PAGE_SIZE.
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
-		return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + PAGE_SIZE - 1) & -PAGE_SIZE);
+		return ((data_size + PAGE_SIZE - 1) & -PAGE_SIZE);
 	else
 #endif
-	return ((CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 63) & -64);
+	return ((data_size + 63) & -64);
 }
 
 static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])

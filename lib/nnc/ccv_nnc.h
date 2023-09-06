@@ -621,7 +621,7 @@ CCV_WARN_UNUSED(char*) ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a
  * @param decoded_size The size of the buffer to be decoded.
  * @return 1 if it is processed, 0 otherwise.
  */
-typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size);
+typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size);
 /**
  * Method to encode tensor into a give buffer.
  * @param data The data that needs to be encoded.

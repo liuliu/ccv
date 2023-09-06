@@ -162,7 +162,7 @@ static int _tensor_xor_encode(const void* const data, const size_t data_size, co
 	return 1;
 }
 
-static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size)
 {
 	if (identifier != 1)
 		return 0;
@@ -181,7 +181,7 @@ static int _tensor_noop_encode(const void* const data, const size_t data_size, c
 	return 0;
 }
 
-static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, void* const decoded, size_t* const decoded_size)
+static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size)
 {
 	return 0;
 }
@@ -597,6 +597,13 @@ TEST_CASE("format large 1-d tensor into string")
 "]";
 	REQUIRE(memcmp(str, t, strlen(t) + 1) == 0, "output should be equal");
 	ccfree(str);
+	ccv_nnc_tensor_free(tensor);
+}
+
+TEST_CASE("allocate palettize tensor with quantization to 5-bit")
+{
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_palettize(CPU_TENSOR_NHWC(32F, 10, 20, 30), 5, 512), 0);
+	REQUIRE_EQ(5312, ccv_nnc_tensor_data_size(tensor->info), "should be this size");
 	ccv_nnc_tensor_free(tensor);
 }
 
