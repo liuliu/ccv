@@ -717,12 +717,14 @@ static void* _ccv_nnc_stream_context_get_ones(ONES &device_ones, const int n, cu
 	return device_ones.data;
 }
 
-void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n, const int datatype)
+void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n, int datatype)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
+		datatype = (datatype & 0xff) << 12;
 	switch (datatype)
 	{
 		case CCV_16F:
@@ -735,8 +737,10 @@ void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stre
 	}
 }
 
-cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
+cudaDataType_t ccv_nnc_cuda_datatype(int datatype)
 {
+	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
+		datatype = (datatype & 0xff) << 12;
 	switch (datatype)
 	{
 		case CCV_8U:
@@ -753,8 +757,10 @@ cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
 	return CUDA_R_32F;
 }
 
-cudaDataType_t ccv_nnc_cuda_compute_datatype(const int datatype)
+cudaDataType_t ccv_nnc_cuda_compute_datatype(int datatype)
 {
+	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
+		datatype = (datatype & 0xff) << 12;
 	switch (datatype)
 	{
 		case CCV_8U:
