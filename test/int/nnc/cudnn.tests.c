@@ -185,7 +185,7 @@ TEST_CASE("cudnn forward convolution in half precision")
 	cmd.backend = CCV_NNC_BACKEND_GPU_CUDNN;
 	assert(cmd.backend >= 0);
 	cmd.algorithm = -1;
-	cmd = ccv_nnc_cmd_autotune(cmd, 1 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
+	cmd = ccv_nnc_cmd_autotune(cmd, 512 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context));
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);
@@ -203,6 +203,74 @@ TEST_CASE("cudnn forward convolution in half precision")
 	ccv_nnc_tensor_free(c1);
 	ccv_nnc_tensor_free(bias1);
 	ccv_nnc_tensor_free(w1);
+	ccv_nnc_tensor_free(a1);
+	ccv_nnc_tensor_free(gbias);
+	ccv_nnc_tensor_free(gwo);
+	ccv_nnc_tensor_free(ga);
+}
+
+TEST_CASE("cudnn forward convolution in half precision with palettize weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert(cmd.backend >= 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
+	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM), 0);
+	ccv_nnc_tensor_t* wo = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, OUTPUT_DIM), 0);
+	// configure the inlets.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < INPUT_DIM * KERNEL_SIZE * KERNEL_SIZE * OUTPUT_DIM; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (INPUT_DIM * KERNEL_SIZE * KERNEL_SIZE);
+	for (i = 0; i < INPUT_SIZE * INPUT_SIZE * INPUT_DIM * ccv_max(1, BATCH_SIZE); i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < OUTPUT_DIM; i++)
+		bias->data.f32[i] = (float)i / OUTPUT_DIM;
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w), TENSOR_LIST(wo), 0);
+	ccv_nnc_tensor_t* a1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
+	ccv_nnc_tensor_t* w1o = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
+	ccv_nnc_tensor_t* bias1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, OUTPUT_DIM), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wo, bias), TENSOR_LIST(a1, w1o, bias1), 0);
+	ccv_nnc_tensor_t* pw1o = ccv_nnc_tensor_new(0, ccv_nnc_tensor_palettize(CPU_TENSOR_NCHW(16F, OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 6, 1280), 0);
+	(void)ccv_nnc_palettize(w1o->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_count(w1o->info), 6, 1280, pw1o->data.u8, ccv_nnc_tensor_data_size_without_padding(pw1o->info));
+	// Copy generated matrix values over to GPU.
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
+	ccv_nnc_tensor_t* gwo = ccv_nnc_tensor_new(0, ccv_nnc_tensor_palettize(GPU_TENSOR_NCHW(000, 16F, OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 6, 1280), 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, OUTPUT_DIM), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a1, pw1o, bias1), TENSOR_LIST(ga, gwo, gbias), 0);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
+
+	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	cmd.backend = CCV_NNC_BACKEND_GPU_CUDNN;
+	assert(cmd.backend >= 0);
+	cmd.algorithm = -1;
+	cmd = ccv_nnc_cmd_autotune(cmd, 512 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
+	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context));
+	ccv_nnc_stream_context_wait(stream_context);
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_t* c1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c1), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c1), TENSOR_LIST(c), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, BATCH_SIZE * OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 5e-3, "output from cudnn should match from CPU");
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(wo);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(c1);
+	ccv_nnc_tensor_free(bias1);
+	ccv_nnc_tensor_free(w1o);
+	ccv_nnc_tensor_free(pw1o);
 	ccv_nnc_tensor_free(a1);
 	ccv_nnc_tensor_free(gbias);
 	ccv_nnc_tensor_free(gwo);

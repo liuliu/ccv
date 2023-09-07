@@ -75,11 +75,30 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	size_t workspace_size = 0;
 	CUDNN_ENFORCE(cudnnGetConvolutionForwardWorkspaceSize(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, algo, &workspace_size));
 	void* workspace = 0;
-	// TODO: If error, return OOM
-	if (workspace_size)
-		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+	void* weight_data = w.data.u8;
+	if (CCV_GET_DATA_TYPE(inputs[1]->info.datatype) == CCV_QX)
+	{
+		ccv_nnc_tensor_param_t weight_params = inputs[1]->info;
+		const size_t count = ccv_nnc_tensor_count(weight_params);
+		const int palette_datatype = (weight_params.datatype & 0xff) << 12;
+		const int qbits = (weight_params.datatype & 0xf00) >> 8;
+		const int number_in_blocks = weight_params.reserved;
+		ccv_nnc_tensor_param_t depalettize_weight_params = weight_params;
+		depalettize_weight_params.datatype = palette_datatype;
+		depalettize_weight_params.reserved = 0;
+		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
+		weight_data = (uint8_t*)workspace + workspace_size;
+		ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
+		if (workspace_size == 0)
+			workspace = 0;
+	} else {
+		// TODO: If error, return OOM
+		if (workspace_size)
+			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+	}
 	static const float one = 1, zero = 0;
-	CUDNN_ENFORCE(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
+	CUDNN_ENFORCE(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, weight_data, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
 	if (input_size > 2 && inputs[2])
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
@@ -108,7 +127,18 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 	int count = 0;
 	cudnnConvolutionFwdAlgoPerf_t perfs[CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT];
-	CUDNN_ENFORCE(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
+	void* weight_data = w.data.u8;
+	if (CCV_GET_DATA_TYPE(inputs[1]->info.datatype) == CCV_QX)
+	{
+		ccv_nnc_tensor_param_t weight_params = inputs[1]->info;
+		const int palette_datatype = (weight_params.datatype & 0xff) << 12;
+		ccv_nnc_tensor_param_t depalettize_weight_params = weight_params;
+		depalettize_weight_params.datatype = palette_datatype;
+		depalettize_weight_params.reserved = 0;
+		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+		weight_data = ccv_nnc_stream_context_get_workspace(stream_context, data_size, CCV_TENSOR_GPU_MEMORY);
+	}
+	CUDNN_ENFORCE(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, weight_data, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
 	int i;
 	cudnnConvolutionFwdAlgo_t algorithm;
 	for(i = 0; i < count; i++)
@@ -289,10 +319,29 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		size_t workspace_size = 0;
 		CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataWorkspaceSize(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, data_algo, &workspace_size));
 		void* workspace = 0;
-		// TODO: If error, return OOM
-		if (workspace_size)
-			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
-		CUDNN_ENFORCE(cudnnConvolutionBackwardData(cudnn, &one, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, data_algo, workspace, workspace_size, &zero, h.descriptor, h.data.u8));
+		void* weight_data = w.data.u8;
+		if (CCV_GET_DATA_TYPE(inputs[2]->info.datatype) == CCV_QX)
+		{
+			ccv_nnc_tensor_param_t weight_params = inputs[2]->info;
+			const size_t count = ccv_nnc_tensor_count(weight_params);
+			const int palette_datatype = (weight_params.datatype & 0xff) << 12;
+			const int qbits = (weight_params.datatype & 0xf00) >> 8;
+			const int number_in_blocks = weight_params.reserved;
+			ccv_nnc_tensor_param_t depalettize_weight_params = weight_params;
+			depalettize_weight_params.datatype = palette_datatype;
+			depalettize_weight_params.reserved = 0;
+			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
+			weight_data = (uint8_t*)workspace + workspace_size;
+			ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
+			if (workspace_size == 0)
+				workspace = 0;
+		} else {
+			// TODO: If error, return OOM
+			if (workspace_size)
+				workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
+		}
+		CUDNN_ENFORCE(cudnnConvolutionBackwardData(cudnn, &one, w.descriptor, weight_data, g.descriptor, g.data.u8, conv.descriptor, data_algo, workspace, workspace_size, &zero, h.descriptor, h.data.u8));
 		ccv_nnc_cudnn_deinit_filter_descriptor(w);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
 	}
@@ -311,7 +360,6 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	int i;
 	int count = 0;
 	const int is_w_nhwc = (output_size > 1 && outputs[1]) ? outputs[1]->info.format == CCV_TENSOR_FORMAT_NHWC : inputs[2]->info.format == CCV_TENSOR_FORMAT_NHWC;
@@ -321,6 +369,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnConvolutionBwdFilterAlgo_t filter_algorithm = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
 	if (output_size > 1 && outputs[1])
 	{
+		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 		const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
 		cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
 		CUDNN_ENFORCE(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
@@ -330,6 +379,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 				filter_algorithm = filter_perfs[i].algo;
 				break;
 			}
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	}
 	cudnnConvolutionBwdDataAlgo_t data_algorithm = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
@@ -338,7 +388,18 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 		cudnnConvolutionBwdDataAlgoPerf_t data_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT];
-		CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
+		void* weight_data = w.data.u8;
+		if (CCV_GET_DATA_TYPE(inputs[2]->info.datatype) == CCV_QX)
+		{
+			ccv_nnc_tensor_param_t weight_params = inputs[2]->info;
+			const int palette_datatype = (weight_params.datatype & 0xff) << 12;
+			ccv_nnc_tensor_param_t depalettize_weight_params = weight_params;
+			depalettize_weight_params.datatype = palette_datatype;
+			depalettize_weight_params.reserved = 0;
+			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+			weight_data = ccv_nnc_stream_context_get_workspace(stream_context, data_size, CCV_TENSOR_GPU_MEMORY);
+		}
+		CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, weight_data, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
 		for(i = 0; i < count; i++)
 			if ((size_t)data_perfs[i].memory <= max_workspace_size && data_perfs[i].status == CUDNN_STATUS_SUCCESS)
 			{
@@ -348,7 +409,6 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		ccv_nnc_cudnn_deinit_filter_descriptor(w);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
 	}
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	int filter = -1, data = -1;
@@ -409,7 +469,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT;
 	registry->exec = _ccv_nnc_conv_forw;
@@ -421,7 +481,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT * CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT;
 	registry->exec = _ccv_nnc_conv_back;

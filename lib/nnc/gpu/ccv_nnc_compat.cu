@@ -770,8 +770,10 @@ cudaDataType_t ccv_nnc_cuda_compute_datatype(const int datatype)
 
 #ifdef HAVE_CUDNN
 
-cudnnDataType_t ccv_nnc_cudnn_datatype(const int datatype)
+cudnnDataType_t ccv_nnc_cudnn_datatype(int datatype)
 {
+	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
+		datatype = (datatype & 0xff) << 12;
 	switch (datatype)
 	{
 		case CCV_8U:

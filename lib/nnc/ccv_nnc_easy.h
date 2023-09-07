@@ -217,7 +217,7 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_palettize(const ccv_nnc_tens
 	return new_params;
 }
 
-static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
+static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tensor_param_t params)
 {
 	const ssize_t count = (ssize_t)ccv_nnc_tensor_count(params);
 	ssize_t data_size;
@@ -232,6 +232,12 @@ static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t param
 		data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(palette_datatype) * num_blocks + (count + 7) * qbits / 8;
 	} else
 		data_size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * count;
+	return data_size;
+}
+
+static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
+{
+	ssize_t data_size = ccv_nnc_tensor_data_size_without_padding(params);
 #ifdef HAVE_CUDA // For CUDA, we align to 128-bytes.
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 		return ((data_size + 127) & -128);
