@@ -617,6 +617,8 @@ CCV_WARN_UNUSED(char*) ccv_nnc_tensor_format_new(const ccv_nnc_tensor_t* const a
  * @param dimension_count The number of dimensions for the data.
  * @param identifier The identifier saved along the encoder (non-zero) that used to identify this decoder.
  * @param context The context associated with this decoder.
+ * @param tensor_params The tensor parameters for the final container. This can be different from the expected values above.
+ * @param tensor_out The final container for the tensor. It can be nil and you need to initialize it in that case.
  * @param decoded The buffer for data to be decoded.
  * @param decoded_size The size of the buffer to be decoded.
  * @return 1 if it is processed, 0 otherwise.

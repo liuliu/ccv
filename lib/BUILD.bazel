@@ -358,6 +358,7 @@ cuda_library(
 	name = "nnc_cuda_compat",
 	srcs = [
 		"nnc/gpu/ccv_nnc_compat.cu",
+		"nnc/gpu/ccv_nnc_palettize.cu",
 	],
 	hdrs = [
 		"nnc/gpu/ccv_nnc_compat.h",
