@@ -64,8 +64,6 @@ static inline int _model_tensor_read(const ccv_cnnp_model_t* const self, void* c
 {
 	if (self->rw.reader)
 		return self->rw.reader(handle, name, dir, options, info, tensor_out);
-	if (!*tensor_out)
-		*tensor_out = ccv_nnc_tensor_new(0, info, 0);
 	return ccv_nnc_tensor_read(handle, name, dir, options, &info, tensor_out);
 }
 

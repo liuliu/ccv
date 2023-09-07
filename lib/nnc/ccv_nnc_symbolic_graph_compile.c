@@ -1463,6 +1463,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.u8, tensor_symbol_info[d].info, 0);
+				tv->info.datatype = tensor_binds[i].tensor->info.datatype;
+				tv->info.reserved = tensor_binds[i].tensor->info.reserved;
 				tv->data = tensor_binds[i].tensor->data; // If there are offsets, copy it over.
 				tv->dataof = tensor_binds[i].tensor->dataof;
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
@@ -1505,6 +1507,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.u8, tensor_symbol_info[d].info, 0);
+				tv->info.datatype = tensor_binds[i].tensor->info.datatype;
+				tv->info.reserved = tensor_binds[i].tensor->info.reserved;
 				tv->data = tensor_binds[i].tensor->data;
 				tv->dataof = tensor_binds[i].tensor->dataof;
 				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
@@ -4145,6 +4149,8 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 			if (d < 0 || symbol_d + 1 != tensor_arena->vt_alias_refs[d]) // Doesn't match, reached the end of it.
 				break;
 			ccv_nnc_tensor_t* const d_tensor = tensor_arena->vt_tensors[d];
+			d_tensor->info.datatype = tensor->info.datatype;
+			d_tensor->info.reserved = tensor->info.reserved;
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
 				ccv_nnc_tensor_data(tensor->info, tensor->data.u8, ((ccv_nnc_tensor_view_t*)d_tensor)->off + tensor->dataof, &d_tensor->data, &d_tensor->dataof);
 			else {

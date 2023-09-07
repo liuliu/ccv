@@ -146,8 +146,11 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 	if (!tensor) // If the tensor is not provided, we need to create one.
 	{
 		if (tensor_params_optional)
+		{
+			identifier = (sqlite3_column_int64(tensor_select_stmt, 1) >> 32) & 0xffffffff;
+			datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 			tensor_params = *tensor_params_optional;
-		else {
+		} else {
 			const sqlite_int64 type = sqlite3_column_int64(tensor_select_stmt, 1);
 			identifier = (type >> 32) & 0xffffffff;
 			tensor_params.type = (type & 0xffffffff);
@@ -162,7 +165,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
 	} else {
 		identifier = (sqlite3_column_int64(tensor_select_stmt, 1) >> 32) & 0xffffffff;
-		datatype = sqlite3_column_int(tensor_select_stmt, 3);
+		datatype = sqlite3_column_int(tensor_select_stmt, 3) & 0xffffffff;
 		tensor_params = tensor->info;
 	}
 	const void* const data = sqlite3_column_blob(tensor_select_stmt, 0);

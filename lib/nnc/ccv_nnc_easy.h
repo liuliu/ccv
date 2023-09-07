@@ -229,7 +229,7 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 		const int num_blocks = (int)((count + number_in_blocks - 1) / number_in_blocks);
 		const int qbits = (params.datatype & 0xf00) >> 8;
 		assert(qbits >= 4 && qbits <= 8);
-		data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(palette_datatype) * num_blocks + (count + 7) * qbits / 8;
+		data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(palette_datatype) * num_blocks + (count * qbits + 7) / 8;
 	} else
 		data_size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * count;
 	return data_size;

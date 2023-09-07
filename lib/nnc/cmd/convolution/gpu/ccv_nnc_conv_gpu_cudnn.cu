@@ -87,6 +87,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		depalettize_weight_params.datatype = palette_datatype;
 		depalettize_weight_params.reserved = 0;
 		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+		workspace_size = ((ssize_t)workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 		weight_data = (uint8_t*)workspace + workspace_size;
 		ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
@@ -112,12 +113,12 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
+	void* workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
@@ -136,7 +137,11 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		depalettize_weight_params.datatype = palette_datatype;
 		depalettize_weight_params.reserved = 0;
 		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-		weight_data = ccv_nnc_stream_context_get_workspace(stream_context, data_size, CCV_TENSOR_GPU_MEMORY);
+		max_workspace_size = ((ssize_t)max_workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+		workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
+		weight_data = (uint8_t*)workmem + max_workspace_size;
+		if (max_workspace_size == 0)
+			workmem = 0;
 	}
 	CUDNN_ENFORCE(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, weight_data, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
 	int i;
@@ -331,6 +336,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			depalettize_weight_params.datatype = palette_datatype;
 			depalettize_weight_params.reserved = 0;
 			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
+			workspace_size = ((ssize_t)workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 			weight_data = (uint8_t*)workspace + workspace_size;
 			ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
@@ -350,13 +356,13 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// inputs: gradient, forw prop input, w
 	// outputs:  output gradient, weight updates, bias updates [unused]
 	assert(input_size >= 2 && output_size >= 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
+	void* workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
@@ -397,7 +403,11 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			depalettize_weight_params.datatype = palette_datatype;
 			depalettize_weight_params.reserved = 0;
 			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-			weight_data = ccv_nnc_stream_context_get_workspace(stream_context, data_size, CCV_TENSOR_GPU_MEMORY);
+			max_workspace_size = ((ssize_t)max_workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+			workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
+			weight_data = (uint8_t*)workmem + max_workspace_size;
+			if (max_workspace_size == 0)
+				workmem = 0;
 		}
 		CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, weight_data, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
 		for(i = 0; i < count; i++)
