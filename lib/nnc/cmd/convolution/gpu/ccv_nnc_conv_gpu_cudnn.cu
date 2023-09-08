@@ -87,7 +87,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		depalettize_weight_params.datatype = palette_datatype;
 		depalettize_weight_params.reserved = 0;
 		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-		workspace_size = ((ssize_t)workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+		workspace_size = ((ssize_t)workspace_size + 1023) & -1024; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 		workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 		weight_data = (uint8_t*)workspace + workspace_size;
 		ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
@@ -137,7 +137,7 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, size_t max_works
 		depalettize_weight_params.datatype = palette_datatype;
 		depalettize_weight_params.reserved = 0;
 		const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-		max_workspace_size = ((ssize_t)max_workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+		max_workspace_size = ((ssize_t)max_workspace_size + 1023) & -1024; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 		workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 		weight_data = (uint8_t*)workmem + max_workspace_size;
 		if (max_workspace_size == 0)
@@ -336,7 +336,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			depalettize_weight_params.datatype = palette_datatype;
 			depalettize_weight_params.reserved = 0;
 			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-			workspace_size = ((ssize_t)workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+			workspace_size = ((ssize_t)workspace_size + 1023) & -1024; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 			weight_data = (uint8_t*)workspace + workspace_size;
 			ccv_nnc_compat_depalettize(w.data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(weight_params), qbits, number_in_blocks, weight_data, count, stream_context);
@@ -403,7 +403,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, size_t max_works
 			depalettize_weight_params.datatype = palette_datatype;
 			depalettize_weight_params.reserved = 0;
 			const size_t data_size = ccv_nnc_tensor_data_size(depalettize_weight_params);
-			max_workspace_size = ((ssize_t)max_workspace_size + 127) & -128; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
+			max_workspace_size = ((ssize_t)max_workspace_size + 1023) & -1024; // Somehow the workspace size is not padded. We need to pad it for weight_data to be aligned.
 			workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size + data_size, CCV_TENSOR_GPU_MEMORY);
 			weight_data = (uint8_t*)workmem + max_workspace_size;
 			if (max_workspace_size == 0)

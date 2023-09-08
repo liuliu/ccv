@@ -273,6 +273,29 @@ __global__ void _ccv_nnc_q8_fast(const size_t count, const int number_in_blocks,
 	}
 }
 
+template<int REPEAT_4, typename NUM>
+__global__ void _ccv_nnc_q8_fast_s4(const int number_in_blocks, const uint8_t* const a, NUM* const b)
+{
+	const int i = blockIdx.y;
+	const int j = blockIdx.x;
+	const uint8_t* const ui0 = a + (sizeof(NUM) * 256 + number_in_blocks) * i;
+	__shared__ NUM palette[256];
+	if (threadIdx.x < 256)
+		palette[threadIdx.x] = ((NUM*)ui0)[threadIdx.x];
+	__syncthreads();
+	NUM* const f = b + number_in_blocks * i + j * blockDim.x * REPEAT_4 * 4;
+	const uint32_t* ui1 = (uint32_t*)(ui0 + sizeof(NUM) * 256) + j * blockDim.x * REPEAT_4;
+	#pragma unroll
+	for (int k = 0; k < REPEAT_4; k++)
+	{
+		const uint32_t u0 = ui1[k * blockDim.x + threadIdx.x];
+		f[(k * blockDim.x + threadIdx.x) * 4] = palette[u0 >> 24];
+		f[(k * blockDim.x + threadIdx.x) * 4 + 1] = palette[(u0 >> 16) & 0xff];
+		f[(k * blockDim.x + threadIdx.x) * 4 + 2] = palette[(u0 >> 8) & 0xff];
+		f[(k * blockDim.x + threadIdx.x) * 4 + 3] = palette[u0 & 0xff];
+	}
+}
+
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
@@ -310,7 +333,13 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 			else
 				_ccv_nnc_q7_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (__half*)output);
 		} else {
-			_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (__half*)output);
+			if ((number_in_blocks % (1024 * 4 * 2)) == 0 && (output_length % number_in_blocks) == 0)
+			{
+				const int num_blocks = output_length / number_in_blocks;
+				const int repeat_4 = number_in_blocks / (1024 * 4 * 2);
+				_ccv_nnc_q8_fast_s4<2, __half><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks, (uint8_t*)input, (__half*)output);
+			} else
+				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (__half*)output);
 		}
 	} else if (datatype == CCV_32F) {
 		if (qbits == 4)
@@ -343,7 +372,13 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 			else
 				_ccv_nnc_q7_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (float*)output);
 		} else {
-			_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (float*)output);
+			if ((number_in_blocks % (1024 * 4 * 2)) == 0 && (output_length % number_in_blocks) == 0)
+			{
+				const int num_blocks = output_length / number_in_blocks;
+				const int repeat_4 = number_in_blocks / (1024 * 4 * 2);
+				_ccv_nnc_q8_fast_s4<2, float><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks, (uint8_t*)input, (float*)output);
+			} else
+				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (float*)output);
 		}
 	} else {
 		if (qbits == 4)
@@ -376,7 +411,13 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 			else
 				_ccv_nnc_q7_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (double*)output);
 		} else {
-			_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (double*)output);
+			if ((number_in_blocks % (1024 * 4 * 2)) == 0 && (output_length % number_in_blocks) == 0)
+			{
+				const int num_blocks = output_length / number_in_blocks;
+				const int repeat_4 = number_in_blocks / (1024 * 4 * 2);
+				_ccv_nnc_q8_fast_s4<2, double><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks, (uint8_t*)input, (double*)output);
+			} else
+				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (double*)output);
 		}
 	}
 }
