@@ -32,6 +32,7 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 void ccv_nnc_mps_unbounded_command_buffers(int state);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
+void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer);
 
 #ifdef __OBJC__
 

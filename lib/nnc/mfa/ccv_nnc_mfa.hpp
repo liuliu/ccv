@@ -6,6 +6,7 @@
 #include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_normalization.hpp"
+#include "ccv_nnc_mfa_depalettize.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
@@ -44,6 +45,7 @@ public:
   cache<attention::hash, attention::pipeline> attention_cache;
   cache<gemm::hash, gemm::pipeline> gemm_cache;
   cache<normalization::hash, normalization::pipeline> normalization_cache;
+  cache<depalettize::hash, depalettize::pipeline> depalettize_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

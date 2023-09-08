@@ -964,6 +964,7 @@ void ccv_nnc_depalettize(const void* input, const int datatype, const int memory
 #ifdef HAVE_CUDA
 		ccv_nnc_compat_depalettize(input, datatype, input_length, qbits, number_in_blocks, output, output_length, 0);
 #elif defined(HAVE_MPS)
+		ccv_nnc_mps_depalettize(input, datatype, input_length, qbits, number_in_blocks, output, output_length, 0);
 #else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 #endif
