@@ -821,8 +821,10 @@ void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* 
 	ccv_nnc_stream_context_finish_command_buffer(stream_context, command_buffer, NULL);
 }
 
-MPSDataType ccv_nnc_mps_datatype(const int datatype)
+MPSDataType ccv_nnc_mps_datatype(int datatype)
 {
+	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
+		datatype = (datatype & 0xff) << 12;
 	switch (datatype)
 	{
 		case CCV_8U:

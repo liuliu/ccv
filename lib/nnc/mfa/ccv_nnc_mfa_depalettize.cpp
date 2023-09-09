@@ -164,6 +164,8 @@ kernel void depalettize(
   defines += std::to_string(threadgroup_size) + ";";
   defines += "\n";
   this->group_size = MTL::Size(threadgroup_size, 1, 1);
+  CCV_NNC_MFA_PRECONDITION(hash.qbits == 8 || hash.qbits == 6);
+  CCV_NNC_MFA_PRECONDITION((hash.length % hash.number_in_blocks) == 0);
 
   if (hash.qbits == 6) {
     defines += "constant ushort palette_size = 64;\n";
@@ -172,6 +174,7 @@ kernel void depalettize(
     defines += std::to_string(hash.number_in_blocks / 4) + ";";
     defines += "\n";
     const int num_blocks = hash.length / hash.number_in_blocks;
+    CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4)) == 0);
     const int repeat_4 = hash.number_in_blocks / (256 * 4);
 
     defines += "constant uint num_repeats = ";
@@ -185,6 +188,7 @@ kernel void depalettize(
     defines += std::to_string(hash.number_in_blocks) + ";";
     defines += "\n";
     const int num_blocks = hash.length / hash.number_in_blocks;
+    CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4 * 2)) == 0);
     const int repeat_4 = hash.number_in_blocks / (256 * 4 * 2);
 
     defines += "constant uint num_repeats = ";

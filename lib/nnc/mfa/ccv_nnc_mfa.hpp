@@ -65,6 +65,7 @@ void ccv_nnc_mfa_log_message(const char* message);
 
 mtl_command_batch_t* ccv_nnc_start_command_batch(mtl_command_queue_t* command_queue);
 void ccv_nnc_finish_command_batch(mtl_command_batch_t* command_batch);
+mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size);
 
 #ifdef __cplusplus
 } // extern "C"

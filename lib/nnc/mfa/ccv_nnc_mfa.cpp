@@ -22,6 +22,10 @@ uint16_t ccv_nnc_mfa_context_log_level(mfa::context* context) {
   return context->log_level;
 }
 
+mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size) {
+  return context->request_scratch(size);
+}
+
 void ccv_nnc_mfa_log_message(const char* message) {
   std::cerr << METAL_LOG_HEADER << message << std::endl;
 }

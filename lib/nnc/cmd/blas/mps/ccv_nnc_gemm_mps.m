@@ -121,14 +121,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
 			(bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
 
+		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
+		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
 		const int is_same_dtype =
-			(a->info.datatype == w->info.datatype) &&
-			(a->info.datatype == b->info.datatype) &&
-			(bias ? (a->info.datatype == bias->info.datatype) : 1);
+			(a_datatype == w_datatype) &&
+			(a_datatype == b->info.datatype) &&
+			(bias ? (a_datatype == bias->info.datatype) : 1);
 
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
-		switch (a->info.datatype) {
+		switch (a_datatype) {
 			case CCV_16F: {
 				is_supported_dtype = 1;
 				mtl_data_type = 16;
@@ -176,6 +178,27 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
 
+		size_t a_data_size = 0;
+		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+		{
+			ccv_nnc_tensor_param_t a_params = a->info;
+			const int palette_datatype = (a_params.datatype & 0xff) << 12;
+			ccv_nnc_tensor_param_t depalettize_a_params = a_params;
+			depalettize_a_params.datatype = palette_datatype;
+			depalettize_a_params.reserved = 0;
+			a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
+		}
+		size_t w_data_size = 0;
+		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+		{
+			ccv_nnc_tensor_param_t w_params = w->info;
+			const int palette_datatype = (w_params.datatype & 0xff) << 12;
+			ccv_nnc_tensor_param_t depalettize_w_params = w_params;
+			depalettize_w_params.datatype = palette_datatype;
+			depalettize_w_params.reserved = 0;
+			w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+		}
+
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
 			if (is_mfa_supported)
@@ -204,6 +227,47 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		if (is_mfa_supported)
 		{
+			mtl_buffer_t* scratch = 0;
+			if (a_data_size + w_data_size > 0)
+				scratch = ccv_nnc_mfa_request_scratch(context, a_data_size + w_data_size);
+			mtl_buffer_t* a_data = mpgetbuffer((ccv_nnc_tensor_t*)a);
+			size_t a_dataof = a->dataof;
+			ccv_nnc_mfa_depalettize_params_t a_depalettize_params;
+			if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+			{
+				ccv_nnc_tensor_param_t a_params = a->info;
+				const size_t count = ccv_nnc_tensor_count(a_params);
+				const int qbits = (a_params.datatype & 0xf00) >> 8;
+				const int number_in_blocks = a_params.reserved;
+				a_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+					.data_type = mtl_data_type,
+					.qbits = (uint32_t)qbits,
+					.number_in_blocks = (uint32_t)number_in_blocks,
+					.length = (uint64_t)count,
+				};
+				ccv_nnc_mfa_prepare_depalettize(context, a_depalettize_params);
+				a_data = scratch;
+				a_dataof = 0;
+			}
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = w->dataof;
+			ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				ccv_nnc_tensor_param_t w_params = w->info;
+				const size_t count = ccv_nnc_tensor_count(w_params);
+				const int qbits = (w_params.datatype & 0xf00) >> 8;
+				const int number_in_blocks = w_params.reserved;
+				w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+					.data_type = mtl_data_type,
+					.qbits = (uint32_t)qbits,
+					.number_in_blocks = (uint32_t)number_in_blocks,
+					.length = (uint64_t)count,
+				};
+				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				w_data = scratch;
+				w_dataof = a_data_size;
+			}
 			// On supported devices, use Metal directly.
 			ccv_nnc_mfa_gemm_params_t params = {
 				.data_type = mtl_data_type,
@@ -260,20 +324,46 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// faster the >50 µs penalty for MPSGraph (probably why
 			// MPSMatrixMultiplication is faster for GEMM).
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+			{
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+					(mtl_buffer_t*)scratch, // B
+					NULL,
+				};
+				size_t tensor_offsets[2] = {
+					a->dataof, // A offset
+					0, // B offset
+				};
+				ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
+			}
+			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)w), // A
+					(mtl_buffer_t*)scratch, // B
+					NULL,
+				};
+				size_t tensor_offsets[2] = {
+					w->dataof, // A offset
+					a_data_size, // B offset
+				};
+				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+			}
 			mtl_buffer_t* bias_buffer = NULL;
 			if (bias) {
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
 			}
 			mtl_buffer_t* tensors[5] = {
-				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
-				mpgetbuffer((ccv_nnc_tensor_t*)w), // B
+				a_data, // A
+				w_data, // B
 				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
 				bias_buffer, // D
 				NULL,
 			};
 			size_t tensor_offsets[4] = {
-				a->dataof, // A offset
-				w->dataof, // B offset
+				a_dataof, // A offset
+				w_dataof, // B offset
 				b->dataof, // C offset
 				bias ? bias->dataof : 0, // D offset
 			};
@@ -854,7 +944,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gemm_forw;

@@ -118,12 +118,15 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			assert(amdim[3] == C);
 		}
 	}
+	int weights_datatype = 0;
+	if (weights)
+		weights_datatype = CCV_GET_DATA_TYPE(weights->info.datatype) == CCV_QX ? ((weights->info.datatype & 0xff) << 12) : weights->info.datatype;
 
 	const int is_same_dtype =
 		(q->info.datatype == k->info.datatype) &&
 		(q->info.datatype == v->info.datatype) &&
 		(q->info.datatype == o->info.datatype) &&
-		(weights ? (q->info.datatype == weights->info.datatype) : 1) &&
+		(weights ? (q->info.datatype == weights_datatype) : 1) &&
 		(bias ? (q->info.datatype == bias->info.datatype) : 1);
 	assert(is_same_dtype);
 
@@ -271,6 +274,39 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				assert(CCV_IS_TENSOR_CONTIGUOUS(bias));
 				assert(bias->info.dim[0] == N);
 			}
+			mtl_buffer_t* weights_data = mpgetbuffer((ccv_nnc_tensor_t*)weights);
+			size_t weights_dataof = weights->dataof;
+			if (CCV_GET_DATA_TYPE(weights->info.datatype) == CCV_QX)
+			{
+				ccv_nnc_tensor_param_t weights_params = weights->info;
+				const int palette_datatype = (weights_params.datatype & 0xff) << 12;
+				ccv_nnc_tensor_param_t depalettize_weights_params = weights_params;
+				depalettize_weights_params.datatype = palette_datatype;
+				depalettize_weights_params.reserved = 0;
+				size_t weights_data_size = ccv_nnc_tensor_data_size(depalettize_weights_params);
+				const size_t count = ccv_nnc_tensor_count(weights_params);
+				const int qbits = (weights_params.datatype & 0xf00) >> 8;
+				const int number_in_blocks = weights_params.reserved;
+				ccv_nnc_mfa_depalettize_params_t weights_depalettize_params = {
+					.data_type = mtl_data_type,
+					.qbits = (uint32_t)qbits,
+					.number_in_blocks = (uint32_t)number_in_blocks,
+					.length = (uint64_t)count,
+				};
+				ccv_nnc_mfa_prepare_depalettize(context, weights_depalettize_params);
+				weights_data = ccv_nnc_mfa_request_scratch(context, weights_data_size);
+				weights_dataof = 0;
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)weights), // A
+					(mtl_buffer_t*)weights_data, // B
+					NULL,
+				};
+				size_t tensor_offsets[2] = {
+					weights->dataof, // A offset
+					0, // B offset
+				};
+				ccv_nnc_mfa_encode_depalettize(context, weights_depalettize_params, command_batch, tensors, tensor_offsets);
+			}
 
 			ccv_nnc_mfa_gemm_params_t params = {
 				.data_type = mtl_data_type,
@@ -302,14 +338,14 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			}
 			mtl_buffer_t* tensors[5] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
-				mpgetbuffer((ccv_nnc_tensor_t*)b), // B
+				weights_data, // B
 				mpgetbuffer((ccv_nnc_tensor_t*)c), // C
 				bias_buffer, // D
 				NULL,
 			};
 			size_t tensor_offsets[4] = {
 				a->dataof, // A offset
-				b->dataof, // B offset
+				weights_dataof, // B offset
 				c->dataof, // C offset
 				bias ? bias->dataof : 0, // D offset
 			};
@@ -485,7 +521,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw;
