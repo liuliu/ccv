@@ -370,16 +370,88 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
-			// Otherwise, incur the ~10-50 microsecond latency of MPS.
-			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			mtl_buffer_t* a_data = mpgetbuffer((ccv_nnc_tensor_t*)a);
+			size_t a_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)a);
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
+			MPSCommandBuffer* command_buffer;
+			if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX || CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				mtl_buffer_t* scratch = 0;
+				if (a_data_size + w_data_size > 0)
+					scratch = ccv_nnc_mfa_request_scratch(context, a_data_size + w_data_size);
+				ccv_nnc_mfa_depalettize_params_t a_depalettize_params;
+				if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+				{
+					ccv_nnc_tensor_param_t a_params = a->info;
+					const size_t count = ccv_nnc_tensor_count(a_params);
+					const int qbits = (a_params.datatype & 0xf00) >> 8;
+					const int number_in_blocks = a_params.reserved;
+					a_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+						.data_type = mtl_data_type,
+						.qbits = (uint32_t)qbits,
+						.number_in_blocks = (uint32_t)number_in_blocks,
+						.length = (uint64_t)count,
+					};
+					ccv_nnc_mfa_prepare_depalettize(context, a_depalettize_params);
+					a_data = scratch;
+					a_dataof = 0;
+				}
+				ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					ccv_nnc_tensor_param_t w_params = w->info;
+					const size_t count = ccv_nnc_tensor_count(w_params);
+					const int qbits = (w_params.datatype & 0xf00) >> 8;
+					const int number_in_blocks = w_params.reserved;
+					w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+						.data_type = mtl_data_type,
+						.qbits = (uint32_t)qbits,
+						.number_in_blocks = (uint32_t)number_in_blocks,
+						.length = (uint64_t)count,
+					};
+					ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+					w_data = scratch;
+					w_dataof = a_data_size;
+				}
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+				{
+					mtl_buffer_t* tensors[3] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+						(mtl_buffer_t*)scratch, // B
+						NULL,
+					};
+					size_t tensor_offsets[2] = {
+						a->dataof, // A offset
+						0, // B offset
+					};
+					ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
+				}
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					mtl_buffer_t* tensors[3] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)w), // A
+						(mtl_buffer_t*)scratch, // B
+						NULL,
+					};
+					size_t tensor_offsets[2] = {
+						w->dataof, // A offset
+						a_data_size, // B offset
+					};
+					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				}
+				command_buffer = ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(stream_context, command_batch);
+			} else // Otherwise, incur the ~10-50 microsecond latency of MPS.
+				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 
 			// If all conditions are met, use MPSMatrixMultiplication.
 			if (is_contiguous && is_same_dtype && is_same_batch && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && !bias)
 			{
-				id<MTLBuffer> a_buffer = mpgetbuffer((ccv_nnc_tensor_t*)a);
-				MPSMatrix* leftMatrix = [[MPSMatrix alloc] initWithBuffer:a_buffer offset:a->dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_a ? a_cols : a_rows) columns:(is_transpose_a ? a_rows : a_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * (is_transpose_a ? a_cols_inc : a_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * a_batch_inc dataType:ccv_nnc_mps_datatype(a->info.datatype)]];
-				id<MTLBuffer> w_buffer = mpgetbuffer((ccv_nnc_tensor_t*)w);
-				MPSMatrix* rightMatrix = [[MPSMatrix alloc] initWithBuffer:w_buffer offset:w->dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_w ? w_cols : w_rows) columns:(is_transpose_w ? w_rows : w_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * (is_transpose_w ? w_cols_inc : w_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * w_batch_inc dataType:ccv_nnc_mps_datatype(w->info.datatype)]];
+				id<MTLBuffer> a_buffer = (id<MTLBuffer>)a_data;
+				MPSMatrix* leftMatrix = [[MPSMatrix alloc] initWithBuffer:a_buffer offset:a_dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_a ? a_cols : a_rows) columns:(is_transpose_a ? a_rows : a_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * (is_transpose_a ? a_cols_inc : a_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * a_batch_inc dataType:ccv_nnc_mps_datatype(a->info.datatype)]];
+				id<MTLBuffer> w_buffer = (id<MTLBuffer>)w_data;
+				MPSMatrix* rightMatrix = [[MPSMatrix alloc] initWithBuffer:w_buffer offset:w_dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_w ? w_cols : w_rows) columns:(is_transpose_w ? w_rows : w_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(w_datatype) * (is_transpose_w ? w_cols_inc : w_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(w_datatype) * w_batch_inc dataType:ccv_nnc_mps_datatype(w->info.datatype)]];
 				id<MTLBuffer> b_buffer = mpgetbuffer((ccv_nnc_tensor_t*)b);
 				MPSMatrix* resultMatrix = [[MPSMatrix alloc] initWithBuffer:b_buffer offset:b->dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:b_rows columns:b_cols matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * b_rows_inc matrixBytes:CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * b_batch_inc dataType:ccv_nnc_mps_datatype(b->info.datatype)]];
 				MPSMatrixMultiplication* matrixMultiplication = [[MPSMatrixMultiplication alloc] initWithDevice:ccv_nnc_default_device() transposeLeft:(is_transpose_a ? YES : NO) transposeRight:(is_transpose_w ? YES : NO) resultRows:b_rows resultColumns:b_cols interiorColumns:a_cols alpha:1 beta:0];
@@ -424,8 +496,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					}
 					[resultTensors addObject:mps_b];
 				});
-				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-				MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
+				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data_with_buffer(a, adim, astride, a_data, a_dataof);
+				MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data_with_buffer(w, w->info.dim, w->stride, w_data, w_dataof);
 				if (bias)
 				{
 					MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, biasdim, biasstride);

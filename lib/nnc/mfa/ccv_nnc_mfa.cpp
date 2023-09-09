@@ -187,7 +187,7 @@ MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
     uint64_t leading_zeroes = __builtin_clzll(padded_size);
     uint64_t rounded_size = 1 << uint64_t(64 - leading_zeroes);
     
-    auto buffer = device->newBuffer(rounded_size, 0);
+    auto buffer = device->newBuffer(rounded_size, MTL::ResourceStorageModePrivate);
     CCV_NNC_MFA_PRECONDITION(buffer != nullptr);
     this->scratch = NS::TransferPtr(buffer);
   }
