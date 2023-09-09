@@ -231,7 +231,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (a_data_size + w_data_size > 0)
 				scratch = ccv_nnc_mfa_request_scratch(context, a_data_size + w_data_size);
 			mtl_buffer_t* a_data = mpgetbuffer((ccv_nnc_tensor_t*)a);
-			size_t a_dataof = a->dataof;
+			size_t a_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)a);
 			ccv_nnc_mfa_depalettize_params_t a_depalettize_params;
 			if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
 			{
@@ -250,7 +250,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				a_dataof = 0;
 			}
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
-			size_t w_dataof = w->dataof;
+			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
 			ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 			{

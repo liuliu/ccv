@@ -821,6 +821,14 @@ void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* 
 	ccv_nnc_stream_context_finish_command_buffer(stream_context, command_buffer, NULL);
 }
 
+MPSCommandBuffer* ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch)
+{
+	id<MTLCommandBuffer> command_buffer = (id<MTLCommandBuffer>)command_batch->command_buffer;
+	command_batch->command_buffer = 0;
+	ccv_nnc_finish_command_batch(command_batch);
+	return [MPSCommandBuffer commandBufferWithCommandBuffer:command_buffer];
+}
+
 MPSDataType ccv_nnc_mps_datatype(int datatype)
 {
 	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
@@ -1065,11 +1073,11 @@ CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const 
 	}
 }
 
-MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data_with_buffer(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], void* buffer, const off_t offset)
 {
-	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
-	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
-	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
+	const int datatype = CCV_GET_DATA_TYPE(tensor_view->info.datatype) == CCV_QX ? ((tensor_view->info.datatype & 0xff) << 12) : tensor_view->info.datatype;
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
 	int i;
 	NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
@@ -1121,10 +1129,14 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* t
 			for (i = 0; i < nd; i++)
 				[shape addObject:@(dim[i])];
 	}
-	id<MTLBuffer> buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor_view);
-	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:(id<MTLBuffer>)buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
 	[shape release];
 	return [data autorelease];
+}
+
+MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	return ccv_nnc_mps_graph_tensor_data_with_buffer(tensor_view, dim, stride, mpgetbuffer((ccv_nnc_tensor_t*)tensor_view), mpgetoffset((ccv_nnc_tensor_t*)tensor_view));
 }
 
 MPSGraphTensorData* ccv_nnc_mps_graph_constant_data(const float val, const int datatype)

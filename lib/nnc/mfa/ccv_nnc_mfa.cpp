@@ -214,5 +214,7 @@ void MTL::CommandBatch::finishCommand(MTL::ComputeCommandEncoder* commandEncoder
 MTL::CommandBatch::~CommandBatch() {
   CCV_NNC_MFA_PRECONDITION(commandActive == 0)
   commandEncoder->endEncoding();
-  commandBuffer->commit();
+  if (commandBuffer) {
+    commandBuffer->commit();
+  }
 }

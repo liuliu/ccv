@@ -275,7 +275,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				assert(bias->info.dim[0] == N);
 			}
 			mtl_buffer_t* weights_data = mpgetbuffer((ccv_nnc_tensor_t*)weights);
-			size_t weights_dataof = weights->dataof;
+			size_t weights_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)weights);
 			if (CCV_GET_DATA_TYPE(weights->info.datatype) == CCV_QX)
 			{
 				ccv_nnc_tensor_param_t weights_params = weights->info;
