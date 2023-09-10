@@ -91,7 +91,7 @@ using namespace metal;
 
 kernel void depalettize(
   device uchar *source [[buffer(0)]],
-  device real *destination [[buffer(1)]],
+  device real4 *destination [[buffer(1)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -102,19 +102,11 @@ kernel void depalettize(
     palette[lid] = ((device real*)ui0)[lid];
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  destination += number_in_blocks * 4 * tgid.y + tgid.x * threadgroup_size * num_repeats * 4;
-  device const uchar *ui1 = ui0 + sizeof(real) * palette_size + tgid.x * threadgroup_size * num_repeats * 3;
-  #pragma clang loop unroll(full)
-  for (uint k = 0; k < num_repeats; k++)
-  {
-    const uint8_t u0 = ui1[(k * threadgroup_size + lid) * 3];
-    const uint8_t u1 = ui1[(k * threadgroup_size + lid) * 3 + 1];
-    const uint8_t u2 = ui1[(k * threadgroup_size + lid) * 3 + 2];
-    destination[(k * threadgroup_size + lid) * 4] = palette[u0 >> 2];
-    destination[(k * threadgroup_size + lid) * 4 + 1] = palette[((u0 & 3) << 4) | (u1 >> 4)];
-    destination[(k * threadgroup_size + lid) * 4 + 2] = palette[((u1 & 15) << 2) | (u2 >> 6)];
-    destination[(k * threadgroup_size + lid) * 4 + 3] = palette[u2 & 63];
-  }
+  const uint x = tgid.x * threadgroup_size + lid;
+  device const packed_uchar3 *ui1 = (device const packed_uchar3*)(ui0 + sizeof(real) * palette_size);
+  const packed_uchar3 u = ui1[x];
+  const real4 d = real4(palette[u.x >> 2], palette[((u.x & 3) << 4) | (u.y >> 4)], palette[((u.y & 15) << 2) | (u.z >> 6)], palette[u.z & 63]);
+  destination[number_in_blocks * tgid.y + x] = d;
 }
     )";
   } else if (hash.qbits == 8) {
@@ -124,28 +116,22 @@ using namespace metal;
 
 kernel void depalettize(
   device uchar *source [[buffer(0)]],
-  device real *destination [[buffer(1)]],
+  device real4 *destination [[buffer(1)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-  device const uchar *ui0 = source + (sizeof(real) * palette_size + number_in_blocks) * tgid.y;
+  device const uchar *ui0 = source + (sizeof(real) * palette_size + number_in_blocks * 4) * tgid.y;
   threadgroup real palette[palette_size];
   if (lid < palette_size) {
     palette[lid] = ((device real*)ui0)[lid];
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  destination += number_in_blocks * tgid.y + tgid.x * threadgroup_size * num_repeats * 4;
-  device const uint *ui1 = (device uint*)(ui0 + sizeof(real) * palette_size) + tgid.x * threadgroup_size * num_repeats;
-  #pragma clang loop unroll(full)
-  for (uint k = 0; k < num_repeats; k++)
-  {
-    const uint u0 = ui1[k * threadgroup_size + lid];
-    destination[(k * threadgroup_size + lid) * 4] = palette[u0 & 0xff];
-    destination[(k * threadgroup_size + lid) * 4 + 1] = palette[(u0 >> 8) & 0xff];
-    destination[(k * threadgroup_size + lid) * 4 + 2] = palette[(u0 >> 16) & 0xff];
-    destination[(k * threadgroup_size + lid) * 4 + 3] = palette[u0 >> 24];
-  }
+  const uint x = tgid.x * threadgroup_size + lid;
+  device const uchar4 *ui1 = (device const uchar4*)(ui0 + sizeof(real) * palette_size);
+  const uchar4 u = ui1[x];
+  const real4 d = real4(palette[u.x], palette[u.y], palette[u.z], palette[u.w]);
+  destination[number_in_blocks * tgid.y + x] = d;
 }
     )";
   }
@@ -153,9 +139,11 @@ kernel void depalettize(
   std::string defines = "";
   if (hash.data_type == MTL::DataTypeFloat) {
     defines += std::string("typedef float real;");
+    defines += std::string("typedef float4 real4;");
     defines += "\n";
   } else {
     defines += std::string("typedef half real;");
+    defines += std::string("typedef half4 real4;");
     defines += "\n";
   }
   
@@ -176,24 +164,16 @@ kernel void depalettize(
     const int num_blocks = hash.length / hash.number_in_blocks;
     CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4)) == 0);
     const int repeat_4 = hash.number_in_blocks / (256 * 4);
-
-    defines += "constant uint num_repeats = ";
-    defines += std::to_string(1) + ";";
-    defines += "\n";
     this->grid_size = MTL::Size(repeat_4, num_blocks, 1);
   } else if (hash.qbits == 8) {
     defines += "constant ushort palette_size = 256;\n";
 
     defines += "constant uint number_in_blocks = ";
-    defines += std::to_string(hash.number_in_blocks) + ";";
+    defines += std::to_string(hash.number_in_blocks / 4) + ";";
     defines += "\n";
     const int num_blocks = hash.length / hash.number_in_blocks;
-    CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4 * 2)) == 0);
-    const int repeat_4 = hash.number_in_blocks / (256 * 4 * 2);
-
-    defines += "constant uint num_repeats = ";
-    defines += std::to_string(2) + ";";
-    defines += "\n";
+    CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4)) == 0);
+    const int repeat_4 = hash.number_in_blocks / (256 * 4);
     this->grid_size = MTL::Size(repeat_4, num_blocks, 1);
   }
   
