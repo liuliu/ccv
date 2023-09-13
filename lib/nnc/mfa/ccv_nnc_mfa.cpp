@@ -127,17 +127,20 @@ mfa::context::context(MTL::Device* device)
   if (METAL_LOG_LEVEL(this) >= 1) {
     std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
-  
+
+  this->device = NS::RetainPtr(device);
+
+  this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
+
   // Check whether the device architecture is supported.
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
   if (!supported) {
     if (METAL_LOG_LEVEL(this) >= 1) {
       std::cerr << METAL_LOG_HEADER << "Device architecture not supported by Metal FlashAttention." << std::endl;
     }
+    pool->drain();
     return;
   }
-  
-  this->device = NS::RetainPtr(device);
   
   const char *external_metallib_path = nullptr;
 #if CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE
@@ -175,8 +178,6 @@ mfa::context::context(MTL::Device* device)
   if (METAL_LOG_LEVEL(this) >= 1) {
     std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
   }
-  
-  this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
   
   pool->drain();
 }
