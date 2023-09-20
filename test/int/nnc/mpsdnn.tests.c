@@ -1909,7 +1909,7 @@ TEST_CASE("mps leaky relu gradient in float")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
-TEST_CASE("compare layernorm gradient with mps")
+TEST_CASE("compare layer norm gradient with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_BACKWARD, CCV_NNC_BACKEND_MPS) &&
@@ -2016,7 +2016,7 @@ TEST_CASE("compare layernorm gradient with mps")
 	ccv_nnc_tensor_free(dbias_tensor);
 }
 
-TEST_CASE("compare layernorm gradient with mps (no bias)")
+TEST_CASE("compare layer norm gradient with mps (no bias)")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_BACKWARD, CCV_NNC_BACKEND_MPS) &&
@@ -2277,7 +2277,7 @@ TEST_CASE("mps backward convolution in nhwc format")
 	ccv_nnc_tensor_free(cdbias);
 }
 
-TEST_CASE("compare groupnorm gradient with mps")
+TEST_CASE("compare group norm gradient with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GROUP_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_GROUP_NORM_BACKWARD, CCV_NNC_BACKEND_MPS) &&
@@ -2372,9 +2372,9 @@ TEST_CASE("compare groupnorm gradient with mps")
 	ccv_nnc_tensor_t* const dcscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcscale);
 	ccv_nnc_tensor_t* const dcbias_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcbias);
 
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias_tensor->data.f32, dcbias_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dscale_tensor->data.f32, dcscale_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * GN_C_DIM * 2 * LN_DIM, 1e-5, "group norm output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias_tensor->data.f32, dcbias_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "group norm output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dscale_tensor->data.f32, dcscale_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "group norm output from mps should match from CPU");
 
 	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
 	ccv_nnc_tensor_arena_free(cpu_tensor_arena);
@@ -2476,8 +2476,8 @@ TEST_CASE("compare group norm gradient with mps (no dbias)")
 	ccv_nnc_tensor_t* const dcx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcx);
 	ccv_nnc_tensor_t* const dcscale_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcscale);
 
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dscale_tensor->data.f32, dcscale_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "groupnorm output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * GN_C_DIM * 2 * LN_DIM, 1e-5, "group norm output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dscale_tensor->data.f32, dcscale_tensor->data.f32, 1 * GN_C_DIM * 2 * LN_DIM, 1e-5, "group norm output from mps should match from CPU");
 
 	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
 	ccv_nnc_tensor_arena_free(cpu_tensor_arena);

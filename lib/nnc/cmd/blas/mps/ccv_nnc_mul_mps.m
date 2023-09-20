@@ -191,7 +191,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						[da_axes addObject:@(i)];
 				}
 				// reduce
-				mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
+				if (da_axes.count > 0)
+					mps_a = [graph reductionSumWithTensor:mps_a axes:da_axes name:nil];
 				[da_axes release];
 				[resultTensors addObject:mps_a];
 			});
@@ -259,7 +260,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 						[dh_axes addObject:@(i)];
 				}
 				// reduce
-				mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
+				if (dh_axes.count > 0)
+					mps_h = [graph reductionSumWithTensor:mps_h axes:dh_axes name:nil];
 				[dh_axes release];
 				[resultTensors addObject:mps_h];
 			});
