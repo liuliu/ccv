@@ -1190,13 +1190,23 @@ void ccv_nnc_mps_export_data(MPSGraphTensorData* data, MPSCommandBuffer* command
 void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer, MPSGraphTensorDataDictionary* feeds, MPSGraphTensor* output, ccv_nnc_tensor_view_t* const data, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data);
+	MPSGraphCompilationDescriptor* compilationDescriptor = [MPSGraphCompilationDescriptor new];
+	// Need more investigation into what this does.
+	compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
+	compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
+	MPSGraphExecutionDescriptor* executionDescriptor = [MPSGraphExecutionDescriptor new];
+	executionDescriptor.compilationDescriptor = compilationDescriptor;
 	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
 	{
 		MPSGraphTensorData* tensor_data = ccv_nnc_mps_graph_tensor_data(data, dim, stride);
-		[graph encodeToCommandBuffer:command_buffer feeds:feeds targetOperations:nil resultsDictionary:@{output: tensor_data} executionDescriptor:nil];
+		[graph encodeToCommandBuffer:command_buffer feeds:feeds targetOperations:nil resultsDictionary:@{output: tensor_data} executionDescriptor:executionDescriptor];
+		[executionDescriptor release];
+		[compilationDescriptor release];
 		return;
 	}
-	MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:feeds targetTensors:@[output] targetOperations:nil executionDescriptor:nil];
+	MPSGraphTensorDataDictionary* result = [graph encodeToCommandBuffer:command_buffer feeds:feeds targetTensors:@[output] targetOperations:nil executionDescriptor:executionDescriptor];
+	[executionDescriptor release];
+	[compilationDescriptor release];
 	MPSGraphTensorData* tensor_data = result[output];
 	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
 }
