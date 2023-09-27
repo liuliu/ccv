@@ -421,9 +421,46 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* db = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
 
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = 0;
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
 		if (h) {
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
+			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				ccv_nnc_tensor_param_t w_params = w->info;
+				const int palette_datatype = (w_params.datatype & 0xff) << 12;
+				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
+				depalettize_w_params.datatype = palette_datatype;
+				depalettize_w_params.reserved = 0;
+				size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+				const size_t count = ccv_nnc_tensor_count(w_params);
+				const int qbits = (w_params.datatype & 0xf00) >> 8;
+				const int number_in_blocks = w_params.reserved;
+				ccv_nnc_mfa_depalettize_params_t w_depalettize_params = {
+					.data_type = palette_datatype == CCV_16F ? 16 : 3,
+					.qbits = (uint32_t)qbits,
+					.number_in_blocks = (uint32_t)number_in_blocks,
+					.length = (uint64_t)count,
+				};
+				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				w_data = ccv_nnc_mfa_request_scratch(context, w_data_size);
+				w_dataof = 0;
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)w), // A
+					(mtl_buffer_t*)w_data, // B
+					NULL,
+				};
+				size_t tensor_offsets[2] = {
+					w->dataof, // A offset
+					0, // B offset
+				};
+				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				command_buffer = ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(stream_context, command_batch);
+			} else
+				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			// [output gradient]
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 			int indices[2];
@@ -456,12 +493,14 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				[resultTensors addObject:mps_h];
 			});
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
-			MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data(w, w->info.dim, w->stride);
+			MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data_with_buffer(w, w->info.dim, w->stride, w_data, w_dataof);
 			MPSGraphTensorData* data[] = {data_g, data_w};
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &h, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1);
 		}
 
 		if (dw) {
+			if (!command_buffer)
+				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			// [weight updates]
 			ccv_nnc_mps_graph_key_t dw_key = ccv_nnc_mps_graph_key_new(cmd, 1, hint, flags, inputs, input_size, outputs, output_size);
 			int dw_indices[2];
@@ -501,6 +540,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 
 		if (db) {
+			if (!command_buffer)
+				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			// [bias updates]
 			ccv_nnc_mps_graph_key_t db_key = ccv_nnc_mps_graph_key_new(cmd, 2, hint, flags, inputs, input_size, outputs, output_size);
 			int db_indices[1];
@@ -526,7 +567,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mps_graph_executable_result(executable_db, command_buffer, @[data_g], &db, (int*[]){ db->info.dim }, (int*[]){ dw->info.dim }, 1);
 		}
 
-		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		if (command_buffer)
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
