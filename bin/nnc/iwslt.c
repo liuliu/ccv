@@ -296,7 +296,7 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 		.dropout = 0.1,
 	};
 	ccv_cnnp_model_t* const wmt = ccv_cnnp_dynamic_new(_dynamic_encoder_decoder, &encoder_decoder_params, 0);
-	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
+	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9, 0);
 	ccv_nnc_tensor_param_t inputs[4];
 	inputs[0] = GPU_TENSOR_NCHW(000, 32F, 1, max_length, embedding_size);
 	inputs[1] = GPU_TENSOR_NCHW(000, 32F, 1, max_length, embedding_size);
@@ -488,7 +488,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 	ccv_cnnp_model_set_data_parallel(wmt, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
+	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9, 0);
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(adam);
 	ccv_nnc_dynamic_graph_t* const dynamic_graph = ccv_nnc_dynamic_graph_new();
 	ccv_nnc_tensor_t* const seq_vec_ = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, max_length, embedding_size), 0);
@@ -772,7 +772,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 		if ((i + 1) % big_step == 0)
 		{
 			float learn_rate = 1. / sqrt_d_model * ccv_min(1. / sqrtf((i + 1) / big_step), (float)((i + 1) / big_step) / (sqrtf(warmup_steps) * warmup_steps));
-			adam = CMD_ADAM_FORWARD((i + 1) / big_step, learn_rate, 0.9, 0.98, 0, 1e-9);
+			adam = CMD_ADAM_FORWARD((i + 1) / big_step, learn_rate, 0.9, 0.98, 0, 1e-9, 0);
 			ccv_cnnp_model_set_minimizer(wmt, adam, 0, 0, 0);
 			for (j = 0; j < device_count; j++)
 				tvin[j * 2] = src_vocab_vec_grad[j], tvin[j * 2 + 1] = tgt_vocab_vec_grad[j], tvout[j * 2] = src_vocab_vec[j], tvout[j * 2 + 1] = tgt_vocab_vec[j];

@@ -322,7 +322,7 @@ static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
+	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9, 0);
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(adam);
 	ccv_nnc_tensor_variable_t saved_auxs[device_count * aux_size * 2];
 	for (i = 0; i < device_count; i++)
@@ -348,7 +348,7 @@ static int train_imdb_fix(const int epoch_limit, const int vocab_size, const int
 	for (i = 0; epoch < epoch_limit; i++)
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
-		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
+		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9, 0);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count, stream);
 		ccv_nnc_tensor_t word_indices_tensor[device_count];
 		ccv_nnc_tensor_t mask_tensor[device_count];
@@ -669,7 +669,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 	ccv_cnnp_model_set_data_parallel(transformer, device_count);
 	const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + device_count * batch_size - 1) / (device_count * batch_size);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9);
+	ccv_nnc_cmd_t adam = CMD_ADAM_FORWARD(1, 0.0001, 0.9, 0.98, 0, 1e-9, 0);
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(adam);
 	ccv_nnc_tensor_variable_t saved_auxs[device_count * aux_size * 2];
 	for (i = 0; i < device_count; i++)
@@ -695,7 +695,7 @@ static int train_imdb_flex(const int epoch_limit, const int vocab_size, const in
 	for (i = 0; epoch < epoch_limit; i++)
 	{
 		float learn_rate = 0.0001 * ccv_min(i / (10000. / batch_size), 1) * device_count;
-		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9);
+		adam = CMD_ADAM_FORWARD(i + 1, learn_rate, 0.9, 0.98, 0, 1e-9, 0);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)tensor, device_count, stream);
 		ccv_nnc_tensor_t word_indices_tensor[device_count];
 		ccv_nnc_tensor_t mask_tensor[device_count];

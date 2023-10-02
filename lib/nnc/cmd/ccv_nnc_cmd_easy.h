@@ -3,9 +3,9 @@
  * @{
  */
 // CCV_NNC_ADAM_FORWARD
-#define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+#define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 // CCV_NNC_ADAMW_FORWARD
-#define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+#define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD

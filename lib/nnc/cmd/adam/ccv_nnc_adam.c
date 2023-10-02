@@ -4,10 +4,18 @@
 
 static int _ccv_nnc_adam_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 3 inputs (gradient, x, momentum, velocity)
-	// 2 outputs (y, new momentum, new velocity)
-	if (input_bitmasks[0] == 15u && output_bitmasks[0] == 7u)
-		return 1;
+	if (cmd.adam.amsgrad)
+	{
+		// 5 inputs (gradient, x, momentum, velocity, v_max)
+		// 4 outputs (y, new momentum, new velocity, new v_max)
+		if (input_bitmasks[0] == 31u && output_bitmasks[0] == 15u)
+			return 1;
+	} else {
+		// 4 inputs (gradient, x, momentum, velocity)
+		// 3 outputs (y, new momentum, new velocity)
+		if (input_bitmasks[0] == 15u && output_bitmasks[0] == 7u)
+			return 1;
+	}
 	return 0;
 }
 
@@ -52,7 +60,7 @@ REGISTER_COMMAND(CCV_NNC_ADAM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADAM_FORWARD)
-#define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+#define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 
 REGISTER_COMMAND(CCV_NNC_ADAMW_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_adamw_cpu_ref.c, gpu/ccv_nnc_adamw_gpu_ref.cu, mps/ccv_nnc_adamw_mps.m)
@@ -70,4 +78,4 @@ REGISTER_COMMAND(CCV_NNC_ADAMW_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADAMW_FORWARD)
-#define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon}}), 0)
+#define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)

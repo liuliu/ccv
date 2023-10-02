@@ -158,6 +158,7 @@ typedef struct {
 			float beta2; /**< [adam.beta2] The beta2 hyper-parameter in adam optimizer. */
 			float decay; /**< [adam.decay] This is the weight decay parameter, which represents L2 regularization. */
 			float epsilon; /**< [adam.epsilon] The epsilon for standard derivation. */
+			int amsgrad; /**< [adam.amsgrad] Whether use amsgrad. */
 		} adam;
 		struct {
 			int step; /**< [lamb.step] Step t in lamb optimizer. */
