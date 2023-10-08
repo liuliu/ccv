@@ -445,8 +445,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			} else // Otherwise, incur the ~10-50 microsecond latency of MPS.
 				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 
-			// If all conditions are met, use MPSMatrixMultiplication.
-			if (is_contiguous && is_same_dtype && is_same_batch && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && !bias)
+			// If all conditions are met, use MPSMatrixMultiplication. Note that the bias only supported for Float32 and this has to be added because MPSGraph on Float32 won't do the computation properly on Intel.
+			if (is_contiguous && is_same_dtype && is_same_batch && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && (!bias || bias->info.datatype == CCV_32F))
 			{
 				id<MTLBuffer> a_buffer = (id<MTLBuffer>)a_data;
 				MPSMatrix* leftMatrix = [[MPSMatrix alloc] initWithBuffer:a_buffer offset:a_dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_a ? a_cols : a_rows) columns:(is_transpose_a ? a_rows : a_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * (is_transpose_a ? a_cols_inc : a_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * a_batch_inc dataType:ccv_nnc_mps_datatype(a->info.datatype)]];
@@ -462,6 +462,18 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				[matrixMultiplication release];
 				[leftMatrix release];
 				[rightMatrix release];
+				if (bias)
+				{
+					id<MTLBuffer> bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+					size_t bias_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)bias);
+					MPSVector* biasVector = [[MPSVector alloc] initWithBuffer:bias_buffer offset:bias_dataof descriptor:[MPSVectorDescriptor vectorDescriptorWithLength:ccv_nnc_tensor_count(bias->info) dataType:ccv_nnc_mps_datatype(bias->info.datatype)]];
+					[biasVector synchronizeOnCommandBuffer:command_buffer];
+					MPSMatrixNeuron* biasAdd = [[MPSMatrixNeuron alloc] initWithDevice:ccv_nnc_default_device()];
+					[biasAdd encodeToCommandBuffer:command_buffer inputMatrix:resultMatrix biasVector:biasVector resultMatrix:resultMatrix];
+					[biasVector synchronizeOnCommandBuffer:command_buffer];
+					[biasAdd release];
+					[biasVector release];
+				}
 				[resultMatrix release];
 			} else {
 				// Otherwise, use MPSGraph.
