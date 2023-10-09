@@ -425,9 +425,9 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
 	uint32_t* const exec_dead = simplify->exec_dead;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = simplify->tensor_symbol_info;
-	int i, j;
-	uint32_t* const has_alias = ccmalloc(2 * sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5));
-	uint32_t* const has_binds = has_alias + sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5);
+	int i;
+	uint32_t* const has_alias = cccalloc(2 * ((simplify->tensor_symbol_info_size + 31) >> 5), sizeof(uint32_t));
+	uint32_t* const has_binds = has_alias + ((simplify->tensor_symbol_info_size + 31) >> 5);
 	for (i = 0; i < bind_size; i++)
 		has_binds[binds[i].d >> 5] |= (1u << (binds[i].d & 0x1f));
 	for (i = 0; i < output_size; i++)
