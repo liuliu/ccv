@@ -269,14 +269,22 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	}
 	const int output_size = model->output_size;
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	const int parameters_rnum = parameters->rnum;
+	if (input_size > 0)
+	{
+		ccv_array_resize(parameters, parameters_rnum + input_size);
+		memcpy(ccv_array_get(parameters, parameters_rnum), model->inputs, input_size * sizeof(ccv_nnc_tensor_symbol_t));
+	}
 	ccv_nnc_symbolic_graph_simplify(model->graph,
 		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
 			CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
 			CCV_NNC_SIMPLIFY_OPS_FUSION,
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
-		model->inputs, input_size,
+		ccv_array_get(parameters, 0), parameters_rnum + input_size,
 		model->outputs, output_size,
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+	// Size it down.
+	parameters->rnum = parameters_rnum;
 	ccv_cnnp_compiled_data_t* compiled_data = model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (output_size * 2 - 1));
 	_ccv_cnnp_compiled_data_init(compiled_data, output_size);
 	const int evaluate_to_size = compiled_data->evaluate.to_size = ccv_nnc_symbolic_graph_destination_size(model->graph);
