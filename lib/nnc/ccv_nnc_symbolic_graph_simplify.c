@@ -426,7 +426,12 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 	uint32_t* const exec_dead = simplify->exec_dead;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = simplify->tensor_symbol_info;
 	int i, j;
-	uint32_t* const has_alias = ccmalloc(sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5));
+	uint32_t* const has_alias = ccmalloc(2 * sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5));
+	uint32_t* const has_binds = has_alias + sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5);
+	for (i = 0; i < bind_size; i++)
+		has_binds[binds[i].d >> 5] |= (1u << (binds[i].d & 0x1f));
+	for (i = 0; i < output_size; i++)
+		has_binds[outputs[i].d >> 5] |= (1u << (outputs[i].d & 0x1f));
 	int* const refs = (int*)ccmalloc(sizeof(int) * simplify->tensor_symbol_info_size);
 	int updated_refs;
 	do {
@@ -499,13 +504,8 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					// If either are inputs / outputs connecting the parent graph, we cannot do anything.
 					if (input->p_ref || output->p_ref)
 						continue;
-					int flag = 0;
-					for (j = 0; !flag && j < bind_size; j++)
-						flag = (binds[j].d == input_ref || binds[j].d == output_ref);
-					for (j = 0; !flag && j < output_size; j++)
-						flag = (outputs[j].d == input_ref || outputs[j].d == output_ref);
 					// Either input or output cannot be in the outputs nor the binds.
-					if (flag)
+					if ((has_binds[output_ref >> 5] & (1u << (output_ref & 0x1f))) || (has_binds[input_ref >> 5] & (1u << (input_ref & 0x1f))))
 						continue;
 					// If the type is the same, check which one is the alias.
 					// We always prefer alias.
