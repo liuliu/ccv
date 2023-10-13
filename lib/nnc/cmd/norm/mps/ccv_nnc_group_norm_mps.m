@@ -246,7 +246,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				MPSGraphTensor* x_minus_mean = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_saved_mean name:nil];
 				// ahp[x] = (ap1[x] - meanp2[0]) * inv_stdp2[0];
 				if (saved_inv_std->info.datatype == CCV_16F)
-					mps_saved_inv_std = [graph castTensor:mps_saved_mean toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
+					mps_saved_inv_std = [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:x_minus_mean secondaryTensor:mps_saved_inv_std name:nil];
 				// gp1[x] * scalep2[x]
 				if (g->info.datatype == CCV_16F)
