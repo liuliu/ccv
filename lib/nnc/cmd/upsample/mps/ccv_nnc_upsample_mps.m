@@ -52,7 +52,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	} else {
@@ -71,7 +71,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	}
@@ -117,7 +117,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	} else {
@@ -136,7 +136,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ bdim }, (int*[]){ bstride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	}
@@ -207,7 +207,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_a];
 			});
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim_r, bstride_r);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a, (int*[]){ adim_r }, (int*[]){ astride_r }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a, (int*[]){ adim_r }, (int*[]){ astride_r }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	} else {
@@ -225,7 +225,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 		astride[3] = astride[2];
 		astride[2] = astride[1];
 		astride[1] = t;
-		ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(a);
+		ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view((ccv_nnc_tensor_t*)a);
 		at.contiguous = 0;
 		at.off = 0;
 		at.type |= CCV_TENSOR_VIEW;
@@ -256,7 +256,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[resultTensors addObject:mps_a];
 			});
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim_r, bstride_r);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], (ccv_nnc_tensor_view_t*[]){ &at }, (int*[]){ adim_r }, (int*[]){ astride_r }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], (ccv_nnc_tensor_view_t*[]){ &at }, (int*[]){ adim_r }, (int*[]){ astride_r }, 1, 0);
 
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 			
@@ -321,7 +321,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_a];
 			});
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim, bstride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a, (int*[]){ adim }, (int*[]){ astride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], &a, (int*[]){ adim }, (int*[]){ astride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	} else {
@@ -339,7 +339,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		astride[3] = astride[2];
 		astride[2] = astride[1];
 		astride[1] = t;
-		ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(a);
+		ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view((ccv_nnc_tensor_t*)a);
 		at.contiguous = 0;
 		at.off = 0;
 		at.type |= CCV_TENSOR_VIEW;
@@ -373,7 +373,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[resultTensors addObject:mps_a];
 			});
 			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, bdim, bstride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], (ccv_nnc_tensor_view_t*[]){ &at }, (int*[]){ adim }, (int*[]){ astride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_b], (ccv_nnc_tensor_view_t*[]){ &at }, (int*[]){ adim }, (int*[]){ astride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	}

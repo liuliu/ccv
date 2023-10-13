@@ -101,7 +101,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		MPSGraphTensorData* data_indices = ccv_nnc_mps_graph_tensor_data(indices, indices_dim, indices_stride);
 		MPSGraphTensorData* data[] = {data_a, data_indices};
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[idx[0]], data[idx[1]]], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1);
+		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[idx[0]], data[idx[1]]], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1, 0);
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;

@@ -37,7 +37,7 @@ static int _ccv_nnc_reduce_isnan_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(&atv, atv.info.dim, atv.stride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &tvs[1], (int*[]){ btv.info.dim }, (int*[]){ btv.stride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &tvs[1], (int*[]){ btv.info.dim }, (int*[]){ btv.stride }, 1, 0);
 		} else {
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 			int indices[1];
@@ -59,7 +59,7 @@ static int _ccv_nnc_reduce_isnan_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 				[resultTensors addObject:mps_c];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(&atv, atv.info.dim, atv.stride);
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &tvs[1], (int*[]){ btv.info.dim }, (int*[]){ btv.stride }, 1);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &tvs[1], (int*[]){ btv.info.dim }, (int*[]){ btv.stride }, 1, 0);
 		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}

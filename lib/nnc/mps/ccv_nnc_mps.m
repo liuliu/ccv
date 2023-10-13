@@ -1211,9 +1211,9 @@ void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer,
 	ccv_nnc_mps_export_data(tensor_data, command_buffer, data, dim, stride);
 }
 
-void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const* const data, int* dim[CCV_NNC_MAX_DIM_ALLOC], int* stride[CCV_NNC_MAX_DIM_ALLOC], const int size)
+void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSCommandBuffer* command_buffer, NSArray<MPSGraphTensorData*>* inputsArray, ccv_nnc_tensor_view_t* const* const data, int* dim[CCV_NNC_MAX_DIM_ALLOC], int* stride[CCV_NNC_MAX_DIM_ALLOC], const int size, const int force_export_data)
 {
-	int i, flag = 0;
+	int i, flag = force_export_data;
 	for (i = 0; !flag && i < size; i++)
 	{
 		off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data[i]);
