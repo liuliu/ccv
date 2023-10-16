@@ -371,7 +371,6 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				//  dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
 				[dscale_axes release];
-				[graph dump];
 
 				[resultTensors addObject:mps_dscale];
 			});
