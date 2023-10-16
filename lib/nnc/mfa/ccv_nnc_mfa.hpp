@@ -7,6 +7,7 @@
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_normalization.hpp"
 #include "ccv_nnc_mfa_depalettize.hpp"
+#include "ccv_nnc_mfa_adam.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
@@ -46,6 +47,7 @@ public:
   cache<gemm::hash, gemm::pipeline> gemm_cache;
   cache<normalization::hash, normalization::pipeline> normalization_cache;
   cache<depalettize::hash, depalettize::pipeline> depalettize_cache;
+  cache<adam::hash, adam::pipeline> adam_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

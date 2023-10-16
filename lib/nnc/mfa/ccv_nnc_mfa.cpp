@@ -104,6 +104,12 @@ void mfa::cache<mfa::depalettize::hash, mfa::depalettize::pipeline>::prepare(mfa
   _mfa_cache_prepare(&map, context, hash);
 }
 
+template <>
+void mfa::cache<mfa::adam::hash, mfa::adam::pipeline>::prepare(mfa::context* context, mfa::adam::hash hash)
+{
+  _mfa_cache_prepare(&map, context, hash);
+}
+
 mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
