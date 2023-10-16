@@ -845,7 +845,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						// Create a null-terminated list of batch dimensions.
 						int A_batch_dim = g_nd - 2;
 						for (int i = 0; i < A_batch_dim; ++i) {
-							params.batch_dims_a[i] = g->info. dim[i];
+							params.batch_dims_a[i] = g->info.dim[i];
 						}
 						if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
 							params.batch_dims_a[A_batch_dim] = 0;
@@ -1078,22 +1078,23 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 					const NSUInteger mps_h_nd = mps_h.shape.count;
 					const NSUInteger h_target_nd = mps_h_target_shape.shape.count;
+					int flag = (h_target_nd < mps_h_nd);
+					int i;
+					for (i = 0; !flag && i < mps_h_nd; i++)
+						if (mps_h.shape[i].integerValue != mps_h_target_shape.shape[i].integerValue)
+							flag = 1;
 
 					// if target h nd smaller than current mps_h_nd (for example, doing batch), mps_h needs to be reduced
-					if (h_target_nd < mps_h_nd) {
+					if (flag) {
 						NSMutableArray<NSNumber*>* h_target_shape = mps_h_target_shape.shape.mutableCopy;
 						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-
-						for ( int i = 0; i < mps_h_nd - h_target_nd; i++) {
+						for (i = 0; i < mps_h_nd - h_target_nd; i++)
 							[h_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-						}
-
-						int i;
-						for (i = 0; i < mps_h_nd; i++) {
+						for (i = 0; i < mps_h_nd; i++)
 							if (mps_h.shape[i].integerValue != h_target_shape[i].integerValue)
 								[axes addObject:@(i)];
-						}
-						mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
+						if (axes.count > 0)
+							mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
 						[h_target_shape release];
 						[axes release];
 					}
@@ -1135,21 +1136,25 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 					const NSUInteger mps_dw_nd = mps_dw.shape.count;
 					const NSUInteger dw_target_nd = mps_dw_target_shape.shape.count;
+					int flag = (dw_target_nd < mps_dw_nd);
+					int i;
+					for (i = 0; !flag && i < mps_dw_nd; i++)
+						if (mps_dw.shape[i].integerValue != mps_dw_target_shape.shape[i].integerValue)
+							flag = 1;
 
 					// if target dw nd smaller than current mupltiplication nd (like we are doing batch), mps_dw needs to be reduced
-					if ( dw_target_nd < mps_dw_nd ) {
+					if (flag) {
 						NSMutableArray<NSNumber*>* dw_target_shape = mps_dw_target_shape.shape.mutableCopy;
 						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-						for ( int i = 0; i < mps_dw_nd - dw_target_nd; i++) {
+						for (i = 0; i < mps_dw_nd - dw_target_nd; i++)
 							[dw_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-						}
 
 						int i;
-						for (i = 0; i < mps_dw_nd; i++) {
+						for (i = 0; i < mps_dw_nd; i++)
 							if (mps_dw.shape[i].integerValue != dw_target_shape[i].integerValue)
 								[axes addObject:@(i)];
-						}
-						mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
+						if (axes.count > 0)
+							mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
 						[dw_target_shape release];
 						[axes release];
 					}
@@ -1181,17 +1186,15 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
 					const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
 					const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
+					int i;
 
 					// make bias_target_shape has same dim as g before finding reduce axis
-					for ( int i = 0; i < g_nd - bias_nd; i++) {
+					for (i = 0; i < g_nd - bias_nd; i++)
 						[bias_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-					}
 
-					int i;
-					for (i = 0; i < g_nd; i++) {
+					for (i = 0; i < g_nd; i++)
 						if (g->info.dim[i] != bias_target_shape[i].integerValue)
 							[axes addObject:@(i)];
-					}
 					MPSGraphTensor* mps_db = [graph reductionSumWithTensor:mps_g axes:axes name:nil];
 					[bias_target_shape release];
 					[axes release];

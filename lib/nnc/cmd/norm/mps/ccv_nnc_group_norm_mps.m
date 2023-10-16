@@ -219,14 +219,19 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 				NSMutableArray<NSNumber*>* group_broadcastable_shape = [NSMutableArray new];  // [N,G,1,H,W]
 				NSMutableArray<NSNumber*>* group_reducible_shape = [NSMutableArray new];  // [N,G,C/G,H,W]
-				int c_divide_g_axis = 0;
+				NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
 				for (int i = 0; i < a_nd; i++) {
-					[group_reducible_shape addObject:@(saved_mean->info.dim[i])];
-					[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
-					if (a->info.dim[i] != saved_mean->info.dim[i]) {
-						c_divide_g_axis = i + 1; // axis of C/G in [N,G,C/G,H,W]
-						[group_broadcastable_shape addObject:@(1)];
+					if (a->info.dim[i] != saved_mean->info.dim[i] && saved_mean->info.dim[i] > 1) {
+						[axes addObject:@(i + 1)]; // axis of C/G in [N,G,C/G,H,W]
+						[group_reducible_shape addObject:@(saved_mean->info.dim[i])];
 						[group_reducible_shape addObject:@(a->info.dim[i] / saved_mean->info.dim[i])];
+						[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
+						[group_broadcastable_shape addObject:@(1)];
+					} else {
+						[group_reducible_shape addObject:@(a->info.dim[i])];
+						[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
+						if (a->info.dim[i] != saved_mean->info.dim[i])
+							[axes addObject:@(group_reducible_shape.count - 1)];
 					}
 				}
 
@@ -260,12 +265,12 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				// gssp = gp1[x] * scalep2[x] * inv_stdp2[x]
 				MPSGraphTensor* gss = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_saved_inv_std name:nil];
 				// gssr = gss reduce by group
-				MPSGraphTensor* gssr = [graph reductionSumWithTensor:gss axes:@[@(c_divide_g_axis)] name:nil];
+				MPSGraphTensor* gssr = [graph reductionSumWithTensor:gss axes:axes name:nil];
 				// ah[x] * gss[x]
 				MPSGraphTensor* ahgss = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:gss name:nil];
 				// ah[x] * gssp[x]; ahgssr reduce by group
 				// [N,G,C/G,H,W] --> [N,G,1,H,W]
-				MPSGraphTensor* ahgssr = [graph reductionSumWithTensor:ahgss axes:@[@(c_divide_g_axis)] name:nil];
+				MPSGraphTensor* ahgssr = [graph reductionSumWithTensor:ahgss axes:axes name:nil];
 				// ahp[x] * ahgssrp2[x]
 				MPSGraphTensor* gssrp_ahp_ahgssrp = [graph multiplicationWithPrimaryTensor:ah secondaryTensor:ahgssr name:nil];
 				// gssrp2[x] + ahp[x] * ahgssrp2[x]
@@ -278,6 +283,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				if (h->info.datatype == CCV_16F)
 					mps_h = [graph castTensor:mps_h toType:MPSDataTypeFloat16 name:@"mps_h_half"];
 
+				[axes release];
 				[group_broadcastable_shape release];
 				[group_reducible_shape release];
 				[resultTensors addObject:mps_h];
@@ -326,14 +332,18 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				NSMutableArray<NSNumber*>* group_broadcastable_shape = [NSMutableArray new];  // [N,G,1,H,W]
 				NSMutableArray<NSNumber*>* group_reducible_shape = [NSMutableArray new];  // [N,G,C/G,H,W]
 				for (int i = 0; i < a_nd; i++) {
-					[group_reducible_shape addObject:@(saved_mean->info.dim[i])];
-					[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
-					if (a->info.dim[i] != saved_mean->info.dim[i]) {
+					if (a->info.dim[i] != saved_mean->info.dim[i] && saved_mean->info.dim[i] > 1) {
+						[group_reducible_shape addObject:@(saved_mean->info.dim[i])];
+						[group_reducible_shape addObject:@(a->info.dim[i] / saved_mean->info.dim[i])];
+						[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
 						[group_broadcastable_shape addObject:@(1)];
-						[group_reducible_shape addObject:@(a->info.dim[i]/saved_mean->info.dim[i])];
+					} else {
+						[group_reducible_shape addObject:@(a->info.dim[i])];
+						[group_broadcastable_shape addObject:@(saved_mean->info.dim[i])];
 					}
 				}
 
+				// This logic looks problematic, we need to revisit when we allow to fine-tune group norm.
 				// [N,G,H,W] --> [N,G,1,H,W] --> [N,G,C/G,H,W] --> [N,C,H,W]
 				mps_saved_mean = [graph reshapeTensor:mps_saved_mean withShape:group_broadcastable_shape name:nil];
 				mps_saved_mean = [graph broadcastTensor:mps_saved_mean toShape:group_reducible_shape name:nil];
@@ -361,6 +371,7 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				//  dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
 				[dscale_axes release];
+				[graph dump];
 
 				[resultTensors addObject:mps_dscale];
 			});
