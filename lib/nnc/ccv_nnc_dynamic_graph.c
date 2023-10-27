@@ -789,6 +789,9 @@ static int _ccv_nnc_tensor_variable_is_only_output(ccv_nnc_dynamic_graph_t* cons
 					return 0;
 				if (other_bind->alias_ref) // If this is alias, use its original's destinations.
 					other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, other_bind->alias_ref - 1);
+				// The original is in use and is it not a constant symbol.
+				if (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT)
+					return 0;
 				if (other_bind->destinations && other_bind->destinations->rnum > 0)
 					return 0;
 			}
