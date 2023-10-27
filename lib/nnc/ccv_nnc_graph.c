@@ -501,6 +501,11 @@ void* ccv_nnc_graph_buffer(ccv_nnc_graph_t* const graph, int size)
 
 void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size)
 {
+	if (exec_cvt_size == 0 && graph->exec_info->rnum == 0)
+	{
+		graph->topsorted = 1;
+		return;
+	}
 	assert(exec_cvt_size == graph->exec_info->rnum);
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);

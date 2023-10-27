@@ -1812,14 +1812,22 @@ static void _ccv_cnnp_model_multistage_jit_1(ccv_cnnp_model_t* const model)
 				compiled_data->backward.updated_accum_gradients[i + j * parameter_size] = NO_TENSOR_SYMBOL;
 			}
 	ccv_nnc_graph_exec_symbol_autogen(accum, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	if (ccv_nnc_symbolic_graph_source_size(accum) == 0)
+	{
+		ccv_nnc_symbolic_graph_free(accum);
+		// Create empty graph.
+		compiled_data->backward.accum = ccv_nnc_graph_new();
+		ccv_nnc_graph_topsort(compiled_data->backward.accum, 0, 0);
+		return;
+	}
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	_ccv_cnnp_model_bind_tensors(accum, compiled_data->backward.accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1, tensor_binds);
 	_ccv_cnnp_model_bind_tensors(accum, compiled_data->backward.gradients, compiled_data->tensors.gradients, parameter_size * parallel_count, 1, tensor_binds);
 	_ccv_cnnp_model_bind_tensors(accum, compiled_data->backward.updated_accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1, tensor_binds);
 	ccv_nnc_symbolic_graph_compile(accum, compiled_data->compile_params, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(accum), SYMBOLIC_GRAPH_DESTINATIONS(accum), &compiled_data->backward.accum, &compiled_data->backward.tensor_arena, &compiled_data->backward.graph_exec_arena);
 	ccv_nnc_symbolic_graph_free(accum);
-	ccv_nnc_graph_set_default_static_schedule(compiled_data->backward.accum, compiled_data->stream_type, model->max_stream_count);
 	ccv_array_free(tensor_binds);
+	ccv_nnc_graph_set_default_static_schedule(compiled_data->backward.accum, compiled_data->stream_type, model->max_stream_count);
 }
 
 void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
@@ -1842,16 +1850,19 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		else if (compiled_data->backward.count == 1) {
 			//  On this round, we need to switch accumulated gradients with gradients (so we can do accumulation properly).
 			int i;
-			ccv_nnc_tensor_arena_clear_bindings(compiled_data->backward.tensor_arena);
 			for (i = 0; i < parameter_size * parallel_count; i++)
 			{
 				ccv_nnc_tensor_t* tensor;
 				CCV_SWAP(compiled_data->tensors.accum_gradients[i], compiled_data->tensors.gradients[i], tensor);
 			}
-			// Do rebind in case we messed up the binding (we switch accum_gradients and gradients).
-			_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.gradients, compiled_data->tensors.gradients, parameter_size * parallel_count, 1);
-			_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1);
-			_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.updated_accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1);
+			if (compiled_data->backward.tensor_arena)
+			{
+				ccv_nnc_tensor_arena_clear_bindings(compiled_data->backward.tensor_arena);
+				// Do rebind in case we messed up the binding (we switch accum_gradients and gradients).
+				_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.gradients, compiled_data->tensors.gradients, parameter_size * parallel_count, 1);
+				_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1);
+				_ccv_cnnp_bind_tensors_to_arena(compiled_data->backward.tensor_arena, 0, compiled_data->backward.updated_accum_gradients, compiled_data->tensors.accum_gradients, parameter_size * parallel_count, 1);
+			}
 		}
 	}
 	const int ingrad_size_per_p = model->output_size;

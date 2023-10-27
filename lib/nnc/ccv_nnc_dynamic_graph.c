@@ -1021,7 +1021,7 @@ static int _ccv_nnc_tensor_bind_trace_forward_to_free(ccv_nnc_dynamic_graph_t* c
 						else {
 							if (other_bind->alias_ref) // If this is alias, use its original's destinations.
 								other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, other_bind->alias_ref - 1);
-							flag = (other_bind->type != CCV_NNC_TENSOR_CONSTANT) && (other_bind->sources && other_bind->sources->rnum > 0); // Constant should have no source, or it is detached.
+							flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->type != CCV_NNC_TENSOR_CONSTANT && other_bind->sources && other_bind->sources->rnum > 0); // Constant should have no source, or it is detached.
 						}
 					}
 			} else {
@@ -1035,7 +1035,7 @@ static int _ccv_nnc_tensor_bind_trace_forward_to_free(ccv_nnc_dynamic_graph_t* c
 						else {
 							if (other_bind->alias_ref) // If this is alias, use its original's destinations.
 								other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, other_bind->alias_ref - 1);
-							flag = (other_bind->destinations && other_bind->destinations->rnum > 0);
+							flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->destinations && other_bind->destinations->rnum > 0);
 						}
 					}
 			}
@@ -1082,7 +1082,7 @@ static void _ccv_nnc_tensor_bind_trace_backward_to_free(ccv_nnc_dynamic_graph_t*
 				else {
 					if (other_bind->alias_ref) // If this is alias, use its original's destinations.
 						other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, other_bind->alias_ref - 1);
-					flag = (other_bind->type != CCV_NNC_TENSOR_CONSTANT) && (other_bind->sources && other_bind->sources->rnum > 0);
+					flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->type != CCV_NNC_TENSOR_CONSTANT && other_bind->sources && other_bind->sources->rnum > 0);
 				}
 			}
 		if (flag) // If any inputs make free this destination impossible. Check whether all its outputs are done.
@@ -1097,7 +1097,7 @@ static void _ccv_nnc_tensor_bind_trace_backward_to_free(ccv_nnc_dynamic_graph_t*
 					else {
 						if (other_bind->alias_ref) // If this is alias, use its original's destinations.
 							other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, other_bind->alias_ref - 1);
-						output_flag = (other_bind->destinations && other_bind->destinations->rnum > 0);
+						output_flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->destinations && other_bind->destinations->rnum > 0);
 					}
 				}
 			if (!output_flag) // If no output is used (used means it has a tensor variable, or it has a destination).

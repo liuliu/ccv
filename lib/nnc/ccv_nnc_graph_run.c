@@ -1060,6 +1060,8 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_n
 int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const _schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const _stream_context)
 {
 	assert(graph->topsorted);
+	if (graph->exec_info->rnum == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	assert(graph->stream_size > 0);
 	const ccv_nnc_graph_static_schedule_t* const schedule = _schedule ? _schedule : graph->default_schedule;
 	assert(schedule);
