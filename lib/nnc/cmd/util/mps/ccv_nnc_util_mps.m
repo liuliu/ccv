@@ -302,6 +302,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				memcpy(bt.info.dim, bdim, sizeof(bdim));
 				memcpy(bt.stride, bstride, sizeof(bstride));
 			}
+			if (adim[0] == 0 || bdim[0] == 0)
+				continue;
 			MPSGraphTensor* mps_input_a;
 			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim, astride, &mps_input_a);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);

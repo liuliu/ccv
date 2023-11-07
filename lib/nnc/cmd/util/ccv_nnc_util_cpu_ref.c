@@ -1003,6 +1003,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
 		assert(a != b); // Cannot do inplace transform.
 		assert(a->info.datatype == b->info.datatype);
+		if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+			continue;
 		if (a->info.datatype == CCV_32F || a->info.datatype == CCV_32S)
 		{
 			if (a->info.format == b->info.format) {
