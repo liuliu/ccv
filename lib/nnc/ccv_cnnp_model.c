@@ -1081,6 +1081,8 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	ccv_nnc_symbolic_graph_set_destinations(model->graph, compiled_data->update_nodes, parameter_size);
 	for (i = 0; i < parameter_size_maybe_more - parameter_size; i++)
 	{
+		if (compiled_data->outgrads[i].d < 0) // When we go through input, we might find zero-length inputs, and for these, we cannot have any outgrads.
+			continue;
 		const ccv_nnc_graph_exec_symbol_t outgrad = ccv_nnc_graph_exec_symbol_for_backward(model->graph, compiled_data->outgrads[i]);
 		const int* tos;
 		int to_size;

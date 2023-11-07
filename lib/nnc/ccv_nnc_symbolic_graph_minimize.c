@@ -26,6 +26,7 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 	assert(parameter_size >= 0);
 	assert(loss_size > 0);
 	assert((inputs && input_size > 0) || (inputs == 0 && input_size <= 0));
+	int i, j;
 	// First, compute gradient.
 	if (inputs)
 	{
@@ -33,12 +34,19 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 		if (parameter_size > 0)
 			memcpy(ingrads, parameters, sizeof(ccv_nnc_tensor_symbol_t) * parameter_size);
 		memcpy(ingrads + parameter_size, inputs, sizeof(ccv_nnc_tensor_symbol_t) * input_size);
+		// Parameters wont, but inputs might be zero length.
+		for (i = parameter_size; i < parameter_size + input_size; i++)
+			if (ingrads[i].d >= 0)
+			{
+				const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, ingrads[i]);
+				if (params.dim[0] == 0)
+					ingrads[i] = NO_TENSOR_SYMBOL;
+			}
 		ccv_nnc_symbolic_graph_backward(graph, losses, loss_size, ingrads, parameter_size + input_size, sources, source_size, destinations, destination_size);
 		if (ingrads != gradients)
 			ccfree(ingrads);
 	} else if (parameter_size > 0)
 		ccv_nnc_symbolic_graph_backward(graph, losses, loss_size, parameters, parameter_size, sources, source_size, destinations, destination_size);
-	int i, j;
 	// At most the minimizer accepts 62 additional parameters.
 	const int aux_size = ccv_nnc_minimizer_saved_aux_size(minimizer);
 	assert(aux_size >= 0);
@@ -79,5 +87,11 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 		}
 	if (gradients)
 		for (i = 0; i < input_size; i++)
-			gradients[i + parameter_size] = ccv_nnc_tensor_symbol_for_backward(graph, inputs[i]);
+		{
+			const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+			if (params.dim[0] == 0)
+				gradients[i + parameter_size] = NO_TENSOR_SYMBOL;
+			else
+				gradients[i + parameter_size] = ccv_nnc_tensor_symbol_for_backward(graph, inputs[i]);
+		}
 }

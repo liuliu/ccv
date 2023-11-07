@@ -47,27 +47,42 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
-		tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+		if (size > 0)
+			tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+		else
+			tensor->data.u8 = 0;
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 		ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
-		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+		if (size > 0)
+			tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+		else
+			tensor->data.u8 = 0;
 	}
 #elif defined(HAVE_MPS)
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
-		tensor->data.u8 = (uint8_t*)mpobjmalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+		if (size > 0)
+			tensor->data.u8 = (uint8_t*)mpobjmalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+		else
+			tensor->data.u8 = 0;
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 		ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
-		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+		if (size > 0)
+			tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+		else
+			tensor->data.u8 = 0;
 	}
 #else
 	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 	ccmemalign((void **)&tensor, 64, tensor_hdr_size + size);
-	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+	if (size > 0)
+		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
+	else
+		tensor->data.u8 = 0;
 #endif
 	tensor->dataof = 0;
 	tensor->alias_ref = 0;
@@ -182,7 +197,10 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 		tensor.info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 	} else // This won't be recognized by ccv_dense_matrix_t
 		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
-	tensor.data.u8 = (uint8_t*)ptr;
+	if (params.dim[0] > 0)
+		tensor.data.u8 = (uint8_t*)ptr;
+	else
+		tensor.data.u8 = 0;
 	tensor.data_size = 0;
 	return tensor;
 }

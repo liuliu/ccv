@@ -39,7 +39,7 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 				ccv_nnc_tensor_view_free(tensor_variable->tensor_view);
 			else {
 				if (!tensor_variable->alias_index_ref && // Return this memory to the graph.
-					CCV_TENSOR_GET_MEMORY(tensor_variable->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
+					CCV_TENSOR_GET_MEMORY(tensor_variable->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY && tensor_variable->tensor_view->data.u8)
 					ccv_nnc_xpu_free(&graph->xpu_alloc, tensor_variable->tensor_view->data.u8);
 				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
 			}
@@ -79,7 +79,7 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 				ccv_nnc_tensor_view_free(bind->tensor_view);
 			else {
 				if (!bind->alias_ref && // Return this memory to the graph.
-					CCV_TENSOR_GET_MEMORY(bind->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY)
+					CCV_TENSOR_GET_MEMORY(bind->tensor_view->info.type) == CCV_TENSOR_GPU_MEMORY && bind->tensor_view->data.u8)
 					ccv_nnc_xpu_free(&graph->xpu_alloc, bind->tensor_view->data.u8);
 				ccv_nnc_tensor_free((ccv_nnc_tensor_t*)bind->tensor_view);
 			}
@@ -320,7 +320,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 		if (CCV_TENSOR_GET_MEMORY(tensor_variable->info.type) == CCV_TENSOR_GPU_MEMORY)
 			ptr = ccv_nnc_xpu_alloc(&graph->xpu_alloc, CCV_TENSOR_GET_DEVICE_ID(tensor_variable->info.type), stream_context, ccv_nnc_tensor_data_size(tensor_variable->info));
 		tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(ptr, tensor_variable->info, 0);
-		assert(tensor_variable->tensor_view->data.u8);
+		if (tensor_variable->info.dim[0] > 0)
+			{ assert(tensor_variable->tensor_view->data.u8); }
 		return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 	}
 	const int alias_index = tensor_variable->alias_index_ref - 1;

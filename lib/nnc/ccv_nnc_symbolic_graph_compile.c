@@ -1162,6 +1162,8 @@ KHASH_INIT(obj_ptr, obj_ptr_key_t, void*, 1, _kh_obj_ptr_hash_func, _kh_obj_ptr_
 
 static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_map, void* ptr, const size_t total_size, const off_t offset, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_arena_t* tensor_arena)
 {
+	if (params.dim[0] == 0)
+		return 0;
 #ifdef HAVE_MPS
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
