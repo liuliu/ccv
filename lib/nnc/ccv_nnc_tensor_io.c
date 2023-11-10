@@ -20,7 +20,7 @@
 
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
-	assert(!CCV_IS_TENSOR_VIEW(tensor));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(tensor));
 	assert(name);
 	sqlite3* conn = (sqlite3*)handle;
 	if (!conn)
