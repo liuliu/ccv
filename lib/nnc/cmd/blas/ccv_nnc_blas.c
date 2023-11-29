@@ -72,12 +72,12 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 		outputs[0].dim[nd - 2] = b_rows;
 		outputs[0].dim[nd - 1] = b_cols;
 		int i;
-		if (a_nd > w_nd)
-			for (i = 0; i < nd - 3; i++)
-				outputs[0].dim[i] = inputs[0].dim[i];
-		else
-			for (i = 0; i < nd - 3; i++)
-				outputs[0].dim[i] = inputs[1].dim[i];
+		for (i = 0; i < nd - 3; i++)
+		{
+			const int a_idx = a_nd - nd + i;
+			const int w_idx = w_nd - nd + i;
+			outputs[0].dim[i] = ccv_max(a_idx >= 0 ? inputs[0].dim[a_idx] : 1, w_idx >= 0 ? inputs[1].dim[w_idx] : 1);
+		}
 	}
 }
 
