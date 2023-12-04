@@ -702,20 +702,6 @@ static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, c
 	ccv_cnnp_model_init_states(self->model, graph, initializer, context);
 }
 
-static void _ccv_cnnp_dynamic_model_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
-{
-	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
-	assert(self->model);
-	ccv_cnnp_model_add_to_parameter(self->model, add_to_array, parameters, is_trainable);
-}
-
-static void _ccv_cnnp_dynamic_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
-{
-	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
-	assert(self->model);
-	ccv_cnnp_model_add_to_output(self->model, add_to_array, outputs);
-}
-
 static void _ccv_cnnp_dynamic_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
@@ -743,8 +729,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
 	.deinit = _ccv_cnnp_dynamic_model_deinit,
 	.build = _ccv_cnnp_dynamic_model_build,
 	.init_states = _ccv_cnnp_dynamic_model_init_states,
-	.add_to_parameter = _ccv_cnnp_dynamic_model_add_to_parameter,
-	.add_to_output = _ccv_cnnp_dynamic_model_add_to_output,
 	.copy = _ccv_cnnp_dynamic_model_copy,
 	.set_is_test = _ccv_cnnp_dynamic_model_set_is_test,
 	.add_to_parameter_indices = _ccv_cnnp_dynamic_model_add_to_parameter_indices,

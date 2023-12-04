@@ -273,6 +273,8 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 	const int old_is_trainable = build_data->is_trainable;
 	if (self->is_trainable >= 0)
 		build_data->is_trainable = self->is_trainable;
+	if (self->name && self->name[0] != '\0')
+		ccv_cnnp_model_push(self, build_data->model_sequence);
 	if (outputs && output_size)
 	{
 		assert(output_size == self->output_size);
@@ -280,7 +282,10 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		memcpy(self->outputs, outputs, sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	} else
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
+	if (self->name && self->name[0] != '\0')
+		ccv_cnnp_model_pop(self, build_data->model_sequence);
 	// Skip if there is none. This helps to load parameters to a different model when only changes non-parameterized settings (add reshapes, permutations etc).
+	// If it is named, we have to push too.
 	if (self->isa->add_to_parameter || self->isa->add_to_output)
 	{
 		ccv_cnnp_model_push(self, build_data->model_sequence);
