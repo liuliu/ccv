@@ -282,19 +282,20 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		memcpy(self->outputs, outputs, sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	} else
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
-	if (self->name && self->name[0] != '\0')
-		ccv_cnnp_model_pop(self, build_data->model_sequence);
 	// Skip if there is none. This helps to load parameters to a different model when only changes non-parameterized settings (add reshapes, permutations etc).
 	// If it is named, we have to push too.
 	if (self->isa->add_to_parameter || self->isa->add_to_output)
 	{
-		ccv_cnnp_model_push(self, build_data->model_sequence);
+		// If we already pushed, no need to push again.
+		if (!(self->name && self->name[0] != '\0'))
+			ccv_cnnp_model_push(self, build_data->model_sequence);
 		build_data->model_sequence->it = 0;
 		ccv_cnnp_model_add_to_parameter(self, build_data->add_to_array, build_data->context.add_to_parameter, build_data->is_trainable);
 		build_data->model_sequence->it = 0;
 		ccv_cnnp_model_add_to_output(self, build_data->add_to_array, build_data->context.add_to_output);
 		ccv_cnnp_model_pop(self, build_data->model_sequence);
-	}
+	} else if (self->name && self->name[0] != '\0')
+		ccv_cnnp_model_pop(self, build_data->model_sequence);
 	build_data->is_trainable = old_is_trainable;
 }
 
