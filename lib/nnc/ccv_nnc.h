@@ -661,7 +661,7 @@ typedef struct {
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
 
 enum {
-	CCV_NNC_TENSOR_READ_METADATA_ONLY = 0x1, /**< Read tensor that data is nil, with only metadata. */
+	CCV_NNC_TENSOR_READ_METADATA_ONLY = CCV_NO_DATA_ALLOC, /**< Read tensor that data is nil, with only metadata. */
 };
 /**
  * Read a tensor from a SQLite database with a given name.
