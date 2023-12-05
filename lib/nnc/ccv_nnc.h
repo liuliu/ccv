@@ -659,17 +659,22 @@ typedef struct {
  * @return CCV_IO_FINAL for success, otherwise error.
  */
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
+
+enum {
+	CCV_NNC_TENSOR_READ_METADATA_ONLY = 0x1, /**< Read tensor that data is nil, with only metadata. */
+};
 /**
  * Read a tensor from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensor in the database.
  * @param dir If the dir is provided, the tensor we read will be backed by a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
  * @param options If provided, we will use this to decode any data that identifier != 0.
+ * @param flags Additional flag to configure how we read tensor.
  * @param tensor_params If provided, we will use this to create the tensor if tensor_out is not provided.
  * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Swap a tensor to be backed by a file instead. Currently, once swapped, there is no way to swap back.
  * @param tensor The tensor.

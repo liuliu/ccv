@@ -122,7 +122,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	return CCV_IO_FINAL;
 }
 
-int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t* const tensor_params_optional, ccv_nnc_tensor_t** const tensor_out)
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params_optional, ccv_nnc_tensor_t** const tensor_out)
 {
 	assert(name);
 	sqlite3* conn = (sqlite3*)handle;
@@ -150,6 +150,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			identifier = (sqlite3_column_int64(tensor_select_stmt, 1) >> 32) & 0xffffffff;
 			datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 			tensor_params = *tensor_params_optional;
+			assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
 		} else {
 			const sqlite_int64 type = sqlite3_column_int64(tensor_select_stmt, 1);
 			identifier = (type >> 32) & 0xffffffff;
@@ -162,11 +163,26 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* 
 			memcpy(tensor_params.dim, dim, ccv_min(sizeof(tensor_params.dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
 		}
 		if (!options || !options->decode)
-			*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
+		{
+			if (flags & CCV_NNC_TENSOR_READ_METADATA_ONLY)
+			{
+				*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, CCV_NO_DATA_ALLOC); // Set the data point to 1 so it is allocated without data.
+				assert(tensor->data.u8 == 0); // Set it back to 0.
+				// Already done loading metadata, return.
+				sqlite3_reset(tensor_select_stmt);
+				sqlite3_clear_bindings(tensor_select_stmt);
+				sqlite3_finalize(tensor_select_stmt);
+				return CCV_IO_FINAL;
+			} else
+				*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
+		} else {
+			assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
+		}
 	} else {
 		identifier = (sqlite3_column_int64(tensor_select_stmt, 1) >> 32) & 0xffffffff;
 		datatype = sqlite3_column_int(tensor_select_stmt, 3) & 0xffffffff;
 		tensor_params = tensor->info;
+		assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
 	}
 	const void* const data = sqlite3_column_blob(tensor_select_stmt, 0);
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
