@@ -174,13 +174,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.batch_dims_q = { 0 },
 			.batch_dims_mask = { 0 },
 		};
-		// The matrix offsets can only be 4096 bytes, hence, our batch size can only be 128 at most. We use 64 for better alignment.
-		const int split_batch_size = ccv_min(batch_size, 64);
-		const int residual_batch_size = batch_size % split_batch_size;
 		if (attention_is_batched) {
-			params.batch_dims_q[0] = split_batch_size;
+			params.batch_dims_q[0] = batch_size;
 			params.batch_dims_q[1] = 0;
-			params.batch_dims_mask[0] = attn_mask ? amdim[0] : split_batch_size;
+			params.batch_dims_mask[0] = attn_mask ? amdim[0] : batch_size;
 			params.batch_dims_mask[1] = 0;
 		}
 		ccv_nnc_mfa_prepare_attention(context, params);
@@ -205,36 +202,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			o->dataof,
 			attn_mask ? attn_mask->dataof : 0,
 		};
-		int i;
-		if (batch_size <= split_batch_size)
-		{
-			ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
-		} else {
-			const int batch_count = batch_size / split_batch_size;
-			const uint64_t byte_stride_mask = R * C * data_type_size;
-			for (i = 0; i < batch_count; i++)
-			{
-				if (i > 0)
-				{
-					tensor_offsets[0] = q->dataof + i * split_batch_size * byte_stride_mask;
-					tensor_offsets[1] = k->dataof + i * split_batch_size * byte_stride_mask;
-					tensor_offsets[2] = v->dataof + i * split_batch_size * byte_stride_mask;
-					tensor_offsets[3] = o->dataof + i * split_batch_size * byte_stride_mask;
-				}
-				ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
-			}
-			if (residual_batch_size > 0)
-			{
-				tensor_offsets[0] = q->dataof + batch_count * split_batch_size * byte_stride_mask;
-				tensor_offsets[1] = k->dataof + batch_count * split_batch_size * byte_stride_mask;
-				tensor_offsets[2] = v->dataof + batch_count * split_batch_size * byte_stride_mask;
-				tensor_offsets[3] = o->dataof + batch_count * split_batch_size * byte_stride_mask;
-				params.batch_dims_q[0] = residual_batch_size;
-				params.batch_dims_mask[0] = attn_mask ? amdim[0] : residual_batch_size;
-				ccv_nnc_mfa_prepare_attention(context, params);
-				ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
-			}
-		}
+		ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
 
 		// NNC notation:
 		// D = C * W^T + bias

@@ -90,16 +90,18 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       byte_stride_block_mask = grid_size.width * grid_size.height * 1;
     }
     
-    simd::ulong4 matrix_offsets[batch_sizes[0]];
-    for (int i = 0; i < batch_sizes[0]; ++i) {
-      matrix_offsets[i] = simd::ulong4 {
-        i * byte_stride_mask,
-        i * byte_stride_block_mask,
-        0,
-        0,
-      };
-    }
-    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
+    if (hash.masked) {
+      simd::ulong4 matrix_offsets[batch_sizes[0]];
+      for (int i = 0; i < batch_sizes[0]; ++i) {
+        matrix_offsets[i] = simd::ulong4 {
+          i * byte_stride_mask,
+          i * byte_stride_block_mask,
+          0,
+          0,
+        };
+      }
+      encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
+	}
   }
   
   if (params.masked) {
