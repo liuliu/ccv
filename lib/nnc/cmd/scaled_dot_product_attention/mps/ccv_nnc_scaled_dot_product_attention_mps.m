@@ -130,16 +130,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		(bias ? (q->info.datatype == bias->info.datatype) : 1);
 	assert(is_same_dtype);
 
-	uint16_t data_type_size = UINT16_MAX;
 	uint32_t mtl_data_type = UINT32_MAX;
 	switch (q->info.datatype) {
 		case CCV_16F: {
-			data_type_size = 2;
 			mtl_data_type = 16;
 			break;
 		}
 		case CCV_32F: {
-			data_type_size = 4;
 			mtl_data_type = 3;
 			break;
 		}
