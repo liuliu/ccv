@@ -108,10 +108,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	b_batch_size = b_nd < 3 ? 1 : b->info.dim[b_nd - 3];
 	for (i = 0; i < b_nd - 3; i++)
 		b_batch_size *= b->info.dim[i];
-	assert(a_batch_size == b_batch_size || a_batch_size == 1);
 	if (a_batch_size == 1 && b_batch_size > 1)
 		a_batch_inc = 0;
-	assert(w_batch_size == a_batch_size || w_batch_size == 1);
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
 	@autoreleasepool {

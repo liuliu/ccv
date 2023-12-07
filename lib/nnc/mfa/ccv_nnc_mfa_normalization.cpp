@@ -201,7 +201,7 @@ kernel void normalization(
   
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort sidx [[simdgroup_index_in_threadgroup]],
-  ushort lid [[thread_index_in_threadgroup]]
+  uint lid [[thread_index_in_threadgroup]]
 ) {
   uint threadgroup_index = tgid.z * sequence_count + tgid.x;
   {
