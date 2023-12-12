@@ -14,6 +14,7 @@ typedef struct {
   float alpha;
   uint8_t batched;
   uint8_t masked;
+  uint8_t upcast;
   
   // Since grouped queries are not supported yet, assume Q, K, V, and O all have
   // the same batch dimensions.
@@ -45,6 +46,7 @@ public:
   float alpha;
   uint8_t batched;
   uint8_t masked;
+  uint8_t upcast;
   
   hash(ccv_nnc_mfa_attention_params_t);
   

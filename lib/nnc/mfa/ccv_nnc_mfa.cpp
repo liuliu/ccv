@@ -168,9 +168,9 @@ mfa::context::context(MTL::Device* device)
     this->library = NS::TransferPtr(device->newLibrary(url, &error));
   } else {
 #if TARGET_OS_IPHONE
-    dispatch_data_t data = dispatch_data_create(libmfaios16_v1_0_1_metallib, sizeof(libmfaios16_v1_0_1_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfaios16_v1_0_2_a_metallib, sizeof(libmfaios16_v1_0_2_a_metallib), NULL, 0);
 #else
-    dispatch_data_t data = dispatch_data_create(libmfamacos13_v1_0_1_metallib, sizeof(libmfamacos13_v1_0_1_metallib), NULL, 0);
+    dispatch_data_t data = dispatch_data_create(libmfamacos13_v1_0_2_a_metallib, sizeof(libmfamacos13_v1_0_2_a_metallib), NULL, 0);
 #endif
     this->library = NS::TransferPtr(device->newLibrary(data, &error));
     dispatch_release(data);

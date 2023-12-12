@@ -153,6 +153,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   alpha = params.alpha;
   batched = params.batched;
   masked = params.masked;
+  upcast = params.upcast;
 }
 
 bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
@@ -168,7 +169,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (O_trans == hash.O_trans) &&
   (alpha == hash.alpha) &&
   (batched == hash.batched) &&
-  (masked == hash.masked);
+  (masked == hash.masked) &&
+  (upcast == hash.upcast);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
@@ -184,7 +186,8 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .O_trans = " << bool(hash.O_trans) << ',';
   os << " .alpha = " << double(hash.alpha) << ',';
   os << " .batched = " << bool(hash.batched) << ',';
-  os << " .masked = " << bool(hash.masked) << " ";
+  os << " .masked = " << bool(hash.masked) << ", ";
+  os << " .upcast = " << bool(hash.upcast) << " ";
   os << "}";
   return os;
 }
@@ -218,6 +221,7 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   constants->setConstantValue(&hash.data_type, MTL::DataTypeUInt, 30);
   constants->setConstantValue(&hash.batched, MTL::DataTypeBool, 100);
   constants->setConstantValue(&hash.masked, MTL::DataTypeBool, 50000);
+  constants->setConstantValue(&hash.upcast, MTL::DataTypeBool, 114);
   
   {
     bool block_sparse = hash.masked;
