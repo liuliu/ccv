@@ -213,7 +213,7 @@ TEST_CASE("run scaled dot product attention with cnnp model")
 	ccv_nnc_graph_run(sdp_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 0, 0, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 0, 0, 0, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[3];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
@@ -275,7 +275,7 @@ TEST_CASE("run scaled dot product attention + unify head output with cnnp model"
 	memcpy(v_tensor->data.f32, bv_tensor->data.f32, sizeof(float) * 32 * 8 * 128 * 96);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 1, 0, 1, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 1, 0, 1, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[3];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
@@ -341,7 +341,7 @@ TEST_CASE("run scaled dot product attention + attention mask with cnnp model")
 	ccv_nnc_graph_run(sdp_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 1, 0, 0, 0, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 1, 0, 0, 0, 0, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[4];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
