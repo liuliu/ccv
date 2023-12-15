@@ -20,6 +20,13 @@ config_setting(
 )
 
 config_setting(
+    name = "have_cuda_sm80",
+    values = {
+        "define": "enable_sm80=true"
+    }
+)
+
+config_setting(
     name = "have_mps",
     values = {
         "define": "enable_mps=true"
@@ -44,6 +51,9 @@ cc_library(
         "//conditions:default": []
     }) + select({
         ":have_cuda": ["HAVE_CUDA"],
+        "//conditions:default": []
+    }) + select({
+        ":have_cuda_sm80": ["HAVE_CUDA_SM80"],
         "//conditions:default": []
     }) + select({
         ":have_mps": ["HAVE_MPS"],

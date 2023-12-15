@@ -354,6 +354,35 @@ cc_library(
 	]
 )
 
+cc_library(
+	name = "cutlass_headers",
+	srcs = [],
+	hdrs = glob([
+		"nnc/gpu/3rdparty/cutlass/include/**/*.h",
+		"nnc/gpu/3rdparty/cutlass/include/**/*.hpp"
+	]),
+	includes = [
+		"nnc/gpu/3rdparty/cutlass/include"
+	],
+	deps = []
+)
+
+cuda_library(
+	name = "nnc_cuda_compat_sm80",
+	srcs = glob([
+		"nnc/gpu/3rdparty/flash_attn/**/*.cu",
+	]),
+	hdrs = glob([
+		"nnc/gpu/3rdparty/flash_attn/**/*.h",
+		"nnc/gpu/3rdparty/flash_attn/**/*.cuh",
+	]),
+	copts = ccv_default_copts() + ["-nvcc_options", "expt-relaxed-constexpr"],
+	deps = [
+		":cutlass_headers",
+		"@local_config_ccv//config:cuda_deps"
+	]
+)
+
 cuda_library(
 	name = "nnc_cuda_compat",
 	srcs = [
@@ -419,13 +448,23 @@ cuda_library(
 	],
 	defines = [
 		"HAVE_CUDA"
-	],
+	] + select({
+		"//config:have_cuda_sm80": [
+			"HAVE_CUDA_SM80"
+		],
+		"//conditions:default": []
+	}),
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
 		":nnc_cuda_compat",
 		":nnc_cuda_3rdparty_headers",
-	]
+	] + select({
+		"//config:have_cuda_sm80": [
+			":nnc_cuda_compat_sm80"
+		],
+		"//conditions:default": []
+	})
 )
 
 objc_library(
@@ -529,6 +568,7 @@ cc_library(
 		":ccv_image_processing",
 		":ccv_basic",
 		":ccv_resample",
+		":ccv_numeric",
 		":ccv_io",
 		":cmd",
 		":sqlite3_hdrs",
@@ -539,6 +579,11 @@ cc_library(
 		"//config:have_cuda": [
 			":nnc_cuda_compat",
 			":cmd_cuda"
+		],
+		"//conditions:default": []
+	}) + select({
+		"//config:have_cuda_sm80": [
+			":nnc_cuda_compat_sm80"
 		],
 		"//conditions:default": []
 	}) + select({

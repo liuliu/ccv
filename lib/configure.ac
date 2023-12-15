@@ -5,10 +5,12 @@ AC_SUBST(MKCFLAGS, [""])
 AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_SRCS, ["cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_convolutional.cu cuda/convnet/cwc_convnet_rnorm.cu cuda/convnet/cwc_convnet_pool.cu cuda/convnet/cwc_convnet_full_connect.cu"])
 AC_SUBST(CUDA_COMPAT_LIB, ["gpu/libnnc-compat-cuda.o"])
+AC_SUBST(CUDA_COMPAT_SM80_LIB, [""])
 AC_SUBST(CUDA_CMD_LIB, ["libnnc-cmd-cuda.o"])
 AC_SUBST(MFA_COMPAT_LIB, ["mfa/libnnc-compat-mfa.o"])
 AC_SUBST(MPS_COMPAT_LIB, ["mps/libnnc-compat-mps.o"])
 AC_SUBST(MPS_CMD_LIB, ["libnnc-cmd-mps.o"])
+AC_SUBST(NV_SM_FLAGS, ["-arch=sm_70 -std=c++14"])
 
 # check if clang exists
 AC_CHECK_PROG(CC, clang, clang)
@@ -178,6 +180,17 @@ if [[ -d "$cuda_prefix" ]]; then
 		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_NCCL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lnccl "])])
 	AC_CHECK_FILE($cuda_prefix/include/cub/cub.cuh,
 		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_SYSTEM_CUB "])])
+	# check for sm80 enabled
+	AC_MSG_CHECKING([sm80])
+	AC_ARG_ENABLE(sm80, [AS_HELP_STRING([--enable-sm80], [optimize for sm80 arch])], [sm80_support=$enableval], [sm80_support="no"])
+	if test "$sm80_support" = yes; then
+		AC_MSG_RESULT(yes)
+		AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA_SM80 "])
+		AC_SUBST(CUDA_COMPAT_SM80_LIB, ["gpu/libnnc-compat-cuda-sm80.o"])
+		AC_SUBST(NV_SM_FLAGS, ["-arch=sm_80 -std=c++17 --expt-relaxed-constexpr"])
+	else
+		AC_MSG_RESULT(no)
+	fi
 else
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])

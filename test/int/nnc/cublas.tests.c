@@ -2609,4 +2609,83 @@ TEST_CASE("clamp backward with only min")
 	ccv_nnc_tensor_free(dat);
 }
 
+TEST_CASE("scaled dot product attention with flash_attn")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	// Bypass error: variable-sized object may not be initialized
+#define num_long_trials 2
+#define num_short_trials 2
+#define num_trials (num_long_trials + num_short_trials)
+
+	for (int trial = 0; trial < num_trials; ++trial) {
+		int B_candidates[num_trials] = {  32,   12, 16, 1 };
+		int R_candidates[num_trials] = { 160,  256, 128, 77 };
+		int C_candidates[num_trials] = { 128,  128, 128, 128 };
+		int H_candidates[num_trials] = {   8,  8, 8, 8 };
+		int D_candidates[num_trials] = {  64, 40, 160, 224 };
+
+		int B = B_candidates[trial];
+		int R = R_candidates[trial];
+		int C = C_candidates[trial];
+		int H = H_candidates[trial];
+		int D = D_candidates[trial];
+		float scale = 1.0 / sqrt((float)D);
+
+		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+		ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+
+		for (int i = 0; i < B * R * H * D; ++i) {
+			q_tensor->data.f32[i] = (float)(i) / (float)(B * R * H * D);
+		}
+		for (int i = 0; i < B * C * H * D; ++i) {
+			k_tensor->data.f32[i] = (float)(i) / (float)(B * C * H * D);
+		}
+		for (int i = 0; i < B * C * H * D; ++i) {
+			v_tensor->data.f32[i] = (float)(i) / (float)(B * C * H * D);
+		}
+
+		ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, NULL, NULL, NULL), TENSOR_LIST(o_tensor, NULL), 0);
+		ccv_nnc_tensor_t* const q_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const k_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const v_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), 0);
+
+		// Why it there 000 in the beginning of the argument list for GPU_TENSOR_NHWC?
+		ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
+
+		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, NULL), 0);
+
+		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor_f16), 0);
+		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(copy_of_gpu_o_tensor_f16), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
+
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * H * D, 1e-3, "GPU computed output should be the same as CPU computed ones");
+
+		ccv_nnc_tensor_free(o_tensor);
+		ccv_nnc_tensor_free(gpu_o_tensor);
+		ccv_nnc_tensor_free(copy_of_gpu_o_tensor);
+		ccv_nnc_tensor_free(copy_of_gpu_o_tensor_f16);
+		ccv_nnc_tensor_free(q_tensor);
+		ccv_nnc_tensor_free(k_tensor);
+		ccv_nnc_tensor_free(v_tensor);
+		ccv_nnc_tensor_free(q_tensor_f16);
+		ccv_nnc_tensor_free(k_tensor_f16);
+		ccv_nnc_tensor_free(v_tensor_f16);
+		ccv_nnc_tensor_free(gpu_q_tensor);
+		ccv_nnc_tensor_free(gpu_k_tensor);
+		ccv_nnc_tensor_free(gpu_v_tensor);
+	}
+#undef num_long_trials
+#undef num_short_trials
+#undef num_trials
+}
+
 #include "case_main.h"

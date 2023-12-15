@@ -625,10 +625,12 @@ LDFLAGS
 CFLAGS
 NVCC
 CC
+NV_SM_FLAGS
 MPS_CMD_LIB
 MPS_COMPAT_LIB
 MFA_COMPAT_LIB
 CUDA_CMD_LIB
+CUDA_COMPAT_SM80_LIB
 CUDA_COMPAT_LIB
 CUDA_SRCS
 MKLDFLAGS
@@ -682,6 +684,7 @@ enable_fftw3
 enable_openmp
 enable_gsl
 with_cuda
+enable_sm80
 enable_mps
 '
       ac_precious_vars='build_alias
@@ -1315,6 +1318,7 @@ Optional Features:
   --disable-fftw3         disable FFTW3 (GPL License)
   --disable-openmp        do not use OpenMP
   --disable-gsl           disable GSL (GPL License)
+  --enable-sm80           optimize for sm80 arch
   --enable-mps            Enable Metal support
 
 Optional Packages:
@@ -2220,6 +2224,8 @@ CUDA_SRCS="cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_c
 
 CUDA_COMPAT_LIB="gpu/libnnc-compat-cuda.o"
 
+CUDA_COMPAT_SM80_LIB=""
+
 CUDA_CMD_LIB="libnnc-cmd-cuda.o"
 
 MFA_COMPAT_LIB="mfa/libnnc-compat-mfa.o"
@@ -2227,6 +2233,8 @@ MFA_COMPAT_LIB="mfa/libnnc-compat-mfa.o"
 MPS_COMPAT_LIB="mps/libnnc-compat-mps.o"
 
 MPS_CMD_LIB="libnnc-cmd-mps.o"
+
+NV_SM_FLAGS="-arch=sm_70 -std=c++14"
 
 
 # check if clang exists
@@ -4701,6 +4709,30 @@ then :
 
 fi
 
+	# check for sm80 enabled
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking sm80" >&5
+printf %s "checking sm80... " >&6; }
+	# Check whether --enable-sm80 was given.
+if test ${enable_sm80+y}
+then :
+  enableval=$enable_sm80; sm80_support=$enableval
+else $as_nop
+  sm80_support="no"
+fi
+
+	if test "$sm80_support" = yes; then
+		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+printf "%s\n" "yes" >&6; }
+		DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDA_SM80 "
+
+		CUDA_COMPAT_SM80_LIB="gpu/libnnc-compat-cuda-sm80.o"
+
+		NV_SM_FLAGS="-arch=sm_80 -std=c++17 --expt-relaxed-constexpr"
+
+	else
+		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+	fi
 else
 	CUDA_SRCS=""
 
