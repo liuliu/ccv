@@ -461,6 +461,44 @@ TEST_CASE("dynamic graph to evaluate cnnp model without any parameters")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with div")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 1.23;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, b)->data.f32[0] = 2;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const div = ccv_cnnp_div(0, "div");
+	ccv_nnc_dynamic_graph_evaluate(graph, div, 1, TENSOR_VARIABLE_LIST(a, b), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	ccv_cnnp_model_set_minimizer(div, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0, 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+	ccv_cnnp_model_free(div);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 1.23 / 2, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], 1.0 / 2, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with reciprocal")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 1.23;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const div = ccv_cnnp_div(1, "div");
+	ccv_nnc_dynamic_graph_evaluate(graph, div, 1, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	ccv_cnnp_model_set_minimizer(div, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0, 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+	ccv_cnnp_model_free(div);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 1 / 1.23, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], -1 / (1.23 * 1.23), 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("dynamic graph to evaluate cnnp model and simply accumulate gradients")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();

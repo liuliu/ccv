@@ -1684,6 +1684,65 @@ static ccv_cnnp_model_t* _ccv_cnnp_scalar_mul_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_scalar_mul(self->a, self->super.name);
 }
 
+// MARK - Div Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	int reciprocal;
+} ccv_cnnp_model_div_t;
+
+static void _ccv_cnnp_div_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_div_t* const self = (const ccv_cnnp_model_div_t*)super;
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t div = CMD_EWDIV_FORWARD();
+	if (self->reciprocal)
+	{
+		assert(input_size == 1);
+		input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+		input_params[1] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+		ccv_nnc_hint_tensor_auto(div, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+		outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+		ccv_nnc_graph_exec_symbol_new(graph, div, TENSOR_SYMBOL_LIST(NO_TENSOR_SYMBOL, inputs[0]), outputs, output_size, "div");
+	} else {
+		assert(input_size == 2);
+		for (i = 0; i < 2; i++)
+			input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+		ccv_nnc_hint_tensor_auto(div, input_params, input_size, ccv_nnc_no_hint, &output_params, 1);
+		outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+		ccv_nnc_graph_exec_symbol_new(graph, div, inputs, input_size, outputs, output_size, "div");
+	}
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_div_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_div_isa = {
+	.build = _ccv_cnnp_div_build,
+	.copy = _ccv_cnnp_div_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_div(const int reciprocal, const char* const name)
+{
+	ccv_cnnp_model_div_t* const model_div = (ccv_cnnp_model_div_t*)cccalloc(1, sizeof(ccv_cnnp_model_div_t));
+	model_div->super.isa = &ccv_cnnp_div_isa;
+	model_div->super.input_size = reciprocal ? 1 : 2;
+	model_div->super.outputs = &model_div->output;
+	model_div->super.output_size = 1;
+	model_div->reciprocal = reciprocal;
+	ccv_cnnp_model_copy_name(&model_div->super, name);
+	return (ccv_cnnp_model_t*)model_div;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_div_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_div_t* const self = (const ccv_cnnp_model_div_t*)super;
+	return ccv_cnnp_div(self->reciprocal, self->super.name);
+}
+
 // MARK - Transpose Layer
 
 typedef struct {
