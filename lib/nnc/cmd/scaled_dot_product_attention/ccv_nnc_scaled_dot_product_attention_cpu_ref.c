@@ -55,7 +55,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		cdim[0] = cdim[1], cdim[1] = cdim[2], cdim[2] = 1;
 	}
 	assert(qdim[0] == kdim[0] && kdim[0] == vdim[0] && vdim[0] == cdim[0]);
-	assert(qdim[2] == kdim[2] && kdim[2] == vdim[2] && vdim[2] == cdim[2]);
+	assert(qdim[2] == cdim[2]);
+	assert(kdim[2] == vdim[2]);
+	assert(qdim[2] % kdim[2] == 0);
+	assert(qdim[2] >= kdim[2]);
 	assert(qdim[3] == kdim[3]);
 	assert(kdim[1] == vdim[1]);
 	assert(cdim[1] == qdim[1]);
@@ -117,8 +120,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
 			const float* const qp1 = qp0 + i[1] * qstride[2];
-			const float* const kp1 = kp0 + i[1] * kstride[2];
-			const float* const vp1 = vp0 + i[1] * vstride[2];
+			const float* const kp1 = kp0 + (i[1] % kdim[2]) * kstride[2];
+			const float* const vp1 = vp0 + (i[1] % vdim[2]) * vstride[2];
 			const float* const amp1 = amp && amdim[1] > 1 ? amp0 + i[1] * amstride[1] : amp0;
 			float* const cp1 = cp0 + i[1] * cstride[2];
 			float* const ssp1 = ssp0 ? ssp0 + i[1] * ssstride[1] : 0;
@@ -327,7 +330,10 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		dvdim[0] = dvdim[1], dvdim[1] = dvdim[2], dvdim[2] = 1;
 	}
 	assert(qdim[0] == kdim[0] && kdim[0] == vdim[0] && vdim[0] == gdim[0]);
-	assert(qdim[2] == kdim[2] && kdim[2] == vdim[2] && vdim[2] == gdim[2]);
+	assert(qdim[2] == gdim[2]);
+	assert(kdim[2] == vdim[2]);
+	assert(qdim[2] % kdim[2] == 0);
+	assert(qdim[2] >= kdim[2]);
 	assert(qdim[3] == kdim[3]);
 	assert(kdim[1] == vdim[1]);
 	assert(gdim[1] == qdim[1]);
@@ -379,12 +385,12 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
 			const float* const qp1 = qp0 + i[1] * qstride[2];
-			const float* const kp1 = kp0 + i[1] * kstride[2];
-			const float* const vp1 = vp0 + i[1] * vstride[2];
+			const float* const kp1 = kp0 + (i[1] % kdim[2]) * kstride[2];
+			const float* const vp1 = vp0 + (i[1] % vdim[2]) * vstride[2];
 			const float* const gp1 = gp0 + i[1] * gstride[2];
 			float* const dqp1 = dqp0 + i[1] * dqstride[2];
-			float* const dkp1 = dkp0 + i[1] * dkstride[2];
-			float* const dvp1 = dvp0 + i[1] * dvstride[2];
+			float* const dkp1 = dkp0 + (i[1] % dkdim[2]) * dkstride[2];
+			float* const dvp1 = dvp0 + (i[1] % dvdim[2]) * dvstride[2];
 			// Compute Q @ K^T
 			int x, y, k;
 			for (y = 0; y < kdim[1]; y++)

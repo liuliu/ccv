@@ -79,14 +79,15 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	int batch_size;
 	int R;
 	int C;
-	int H;
+	int Hq;
+	int Hk;
 	int D;
 	if (q_nd == 3) {
 		batch_size = qdim[1];
 		assert(batch_size == kdim[1]);
 		R = qdim[2];
 		C = kdim[2];
-		H = 1;
+		Hq = Hk = 1;
 		D = qdim[3];
 		assert(D == kdim[3]);
 	} else if (q_nd == 4) {
@@ -94,8 +95,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		assert(batch_size == kdim[0]);
 		R = qdim[1];
 		C = kdim[1];
-		H = qdim[2];
-		assert(H == kdim[2]);
+		Hq = qdim[2];
+		Hk = kdim[2];
+		assert(Hq >= Hk);
+		assert(Hq % Hk == 0);
 		D = qdim[3];
 		assert(D == kdim[3]);
 	}
@@ -142,15 +145,15 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	params.q_ptr = q->data.u8;
 	params.k_ptr = k->data.u8;
 	params.v_ptr = v->data.u8;
-	params.q_row_stride = D * H;
-	params.k_row_stride = D * H;
-	params.v_row_stride = D * H;
+	params.q_row_stride = D * Hq;
+	params.k_row_stride = D * Hk;
+	params.v_row_stride = D * Hk;
 	params.q_head_stride = D;
 	params.k_head_stride = D;
 	params.v_head_stride = D;
-	params.q_batch_stride = R * H * D;
-	params.k_batch_stride = C * H * D;
-	params.v_batch_stride = C * H * D;
+	params.q_batch_stride = R * Hq * D;
+	params.k_batch_stride = C * Hk * D;
+	params.v_batch_stride = C * Hk * D;
 	auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
 	params.seqlen_q = R;
 	params.seqlen_q_rounded = round_multiple(R, 128);
@@ -160,13 +163,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	assert(D % 8 == 0);
 	params.d_rounded = round_multiple(D, 32);
 	params.o_ptr = o->data.u8;
-	params.o_row_stride = D * H;
+	params.o_row_stride = D * Hq;
 	params.o_head_stride = D;
-	params.o_batch_stride = R * H * D;
+	params.o_batch_stride = R * Hq * D;
 	params.b = batch_size;
-	params.h = H;
-	params.h_k = H;
-	params.h_h_k_ratio = 1;
+	params.h = Hq;
+	params.h_k = Hk;
+	params.h_h_k_ratio = Hq / Hk;
 	params.scale_softmax = cmd.info.scaled_dot_product_attention.scale;
 	params.scale_softmax_log2 = cmd.info.scaled_dot_product_attention.scale * M_LOG2E;
 	params.is_causal = cmd.info.scaled_dot_product_attention.is_causal;
@@ -177,7 +180,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	params.window_size_left = ccv_max(R, C);
 	params.window_size_right = ccv_max(R, C);
 	params.is_seqlens_k_cumulative = true;
-	void* workspace = ccv_nnc_stream_context_get_workspace(stream_context, batch_size * H * R * sizeof(float), CCV_TENSOR_GPU_MEMORY);
+	void* workspace = ccv_nnc_stream_context_get_workspace(stream_context, batch_size * Hq * R * sizeof(float), CCV_TENSOR_GPU_MEMORY);
 	params.softmax_lse_ptr = workspace;
 	// TODO: Support num_splits.
  	// const int block_n = D <= 64 ? 256 : (D <= 128 ? 128 : 64);
