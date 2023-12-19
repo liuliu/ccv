@@ -144,6 +144,11 @@ typedef struct {
 			float epsilon; /**< [gnorm.epsilon] The epsilon for standard derivation. */
 		} gnorm;
 		struct {
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm.axis[]] The axis selected to compute mean / variance. */
+			int count; /**< [rmsnorm.count] The number of axis selected. */
+			float epsilon; /**< [rmsnorm.epsilon] The epsilon for standard derivation. */
+		} rmsnorm;
+		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [sgd.rate] The learning rate. */
 			float scale; /**< [sgd.scale] The scale to be applied to the gradient before doing any minimization. */
