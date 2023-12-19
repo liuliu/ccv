@@ -4276,9 +4276,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar_mul(const float a, const char
  * Divide two input tensors together.
  * @param reciprocal Only take one tensor input, effectively compute 1 / input.
  * @param name The unique name of the model.
- * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
+ * @return A model that can be applied with two inputs, and generate output that is a division of the inputs.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_div(const int reciprocal, const char* const name);
+/**
+ * Square root of the input tensor.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the square root of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sqrt(const char* const name);
 /**
  * A matrix transpose model.
  * @param axis_a The axis to be exchanged with axis_b
