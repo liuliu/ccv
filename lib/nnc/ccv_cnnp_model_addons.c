@@ -897,6 +897,7 @@ typedef struct {
 	int groups;
 	int filters;
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
+	int dilation[CCV_NNC_MAX_DIM_ALLOC];
 	int no_bias;
 	int format;
 	ccv_nnc_hint_t hint;
@@ -931,7 +932,11 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(self->groups, self->filters);
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 		cmd.info.size.dim[i] = self->kdim[i];
+	memcpy(cmd.info.convolution.dilation, self->dilation, sizeof(self->dilation));
 	ccv_nnc_tensor_param_t output_params;
+	// Dilate weight size based on the dilation factor.
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+		weights_params.dim[i + hw] = (self->kdim[i] - 1) * ccv_max(self->dilation[i], 1) + 1;
 	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 			params,
 			weights_params,
@@ -980,7 +985,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.copy = _ccv_cnnp_convolution_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int dilation[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_convolution_t* const model_convolution = (ccv_cnnp_model_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_convolution_t));
 	model_convolution->super.isa = &ccv_cnnp_convolution_isa;
@@ -996,6 +1001,7 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 	model_convolution->groups = groups;
 	model_convolution->filters = filters;
 	memcpy(model_convolution->kdim, kdim, sizeof(model_convolution->kdim));
+	memcpy(model_convolution->dilation, dilation, sizeof(model_convolution->dilation));
 	model_convolution->no_bias = no_bias;
 	model_convolution->hint = hint;
 	model_convolution->format = format;
@@ -1005,7 +1011,7 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->no_bias, self->hint, self->format, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->dilation, self->no_bias, self->hint, self->format, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Dense Layer

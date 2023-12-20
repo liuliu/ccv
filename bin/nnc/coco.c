@@ -27,23 +27,23 @@ static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansio
 			ccv_cnnp_model_t* const avgdown = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), HINT((strides, strides), (0, 0)), 0);
 			shortcut = ccv_cnnp_model_apply(avgdown, MODEL_IO_LIST(input));
 		}
-		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 1, HINT((1, 1), (0, 0)), 0, 1, 0);
+		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), DIM_ALLOC(), 1, HINT((1, 1), (0, 0)), 0, 1, 0);
 		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(shortcut));
 	}
 	ccv_cnnp_model_t* const conv1 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0)
 	), 1, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const conv2 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), 0, HINT((strides, strides), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), DIM_ALLOC(), 0, HINT((strides, strides), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0)
 	), 1, 0);
 	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const conv3 = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
+		ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0)
 	), 1, 0);
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
@@ -72,13 +72,13 @@ ccv_array_t* _imagenet_resnet50_v1d(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0)
@@ -110,14 +110,14 @@ ccv_array_t* _imagenet_resnet50_v1d(void)
 static void _fpn(const int d, const ccv_cnnp_model_io_t* const c, const int c_size, ccv_cnnp_model_io_t* const p)
 {
 	int i;
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[c_size - 1]));
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[c_size - 1]));
 	p[c_size - 1] = output;
 	for (i = c_size - 2; i >= 0; i--)
 	{
-		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[i]));
+		const ccv_cnnp_model_io_t lateral = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0), MODEL_IO_LIST(c[i]));
 		const ccv_cnnp_model_io_t up = ccv_cnnp_model_apply(ccv_cnnp_upsample(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 0), MODEL_IO_LIST(output));
 		const ccv_cnnp_model_io_t sum = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(lateral, up));
-		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0), MODEL_IO_LIST(sum));
+		output = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, d, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((1, 1), (1, 1)), 0, 1, 0), MODEL_IO_LIST(sum));
 		p[i] = output;
 	}
 }
@@ -126,13 +126,13 @@ ccv_array_t* _imagenet_resnet50_v1d_fpn(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((1, 1), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), HINT((2, 2), (1, 1)), 0)
@@ -171,7 +171,7 @@ ccv_cnnp_model_t* _coco_resnet50_v1d_rpn(void)
 	ccv_cnnp_model_io_t proposals[5];
 	int i;
 	// 3 aspect ratios (1:2, 1:1, 2:1). Each has 4 + 1 (x, y, w, h, objectness), total 15.
-	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 15, DIM_ALLOC(1, 1), 0, HINT((1, 1), (0, 0)), 0, 1, "rpn");
+	ccv_cnnp_model_t* const rpn_proposals = ccv_cnnp_convolution(1, 15, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, "rpn");
 	for (i = 0; i < 5; i++)
 	{
 		p[i] = ccv_cnnp_input();
