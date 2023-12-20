@@ -37,11 +37,19 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	assert(!bias || bias->info.dim[0] == cmd.info.convolution.count);
 	const int batch_size = (a_nd == CCV_NNC_MAX_DIM + 2) ? a->info.dim[0] : 1;
+	const int dilation[CCV_NNC_MAX_DIM] = {
+		ccv_max(cmd.info.convolution.dilation[0], 1),
+		ccv_max(cmd.info.convolution.dilation[1], 1)
+	};
 	if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
 	{
 		// Make sure the weights dimension matches the network dimension
 		assert(w->info.dim[1] == cmd.info.size.dim[0]);
 		assert(w->info.dim[2] == cmd.info.size.dim[1]);
+		const int wdim[CCV_NNC_MAX_DIM] = {
+			(w->info.dim[1] - 1) * dilation[0] + 1,
+			(w->info.dim[2] - 1) * dilation[1] + 1
+		};
 		assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == adim[CCV_NNC_MAX_DIM]);
 		assert(b->info.format == CCV_TENSOR_FORMAT_NHWC);
 		const int channel_size = w->info.dim[CCV_NNC_MAX_DIM + 1];
@@ -59,25 +67,36 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 			int i[CCV_NNC_MAX_DIM];
 			int n[CCV_NNC_MAX_DIM];
+			int d[CCV_NNC_MAX_DIM];
 			int m[CCV_NNC_MAX_DIM];
 			int j[CCV_NNC_MAX_DIM];
 			for (i[0] = 0; i[0] < bdim[0]; i[0]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, wdim, adim, n, m);
+				m[0] = (m[0] + n[0] - 1) / dilation[0] + 1;
+				const int n0 = (n[0] + dilation[0] - 1) / dilation[0];
+				d[0] = n0 * dilation[0] - n[0];
+				n[0] = n0;
+				m[0] = m[0] - n[0];
 				float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
 				for (i[1] = 0; i[1] < bdim[1]; i[1]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
+					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, wdim, adim, n, m);
+					m[1] = (m[1] + n[1] - 1) / dilation[1] + 1;
+					const int n1 = (n[1] + dilation[1] - 1) / dilation[1];
+					d[1] = n1 * dilation[1] - n[1];
+					n[1] = n1;
+					m[1] = m[1] - n[1];
 					float p = biasval;
 					float* wpz = wpu + n[1] * channel_size;
-					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
+					float* apz = ap + d[0] * astride[CCV_NNC_MAX_DIM - 1] + (ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) + d[1]) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
 					{
 						for (j[1] = 0; j[1] < m[1]; j[1]++)
 							for (c = 0; c < channel_size; c++)
-								p += wpz[j[1] * channel_size + c] * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
+								p += wpz[j[1] * channel_size + c] * apz[j[1] * dilation[1] * astride[CCV_NNC_MAX_DIM] + c];
 						wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-						apz += astride[CCV_NNC_MAX_DIM - 1];
+						apz += astride[CCV_NNC_MAX_DIM - 1] * dilation[0];
 					}
 					bp[i[1] * bstride[CCV_NNC_MAX_DIM]] = p;
 				}
@@ -89,6 +108,10 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		// Make sure the weights dimension matches the network dimension
 		assert(w->info.dim[2] == cmd.info.size.dim[0]);
 		assert(w->info.dim[3] == cmd.info.size.dim[1]);
+		const int wdim[CCV_NNC_MAX_DIM] = {
+			(w->info.dim[2] - 1) * dilation[0] + 1,
+			(w->info.dim[3] - 1) * dilation[1] + 1
+		};
 		assert(w->info.dim[1] * groups == adim[0]);
 		assert(b->info.format == CCV_TENSOR_FORMAT_NCHW);
 		const int channel_size = w->info.dim[1];
@@ -107,25 +130,36 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 			int i[CCV_NNC_MAX_DIM];
 			int n[CCV_NNC_MAX_DIM];
+			int d[CCV_NNC_MAX_DIM];
 			int m[CCV_NNC_MAX_DIM];
 			int j[CCV_NNC_MAX_DIM];
 			for (i[0] = 0; i[0] < bdim[1]; i[0]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 2, adim + 1, n, m);
+				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, wdim, adim + 1, n, m);
+				m[0] = (m[0] + n[0] - 1) / dilation[0] + 1;
+				const int n0 = (n[0] + dilation[0] - 1) / dilation[0];
+				d[0] = n0 * dilation[0] - n[0];
+				n[0] = n0;
+				m[0] = m[0] - n[0];
 				float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM + 1];
 				for (i[1] = 0; i[1] < bdim[2]; i[1]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 2, adim + 1, n, m);
+					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, wdim, adim + 1, n, m);
+					m[1] = (m[1] + n[1] - 1) / dilation[1] + 1;
+					const int n1 = (n[1] + dilation[1] - 1) / dilation[1];
+					d[1] = n1 * dilation[1] - n[1];
+					n[1] = n1;
+					m[1] = m[1] - n[1];
 					float p = biasval;
 					float* wpz = wpu + n[1];
-					float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM + 1] + gidx * channel_size * astride[1];
+					float* apz = ap + d[0] * astride[CCV_NNC_MAX_DIM] + (ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) + d[1]) * astride[CCV_NNC_MAX_DIM + 1] + gidx * channel_size * astride[1];
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
 					{
 						for (j[1] = 0; j[1] < m[1]; j[1]++)
 							for (c = 0; c < channel_size; c++)
-								p += wpz[j[1] + c * hw] * apz[j[1] * astride[CCV_NNC_MAX_DIM + 1] + c * astride[1]];
+								p += wpz[j[1] + c * hw] * apz[j[1] * dilation[1] * astride[CCV_NNC_MAX_DIM + 1] + c * astride[1]];
 						wpz += w->info.dim[CCV_NNC_MAX_DIM + 1];
-						apz += astride[CCV_NNC_MAX_DIM];
+						apz += astride[CCV_NNC_MAX_DIM] * dilation[0];
 					}
 					bp[i[1]] = p;
 				}
@@ -173,6 +207,14 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int group_size = cmd.info.convolution.count / groups;
 	const int channel_size = w ? w->info.dim[CCV_NNC_MAX_DIM + 1] : inputs[2]->info.dim[CCV_NNC_MAX_DIM + 1];
 	const int batch_size = (a_nd == CCV_NNC_MAX_DIM + 2) ? a->info.dim[0] : 1;
+	const int dilation[CCV_NNC_MAX_DIM] = {
+		ccv_max(cmd.info.convolution.dilation[0], 1),
+		ccv_max(cmd.info.convolution.dilation[1], 1)
+	};
+	const int wdim[CCV_NNC_MAX_DIM] = {
+		(w->info.dim[1] - 1) * dilation[0] + 1,
+		(w->info.dim[2] - 1) * dilation[1] + 1
+	};
 	if (w)
 	{
 		parallel_for(k, cmd.info.convolution.count) {
@@ -183,6 +225,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			float biasval = 0;
 			int i[CCV_NNC_MAX_DIM];
 			int n[CCV_NNC_MAX_DIM];
+			int d[CCV_NNC_MAX_DIM];
 			int m[CCV_NNC_MAX_DIM];
 			int j[CCV_NNC_MAX_DIM];
 			int bidx;
@@ -192,24 +235,34 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				const float* gp = g->data.f32 + bidx * gstride[0] + k;
 				for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, wdim, adim, n, m);
+					m[0] = (m[0] + n[0] - 1) / dilation[0] + 1;
+					const int n0 = (n[0] + dilation[0] - 1) / dilation[0];
+					d[0] = n0 * dilation[0] - n[0];
+					n[0] = n0;
+					m[0] = m[0] - n[0];
 					float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
 					for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 					{
-						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
+						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, wdim, adim, n, m);
+						m[1] = (m[1] + n[1] - 1) / dilation[1] + 1;
+						const int n1 = (n[1] + dilation[1] - 1) / dilation[1];
+						d[1] = n1 * dilation[1] - n[1];
+						n[1] = n1;
+						m[1] = m[1] - n[1];
 						const float v = gp[i[1] * gstride[CCV_NNC_MAX_DIM]];
 						if (v == 0) // shortcut if v is zero
 							continue;
 						biasval += v;
 						float* wpz = wpu + n[1] * channel_size;
-						const float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
+						const float* apz = ap + d[0] * astride[CCV_NNC_MAX_DIM - 1] + (ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) + d[1]) * astride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 						for (j[0] = 0; j[0] < m[0]; j[0]++)
 						{
 							for (j[1] = 0; j[1] < m[1]; j[1]++)
 								for (c = 0; c < channel_size; c++)
-									wpz[j[1] * channel_size + c] += v * apz[j[1] * astride[CCV_NNC_MAX_DIM] + c];
+									wpz[j[1] * channel_size + c] += v * apz[j[1] * dilation[1] * astride[CCV_NNC_MAX_DIM] + c];
 							wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-							apz += astride[CCV_NNC_MAX_DIM - 1];
+							apz += astride[CCV_NNC_MAX_DIM - 1] * dilation[0];
 						}
 					}
 					gp += gstride[CCV_NNC_MAX_DIM - 1];
@@ -248,27 +301,38 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 				int i[CCV_NNC_MAX_DIM];
 				int n[CCV_NNC_MAX_DIM];
+				int d[CCV_NNC_MAX_DIM];
 				int m[CCV_NNC_MAX_DIM];
 				int j[CCV_NNC_MAX_DIM];
 				for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, hdim, n, m);
+					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, wdim, hdim, n, m);
+					m[0] = (m[0] + n[0] - 1) / dilation[0] + 1;
+					const int n0 = (n[0] + dilation[0] - 1) / dilation[0];
+					d[0] = n0 * dilation[0] - n[0];
+					n[0] = n0;
+					m[0] = m[0] - n[0];
 					const float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
 					for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 					{
-						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, hdim, n, m);
+						SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, wdim, hdim, n, m);
+						m[1] = (m[1] + n[1] - 1) / dilation[1] + 1;
+						const int n1 = (n[1] + dilation[1] - 1) / dilation[1];
+						d[1] = n1 * dilation[1] - n[1];
+						n[1] = n1;
+						m[1] = m[1] - n[1];
 						const float v = gp[i[1] * gstride[CCV_NNC_MAX_DIM]];
 						if (v == 0) // shortcut if v is zero
 							continue;
 						const float* wpz = wpu + n[1] * channel_size;
-						float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hstride[CCV_NNC_MAX_DIM] + gidx * channel_size;
+						float* hpz = hp + d[0] * hstride[CCV_NNC_MAX_DIM - 1] + (ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) + d[1]) * hstride[CCV_NNC_MAX_DIM] + gidx * channel_size;
 						for (j[0] = 0; j[0] < m[0]; j[0]++)
 						{
 							for (j[1] = 0; j[1] < m[1]; j[1]++)
 								for (c = 0; c < channel_size; c++)
-									hpz[j[1] * hstride[CCV_NNC_MAX_DIM] + c] += v * wpz[j[1] * channel_size + c];
+									hpz[j[1] * dilation[1] * hstride[CCV_NNC_MAX_DIM] + c] += v * wpz[j[1] * channel_size + c];
 							wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
-							hpz += hstride[CCV_NNC_MAX_DIM - 1];
+							hpz += hstride[CCV_NNC_MAX_DIM - 1] * dilation[0];
 						}
 					}
 					gp += gstride[CCV_NNC_MAX_DIM - 1];

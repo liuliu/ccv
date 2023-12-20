@@ -105,6 +105,7 @@ typedef struct {
 		struct {
 			int count; /**< [convolution.count] The number of filters for convolutional layer. */
 			int groups; /**< [convolution.groups] The number of groups for convolutional layer. */
+			int dilation[CCV_NNC_MAX_DIM_ALLOC]; /**< [convolution.dilation[]] The dilation factor for convolutional layer. Default to 1. */
 		} convolution;
 		struct {
 			int hidden_size; /**< [rnn.hidden_size] The number of features in the hidden state h. */

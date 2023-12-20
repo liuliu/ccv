@@ -47,7 +47,11 @@ static void _ccv_nnc_conv_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	assert(count == cmd.convolution.count);
 	ccv_nnc_tensor_set_c(outputs, ccv_nnc_tensor_nd(inputs[0].dim), count);
 	ccv_nnc_tensor_set_n(outputs, ccv_nnc_tensor_get_n(inputs[0]));
-	ccv_nnc_hint_tensor_forward(cmd, inputs[0], hint, outputs);
+	ccv_nnc_cmd_param_t modified_cmd = cmd;
+	int i = 0;
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+		modified_cmd.size.dim[i] = (modified_cmd.size.dim[i] - 1) * ccv_max(cmd.convolution.dilation[i], 1) + 1;
+	ccv_nnc_hint_tensor_forward(modified_cmd, inputs[0], hint, outputs);
 }
 
 REGISTER_COMMAND(CCV_NNC_CONVOLUTION_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

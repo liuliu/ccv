@@ -191,7 +191,7 @@ typedef struct {
 	const ccv_nnc_stream_context_t* stream_context;
 	cudnnConvolutionDescriptor_t descriptor;
 } ccv_nnc_cudnn_convolution_descriptor_t;
-ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_hint_t hint, const int datatype);
+ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_hint_t hint, const int datatype);
 void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution_descriptor_t convolution_desc);
 #endif
 

@@ -234,3 +234,45 @@ REGISTER_COMMAND(CCV_NNC_SCALAR_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 #define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCALAR_MUL_BACKWARD)
 #define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
+
+static int _ccv_nnc_cmul_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+static int _ccv_nnc_cmul_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	// w.r.t. both x and y
+	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == ((1u << 0) | (1u << 1)))
+		return 1;
+	// w.r.t. x
+	if ((input_bitmasks[0] & 5u) == 5u && output_bitmasks[0] == ((1u << 0) | (0u << 1)))
+		return 1;
+	// w.r.t. y
+	if ((input_bitmasks[0] & 3u) == 3u && output_bitmasks[0] == ((0u << 0) | (1u << 1)))
+		return 1;
+	return 0;
+}
+
+REGISTER_COMMAND(CCV_NNC_CMUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c)
+{
+	registry->bitmask = _ccv_nnc_cmul_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
+	registry->allow_inplace = _ccv_nnc_same_pos_inplace;
+}
+
+REGISTER_COMMAND(CCV_NNC_CMUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c)
+{
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->bitmask = _ccv_nnc_cmul_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CMUL_FORWARD)
+#define CMD_CMUL_FORWARD() ccv_nnc_cmd(CCV_NNC_CMUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CMUL_BACKWARD)
+#define CMD_CMUL_BACKWARD() ccv_nnc_cmd(CCV_NNC_CMUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
