@@ -87,6 +87,10 @@ TEST_CASE("compare cmul gradient with gemm computed result")
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	for (i = 0; i < 10; i++)
 		x_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	const ccv_nnc_tensor_symbol_t dz = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, z);
+	ccv_nnc_tensor_t* const dz_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dz);
+	for (i = 0; i < 10; i++)
+		dz_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	ccv_nnc_symbolic_graph_t* const gemm_symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t gemm_x = ccv_nnc_tensor_symbol_new(gemm_symbolic_graph, CPU_TENSOR_NHWC(32F, 5, 1, 2), "x");
 	const ccv_nnc_tensor_symbol_t gemm_y = ccv_nnc_tensor_symbol_new(gemm_symbolic_graph, CPU_TENSOR_NHWC(32F, 5, 2, 2), "y");
@@ -105,6 +109,9 @@ TEST_CASE("compare cmul gradient with gemm computed result")
 		&gemm_graph, &gemm_tensor_arena, &gemm_graph_exec_arena);
 	ccv_nnc_tensor_t* gemm_x_tensor = ccv_nnc_tensor_from_symbol(gemm_tensor_arena, gemm_x);
 	memcpy(gemm_x_tensor->data.f32, x_tensor->data.f32, sizeof(float) * 10);
+	const ccv_nnc_tensor_symbol_t dgemmz = ccv_nnc_tensor_symbol_for_backward(gemm_symbolic_graph, gemm_z);
+	ccv_nnc_tensor_t* const dgemmz_tensor = ccv_nnc_tensor_from_symbol(gemm_tensor_arena, dgemmz);
+	memcpy(dgemmz_tensor->data.f32, dz_tensor->data.f32, sizeof(float) * 10);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	for (i = 0; i < 10; i++)
 		y_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
@@ -121,6 +128,9 @@ TEST_CASE("compare cmul gradient with gemm computed result")
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	ccv_nnc_tensor_t* gemm_z_tensor = ccv_nnc_tensor_from_symbol(gemm_tensor_arena, gemm_z);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, z_tensor->data.f32, gemm_z_tensor->data.f32, 10, 1e-5, "should match as if GEMM");
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	ccv_nnc_tensor_t* dgemmx_tensor = ccv_nnc_tensor_from_symbol(gemm_tensor_arena, dgemmx);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dgemmx_tensor->data.f32, 10, 1e-5, "should match as if GEMM");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
