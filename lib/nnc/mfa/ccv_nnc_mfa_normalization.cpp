@@ -28,7 +28,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     encoder->setBuffer(tensors[num_tensors], tensor_offsets[num_tensors], NS::UInteger(num_tensors));
     num_tensors += 1;
   }
-  CCV_NNC_MFA_PRECONDITION(num_tensors == 6);
+  CCV_NNC_MFA_PRECONDITION(num_tensors == 6 || num_tensors == 4);
   
   uint16_t data_type_size = 0;
   switch (params.data_type) {
@@ -107,15 +107,24 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   encoder->setComputePipelineState(pipeline->normalization_pso.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
-  if (params.reuse_saved_statistics) {
-    encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  if (num_tensors == 6) {
+    if (params.reuse_saved_statistics) {
+      encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    } else {
+      encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+      encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+    }
+    encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[5], MTL::ResourceUsageRead);
   } else {
-    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
-    encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+    if (params.reuse_saved_statistics) {
+      encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+    } else {
+      encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    }
+    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
   }
-  encoder->useResource(tensors[4], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[5], MTL::ResourceUsageRead);
   
   auto grid_size = pipeline->grid_size;
   grid_size.depth = batch_sizes[0];
@@ -133,7 +142,7 @@ mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   sequence_count = params.sequence_count;
   epsilon = params.epsilon;
   scale_translation_batched = params.scale_translation_batched;
-  layer_normalization = params.layer_normalization;
+  normalization_type = (Type)params.normalization_type;
   reuse_saved_statistics = params.reuse_saved_statistics;
 }
 
@@ -145,7 +154,7 @@ bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) 
   (sequence_count == hash.sequence_count) &&
   (epsilon == hash.epsilon) &&
   (scale_translation_batched == hash.scale_translation_batched) &&
-  (layer_normalization == hash.layer_normalization);
+  (normalization_type == hash.normalization_type) &&
   (reuse_saved_statistics == hash.reuse_saved_statistics);
 }
 
@@ -157,8 +166,8 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .sequence_count = " << hash.sequence_count << ',';
   os << " .epsilon = " << double(hash.epsilon) << ',';
   os << " .scale_translation_batched = " << bool(hash.scale_translation_batched) << ',';
-  os << " .layer_normalization = " << bool(hash.layer_normalization) << ',';
-  os << " .reuse_saved_statistics = " << bool(hash.layer_normalization) << " ";
+  os << " .normalization_type = " << hash.normalization_type << ',';
+  os << " .reuse_saved_statistics = " << bool(hash.reuse_saved_statistics) << " ";
   os << "}";
   return os;
 }
@@ -169,18 +178,117 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   combine_64(seed, hash.data_type);
   combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
   combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.layer_normalization, hash.reuse_saved_statistics, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.normalization_type, hash.reuse_saved_statistics, 0 }));
   return seed;
 }
 
 mfa::normalization::pipeline::pipeline(mfa::context* context, mfa::normalization::hash hash) {
   // FlashNorm not supported for group normalization yet.
-  CCV_NNC_MFA_PRECONDITION(hash.layer_normalization);
+  CCV_NNC_MFA_PRECONDITION(hash.normalization_type == Type::layer_norm || hash.normalization_type == Type::rmsnorm);
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
+
+  std::string rmsnorm_shader = R"(
+constant uint bulk_size = sample_count / threadgroup_size * threadgroup_size;
+constant uint padding_size = sample_count - bulk_size;
+
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void normalization(
+  device real *source [[buffer(0)]],
+  device real *destination [[buffer(1)]],
+  device real *saved_standard_deviation_reciprocal [[buffer(2)]],
+  device real *channel_scales [[buffer(3)]],
   
-  std::string shader = R"(
+#if SCALE_TRANSLATION_BATCHED
+  constant ulong4 *scale_translation_offsets [[buffer(10)]],
+#endif
+  
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort sidx [[simdgroup_index_in_threadgroup]],
+  uint lid [[thread_index_in_threadgroup]]
+) {
+  uint threadgroup_index = tgid.z * sequence_count + tgid.x;
+  {
+    uint io_offset = threadgroup_index * channel_count + lid;
+    source += io_offset;
+    destination += io_offset;
+  }
+  channel_scales += lid;
+
+#if SCALE_TRANSLATION_BATCHED
+  {
+    ulong2 offsets = scale_translation_offsets[tgid.z].xy;
+    channel_scale = (device real*)((device uchar*)channel_scale + offsets[0]);
+    channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
+  }
+#endif
+  
+  const uint cache_bulk_size = bulk_size / threadgroup_size;
+  real cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
+  real cache_padding;
+  threadgroup float partials[threadgroup_size / 32];
+  
+#pragma clang loop unroll(full)
+  for (uint i = 0; i < bulk_size; i += threadgroup_size) {
+    cache_bulk[i / threadgroup_size] = source[i];
+  }
+  if (padding_size > 0 && lid < padding_size) {
+    cache_padding = source[bulk_size];
+  }
+#if REUSE_SAVED_STATISTICS
+  float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[threadgroup_index];
+#else
+  float variance = 0;
+#pragma clang loop unroll(full)
+  for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
+    float centered = float(cache_bulk[slot]);
+    variance += centered * centered;
+  }
+  if (padding_size > 0 && lid < padding_size) {
+    variance += cache_padding * cache_padding;
+  }
+  partials[sidx] = simd_sum(variance);
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (lid < (threadgroup_size / 32)) {
+    float variance = quad_sum(partials[lid]);
+    if (threadgroup_size >= 256) {
+      variance += simd_shuffle_xor(variance, 4);
+    }
+    variance = variance / float(sample_count) + epsilon;
+    
+    float standard_deviation_reciprocal = rsqrt(variance);
+    partials[lid] = standard_deviation_reciprocal;
+    
+    saved_standard_deviation_reciprocal[threadgroup_index] =  standard_deviation_reciprocal;
+  }
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float standard_deviation_reciprocal = partials[sidx];
+#endif
+
+#pragma clang loop unroll(full)
+  for (uint i = 0; i < bulk_size; i += threadgroup_size) {
+    real deviation = cache_bulk[i / threadgroup_size];
+    deviation *= standard_deviation_reciprocal;
+
+    real scale = channel_scales[i];
+    destination[i] = scale * deviation;
+  }
+  if (padding_size > 0 && lid < padding_size) {
+    real deviation = cache_padding;
+    deviation *= standard_deviation_reciprocal;
+
+    real scale = channel_scales[bulk_size];
+    destination[bulk_size] = scale * deviation;
+  }
+}
+)";
+  
+  std::string norm_shader = R"(
 constant uint bulk_size = sample_count / threadgroup_size * threadgroup_size;
 constant uint padding_size = sample_count - bulk_size;
 
@@ -326,7 +434,7 @@ kernel void normalization(
   defines += "\n";
   
   uint16_t threadgroup_size;
-  if (hash.layer_normalization) {
+  if (hash.normalization_type == Type::layer_norm || hash.normalization_type == Type::rmsnorm) {
     CCV_NNC_MFA_PRECONDITION(hash.channel_groups == 1);
     defines += "constant ushort sample_count = ";
     defines += std::to_string(hash.channel_count) + ";";
@@ -390,20 +498,24 @@ kernel void normalization(
   }
   
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  std::string shader = norm_shader;
   for (int i = 0; i < 2; ++i) {
     NS::SharedPtr<MTL::ComputePipelineState>* pso;
     std::string macro;
     if (i == 0) {
-      if (hash.layer_normalization) {
+      if (hash.normalization_type != Type::group_norm) {
         continue;
       }
       macro = "SAMPLE_POPULATION";
       pso = &sampling_pso;
     } else {
-      if (hash.layer_normalization) {
+      if (hash.normalization_type == Type::layer_norm) {
         macro = "LAYER_NORMALIZATION";
-      } else {
+      } else if (hash.normalization_type == Type::group_norm) {
         macro = "GROUP_NORMALIZATION";
+	  } else if (hash.normalization_type == Type::rmsnorm) {
+        macro = "RMSNORM";
+		shader = rmsnorm_shader;
       }
       pso = &normalization_pso;
     }

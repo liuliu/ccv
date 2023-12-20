@@ -55,7 +55,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const float inv_n_sqrt = sqrt(inv_n);
 	CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, workspace, workspace_size, &inv_n_sqrt, a.descriptor, a.data.u8, &zero, saved_inv_std.descriptor, saved_inv_std.data.u8));
 	// The epsilon is used a little bit differently from batch norm, it is inside the sqrt.
-	const float epsilon = cmd.info.lnorm.epsilon;
+	const float epsilon = cmd.info.rmsnorm.epsilon;
 	if (saved_datatype == CCV_32F)
 		_ccv_nnc_inv_std_kernel<<<CUDA_GET_BLOCKS(rcount), CUDA_NUM_THREADS, 0, stream>>>(rcount, epsilon, saved_inv_std.data.f32, saved_inv_std.data.f32);
 	else if (saved_datatype == CCV_16F)

@@ -8,7 +8,7 @@ typedef struct {
   uint32_t sequence_count;
   float epsilon;
   uint8_t scale_translation_batched;
-  uint8_t layer_normalization;
+  uint8_t normalization_type;
   uint8_t reuse_saved_statistics;
   
   uint32_t batch_dims_data[CCV_NNC_MAX_DIM_ALLOC];
@@ -25,6 +25,12 @@ namespace nnc {
 namespace mfa {
 namespace normalization {
 
+  enum Type: uint8_t {
+    layer_norm = 0,
+    group_norm = 1,
+    rmsnorm = 2
+  };
+
 class hash {
 public:
   uint64_t data_type;
@@ -33,7 +39,7 @@ public:
   uint32_t sequence_count;
   float epsilon;
   uint8_t scale_translation_batched;
-  uint8_t layer_normalization;
+  Type normalization_type;
   uint8_t reuse_saved_statistics;
   
   hash(ccv_nnc_mfa_normalization_params_t);
