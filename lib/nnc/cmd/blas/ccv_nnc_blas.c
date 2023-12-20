@@ -257,7 +257,7 @@ static int _ccv_nnc_cmul_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int i
 }
 
 REGISTER_COMMAND(CCV_NNC_CMUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c, gpu/ccv_nnc_cmul_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_cmul_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;
@@ -265,7 +265,7 @@ REGISTER_COMMAND(CCV_NNC_CMUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_CMUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c, gpu/ccv_nnc_cmul_gpu_ref.cu)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_cmul_back_bitmask;
