@@ -22,6 +22,10 @@
 #define CMD_SCALAR_MUL_FORWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
 // CCV_NNC_SCALAR_MUL_BACKWARD
 #define CMD_SCALAR_MUL_BACKWARD(_a) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_a,}}}, 0)
+// CCV_NNC_CMUL_FORWARD
+#define CMD_CMUL_FORWARD() ccv_nnc_cmd(CCV_NNC_CMUL_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_CMUL_BACKWARD
+#define CMD_CMUL_BACKWARD() ccv_nnc_cmd(CCV_NNC_CMUL_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
 // CCV_NNC_COMM_ALLREDUCE_FORWARD
 #define CMD_COMM_ALLREDUCE_FORWARD() ccv_nnc_cmd(CCV_NNC_COMM_ALLREDUCE_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMM_ALLREDUCE_BACKWARD
