@@ -2107,7 +2107,7 @@ static void _ccv_cnnp_rmsnorm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	// Both scale and bias are shared between if this model is reused.
 	if (!self->scale.graph)
 		self->scale = ccv_nnc_tensor_symbol_new(graph, scale_params, "scale");
-	const ccv_nnc_cmd_t rmsnorm = ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, self->params, 0);
+	const ccv_nnc_cmd_t rmsnorm = ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, self->params, 0);
 	ccv_nnc_tensor_param_t output_params[2];
 	ccv_nnc_hint_tensor_auto(rmsnorm, (ccv_nnc_tensor_param_t []){
 			params,

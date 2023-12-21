@@ -249,10 +249,6 @@ static int _ccv_nnc_rmsnorm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const in
 	// 2 outputs (y, saved_inv_std)
 	if (input_bitmasks[0] == 3u && output_bitmasks[0] == 3u)
 		return 1;
-	// 2 inputs (x, gamma)
-	// 1 output (y)
-	if (input_bitmasks[0] == 3u && output_bitmasks[0] == 1u)
-		return 1;
 	return 0;
 }
 
