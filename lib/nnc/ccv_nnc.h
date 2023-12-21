@@ -4276,7 +4276,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const i
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const float p, const float q, const char* const name);
 /**
- * Multiple two input tensors together.
+ * Multiply two input tensors together.
  * @param p The weight for the output.
  * @param name The unique name of the model.
  * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
@@ -4302,6 +4302,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_div(const int reciprocal, const char
  * @return A model that can be applied with one input, and generate output that is the square root of the input.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sqrt(const char* const name);
+/**
+ * Multiply two input tensors together as if these are complex numbers.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmul(const char* const name);
 /**
  * A matrix transpose model.
  * @param axis_a The axis to be exchanged with axis_b

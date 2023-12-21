@@ -1793,6 +1793,51 @@ static ccv_cnnp_model_t* _ccv_cnnp_sqrt_copy(const ccv_cnnp_model_t* const super
 	return ccv_cnnp_sqrt(self->super.name);
 }
 
+// MARK - Cmul Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_cmul_t;
+
+static void _ccv_cnnp_cmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t mul = CMD_CMUL_FORWARD();
+	ccv_nnc_hint_tensor_auto(mul, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, mul, inputs, input_size, outputs, output_size, "cmul");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_cmul_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_cmul_isa = {
+	.build = _ccv_cnnp_cmul_build,
+	.copy = _ccv_cnnp_cmul_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_cmul(const char* const name)
+{
+	ccv_cnnp_model_cmul_t* const model_cmul = (ccv_cnnp_model_cmul_t*)cccalloc(1, sizeof(ccv_cnnp_model_cmul_t));
+	model_cmul->super.isa = &ccv_cnnp_cmul_isa;
+	model_cmul->super.input_size = 2;
+	model_cmul->super.outputs = &model_cmul->output;
+	model_cmul->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_cmul->super, name);
+	return (ccv_cnnp_model_t*)model_cmul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_cmul_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	return ccv_cnnp_cmul(super->name);
+}
+
 // MARK - Transpose Layer
 
 typedef struct {
