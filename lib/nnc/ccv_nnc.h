@@ -2918,6 +2918,18 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
  */
 void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * Dry run a CNNP model on the dynamic graph with set of inputs up until the actual execution.
+ * @param dynamic_graph The dynamic graph.
+ * @param model The CNNP model to be evaluated against. Note that ccv_nnc_dynamic_graph_backward /
+ *              ccv_nnc_dynamic_graph_apply_gradients / ccv_nnc_dynamic_graph_minimize all works with this
+ *              model. It takes over the life-cycle of the model, and now you don't need to free it any more.
+ * @param is_test Whether we are in test mode or not.
+ * @param inputs The input variables.
+ * @param input_size The size of the input variables array.
+ * @param stream_context Which stream this computation will be executed upon.
+ */
+void ccv_nnc_dynamic_graph_dry_run(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_stream_context_t* const stream_context);
+/**
  * Set the maximum operator-level concurrency. This is a soft-limit, e.g. if you have operations on
  * different devices, they are concurrent.
  * @param graph The dynamic graph.
@@ -3717,6 +3729,16 @@ typedef struct {
  * @param stream_context The stream where the evaluation can be executed upon.
  */
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Dryrun the model with inputs / outputs. This runs the evaluation loop up until the actual execution.
+ * @param model The composed model.
+ * @param params The parameters for how evaluation should behave.
+ * @param inputs The input tensors.
+ * @param input_size The size of the input tensors array.
+ * @param outputs The actual outputs from the model.
+ * @param output_size The size of the outputs array.
+ */
+void ccv_cnnp_model_dry_run(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 /**
  * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds parameter gradients.
  * @param model The composed model.

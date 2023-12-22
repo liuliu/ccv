@@ -136,6 +136,93 @@ static ccv_nnc_stateful_cmd_vtab_t ccv_cnnp_model_exec_isa = {
 	.apply_gradients = _ccv_cnnp_model_apply_gradients,
 };
 
+void ccv_nnc_dynamic_graph_dry_run(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size > 0);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int per_input_size = input_size / parallel_count;
+	assert(per_input_size > 0);
+	assert((input_size % parallel_count) == 0);
+	int i, j;
+	if (!model->graph)
+	{
+		ccv_nnc_tensor_param_t input_params[per_input_size];
+		for (i = 0; i < per_input_size; i++)
+			input_params[i] = inputs[i]->info;
+		ccv_cnnp_model_compile(model, input_params, per_input_size, CMD_NOOP(), CMD_NOOP());
+	} else {
+		assert(per_input_size == model->input_size);
+		ccv_nnc_tensor_param_t input_params[per_input_size];
+		int flag = 0;
+		for (i = 0; i < per_input_size; i++)
+		{
+			input_params[i] = inputs[i]->info;
+			const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(model->graph, model->inputs[i]);
+			// If these two parameters doesn't match, recompile the graph..
+			if (memcmp(&params, &input_params[i], sizeof(params)) != 0)
+				flag = 1;
+		}
+		if (flag) // Recompile the graph.
+			ccv_cnnp_model_compile(model, input_params, per_input_size, ccv_cnnp_model_minimizer(model), CMD_NOOP());
+	}
+	ccv_nnc_tensor_t* input_tensors[input_size];
+	for (i = 0; i < input_size; i++)
+	{
+		// Cannot have the parameter be a partial tensor view for model evaluation.
+		input_tensors[i] = inputs[i] ? ccv_nnc_tensor_from_variable(dynamic_graph, inputs[i], stream_context) : 0;
+		if (input_tensors[i])
+			{ assert(CCV_IS_TENSOR_CONTIGUOUS(input_tensors[i])); }
+	}
+	const int per_output_size = ccv_cnnp_model_output_size(model);
+	ccv_nnc_tensor_param_t output_params[ccv_max(1, per_output_size)];
+	const int output_size = per_output_size * parallel_count;
+	ccv_nnc_tensor_variable_t outputs[output_size];
+	ccv_nnc_tensor_t* output_tensors[output_size];
+	for (i = 0; i < parallel_count; i++)
+	{
+		for (j = 0; j < per_output_size; j++)
+			output_params[j] = ccv_nnc_tensor_auto;
+		ccv_cnnp_model_tensor_auto(model, output_params, per_output_size);
+		for (j = 0; j < per_output_size; j++)
+			if (!ccv_nnc_is_tensor_auto(output_params[j]))
+			{
+				outputs[i * per_output_size + j] = ccv_nnc_tensor_variable_new(dynamic_graph, output_params[j]);
+				output_tensors[i * per_output_size + j] = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i * per_output_size + j], stream_context);
+			} else {
+				outputs[i * per_output_size + j] = 0;
+				output_tensors[i * per_output_size + j] = 0;
+			}
+	}
+	if (dynamic_graph->no_grad)
+	{
+		ccv_cnnp_model_dry_run(model, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 0,
+			.disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL,
+			.is_test = is_test,
+		}, input_tensors, input_size, output_tensors, output_size);
+	} else {
+		uint64_t disable_outgrad = 0;
+		int count = 0;
+		for (i = 0; i < per_input_size; i++)
+			if (!inputs[i] || inputs[i]->type == CCV_NNC_TENSOR_CONSTANT)
+			{
+				disable_outgrad |= ((uint64_t)1 << i);
+				++count;
+			}
+		if (count == per_input_size)
+			disable_outgrad = CCV_CNNP_DISABLE_OUTGRAD_ALL;
+		ccv_cnnp_model_dry_run(model, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+			.disable_outgrad = disable_outgrad,
+			.is_test = is_test,
+		}, input_tensors, input_size, output_tensors, output_size);
+	}
+	// Free the allocated variables.
+	for (i = 0; i < output_size; i++)
+		if (outputs[i])
+			ccv_nnc_tensor_variable_free(dynamic_graph, outputs[i]);
+}
+
 void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const int is_test, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_model_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
