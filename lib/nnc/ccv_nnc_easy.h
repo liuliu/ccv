@@ -250,6 +250,35 @@ static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t param
 	return ((data_size + 63) & -64);
 }
 
+static inline size_t ccv_nnc_tensor_decompressed_data_size_without_padding(const ccv_nnc_tensor_param_t params)
+{
+	const ssize_t count = (ssize_t)ccv_nnc_tensor_count(params);
+	ssize_t data_size;
+	if (CCV_GET_DATA_TYPE(params.datatype) == CCV_QX)
+	{
+		// Our QX right now only does palettization. Hence, we need to get the palette datatype.
+		const int palette_datatype = (params.datatype & 0xff) << 12;
+		data_size = CCV_GET_DATA_TYPE_SIZE(palette_datatype) * count;
+	} else
+		data_size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * count;
+	return data_size;
+}
+
+static inline size_t ccv_nnc_tensor_decompressed_data_size(const ccv_nnc_tensor_param_t params)
+{
+	ssize_t data_size = ccv_nnc_tensor_decompressed_data_size_without_padding(params);
+#ifdef HAVE_CUDA // For CUDA, we align to 128-bytes.
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+		return ((data_size + 127) & -128);
+	else
+#elif defined(HAVE_MPS) // For MPS, we have to align to PAGE_SIZE.
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+		return ((data_size + PAGE_SIZE - 1) & -PAGE_SIZE);
+	else
+#endif
+	return ((data_size + 63) & -64);
+}
+
 static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int x;

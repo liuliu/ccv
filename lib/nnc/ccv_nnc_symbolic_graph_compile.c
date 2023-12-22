@@ -4214,7 +4214,7 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 						mv = (ccv_nnc_tensor_multiview_t*)(mv->it ? mv->it : CCV_NNC_MULTIVIEW_DATA(mv)[0]);
 					tensor = (ccv_nnc_tensor_t*)mv;
 				}
-				tensor_arena->vt_sizes[i] = ccv_nnc_tensor_data_size(tensor->info);
+				tensor_arena->vt_sizes[i] = ccv_nnc_tensor_decompressed_data_size(tensor->info);
 			}
 	}
 	int flag = 0;
@@ -4235,11 +4235,17 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 			{
 				assert(!tensor_arena->vt_alias_refs[i]);
 				_ccv_nnc_multiview_update_params((ccv_nnc_tensor_multiview_t*)tensor, symbol_info->info);
-			} else if (!tensor_arena->vt_alias_refs[i])
+			} else if (!tensor_arena->vt_alias_refs[i]) {
+				ccv_nnc_tensor_param_t params = tensor->info;
 				tensor->info = symbol_info->info;
-			else {
+				tensor->info.datatype = params.datatype;
+				tensor->info.reserved = params.reserved;
+			} else {
 				off_t off = ccv_nnc_tensor_view_offset(tensor->info.datatype, symbol_info->stride, symbol_info->ofs);
+				ccv_nnc_tensor_param_t params = tensor->info;
 				tensor->info = symbol_info->info;
+				tensor->info.datatype = params.datatype;
+				tensor->info.reserved = params.reserved;
 				const int alias_ref = tensor_arena->vt_alias_refs[i] - 1;
 				ccv_nnc_tensor_data(tensor->info, tensor_arena->vt_tensors[alias_ref]->data.u8, off + tensor_arena->vt_tensors[alias_ref]->dataof, &tensor->data, &tensor->dataof);
 				if (CCV_IS_TENSOR_VIEW(tensor))
