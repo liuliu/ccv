@@ -257,7 +257,7 @@ static int _ccv_nnc_cmul_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int i
 }
 
 REGISTER_COMMAND(CCV_NNC_CMUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c, gpu/ccv_nnc_cmul_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_cmul_cpu_ref.c, gpu/ccv_nnc_cmul_gpu_ref.cu, mps/ccv_nnc_cmul_mps.m)
 {
 	registry->bitmask = _ccv_nnc_cmul_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_broadcast_tensor_auto_forw;

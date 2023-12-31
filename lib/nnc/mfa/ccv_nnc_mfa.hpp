@@ -8,6 +8,7 @@
 #include "ccv_nnc_mfa_normalization.hpp"
 #include "ccv_nnc_mfa_depalettize.hpp"
 #include "ccv_nnc_mfa_adam.hpp"
+#include "ccv_nnc_mfa_cmul.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
@@ -48,6 +49,7 @@ public:
   cache<normalization::hash, normalization::pipeline> normalization_cache;
   cache<depalettize::hash, depalettize::pipeline> depalettize_cache;
   cache<adam::hash, adam::pipeline> adam_cache;
+  cache<cmul::hash, cmul::pipeline> cmul_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

@@ -17,7 +17,7 @@ void ccv_nnc_mfa_encode_adam(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_adam_pa
   mfa::adam::hash hash(params);
   auto iterator = context->adam_cache.map.find(hash);
   if (iterator == context->adam_cache.map.end()) {
-    mfa::precondition_failure("Depalettize hash not cached.", __LINE__, __FILE__, __FUNCTION__);
+    mfa::precondition_failure("adam hash not cached.", __LINE__, __FILE__, __FUNCTION__);
   }
   
   auto* pipeline = iterator->second;
