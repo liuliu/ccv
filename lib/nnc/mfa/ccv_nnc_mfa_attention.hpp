@@ -5,7 +5,8 @@ typedef struct {
   uint64_t data_type;
   uint32_t R;
   uint32_t C;
-  uint32_t H;
+  uint32_t Hq;
+  uint32_t Hk;
   uint32_t D;
   uint8_t Q_trans;
   uint8_t K_trans;
@@ -37,7 +38,8 @@ public:
   uint64_t data_type;
   uint32_t R;
   uint32_t C;
-  uint32_t H;
+  uint32_t Hq;
+  uint32_t Hk;
   uint32_t D;
   uint8_t Q_trans;
   uint8_t K_trans;

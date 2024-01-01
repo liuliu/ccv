@@ -74,14 +74,16 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	int batch_size;
 	int R;
 	int C;
-	int H;
+	int Hq;
+	int Hk;
 	int D;
 	if (q_nd == 3) {
 		batch_size = qdim[1];
 		assert(batch_size == kdim[1]);
 		R = qdim[2];
 		C = kdim[2];
-		H = 1;
+		Hq = 1;
+		Hk = 1;
 		D = qdim[3];
 		assert(D == kdim[3]);
 	} else if (q_nd == 4) {
@@ -89,8 +91,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		assert(batch_size == kdim[0]);
 		R = qdim[1];
 		C = kdim[1];
-		H = qdim[2];
-		assert(H == kdim[2]);
+		Hq = qdim[2];
+		Hk = kdim[2];
+		assert(Hq >= Hk);
+		assert((Hq % Hk) == 0);
 		D = qdim[3];
 		assert(D == kdim[3]);
 	}
@@ -158,7 +162,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.data_type = mtl_data_type,
 			.R = (uint32_t)R,
 			.C = (uint32_t)C,
-			.H = (uint32_t)H,
+			.Hq = (uint32_t)Hq,
+			.Hk = (uint32_t)Hk,
 			.D = (uint32_t)D,
 			.Q_trans = false,
 			.K_trans = true,
@@ -245,7 +250,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			assert(c->info.format == CCV_TENSOR_FORMAT_NHWC);
 			int M = cdim[1] * cdim[2];
 			int N = cdim[3];
-			int K = H * D;
+			int K = Hk * D;
 
 			if (o_nd == 3)
 			{
@@ -255,7 +260,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				assert(adim[0] == attention_batch_size);
 				assert(adim[0] * adim[1] == M);
 			}
-			if (H > 1) {
+			if (Hk > 1) {
 				assert(adim[2] * adim[3] == K);
 			} else {
 				assert(adim[3] == K);

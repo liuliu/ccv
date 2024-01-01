@@ -130,9 +130,22 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
   for (int i = 0; i < 4; ++i) {
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
+  // grouped query is on, need to pass query_offsets
+  if (params.Hq != params.Hk) {
+    CCV_NNC_MFA_PRECONDITION(params.Hq > params.Hk);
+    CCV_NNC_MFA_PRECONDITION((params.Hq % params.Hk) == 0);
+    uint32_t query_offsets[params.Hq * 4];
+    for (int i = 0; i < params.Hq; i++) {
+      query_offsets[i * 4] = i;
+      query_offsets[i * 4 + 1] = i % params.Hk;
+      query_offsets[i * 4 + 2] = i % params.Hk;
+      query_offsets[i * 4 + 3] = i;
+    }
+    encoder->setBytes(query_offsets, params.Hq * 16, 11);
+  }
   
   auto grid_size = pipeline->grid_size;
-  grid_size.height = params.H;
+  grid_size.height = params.Hq;
   grid_size.depth = batch_sizes[0];
   encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
   command_batch->finishCommand(encoder);
@@ -144,7 +157,8 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   data_type = params.data_type;
   R = params.R;
   C = params.C;
-  H = params.H;
+  Hq = params.Hq;
+  Hk = params.Hk;
   D = params.D;
   Q_trans = params.Q_trans;
   K_trans = params.K_trans;
@@ -161,7 +175,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (data_type == hash.data_type) &&
   (R == hash.R) &&
   (C == hash.C) &&
-  (H == hash.H) &&
+  (Hq == hash.Hq) &&
+  (Hk == hash.Hk) &&
   (D == hash.D) &&
   (Q_trans == hash.Q_trans) &&
   (K_trans == hash.K_trans) &&
@@ -178,7 +193,8 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .data_type = " << hash.data_type << ',';
   os << " .R = " << hash.R << ',';
   os << " .C = " << hash.C << ',';
-  os << " .H = " << hash.H << ',';
+  os << " .Hq = " << hash.Hq << ',';
+  os << " .Hk = " << hash.Hk << ',';
   os << " .D = " << hash.D << ',';
   os << " .Q_trans = " << bool(hash.Q_trans) << ',';
   os << " .K_trans = " << bool(hash.K_trans) << ',';
@@ -197,9 +213,9 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   using namespace mfa::hash;
   combine_64(seed, hash.data_type);
   combine_64(seed, pack_64(simd::uint2 { hash.R, hash.C }));
-  combine_64(seed, pack_64(simd::uint2 { hash.H, hash.D }));
-  combine_64(seed, pack_64(simd::uint2 { pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans }), *reinterpret_cast<const uint32_t*>(&hash.alpha) }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.batched, hash.masked, 0, 0 }));
+  combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
+  combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
+  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.upcast, 0 })}));
   return seed;
 }
 
@@ -211,8 +227,9 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   constants->setConstantValue(&hash.R, MTL::DataTypeUInt, NS::UInteger(0));
   constants->setConstantValue(&hash.C, MTL::DataTypeUInt, 1);
-  constants->setConstantValue(&hash.H, MTL::DataTypeUInt, 2);
+  constants->setConstantValue(&hash.Hq, MTL::DataTypeUInt, 2);
   constants->setConstantValue(&hash.D, MTL::DataTypeUInt, 3);
+  constants->setConstantValue(&hash.Hk, MTL::DataTypeUInt, 4);
   constants->setConstantValue(&hash.Q_trans, MTL::DataTypeBool, 10);
   constants->setConstantValue(&hash.K_trans, MTL::DataTypeBool, 11);
   constants->setConstantValue(&hash.V_trans, MTL::DataTypeBool, 12);
@@ -229,7 +246,7 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     bool forward = true;
     bool backward = false;
     bool generate_block_mask = false;
-    bool grouped_query = false;
+    bool grouped_query = (hash.Hq != hash.Hk);
     constants->setConstantValue(&block_sparse, MTL::DataTypeBool, 102);
     constants->setConstantValue(&triangular, MTL::DataTypeBool, 103);
     constants->setConstantValue(&forward, MTL::DataTypeBool, 110);
