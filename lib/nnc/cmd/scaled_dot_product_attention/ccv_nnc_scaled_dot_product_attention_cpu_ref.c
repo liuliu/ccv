@@ -156,21 +156,19 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				// Compute softmax on qk.
 				if (is_causal)
 				{
-					for (y = 0; y < ccv_min(x, kdim[1]); y++)
+					const int x_end = ccv_max(x - qdim[1] + kdim[1] + 1, 0);
+					for (y = x_end; y < kdim[1]; y++)
 						qk0[y] = 0;
-					if (x < kdim[1])
-					{
-						double maxval = qk0[x];
-						for (y = x + 1; y < kdim[1]; y++)
-							if (qk0[y] > maxval)
-								maxval = qk0[y];
-						double sumval = 0;
-						for (y = x; y < kdim[1]; y++)
-							sumval += (qk0[y] = expf(qk0[y] - maxval));
-						sumval = 1.0 / sumval;
-						for (y = x; y < kdim[1]; y++)
-							qk0[y] *= sumval;
-					}
+					double maxval = qk0[0];
+					for (y = 1; y < x_end; y++)
+						if (qk0[y] > maxval)
+							maxval = qk0[y];
+					double sumval = 0;
+					for (y = 0; y < x_end; y++)
+						sumval += (qk0[y] = expf(qk0[y] - maxval));
+					sumval = 1.0 / sumval;
+					for (y = 0; y < x_end; y++)
+						qk0[y] *= sumval;
 				} else {
 					double maxval = qk0[0];
 					for (y = 1; y < kdim[1]; y++)

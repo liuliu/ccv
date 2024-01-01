@@ -178,7 +178,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	params.rp_dropout = 1;
 	params.scale_softmax_rp_dropout = params.scale_softmax;
 	params.window_size_left = ccv_max(R, C);
-	params.window_size_right = ccv_max(R, C);
+	params.window_size_right = params.is_causal ? 0 : ccv_max(R, C);
 	params.is_seqlens_k_cumulative = true;
 	void* workspace = ccv_nnc_stream_context_get_workspace(stream_context, batch_size * Hq * R * sizeof(float), CCV_TENSOR_GPU_MEMORY);
 	params.softmax_lse_ptr = workspace;
