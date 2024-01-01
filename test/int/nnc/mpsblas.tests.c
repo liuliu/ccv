@@ -1397,7 +1397,7 @@ TEST_CASE("scaled dot product attention with mps")
 		int Hq_candidates[num_trials] =        {   8,  16,  13, 3, 1 };
 		int Hk_candidates[num_trials] =        {   8,   8,  13, 3, 1 };
 		int D_candidates[num_trials] =         {  64,  64, 191, 4, 8 };
-		int is_causal_candidates[num_trials] = {   0,   0,   0, 0, 0 };
+		int is_causal_candidates[num_trials] = {   0,   1,   0, 1, 0 };
 
 		int B = B_candidates[trial];
 		int R = R_candidates[trial];
@@ -1433,7 +1433,23 @@ TEST_CASE("scaled dot product attention with mps")
 		ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
 
-		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, NULL), 0);
+		if (is_causal)
+		{
+			ccv_nnc_tensor_t* const causal_mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
+			ccv_nnc_tensor_t* const gpu_causal_mask = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, R, C), 0);
+			for (int i = 0; i < R; i++)
+				for (int j = 0; j < C; j++)
+					causal_mask->data.f32[i * C + j] = 0;
+			for (int i = 0; i < R - 1; i++)
+				for (int j = i - R + C + 1; j < C; j++)
+					causal_mask->data.f32[i * C + j] = -FLT_MAX;
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(causal_mask), TENSOR_LIST(gpu_causal_mask), 0);
+			ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_causal_mask), TENSOR_LIST(gpu_o_tensor), 0);
+			ccv_nnc_tensor_free(gpu_causal_mask);
+			ccv_nnc_tensor_free(causal_mask);
+		} else {
+			ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), TENSOR_LIST(gpu_o_tensor), 0);
+		}
 
 		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
