@@ -2795,9 +2795,9 @@ TEST_CASE("cmul in float, broadcast semantics")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 2, 5, 4, 8), "a");
-	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 1, 5, 1, 8), "b");
-	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 2, 5, 4, 8), "c");
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 1, 5, 8, 128), "a");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 1, 5, 1, 128), "b");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 1, 5, 8, 128), "c");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CMUL_FORWARD(), TENSOR_SYMBOL_LIST(a, b), TENSOR_SYMBOL_LIST(c), "cmul");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
@@ -2806,24 +2806,24 @@ TEST_CASE("cmul in float, broadcast semantics")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 2, 5, 4, 8), 0);
-	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 5, 1, 8), 0);
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 5, 8, 128), 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 5, 1, 128), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	int i;
-	for (i = 0; i < 2 * 5 * 4 * 8; i++)
+	for (i = 0; i < 1 * 5 * 8 * 128; i++)
 		x_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	for (i = 0; i < 1 * 5 * 1 * 8; i++)
+	for (i = 0; i < 1 * 5 * 1 * 128; i++)
 		y_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, a);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(a_tensor), 0);
 	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y_tensor), TENSOR_LIST(b_tensor), 0);
 	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
-	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 2, 5, 4, 8), 0);
+	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 5, 8, 128), 0);
 	ccv_nnc_tensor_t* const c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, c);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c_tensor), TENSOR_LIST(z_tensor), 0);
-	ccv_nnc_tensor_t* const tz = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 2, 5, 4, 8), 0);
+	ccv_nnc_tensor_t* const tz = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1, 5, 8, 128), 0);
 	ccv_nnc_cmd_exec(CMD_CMUL_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, y_tensor), TENSOR_LIST(tz), 0);
 	REQUIRE_TENSOR_EQ(tz, z_tensor, "gelu from cudnn should match from CPU");
 	ccv_nnc_tensor_free(x_tensor);

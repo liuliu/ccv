@@ -289,14 +289,14 @@ kernel void cmul(
     const int num_blocks = (hash.dim[0] / 2 + 255) / 256;
     this->grid_size = MTL::Size(num_blocks, 1, 1);
   } else if (hash.dim[3] == 0 && hash.dim[2] == 0) {
-    this->group_size = MTL::Size(64, 8, 1);
-    this->grid_size = MTL::Size((hash.dim[0] / 2 + 63) / 64, (hash.dim[1] + 7) / 8, 1);
+    this->group_size = MTL::Size(32, 8, 1);
+    this->grid_size = MTL::Size((hash.dim[0] / 2 + 31) / 32, (hash.dim[1] + 7) / 8, 1);
   } else if (hash.dim[3] == 0) {
-    this->group_size = MTL::Size(64, 8, 1);
-    this->grid_size = MTL::Size((hash.dim[0] / 2 + 63) / 64, (hash.dim[1] + 7) / 8, hash.dim[2]);
+    this->group_size = MTL::Size(32, 8, 1);
+    this->grid_size = MTL::Size((hash.dim[0] / 2 + 31) / 32, (hash.dim[1] + 7) / 8, hash.dim[2]);
   } else {
-    this->group_size = MTL::Size(64, 8, 1);
-    this->grid_size = MTL::Size((hash.dim[0] / 2 + 63) / 64, (hash.dim[1] + 7) / 8, hash.dim[2] * hash.dim[3]);
+    this->group_size = MTL::Size(32, 8, 1);
+    this->grid_size = MTL::Size((hash.dim[0] / 2 + 31) / 32, (hash.dim[1] + 7) / 8, hash.dim[2] * hash.dim[3]);
   }
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());

@@ -135,10 +135,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     CCV_NNC_MFA_PRECONDITION(params.Hq > params.Hk);
     CCV_NNC_MFA_PRECONDITION((params.Hq % params.Hk) == 0);
     uint32_t query_offsets[params.Hq * 4];
+	const int h_h_k_ratio = params.Hq / params.Hk;
     for (int i = 0; i < params.Hq; i++) {
       query_offsets[i * 4] = i;
-      query_offsets[i * 4 + 1] = i % params.Hk;
-      query_offsets[i * 4 + 2] = i % params.Hk;
+      query_offsets[i * 4 + 1] = i / h_h_k_ratio;
+      query_offsets[i * 4 + 2] = i / h_h_k_ratio;
       query_offsets[i * 4 + 3] = i;
     }
     encoder->setBytes(query_offsets, params.Hq * 16, 11);
