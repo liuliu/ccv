@@ -2618,13 +2618,13 @@ TEST_CASE("scaled dot product attention with flash_attn")
 #define num_trials (num_long_trials + num_short_trials)
 
 	for (int trial = 0; trial < num_trials; ++trial) {
-		int B_candidates[num_trials] = {  32,   12, 16, 1, 2, 15 };
-		int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 512 };
-		int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 128 };
-		int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 8 };
-		int Hk_candidates[num_trials] = {   8,  8, 8, 8, 2, 4 };
-		int D_candidates[num_trials] = {  64, 40, 160, 224, 224, 64 };
-		int is_causal_candidates[num_trials] = {  1, 0, 1, 1, 0, 0 };
+		int B_candidates[num_trials] = {  32,   12, 16, 1, 2, 1 };
+		int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5 };
+		int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5 };
+		int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32 };
+		int Hk_candidates[num_trials] = {   8,  8, 8, 8, 2, 8 };
+		int D_candidates[num_trials] = {  64, 40, 160, 224, 224, 128 };
+		int is_causal_candidates[num_trials] = {  1, 0, 1, 1, 0, 1 };
 
 		int B = B_candidates[trial];
 		int R = R_candidates[trial];

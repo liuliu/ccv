@@ -109,6 +109,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	float* const ssp = saved_softmax ? saved_softmax->data.f32 : 0;
 	const float scale = cmd.info.scaled_dot_product_attention.scale;
 	const int is_causal = cmd.info.scaled_dot_product_attention.is_causal;
+	const int h_h_k_ratio = qdim[2] / kdim[2];
+	assert(kdim[2] == vdim[2]);
+	assert(qdim[2] >= kdim[2]);
+	assert(qdim[2] % kdim[2] == 0);
 	for (i[0] = 0; i[0] < qdim[0]; i[0]++)
 	{
 		const float* const qp0 = qp + i[0] * qstride[0];
@@ -120,8 +124,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
 			const float* const qp1 = qp0 + i[1] * qstride[2];
-			const float* const kp1 = kp0 + (i[1] % kdim[2]) * kstride[2];
-			const float* const vp1 = vp0 + (i[1] % vdim[2]) * vstride[2];
+			const float* const kp1 = kp0 + (i[1] / h_h_k_ratio) * kstride[2];
+			const float* const vp1 = vp0 + (i[1] / h_h_k_ratio) * vstride[2];
 			const float* const amp1 = amp && amdim[1] > 1 ? amp0 + i[1] * amstride[1] : amp0;
 			float* const cp1 = cp0 + i[1] * cstride[2];
 			float* const ssp1 = ssp0 ? ssp0 + i[1] * ssstride[1] : 0;
