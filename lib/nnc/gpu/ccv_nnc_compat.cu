@@ -757,7 +757,7 @@ cudaDataType_t ccv_nnc_cuda_datatype(int datatype)
 	return CUDA_R_32F;
 }
 
-cudaDataType_t ccv_nnc_cuda_compute_datatype(int datatype)
+cublasComputeType_t ccv_nnc_cuda_compute_datatype(int datatype)
 {
 	if (CCV_GET_DATA_TYPE(datatype) == CCV_QX)
 		datatype = (datatype & 0xff) << 12;
@@ -765,13 +765,15 @@ cudaDataType_t ccv_nnc_cuda_compute_datatype(int datatype)
 	{
 		case CCV_8U:
 		case CCV_32S:
+			return CUBLAS_COMPUTE_32F;
 		case CCV_16F:
+			return CUBLAS_COMPUTE_16F;
 		case CCV_32F:
-			return CUDA_R_32F;
+			return CUBLAS_COMPUTE_32F;
 		case CCV_64F:
-			return CUDA_R_64F;
+			return CUBLAS_COMPUTE_64F;
 	}
-	return CUDA_R_32F;
+	return CUBLAS_COMPUTE_32F;
 }
 
 #ifdef HAVE_CUDNN

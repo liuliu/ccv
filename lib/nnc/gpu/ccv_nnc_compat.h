@@ -84,7 +84,7 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 
 extern "C" {
 CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_datatype(const int datatype); // Get the datatype corresponding to cuda datatype.
-CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_compute_datatype(const int datatype); // Get the datatype that is accurate enough to be accumulator.
+CCV_WARN_UNUSED(cublasComputeType_t) ccv_nnc_cuda_compute_datatype(const int datatype); // Get the datatype that is accurate enough to be accumulator.
 // Stream context methods to get the underlying objects, note that none of these methods are thread-safe.
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
