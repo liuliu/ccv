@@ -19,7 +19,7 @@ template<typename NUM>
 __global__ void _ccv_nnc_swish_forw_kernel(const size_t count, const float* const a, NUM* const b)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
-		b[i] = (NUM)(a[i] / (1. + exp(-a[i])));
+		b[i] = (NUM)(a[i] / (1. + expf(-a[i])));
 	}
 }
 

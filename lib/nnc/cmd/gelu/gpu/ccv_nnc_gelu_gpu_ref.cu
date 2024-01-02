@@ -12,7 +12,7 @@ __global__ void _ccv_nnc_gelu_tanh_forw_kernel(const size_t count, const NUM1* c
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		float x = (float)a[i];
-		b[i] = (NUM2)(0.5 * x * (1 + tanh(0.797884560802865355 * (x + 0.044715 * x * x * x))));
+		b[i] = (NUM2)(0.5 * x * (1 + tanhf(0.797884560802865355 * (x + 0.044715 * x * x * x))));
 	}
 }
 
@@ -21,7 +21,7 @@ __global__ void _ccv_nnc_gelu_forw_kernel(const size_t count, const NUM1* const 
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		float x = (float)a[i];
-		b[i] = (NUM2)(x * 0.5 * (1. + erf(x * 0.70710678118654752440)));
+		b[i] = (NUM2)(x * 0.5 * (1. + erff(x * 0.70710678118654752440)));
 	}
 }
 
