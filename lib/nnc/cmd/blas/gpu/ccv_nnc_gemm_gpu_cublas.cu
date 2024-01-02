@@ -23,6 +23,7 @@ static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* con
 			one = &one_f16;
 			break;
 		case CUBLAS_COMPUTE_32F:
+		case CUBLAS_COMPUTE_32F_FAST_TF32:
 			one = &one_f32;
 			break;
 		case CUBLAS_COMPUTE_64F:
@@ -75,6 +76,7 @@ static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* con
 			one = &one_f16;
 			break;
 		case CUBLAS_COMPUTE_32F:
+		case CUBLAS_COMPUTE_32F_FAST_TF32:
 			one = &one_f32;
 			break;
 		case CUBLAS_COMPUTE_64F:
@@ -249,6 +251,7 @@ static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, c
 			one = &one_f16;
 			break;
 		case CUBLAS_COMPUTE_32F:
+		case CUBLAS_COMPUTE_32F_FAST_TF32:
 			one = &one_f32;
 			break;
 		case CUBLAS_COMPUTE_64F:
@@ -304,6 +307,7 @@ static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, cons
 			one = &one_f16;
 			break;
 		case CUBLAS_COMPUTE_32F:
+		case CUBLAS_COMPUTE_32F_FAST_TF32:
 			one = &one_f32;
 			break;
 		case CUBLAS_COMPUTE_64F:
@@ -387,6 +391,7 @@ static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const
 			one = &one_f16;
 			break;
 		case CUBLAS_COMPUTE_32F:
+		case CUBLAS_COMPUTE_32F_FAST_TF32:
 			one = &one_f32;
 			break;
 		case CUBLAS_COMPUTE_64F:

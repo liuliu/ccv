@@ -767,7 +767,7 @@ cublasComputeType_t ccv_nnc_cuda_compute_datatype(int datatype)
 		case CCV_32S:
 			return CUBLAS_COMPUTE_32F;
 		case CCV_16F:
-			return CUBLAS_COMPUTE_16F;
+			return CUBLAS_COMPUTE_32F;
 		case CCV_32F:
 			return CUBLAS_COMPUTE_32F;
 		case CCV_64F:
