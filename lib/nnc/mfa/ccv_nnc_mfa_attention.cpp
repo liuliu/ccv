@@ -230,7 +230,6 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
   constants->setConstantValue(&hash.C, MTL::DataTypeUInt, 1);
   constants->setConstantValue(&hash.Hq, MTL::DataTypeUInt, 2);
   constants->setConstantValue(&hash.D, MTL::DataTypeUInt, 3);
-  constants->setConstantValue(&hash.Hk, MTL::DataTypeUInt, 4);
   constants->setConstantValue(&hash.Q_trans, MTL::DataTypeBool, 10);
   constants->setConstantValue(&hash.K_trans, MTL::DataTypeBool, 11);
   constants->setConstantValue(&hash.V_trans, MTL::DataTypeBool, 12);
@@ -248,6 +247,8 @@ mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash h
     bool backward = false;
     bool generate_block_mask = false;
     bool grouped_query = (hash.Hq != hash.Hk);
+    uint32_t H_Hk_ratio = hash.Hq / hash.Hk;
+    constants->setConstantValue(&H_Hk_ratio, MTL::DataTypeUInt, 4);
     constants->setConstantValue(&block_sparse, MTL::DataTypeBool, 102);
     constants->setConstantValue(&triangular, MTL::DataTypeBool, 103);
     constants->setConstantValue(&forward, MTL::DataTypeBool, 110);
