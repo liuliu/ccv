@@ -1,5 +1,6 @@
 #include "case.h"
 #include "ccv_case.h"
+#include "ccv_nnc_case.h"
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
@@ -459,6 +460,44 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 			c->data.f32[y * 27 + x] = 28.5 + y * 108 + x * 2;
 	REQUIRE_MATRIX_EQ(b, c, "average pool network output should be exactly the same");
 	ccv_matrix_free(c);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(a);
+}
+
+TEST_CASE("convolution transpose of 3x3 on 2x2 with uniform weights")
+{
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 2), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 4, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_TRANSPOSE_FORWARD(1, 1, 3, 3, 2);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
+	hint.stride.dim[0] = 1;
+	hint.stride.dim[1] = 1;
+	hint.border.begin[0] = 0;
+	hint.border.begin[1] = 0;
+	hint.border.end[0] = 0;
+	hint.border.end[1] = 0;
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 3, 1), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	// configure the inlets.
+	int i;
+	for (i = 0; i < 3 * 3 * 2; i++)
+		w->data.f32[i] = i;
+	for (i = 0; i < 2 * 2 * 2; i++)
+		a->data.f32[i] = 1;
+	for (i = 0; i < 1; i++)
+		bias->data.f32[i] = 1;
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	float cp[] = {
+		10., 21., 25., 14.,
+		25., 53., 61., 33.,
+		37., 77., 85., 45.,
+		22., 45., 49., 26.
+	};
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(cp, CPU_TENSOR_NHWC(32F, 4, 4, 1), 0);
+	REQUIRE_TENSOR_EQ(b, c, "convolution transpose output should be exactly the same");
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
 }

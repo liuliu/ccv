@@ -72,3 +72,22 @@ REGISTER_COMMAND(CCV_NNC_CONVOLUTION_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 #define CMD_CONVOLUTION_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_BACKWARD)
 #define CMD_CONVOLUTION_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+
+REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c)
+{
+	registry->bitmask = _ccv_nnc_conv_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_conv_tensor_auto_forw;
+}
+
+REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c)
+{
+	registry->bitmask = _ccv_nnc_conv_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD)
+#define CMD_CONVOLUTION_TRANSPOSE_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)
+#define CMD_CONVOLUTION_TRANSPOSE_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
