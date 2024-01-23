@@ -26,26 +26,26 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
 	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
-	const int groups = cmd.info.convolution.groups;
-	assert(cmd.info.convolution.count % groups == 0);
-	const int group_size = cmd.info.convolution.count / groups;
+	const int groups = cmd.info.convolution_transpose.groups;
+	assert(cmd.info.convolution_transpose.count % groups == 0);
+	const int group_size = cmd.info.convolution_transpose.count / groups;
 	// Make sure the weights output dimension matches the network convolution kernels
 	int astride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(a, astride);
 	int bstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(b, bstride);
-	assert(!bias || bias->info.dim[0] == cmd.info.convolution.count);
+	assert(!bias || bias->info.dim[0] == cmd.info.convolution_transpose.count);
 	const int batch_size = (a_nd == CCV_NNC_MAX_DIM + 2) ? a->info.dim[0] : 1;
 	const int dilation[CCV_NNC_MAX_DIM] = {
-		ccv_max(cmd.info.convolution.dilation[0], 1),
-		ccv_max(cmd.info.convolution.dilation[1], 1)
+		ccv_max(cmd.info.convolution_transpose.dilation[0], 1),
+		ccv_max(cmd.info.convolution_transpose.dilation[1], 1)
 	};
 	if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
 	{
 		// Make sure the weights dimension matches the network dimension
 		assert(w->info.dim[1] == cmd.info.size.dim[0]);
 		assert(w->info.dim[2] == cmd.info.size.dim[1]);
-		assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == cmd.info.convolution.count);
+		assert(w->info.dim[CCV_NNC_MAX_DIM + 1] * groups == cmd.info.convolution_transpose.count);
 		const int wdim[CCV_NNC_MAX_DIM] = {
 			(w->info.dim[1] - 1) * dilation[0] + 1,
 			(w->info.dim[2] - 1) * dilation[1] + 1
@@ -53,13 +53,14 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		assert(w->info.dim[0] == adim[CCV_NNC_MAX_DIM]);
 		assert(b->info.format == CCV_TENSOR_FORMAT_NHWC);
 		const int channel_size = w->info.dim[CCV_NNC_MAX_DIM + 1];
-		const int input_channel_size = w->info.dim[0];
+		const int input_channel_size = w->info.dim[0] / groups;
 		const int hwc = w->info.dim[1] * w->info.dim[2] * channel_size;
-		assert(bdim[CCV_NNC_MAX_DIM] == cmd.info.convolution.count);
-		parallel_for(idx, cmd.info.convolution.count * batch_size) {
+		assert(bdim[CCV_NNC_MAX_DIM] == cmd.info.convolution_transpose.count);
+		parallel_for(idx, cmd.info.convolution_transpose.count * batch_size) {
 			int c;
-			const int bidx = idx / cmd.info.convolution.count;
-			const int k = idx % cmd.info.convolution.count;
+			const int bidx = idx / cmd.info.convolution_transpose.count;
+			const int k = idx % cmd.info.convolution_transpose.count;
+			const int gidx = k / group_size;
 			float* ap = a->data.f32 + bidx * astride[0];
 			float* bp = b->data.f32 + bidx * bstride[0] + k;
 			// kernel weight for one dim.
@@ -104,7 +105,7 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 						{
 							float p = bpz[j[1] * dilation[1] * bstride[CCV_NNC_MAX_DIM]];
 							for (c = 0; c < input_channel_size; c++)
-								 p += wpz[j[1] * channel_size + c * hwc] * apz[c];
+								 p += wpz[j[1] * channel_size + (c + gidx * input_channel_size) * hwc] * apz[c + gidx * input_channel_size];
 							bpz[j[1] * dilation[1] * bstride[CCV_NNC_MAX_DIM]] = p;
 						}
 						wpz += w->info.dim[CCV_NNC_MAX_DIM] * channel_size;
@@ -117,7 +118,7 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} parallel_endfor
 	} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
 		// Make sure the weights dimension matches the network dimension
-		assert(w->info.dim[1] * groups == cmd.info.convolution.count);
+		assert(w->info.dim[1] * groups == cmd.info.convolution_transpose.count);
 		assert(w->info.dim[2] == cmd.info.size.dim[0]);
 		assert(w->info.dim[3] == cmd.info.size.dim[1]);
 		const int wdim[CCV_NNC_MAX_DIM] = {
@@ -127,14 +128,15 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		assert(w->info.dim[0] == adim[0]);
 		assert(b->info.format == CCV_TENSOR_FORMAT_NCHW);
 		const int channel_size = w->info.dim[1];
-		const int input_channel_size = w->info.dim[0];
+		const int input_channel_size = w->info.dim[0] / groups;
 		const int hw = w->info.dim[2] * w->info.dim[3];
 		const int chw = channel_size * hw;
-		assert(bdim[0] == cmd.info.convolution.count);
-		parallel_for(idx, cmd.info.convolution.count * batch_size) {
+		assert(bdim[0] == cmd.info.convolution_transpose.count);
+		parallel_for(idx, cmd.info.convolution_transpose.count * batch_size) {
 			int c;
-			const int bidx = idx / cmd.info.convolution.count;
-			const int k = idx % cmd.info.convolution.count;
+			const int bidx = idx / cmd.info.convolution_transpose.count;
+			const int k = idx % cmd.info.convolution_transpose.count;
+			const int gidx = k / group_size;
 			float* ap = a->data.f32 + bidx * astride[0];
 			float* bp = b->data.f32 + bidx * bstride[0] + k * bstride[1];
 			// kernel weight for one dim.
@@ -179,11 +181,11 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 						{
 							float p = bpz[j[1] * dilation[1] * bstride[CCV_NNC_MAX_DIM + 1]];
 							for (c = 0; c < input_channel_size; c++)
-								 p += wpz[j[1] + c * chw] * apz[c * astride[1]];
+								 p += wpz[j[1] + (c + gidx * input_channel_size) * chw] * apz[(c + gidx * input_channel_size) * astride[1]];
 							bpz[j[1] * dilation[1] * bstride[CCV_NNC_MAX_DIM + 1]] = p;
 						}
 						wpz += w->info.dim[CCV_NNC_MAX_DIM + 1];
-						apz += astride[CCV_NNC_MAX_DIM] * dilation[0];
+						bpz += bstride[CCV_NNC_MAX_DIM] * dilation[0];
 					}
 				}
 				ap += astride[CCV_NNC_MAX_DIM];

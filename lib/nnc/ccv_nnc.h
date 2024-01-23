@@ -108,6 +108,12 @@ typedef struct {
 			int dilation[CCV_NNC_MAX_DIM_ALLOC]; /**< [convolution.dilation[]] The dilation factor for convolutional layer. Default to 1. */
 		} convolution;
 		struct {
+			int count; /**< [convolution_transpose.count] The number of filters for convolutional layer. */
+			int groups; /**< [convolution_transpose.groups] The number of groups for convolutional layer. */
+			int output_padding; /**< [convolution_transpose.output_padding] The output padding to resolve ambiguity when treat this as inverse of convolution. */
+			int dilation[CCV_NNC_MAX_DIM_ALLOC]; /**< [convolution_transpose.dilation[]] The dilation factor for convolutional layer. Default to 1. */
+		} convolution_transpose;
+		struct {
 			int hidden_size; /**< [rnn.hidden_size] The number of features in the hidden state h. */
 			int proj_size; /**< [rnn.proj_size] The number of features in the hidden state h. */
 			int num_layers; /**< [rnn.num_layers] The number of layers for RNN. */

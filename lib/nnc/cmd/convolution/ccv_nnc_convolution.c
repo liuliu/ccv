@@ -73,11 +73,39 @@ REGISTER_COMMAND(CCV_NNC_CONVOLUTION_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_BACKWARD)
 #define CMD_CONVOLUTION_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 
+static void _ccv_nnc_conv_transpose_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+{
+	assert(output_size == 1);
+	outputs[0].type = inputs[0].type;
+	outputs[0].format = inputs[0].format;
+	outputs[0].datatype = inputs[0].datatype;
+	// Get the channel output from the weight matrix.
+	const int count = ccv_nnc_tensor_get_n(inputs[1]);
+	assert(count == cmd.convolution_transpose.count);
+	ccv_nnc_tensor_set_c(outputs, ccv_nnc_tensor_nd(inputs[0].dim), count);
+	ccv_nnc_tensor_set_n(outputs, ccv_nnc_tensor_get_n(inputs[0]));
+	ccv_nnc_cmd_param_t modified_cmd = cmd;
+	int i = 0;
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+	ccv_nnc_hint_tensor_forward(modified_cmd, inputs[0], hint, outputs);
+	assert(inputs[0].format == outputs[0].format);
+	const int nd = ccv_nnc_tensor_nd(inputs[0].dim);
+	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
+	int hw = ccv_nnc_tensor_hw(inputs[0], nd);
+	assert(hw >= 0);
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+	{
+		const int stride = ccv_max(1, hint.stride.dim[i]);
+		const int size_dim = (modified_cmd.size.dim[i] - 1) * ccv_max(cmd.convolution_transpose.dilation[i], 1) + 1;
+		outputs[0].dim[i + hw] = (inputs[0].dim[i + hw] - 1) * stride + size_dim - hint.border.begin[i] - hint.border.end[i] + cmd.convolution_transpose.output_padding;
+	}
+}
+
 REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c)
 {
 	registry->bitmask = _ccv_nnc_conv_forw_bitmask;
-	registry->tensor_auto = _ccv_nnc_conv_tensor_auto_forw;
+	registry->tensor_auto = _ccv_nnc_conv_transpose_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -88,6 +116,6 @@ REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t*
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD)
-#define CMD_CONVOLUTION_TRANSPOSE_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+#define CMD_CONVOLUTION_TRANSPOSE_FORWARD(_groups, _count, _output_padding, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution_transpose={.count=_count,.groups=_groups,.output_padding=_output_padding}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)
-#define CMD_CONVOLUTION_TRANSPOSE_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+#define CMD_CONVOLUTION_TRANSPOSE_BACKWARD(_groups, _count, _output_padding, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution_transpose={.count=_count,.groups=_groups,.output_padding=_output_padding}}), 0)

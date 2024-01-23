@@ -55,9 +55,9 @@
 // CCV_NNC_CONVOLUTION_BACKWARD
 #define CMD_CONVOLUTION_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 // CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD
-#define CMD_CONVOLUTION_TRANSPOSE_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+#define CMD_CONVOLUTION_TRANSPOSE_FORWARD(_groups, _count, _output_padding, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution_transpose={.count=_count,.groups=_groups,.output_padding=_output_padding}}), 0)
 // CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD
-#define CMD_CONVOLUTION_TRANSPOSE_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+#define CMD_CONVOLUTION_TRANSPOSE_BACKWARD(_groups, _count, _output_padding, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution_transpose={.count=_count,.groups=_groups,.output_padding=_output_padding}}), 0)
 // CCV_NNC_DROPOUT_FORWARD
 #define CMD_DROPOUT_FORWARD_X_F(...) ("This should not be used, you should have either 1 parameter or 2 parameters for CMD_DROPOUT_FORWARD")
 #define CMD_DROPOUT_FORWARD_X_1(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p,.entirety=0}}), 0)
