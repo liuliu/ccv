@@ -102,14 +102,14 @@ static void _ccv_nnc_conv_transpose_tensor_auto_forw(const ccv_nnc_cmd_param_t c
 }
 
 REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c, gpu/ccv_nnc_conv_transpose_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c, gpu/ccv_nnc_conv_transpose_gpu_cudnn.cu, mps/ccv_nnc_conv_transpose_mps.m)
 {
 	registry->bitmask = _ccv_nnc_conv_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_conv_transpose_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c, gpu/ccv_nnc_conv_transpose_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_conv_transpose_cpu_ref.c, gpu/ccv_nnc_conv_transpose_gpu_cudnn.cu, mps/ccv_nnc_conv_transpose_mps.m)
 {
 	registry->bitmask = _ccv_nnc_conv_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
