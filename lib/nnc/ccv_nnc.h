@@ -4149,6 +4149,21 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const int axis, const char* c
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int dilation[CCV_NNC_MAX_DIM_ALLOC], const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name);
 /**
+ * A convolution transpose model.
+ * @param groups The number of kernel groups in the model.
+ * @param filters The total number of filters in the model (filters = groups * per group filters).
+ * @param kdim The dimensions of the kernel.
+ * @param dilation The dilation factor on each dimension.
+ * @param output_padding The padding helps to resolve shape ambiguity when this is inverse of convolution.
+ * @param no_bias Whether has bias term or not.
+ * @param hint The hint for alignment.
+ * @param format The format for weights. If 0, it will have the same format as the input.
+ * @param is_trainable Whether the parameters of this model can be trained.
+ * @param name The unique name of the model.
+ * @return A convolution transpose model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution_transpose(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int dilation[CCV_NNC_MAX_DIM_ALLOC], const int output_padding, const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name);
+/**
  * A dense layer model.
  * @param count The output dimension.
  * @param no_bias Whether has a bias term or not.

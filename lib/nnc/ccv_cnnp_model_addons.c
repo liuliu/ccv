@@ -1014,6 +1014,135 @@ static ccv_cnnp_model_t* _ccv_cnnp_convolution_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_convolution(self->groups, self->filters, self->kdim, self->dilation, self->no_bias, self->hint, self->format, self->super.is_trainable, self->super.name);
 }
 
+// MARK - Convolution Transpose Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t weights;
+	ccv_nnc_tensor_symbol_t bias;
+	int groups;
+	int filters;
+	int kdim[CCV_NNC_MAX_DIM_ALLOC];
+	int dilation[CCV_NNC_MAX_DIM_ALLOC];
+	int output_padding;
+	int no_bias;
+	int format;
+	ccv_nnc_hint_t hint;
+} ccv_cnnp_model_convolution_transpose_t;
+
+static void _ccv_cnnp_convolution_transpose_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	int i;
+	const int nd = CCV_NNC_MAX_DIM + 2;
+	ccv_nnc_tensor_param_t weights_params = params;
+	if (self->format)
+		weights_params.format = self->format;
+	ccv_nnc_tensor_set_n(&weights_params, ccv_nnc_tensor_get_c(params));
+	assert(ccv_nnc_tensor_get_c(params) % self->groups == 0);
+	ccv_nnc_tensor_set_c(&weights_params, nd, self->filters / self->groups);
+	const int hw = ccv_nnc_tensor_hw(weights_params, nd);
+	assert(hw >= 0);
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+		weights_params.dim[i + hw] = self->kdim[i];
+	if (!self->weights.graph)
+		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
+	assert(self->weights.graph == graph);
+	ccv_nnc_tensor_param_t bias_params = params;
+	if (self->format)
+		bias_params.format = self->format;
+	memset(bias_params.dim, 0, sizeof(bias_params.dim));
+	bias_params.dim[0] = self->filters;
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_TRANSPOSE_FORWARD(self->groups, self->filters, self->output_padding);
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+		cmd.info.size.dim[i] = self->kdim[i];
+	memcpy(cmd.info.convolution_transpose.dilation, self->dilation, sizeof(self->dilation));
+	ccv_nnc_tensor_param_t output_params;
+	// Dilate weight size based on the dilation factor.
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+		weights_params.dim[i + hw] = (self->kdim[i] - 1) * ccv_max(self->dilation[i], 1) + 1;
+	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
+			params,
+			weights_params,
+			bias_params,
+		}, 3, self->hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_t convolution_transpose;
+	if (self->no_bias)
+		convolution_transpose = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(output), "convolution_transpose");
+	else {
+		if (!self->bias.graph)
+			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+		convolution_transpose = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), "convolution_transpose");
+	}
+	ccv_nnc_graph_exec_symbol_set_hint(graph, convolution_transpose, self->hint);
+	outputs[0] = output;
+}
+
+static void _ccv_cnnp_convolution_transpose_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
+	const int n = ccv_max(ccv_nnc_tensor_get_n(weight_params), 1);
+	const int count = ccv_nnc_tensor_count(weight_params);
+	const float std = sqrtf(2) / sqrtf(count / n);
+	const float bound = sqrtf(3) * std;
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
+	if (self->bias.graph)
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
+}
+
+static void _ccv_cnnp_convolution_transpose_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
+	add_to_array(parameters, self->weights, is_trainable);
+	if (self->bias.graph)
+		add_to_array(parameters, self->bias, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_convolution_transpose_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_transpose_isa = {
+	.build = _ccv_cnnp_convolution_transpose_build,
+	.init_states = _ccv_cnnp_convolution_transpose_init_states,
+	.add_to_parameter = _ccv_cnnp_convolution_transpose_add_to_parameter,
+	.copy = _ccv_cnnp_convolution_transpose_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_convolution_transpose(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const int dilation[CCV_NNC_MAX_DIM_ALLOC], const int output_padding, const int no_bias, ccv_nnc_hint_t hint, const int format, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_convolution_transpose_t* const model_convolution_transpose = (ccv_cnnp_model_convolution_transpose_t*)cccalloc(1, sizeof(ccv_cnnp_model_convolution_transpose_t));
+	model_convolution_transpose->super.isa = &ccv_cnnp_convolution_transpose_isa;
+	model_convolution_transpose->super.input_size = 1;
+	model_convolution_transpose->super.outputs = &model_convolution_transpose->output;
+	model_convolution_transpose->super.output_size = 1;
+	model_convolution_transpose->super.is_trainable = is_trainable;
+	ccv_cnnp_model_copy_name(&model_convolution_transpose->super, name);
+	model_convolution_transpose->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_convolution_transpose->weights.graph = 0;
+	model_convolution_transpose->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_convolution_transpose->bias.graph = 0;
+	model_convolution_transpose->groups = groups;
+	model_convolution_transpose->filters = filters;
+	memcpy(model_convolution_transpose->kdim, kdim, sizeof(model_convolution_transpose->kdim));
+	memcpy(model_convolution_transpose->dilation, dilation, sizeof(model_convolution_transpose->dilation));
+	model_convolution_transpose->output_padding = output_padding;
+	model_convolution_transpose->no_bias = no_bias;
+	model_convolution_transpose->hint = hint;
+	model_convolution_transpose->format = format;
+	return (ccv_cnnp_model_t*)model_convolution_transpose;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_convolution_transpose_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
+	return ccv_cnnp_convolution_transpose(self->groups, self->filters, self->kdim, self->dilation, self->output_padding, self->no_bias, self->hint, self->format, self->super.is_trainable, self->super.name);
+}
+
 // MARK - Dense Layer
 
 typedef struct {
