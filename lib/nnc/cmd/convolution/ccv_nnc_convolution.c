@@ -80,7 +80,7 @@ static void _ccv_nnc_conv_transpose_tensor_auto_forw(const ccv_nnc_cmd_param_t c
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	// Get the channel output from the weight matrix.
-	const int count = ccv_nnc_tensor_get_n(inputs[1]);
+	const int count = ccv_nnc_tensor_get_c(inputs[1]);
 	assert(count == cmd.convolution_transpose.count);
 	ccv_nnc_tensor_set_c(outputs, ccv_nnc_tensor_nd(inputs[0].dim), count);
 	ccv_nnc_tensor_set_n(outputs, ccv_nnc_tensor_get_n(inputs[0]));
