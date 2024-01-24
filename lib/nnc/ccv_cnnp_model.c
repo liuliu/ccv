@@ -2206,9 +2206,6 @@ static void _ccv_cnnp_model_to_parameter_indices_and_from_parameter_indices(ccv_
 		{ assert((*parameter_indices)->rnum == 1); }
 	else if (*param_ref >= 0)
 		{ assert(*param_ref < (*parameter_indices)->rnum); }
-	// Should be exactly the same tensor.
-	if (*param_ref < 0 && *from_param_ref < 0)
-		{ assert((*from_parameter_indices)->rnum == (*parameter_indices)->rnum); }
 }
 
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters)
@@ -2218,6 +2215,9 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_t* from_parameter_indices;
 	int from_param_ref;
 	_ccv_cnnp_model_to_parameter_indices_and_from_parameter_indices(model, parameters, from_model, from_parameters, &to_parameter_indices, &to_param_ref, &from_parameter_indices, &from_param_ref, 0);
+	// Should be exactly the same tensor.
+	if (to_param_ref < 0 && from_param_ref < 0)
+		{ assert(from_parameter_indices->rnum == to_parameter_indices->rnum); }
 	// To models.
 	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
 	assert(to_compiled_data);
@@ -2267,6 +2267,9 @@ void ccv_cnnp_model_share_parameters(ccv_cnnp_model_t* const model, const ccv_cn
 	ccv_array_t* from_parameter_indices;
 	int from_param_ref;
 	_ccv_cnnp_model_to_parameter_indices_and_from_parameter_indices(model, parameters, from_model, from_parameters, &to_parameter_indices, &to_param_ref, &from_parameter_indices, &from_param_ref, 1);
+	// Should be exactly the same tensor.
+	if (renamer == 0 && to_param_ref < 0 && from_param_ref < 0)
+		{ assert(from_parameter_indices->rnum == to_parameter_indices->rnum); }
 	// To models.
 	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
 	assert(to_compiled_data);
@@ -2302,37 +2305,38 @@ void ccv_cnnp_model_share_parameters(ccv_cnnp_model_t* const model, const ccv_cn
 			const size_t dest_name_len = ccv_min(strnlen(dest_name, 1023), 1023);
 			memcpy(updated_name, dest_name, dest_name_len);
 			updated_name[dest_name_len] = 0;
-			if (renamer(context, src_name, updated_name, 1024) == 0)
+			if (renamer(context, src_name, updated_name, 1024) != 0)
+				continue; // Skip this.
+			if (memcmp(updated_name, dest_name, dest_name_len) == 0 && strnlen(updated_name, 1023) == dest_name_len)
 			{
-				if (memcmp(updated_name, dest_name, dest_name_len) == 0 && strnlen(updated_name, 1023) == dest_name_len)
+				// Nothing changed.
+			} else {
+				if (!id_map)
 				{
-					// Nothing changed.
-				} else {
-					if (!id_map)
+					id_map = kh_init(ccv_cnnp_parameter_id);
+					for (j = 0; j < to_parameter_size; j++)
 					{
-						id_map = kh_init(ccv_cnnp_parameter_id);
-						for (j = 0; j < to_parameter_size; j++)
-						{
-							int ret;
-							const khiter_t k = kh_put(ccv_cnnp_parameter_id, id_map, *(char**)ccv_array_get(to_compiled_data->ids.parameters, j), &ret);
-							assert(ret != 0);
-							kh_val(id_map, k) = j;
-						}
-					}
-					const khiter_t k = kh_get(ccv_cnnp_parameter_id, id_map, updated_name);
-					if (k != kh_end(id_map))
-					{
-						dest_d = kh_val(id_map, k);
-						assert(dest_d >= 0);
-						assert(dest_d < to_parameter_size);
+						int ret;
+						const khiter_t k = kh_put(ccv_cnnp_parameter_id, id_map, *(char**)ccv_array_get(to_compiled_data->ids.parameters, j), &ret);
+						assert(ret != 0);
+						kh_val(id_map, k) = j;
 					}
 				}
+				const khiter_t k = kh_get(ccv_cnnp_parameter_id, id_map, updated_name);
+				if (k == kh_end(id_map)) // Cannot find the name, skip.
+					continue;
+				dest_d = kh_val(id_map, k);
+				assert(dest_d >= 0);
+				assert(dest_d < to_parameter_size);
 			}
 		}
 		for (j = 0; j < parallel_count; j++)
 		{
 			ccv_nnc_tensor_t* const src = CCV_NNC_TENSOR(from_compiled_data->tensors.parameters[src_d + j * from_parameter_size]);
 			assert(src);
+			ccv_nnc_tensor_t* const dest = to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size];
+			if (dest && !((uintptr_t)dest & (uintptr_t)1))
+				ccv_nnc_tensor_free(dest);
 			to_compiled_data->tensors.parameters[dest_d + j * to_parameter_size] = (ccv_nnc_tensor_t*)((uintptr_t)src | (uintptr_t)1);
 		}
 		// Mark this symbol as init'ed.
@@ -2371,6 +2375,9 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 	ccv_array_t* from_parameter_indices;
 	int from_param_ref;
 	_ccv_cnnp_model_to_parameter_indices_and_from_parameter_indices(model, parameters, from_model, from_parameters, &to_parameter_indices, &to_param_ref, &from_parameter_indices, &from_param_ref, 0);
+	// Should be exactly the same tensor.
+	if (to_param_ref < 0 && from_param_ref < 0)
+		{ assert(from_parameter_indices->rnum == to_parameter_indices->rnum); }
 	// To models.
 	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
 	assert(to_compiled_data);

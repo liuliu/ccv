@@ -1682,9 +1682,11 @@ TEST_CASE("LoRA fine-tuning convolution set is_trainable to false")
 	ccv_cnnp_model_free(final);
 }
 
-static int _ccv_nnc_renamer(void* context, const char* src_name, char* updated_name, const size_t provided_size)
+static int _ccv_nnc_same_namer(void* context, const char* src_name, char* updated_name, const size_t provided_size)
 {
-	updated_name[0] = '\0';
+	const size_t src_len = ccv_min(strnlen(src_name, provided_size - 1), provided_size - 1);
+	memcpy(updated_name, src_name, src_len);
+	updated_name[src_len] = '\0';
 	return 0;
 }
 
@@ -1726,7 +1728,57 @@ TEST_CASE("two models share the same parameters")
 		.requires_grad = 0,
 	}, TENSOR_LIST(x), TENSOR_LIST(y0), 0, 0);
 	ccv_cnnp_model_compile(final1, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
-	ccv_cnnp_model_share_parameters(final1, ccv_cnnp_model_parameters(final1, ALL_PARAMETERS, ALL_PARAMETERS), final0, ccv_cnnp_model_parameters(final0, ALL_PARAMETERS, ALL_PARAMETERS), _ccv_nnc_renamer, 0);
+	ccv_cnnp_model_share_parameters(final1, ccv_cnnp_model_parameters(final1, ALL_PARAMETERS, ALL_PARAMETERS), final0, ccv_cnnp_model_parameters(final0, ALL_PARAMETERS, ALL_PARAMETERS), 0, 0);
+	ccv_cnnp_model_evaluate(final1, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(x), TENSOR_LIST(y1), 0, 0);
+	REQUIRE_TENSOR_EQ(y0, y1, "two model now shares the weights, should have the same result");
+	CNNP_MODEL_GEN(final0, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y0);
+	ccv_nnc_tensor_free(y1);
+	ccv_cnnp_model_free(final0);
+	ccv_cnnp_model_free(final1);
+}
+
+TEST_CASE("two models, one with LoRA, one with not, share the same parameters")
+{
+	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(10, 1, -1, "linear");
+	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_t* const final0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0), MODEL_IO_LIST(out0), 0, "tiny");
+
+	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(10, 1, -1, "linear");
+	ccv_cnnp_model_t* const down1 = ccv_cnnp_dense(2, 1, 1, "down");
+	ccv_cnnp_model_t* const up1 = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input1));
+	ccv_cnnp_model_io_t out1_down = ccv_cnnp_model_apply(down1, MODEL_IO_LIST(input1));
+	ccv_cnnp_model_io_t out1_up = ccv_cnnp_model_apply(up1, MODEL_IO_LIST(out1_down));
+	ccv_cnnp_model_t* const add1 = ccv_cnnp_sum("sum");
+	ccv_cnnp_model_io_t out1_final = ccv_cnnp_model_apply(add1, MODEL_IO_LIST(out1, out1_up));
+	ccv_cnnp_model_t* const final1 = ccv_cnnp_model_new(MODEL_IO_LIST(input1), MODEL_IO_LIST(out1_final), 0, "tiny");
+
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 10; i++)
+		x->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_t* const y0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* const y1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 10);
+	ccv_cnnp_model_compile(final0, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(final0, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(x), TENSOR_LIST(y0), 0, 0);
+	ccv_cnnp_model_compile(final1, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const up_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10), 0);
+	for (i = 0; i < 2 * 10; i++)
+		up_weights->data.f32[i] = 0;
+	ccv_cnnp_model_set_parameter(final1, ccv_cnnp_model_parameters(up1, ALL_PARAMETERS, ALL_PARAMETERS), up_weights);
+	ccv_nnc_tensor_free(up_weights);
+	ccv_cnnp_model_share_parameters(final1, ccv_cnnp_model_parameters(final1, ALL_PARAMETERS, ALL_PARAMETERS), final0, ccv_cnnp_model_parameters(final0, ALL_PARAMETERS, ALL_PARAMETERS), _ccv_nnc_same_namer, 0);
 	ccv_cnnp_model_evaluate(final1, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 0,
 	}, TENSOR_LIST(x), TENSOR_LIST(y1), 0, 0);
