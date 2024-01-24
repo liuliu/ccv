@@ -3926,6 +3926,27 @@ CCV_WARN_UNUSED(const char*) ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* con
  * @param from_parameters The parameters to be copied from.
  */
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
+
+/**
+ * @param source_name The name of the parameter from the from model.
+ * @param updated_name The name of the parameter from the model. You can update the value.
+ * @param provided_size The size of the updated_name buffer.
+ * @return 0 if succeed. -1 if failed.
+ */
+typedef int(*ccv_cnnp_model_parameters_renamer_f)(void* const context, const char* const source_name, char* const updated_name, const size_t provided_size);
+/**
+ * Share parameters between two models. This is a very specific setup to enable memory optimization
+ * by sharing parameter weights between two models. The models can be different as long as the weights
+ * match. The model is responsible to keep from_model alive / from destroyed. There is no refcount.
+ * Besides using the parameters to identify, you can also use the given block to provide name match.
+ * @param model The composed model to be set on parameters.
+ * @param parameters The parameters to be override.
+ * @param from_model The model to copy parameters from.
+ * @param from_parameters The parameters to be shared from.
+ * @param renamer The provided rename function that can get the new name from the from_parameters.
+ * @param renamer_context The context for renamer function.
+ */
+void ccv_cnnp_model_share_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters, ccv_cnnp_model_parameters_renamer_f renamer, void* const context);
 /**
  * Process parameters such as exponential averaging.
  * parameters = zip(from_parameters, to_parameters).map { cmd(to_parameter, from_parameter) }

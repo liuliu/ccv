@@ -44,7 +44,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 			snprintf(internal_name, 2048 + 16, "__%s__[%s]", name, id);
 		else
 			snprintf(internal_name, 2048 + 16, "%s", id);
-		_model_tensor_write(model, compiled_data->tensors.parameters[i], 0, handle, internal_name, options);
+		_model_tensor_write(model, CCV_NNC_TENSOR(compiled_data->tensors.parameters[i]), 0, handle, internal_name, options);
 	}
 	for (i = 0; i < parallel_count; i++)
 		for (j = 0; j < internal_size; j++)
@@ -95,6 +95,8 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
 			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
+		if (compiled_data->tensors.parameters[i]) // Cannot be a shared parameter to read.
+			{ assert(!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1)); }
 		if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, info, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
 		{
 			compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));

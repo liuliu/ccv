@@ -69,6 +69,8 @@ typedef struct {
 	};
 } ccv_cnnp_rewind_symbol_t;
 
+#define CCV_NNC_TENSOR(tv) ((ccv_nnc_tensor_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
+
 // This contains relevant information after model compilation.
 typedef struct {
 	int graph_mode;
