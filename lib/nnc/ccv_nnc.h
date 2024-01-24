@@ -4273,6 +4273,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int format, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
 /**
+ * Pad the input with extra dimensions at beginning or the ends. Note that for now, these are 0 paddings.
+ * @param begin How many elements to add at the beginning of each dimension.
+ * @param end How many elements to add at the end of each dimension.
+ * @param name The unique name of the model.
+ * @return A pad layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_pad(const int begin[CCV_NNC_MAX_DIM_ALLOC], const int end[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
+/**
  * Identity op that simply copy from input to output without using any data transfer / format conversion methods.
  * @param name The unique name of the model.
  * @return An identity layer model.

@@ -1791,4 +1791,45 @@ TEST_CASE("two models, one with LoRA, one with not, share the same parameters")
 	ccv_cnnp_model_free(final1);
 }
 
+TEST_CASE("pad a tensor with padding")
+{
+	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const pad = ccv_cnnp_pad(DIM_ALLOC(0, 2, 2, 0), DIM_ALLOC(0, 1, 2, 1), "pad");
+	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(pad, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out0, input1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(out), 0, "tiny");
+
+	ccv_nnc_tensor_t* const x0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 3, 3, 10), 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 3 * 3 * 10; i++)
+		x0->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_t* const x1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 6, 7, 11), 0);
+	for (i = 0; i < 6 * 7 * 11; i++)
+		x1->data.f32[i] = 1;
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 6, 7, 11), 0);
+	ccv_nnc_tensor_param_t input0_params = CPU_TENSOR_NHWC(32F, 1, 3, 3, 10);
+	ccv_nnc_tensor_param_t input1_params = CPU_TENSOR_NHWC(32F, 1, 6, 7, 11);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input0_params, input1_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(x0, x1), TENSOR_LIST(y), 0, 0);
+	int j, k;
+	ccv_nnc_tensor_t* const y0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 6, 7, 11), 0);
+	for (i = 0; i < 6; i++)
+		for (j = 0; j < 7; j++)
+			for (k = 0; k < 11; k++)
+				y0->data.f32[i * 7 * 11 + j * 11 + k] = (i >= 2 && i < 5 && j >=2 && j < 5 && k < 10) ? 1 + x0->data.f32[(i - 2) * 3 * 10 + (j - 2) * 10 + k] : 1;
+	REQUIRE_TENSOR_EQ(y, y0, "it should be padded");
+	CNNP_MODEL_GEN(pad, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_free(x0);
+	ccv_nnc_tensor_free(x1);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(y0);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"
