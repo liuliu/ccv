@@ -525,7 +525,7 @@ void ccv_erode(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int fsz)
 			{ \
 				_for_type_b minimum = _for_get_b(buf, j * ch + c); \
 				for (k = 1; k < fsz; k++) \
-					minimum = ccv_max(minimum, _for_get_b(buf, (j + k) * ch + c)); \
+					minimum = ccv_min(minimum, _for_get_b(buf, (j + k) * ch + c)); \
 				_for_set_b(b_ptr, j * ch + c, minimum, 0); \
 			} \
 		} \
