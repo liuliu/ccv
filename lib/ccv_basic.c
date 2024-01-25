@@ -526,7 +526,7 @@ void ccv_erode(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int fsz)
 				_for_type_b minimum = _for_get_b(buf, j * ch + c); \
 				for (k = 1; k < fsz; k++) \
 					minimum = ccv_min(minimum, _for_get_b(buf, (j + k) * ch + c)); \
-				_for_set_b(b_ptr, j * ch + c, minimum, 0); \
+				_for_set_b(b_ptr, j * ch + c, minimum); \
 			} \
 		} \
 		a_ptr += a->step; \
@@ -551,7 +551,7 @@ void ccv_erode(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int fsz)
 				_for_type_b minimum = _for_get_b(buf, j * ch + c); \
 				for (k = 1; k < fsz; k++) \
 					minimum = ccv_min(minimum, _for_get_b(buf, (j + k) * ch + c)); \
-				_for_set_b(b_ptr + j * db->step, i * ch + c, minimum, 0); \
+				_for_set_b(b_ptr + j * db->step, i * ch + c, minimum); \
 			} \
 		} \
 	}
@@ -589,7 +589,7 @@ void ccv_dilate(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int fsz
 				_for_type_b maximum = _for_get_b(buf, j * ch + c); \
 				for (k = 1; k < fsz; k++) \
 					maximum = ccv_max(maximum, _for_get_b(buf, (j + k) * ch + c)); \
-				_for_set_b(b_ptr, j * ch + c, maximum, 0); \
+				_for_set_b(b_ptr, j * ch + c, maximum); \
 			} \
 		} \
 		a_ptr += a->step; \
@@ -614,7 +614,7 @@ void ccv_dilate(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int fsz
 				_for_type_b maximum = _for_get_b(buf, j * ch + c); \
 				for (k = 1; k < fsz; k++) \
 					maximum = ccv_max(maximum, _for_get_b(buf, (j + k) * ch + c)); \
-				_for_set_b(b_ptr + j * db->step, i * ch + c, maximum, 0); \
+				_for_set_b(b_ptr + j * db->step, i * ch + c, maximum); \
 			} \
 		} \
 	}
