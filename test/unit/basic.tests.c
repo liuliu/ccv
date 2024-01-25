@@ -132,4 +132,34 @@ TEST_CASE("otsu threshold")
 	ccv_matrix_free(image);
 }
 
+TEST_CASE("erode operation")
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_read("../../samples/chessbox.png", &image, CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* x = 0;
+	ccv_erode(image, &x, 0, 3);
+	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.erode_3x3.bin", "erode with 3x3");
+	ccv_dense_matrix_t* y = 0;
+	ccv_erode(image, &y, 0, 5);
+	REQUIRE_MATRIX_FILE_EQ(y, "data/chessbox.erode_5x5.bin", "erode with 5x5");
+	ccv_matrix_free(image);
+	ccv_matrix_free(x);
+	ccv_matrix_free(y);
+}
+
+TEST_CASE("dilate operation")
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_read("../../samples/chessbox.png", &image, CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* x = 0;
+	ccv_dilate(image, &x, 0, 3);
+	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.dilate_3x3.bin", "dilate with 3x3");
+	ccv_dense_matrix_t* y = 0;
+	ccv_dilate(image, &y, 0, 5);
+	REQUIRE_MATRIX_FILE_EQ(y, "data/chessbox.dilate_5x5.bin", "dilate with 5x5");
+	ccv_matrix_free(image);
+	ccv_matrix_free(x);
+	ccv_matrix_free(y);
+}
+
 #include "case_main.h"

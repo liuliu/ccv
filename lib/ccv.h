@@ -1213,6 +1213,23 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
  * @param sigma The sigma factor in Gaussian filtering kernel.
  */
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
+/**
+ * Perform morphologic operation on the given matrix. It implements separable min filter for erode. Thus, the size shape is rectangle.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param size The size of this operation. 3 is usually a good choice.
+ */
+void ccv_erode(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
+/**
+ * Perform morphologic operation on the given matrix. It implements separable max filter for dilate. Thus, the size shape is rectangle.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param size The size of this operation. 3 is usually a good choice.
+ */
+void ccv_dilate(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
+
 /** @} */
 
 /**
