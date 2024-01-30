@@ -442,7 +442,61 @@ TEST_CASE("mps downsample bilinear NHWC")
 	ccv_nnc_tensor_free(hbt);
 }
 
-TEST_CASE("mps downsample bilinear NHWC half precisio")
+TEST_CASE("mps upsample bilinear NHWC, align corners")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 14, 14, 5), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 28, 28, 5), 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 14, 14, 5), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 28, 28, 5), 0);
+	ccv_nnc_tensor_t* hbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 28, 28, 5), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 14 * 14 * 5; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_FORWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hbt), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_FORWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, hbt->data.f32, 1 * 2 * 2 * 3, 1e-2, "CPU and GPU results should match.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hbt);
+}
+
+TEST_CASE("mps downsample bilinear NHWC, align corners")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 14, 14, 5), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 7, 7, 5), 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 14, 14, 5), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 7, 5), 0);
+	ccv_nnc_tensor_t* hbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 7, 5), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 14 * 14 * 5; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_BACKWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hbt), 0);
+	ccv_nnc_cmd_exec(CMD_UPSAMPLE_BACKWARD(CCV_NNC_UPSAMPLE_BILINEAR, 2, 2, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, hbt->data.f32, 1 * 2 * 2 * 3, 1e-2, "CPU and GPU results should match.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hbt);
+}
+
+TEST_CASE("mps downsample bilinear NHWC half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_BACKWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 14, 14, 5), 0);
