@@ -36,15 +36,16 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const float* ap = a->data.f32;
 	float* const bp = b->data.f32;
 	assert(a->info.format == b->info.format);
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const float rheight = (float)adim[2] / bdim[2];
-		const float rwidth = (float)adim[3] / bdim[3];
+		const float rheight = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
+		const float rwidth = align_corners ? (float)(adim[3] - 1) / ccv_max(1, bdim[3] - 1) : (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		int* const xcoeff = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * (bdim[3]), CCV_TENSOR_CPU_MEMORY);
 		for (xd = 0; xd < bdim[3]; xd++)
-			xcoeff[xd] = ccv_min((int)((xd + 0.5) * rwidth), adim[3] - 1);
+			xcoeff[xd] = ccv_min(align_corners ? (int)(xd * rwidth + 0.5) : (int)((xd + 0.5) * rwidth), adim[3] - 1);
 		assert(adim[0] == bdim[0]);
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -58,7 +59,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
-					const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[2] - 1);
+					const int ysi0 = ccv_min(align_corners ? (int)(yd * rheight + 0.5) : (int)((yd + 0.5) * rheight), adim[2] - 1);
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
 						ap1 += (ysi0 - pysi0) * astride[2];
@@ -74,13 +75,13 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	} else {
 		// Any case, this is either NHWC or CHWN
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
-		const float rheight = (float)adim[1] / bdim[1];
-		const float rwidth = (float)adim[2] / bdim[2];
+		const float rheight = align_corners ? (float)(adim[1] - 1) / ccv_max(1, bdim[1] - 1) : (float)adim[1] / bdim[1];
+		const float rwidth = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		int* const xcoeff = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * (bdim[2]), CCV_TENSOR_CPU_MEMORY);
 		for (xd = 0; xd < bdim[2]; xd++)
-			xcoeff[xd] = ccv_min((int)((xd + 0.5) * rwidth), adim[2] - 1);
+			xcoeff[xd] = ccv_min(align_corners ? (int)(xd * rwidth + 0.5) : (int)((xd + 0.5) * rwidth), adim[2] - 1);
 		assert(adim[0] == bdim[0]);
 		assert(adim[3] == bdim[3]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -90,7 +91,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
-				const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[1] - 1);
+				const int ysi0 = ccv_min(align_corners ? (int)(yd * rheight + 0.5) : (int)((yd + 0.5) * rheight), adim[1] - 1);
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
 					ap0 += (ysi0 - pysi0) * astride[1];
@@ -134,16 +135,17 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	_ccv_nnc_tensor_set_cpu_ref_f32(a, 0);
 	float* ap = a->data.f32;
 	const float* bp = b->data.f32;
+	const int align_corners = cmd.info.upsample.align_corners;
 	assert(a->info.format == b->info.format);
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const float rheight = (float)adim[2] / bdim[2];
-		const float rwidth = (float)adim[3] / bdim[3];
+		const float rheight = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
+		const float rwidth = align_corners ? (float)(adim[3] - 1) / ccv_max(1, bdim[3] - 1) : (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		int* const xcoeff = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * (bdim[3]), CCV_TENSOR_CPU_MEMORY);
 		for (xd = 0; xd < bdim[3]; xd++)
-			xcoeff[xd] = ccv_min((int)((xd + 0.5) * rwidth), adim[3] - 1);
+			xcoeff[xd] = ccv_min(align_corners ? (int)(xd * rwidth + 0.5) : (int)((xd + 0.5) * rwidth), adim[3] - 1);
 		assert(adim[0] == bdim[0]);
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -157,7 +159,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				const float* bp1 = bp0 + i[1] * bstride[1];
 				for (yd = 0; yd < bdim[2]; yd++)
 				{
-					const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[2] - 1);
+					const int ysi0 = ccv_min(align_corners ? (int)(yd * rheight + 0.5) : (int)((yd + 0.5) * rheight), adim[2] - 1);
 					if (pysi0 < ysi0) // Move to ay1 line.
 					{
 						ap1 += (ysi0 - pysi0) * astride[2];
@@ -173,13 +175,13 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	} else {
 		// Any case, this is either NHWC or CHWN
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
-		const float rheight = (float)adim[1] / bdim[1];
-		const float rwidth = (float)adim[2] / bdim[2];
+		const float rheight = align_corners ? (float)(adim[1] - 1) / ccv_max(1, bdim[1] - 1) : (float)adim[1] / bdim[1];
+		const float rwidth = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		int* const xcoeff = (int*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(int) * (bdim[2]), CCV_TENSOR_CPU_MEMORY);
 		for (xd = 0; xd < bdim[2]; xd++)
-			xcoeff[xd] = ccv_min((int)((xd + 0.5) * rwidth), adim[2] - 1);
+			xcoeff[xd] = ccv_min(align_corners ? (int)(xd * rwidth + 0.5) : (int)((xd + 0.5) * rwidth), adim[2] - 1);
 		assert(adim[0] == bdim[0]);
 		assert(adim[3] == bdim[3]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -189,7 +191,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			const float* const bp0 = bp + i[0] * bstride[0];
 			for (yd = 0; yd < bdim[1]; yd++)
 			{
-				const int ysi0 = ccv_min((int)((yd + 0.5) * rheight), adim[1] - 1);
+				const int ysi0 = ccv_min(align_corners ? (int)(yd * rheight + 0.5) : (int)((yd + 0.5) * rheight), adim[1] - 1);
 				if (pysi0 < ysi0) // Move to ay1 line.
 				{
 					ap0 += (ysi0 - pysi0) * astride[1];
@@ -215,16 +217,28 @@ typedef struct {
 	float sc[2];
 } ccv_nnc_bi_coeffs_t;
 
-static void _ccv_nnc_init_bi_coeffs(const int ss, const int sz, const float s, ccv_nnc_bi_coeffs_t* const coeff)
+static void _ccv_nnc_init_bi_coeffs(const int ss, const int sz, const float s, ccv_nnc_bi_coeffs_t* const coeff, const int align_corners)
 {
 	int i;
-	for (i = 0; i < sz; i++)
+	if (align_corners)
 	{
-		const float xs = (i + 0.5) * s - 0.5;
-		coeff[i].si[0] = (int)xs;
-		coeff[i].si[1] = ccv_min((int)(xs + 1), ss - 1);
-		coeff[i].sc[1] = xs - coeff[i].si[0];
-		coeff[i].sc[0] = 1.0 - coeff[i].sc[1];
+		for (i = 0; i < sz; i++)
+		{
+			const float xs = i * s;
+			coeff[i].si[0] = (int)xs;
+			coeff[i].si[1] = ccv_min((int)(xs + 1), ss - 1);
+			coeff[i].sc[1] = xs - coeff[i].si[0];
+			coeff[i].sc[0] = 1.0 - coeff[i].sc[1];
+		}
+	} else {
+		for (i = 0; i < sz; i++)
+		{
+			const float xs = (i + 0.5) * s - 0.5;
+			coeff[i].si[0] = (int)xs;
+			coeff[i].si[1] = ccv_min((int)(xs + 1), ss - 1);
+			coeff[i].sc[1] = xs - coeff[i].si[0];
+			coeff[i].sc[0] = 1.0 - coeff[i].sc[1];
+		}
 	}
 }
 
@@ -251,16 +265,17 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	const float* ap = a->data.f32;
 	float* bp = b->data.f32;
 	assert(a->info.format == b->info.format);
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const float rheight = (float)adim[2] / bdim[2];
-		const float rwidth = (float)adim[3] / bdim[3];
+		const float rheight = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
+		const float rwidth = align_corners ? (float)(adim[3] - 1) / ccv_max(1, bdim[3] - 1) : (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		ccv_nnc_bi_coeffs_t* const ycoeff = (ccv_nnc_bi_coeffs_t*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(ccv_nnc_bi_coeffs_t) * (bdim[2] + bdim[3]), CCV_TENSOR_CPU_MEMORY);
 		ccv_nnc_bi_coeffs_t* const xcoeff = ycoeff + bdim[2];
-		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rheight, ycoeff);
-		_ccv_nnc_init_bi_coeffs(adim[3], bdim[3], rwidth, xcoeff);
+		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rheight, ycoeff, align_corners);
+		_ccv_nnc_init_bi_coeffs(adim[3], bdim[3], rwidth, xcoeff, align_corners);
 		assert(adim[0] == bdim[0]);
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -297,14 +312,14 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	} else {
 		// Any case, this is either NHWC or CHWN
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
-		const float rheight = (float)adim[1] / bdim[1];
-		const float rwidth = (float)adim[2] / bdim[2];
+		const float rheight = align_corners ? (float)(adim[1] - 1) / ccv_max(1, bdim[1] - 1) : (float)adim[1] / bdim[1];
+		const float rwidth = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		ccv_nnc_bi_coeffs_t* const ycoeff = (ccv_nnc_bi_coeffs_t*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(ccv_nnc_bi_coeffs_t) * (bdim[1] + bdim[2]), CCV_TENSOR_CPU_MEMORY);
 		ccv_nnc_bi_coeffs_t* const xcoeff = ycoeff + bdim[1];
-		_ccv_nnc_init_bi_coeffs(adim[1], bdim[1], rheight, ycoeff);
-		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rwidth, xcoeff);
+		_ccv_nnc_init_bi_coeffs(adim[1], bdim[1], rheight, ycoeff, align_corners);
+		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rwidth, xcoeff, align_corners);
 		assert(adim[0] == bdim[0]);
 		assert(adim[3] == bdim[3]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -371,16 +386,17 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	float* ap = a->data.f32;
 	const float* bp = b->data.f32;
 	assert(a->info.format == b->info.format);
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		const float rheight = (float)adim[2] / bdim[2];
-		const float rwidth = (float)adim[3] / bdim[3];
+		const float rheight = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
+		const float rwidth = align_corners ? (float)(adim[3] - 1) / ccv_max(1, bdim[3] - 1) : (float)adim[3] / bdim[3];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		ccv_nnc_bi_coeffs_t* const ycoeff = (ccv_nnc_bi_coeffs_t*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(ccv_nnc_bi_coeffs_t) * (bdim[2] + bdim[3]), CCV_TENSOR_CPU_MEMORY);
 		ccv_nnc_bi_coeffs_t* const xcoeff = ycoeff + bdim[2];
-		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rheight, ycoeff);
-		_ccv_nnc_init_bi_coeffs(adim[3], bdim[3], rwidth, xcoeff);
+		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rheight, ycoeff, align_corners);
+		_ccv_nnc_init_bi_coeffs(adim[3], bdim[3], rwidth, xcoeff, align_corners);
 		assert(adim[0] == bdim[0]);
 		assert(adim[1] == bdim[1]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
@@ -419,14 +435,14 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	} else {
 		// Any case, this is either NHWC or CHWN
 		assert(a->info.format == CCV_TENSOR_FORMAT_NHWC || a->info.format == CCV_TENSOR_FORMAT_CHWN);
-		const float rheight = (float)adim[1] / bdim[1];
-		const float rwidth = (float)adim[2] / bdim[2];
+		const float rheight = align_corners ? (float)(adim[1] - 1) / ccv_max(1, bdim[1] - 1) : (float)adim[1] / bdim[1];
+		const float rwidth = align_corners ? (float)(adim[2] - 1) / ccv_max(1, bdim[2] - 1) : (float)adim[2] / bdim[2];
 		assert(rheight <= 1);
 		assert(rwidth <= 1);
 		ccv_nnc_bi_coeffs_t* const ycoeff = (ccv_nnc_bi_coeffs_t*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(ccv_nnc_bi_coeffs_t) * (bdim[1] + bdim[2]), CCV_TENSOR_CPU_MEMORY);
 		ccv_nnc_bi_coeffs_t* const xcoeff = ycoeff + bdim[1];
-		_ccv_nnc_init_bi_coeffs(adim[1], bdim[1], rheight, ycoeff);
-		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rwidth, xcoeff);
+		_ccv_nnc_init_bi_coeffs(adim[1], bdim[1], rheight, ycoeff, align_corners);
+		_ccv_nnc_init_bi_coeffs(adim[2], bdim[2], rwidth, xcoeff, align_corners);
 		assert(adim[0] == bdim[0]);
 		assert(adim[3] == bdim[3]);
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)

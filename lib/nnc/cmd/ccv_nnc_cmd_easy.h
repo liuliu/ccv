@@ -283,9 +283,9 @@
 // CCV_NNC_TANH_BACKWARD
 #define CMD_TANH_BACKWARD() ccv_nnc_cmd(CCV_NNC_TANH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_UPSAMPLE_FORWARD
-#define CMD_UPSAMPLE_FORWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+#define CMD_UPSAMPLE_FORWARD(_type, _width_scale, _height_scale, _align_corners) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale,.align_corners=_align_corners}}), 0)
 // CCV_NNC_UPSAMPLE_BACKWARD
-#define CMD_UPSAMPLE_BACKWARD(_type, _width_scale, _height_scale) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale}}), 0)
+#define CMD_UPSAMPLE_BACKWARD(_type, _width_scale, _height_scale, _align_corners) ccv_nnc_cmd(CCV_NNC_UPSAMPLE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.upsample={.type=_type,.width_scale=_width_scale,.height_scale=_height_scale,.align_corners=_align_corners}}), 0)
 // CCV_NNC_SET_FORWARD
 #define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={_val,}}}, 0)
 // CCV_NNC_SET_BACKWARD

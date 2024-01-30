@@ -2656,6 +2656,7 @@ typedef struct {
 	int type;
 	float width_scale;
 	float height_scale;
+	int align_corners;
 } ccv_cnnp_model_upsample_t;
 
 static void _ccv_cnnp_upsample_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -2664,7 +2665,7 @@ static void _ccv_cnnp_upsample_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	assert(output_size == 1);
 	ccv_cnnp_model_upsample_t* const self = (ccv_cnnp_model_upsample_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
-	ccv_nnc_cmd_t cmd = CMD_UPSAMPLE_FORWARD(self->type, self->width_scale, self->height_scale);
+	ccv_nnc_cmd_t cmd = CMD_UPSAMPLE_FORWARD(self->type, self->width_scale, self->height_scale, self->align_corners);
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, &params, 1, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
@@ -2679,7 +2680,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_upsample_isa = {
 	.copy = _ccv_cnnp_upsample_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, const float height_scale, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, const float height_scale, const int align_corners, const char* const name)
 {
 	ccv_cnnp_model_upsample_t* const model_upsample = (ccv_cnnp_model_upsample_t*)cccalloc(1, sizeof(ccv_cnnp_model_upsample_t));
 	model_upsample->super.isa = &ccv_cnnp_upsample_isa;
@@ -2691,13 +2692,14 @@ ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, con
 	model_upsample->type = type;
 	model_upsample->width_scale = width_scale;
 	model_upsample->height_scale = height_scale;
+	model_upsample->align_corners = align_corners;
 	return (ccv_cnnp_model_t*)model_upsample;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_upsample_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_upsample_t* const self = (const ccv_cnnp_model_upsample_t*)super;
-	return ccv_cnnp_upsample(self->type, self->width_scale, self->height_scale, self->super.name);
+	return ccv_cnnp_upsample(self->type, self->width_scale, self->height_scale, self->align_corners, self->super.name);
 }
 
 // MARK - Reduce Sum Layer

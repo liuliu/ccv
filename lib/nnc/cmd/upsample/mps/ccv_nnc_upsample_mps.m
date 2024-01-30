@@ -36,6 +36,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int* adim_r = adim;
 	int* astride_r = astride;
 	int* bdim_r = bdim;
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		@autoreleasepool {
@@ -48,7 +49,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM]), @(bdim_r[CCV_NNC_MAX_DIM + 1])] mode:MPSGraphResizeNearest centerResult:YES alignCorners:NO layout:MPSGraphTensorNamedDataLayoutNCHW name:nil];
+				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM]), @(bdim_r[CCV_NNC_MAX_DIM + 1])] mode:MPSGraphResizeNearest centerResult:YES alignCorners:(align_corners ? YES : NO) layout:MPSGraphTensorNamedDataLayoutNCHW name:nil];
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
@@ -67,7 +68,7 @@ static int _ccv_nnc_upsample_nearest_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM - 1]), @(bdim_r[CCV_NNC_MAX_DIM])] mode:MPSGraphResizeNearest centerResult:YES alignCorners:NO layout:MPSGraphTensorNamedDataLayoutNHWC name:nil];
+				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM - 1]), @(bdim_r[CCV_NNC_MAX_DIM])] mode:MPSGraphResizeNearest centerResult:YES alignCorners:(align_corners ? YES : NO) layout:MPSGraphTensorNamedDataLayoutNHWC name:nil];
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
@@ -101,6 +102,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 	int* adim_r = adim;
 	int* astride_r = astride;
 	int* bdim_r = bdim;
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		@autoreleasepool {
@@ -113,7 +115,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM]), @(bdim_r[CCV_NNC_MAX_DIM + 1])] mode:MPSGraphResizeBilinear centerResult:YES alignCorners:NO layout:MPSGraphTensorNamedDataLayoutNCHW name:nil];
+				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM]), @(bdim_r[CCV_NNC_MAX_DIM + 1])] mode:MPSGraphResizeBilinear centerResult:YES alignCorners:(align_corners ? YES : NO) layout:MPSGraphTensorNamedDataLayoutNCHW name:nil];
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
@@ -132,7 +134,7 @@ static int _ccv_nnc_upsample_bilinear_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM - 1]), @(bdim_r[CCV_NNC_MAX_DIM])] mode:MPSGraphResizeBilinear centerResult:YES alignCorners:NO layout:MPSGraphTensorNamedDataLayoutNHWC name:nil];
+				MPSGraphTensor* mps_b = [graph resizeTensor:mps_a size:@[@(bdim_r[CCV_NNC_MAX_DIM - 1]), @(bdim_r[CCV_NNC_MAX_DIM])] mode:MPSGraphResizeBilinear centerResult:YES alignCorners:(align_corners ? YES : NO) layout:MPSGraphTensorNamedDataLayoutNHWC name:nil];
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, adim, astride);
@@ -180,7 +182,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 	for (int i = 0; i < CCV_NNC_MAX_DIM + 2; i++) {
 		[inputSize addObject:@(adim_r[i])];
 	}
-	
+	const int align_corners = cmd.info.upsample.align_corners;
 	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		@autoreleasepool {
@@ -200,7 +202,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
                                        input:inputSizeTensor 
                                         mode:MPSGraphResizeBilinear 
                                 centerResult:YES
-                                alignCorners:NO 
+								alignCorners:(align_corners ? YES : NO)
                                       layout:MPSGraphTensorNamedDataLayoutNCHW
                                         name:nil];
 
@@ -249,7 +251,7 @@ static int _ccv_nnc_upsample_bilinear_back(const ccv_nnc_cmd_t cmd, const ccv_nn
                                        input:inputSizeTensor 
                                         mode:MPSGraphResizeBilinear 
                                 centerResult:YES
-                                alignCorners:NO 
+								alignCorners:(align_corners ? YES : NO)
                                       layout:MPSGraphTensorNamedDataLayoutNCHW
                                         name:nil];
 				// No need for NHCW to NHWC
@@ -290,6 +292,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	int* bdim_r = bdim;
 	int* bstride_r = bstride;
 	NSMutableArray<NSNumber*>* inputSize = [NSMutableArray new];	
+	const int align_corners = cmd.info.upsample.align_corners;
 
 	for (int i = 0; i < CCV_NNC_MAX_DIM + 2; i++) {
 		[inputSize addObject:@(adim_r[i])];
@@ -314,7 +317,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
                                        input:inputSizeTensor 
                                         mode:MPSGraphResizeNearest 
                                 centerResult:YES
-                                alignCorners:NO 
+								alignCorners:(align_corners ? YES : NO)
                                       layout:MPSGraphTensorNamedDataLayoutNCHW
                                         name:nil];
 
@@ -365,7 +368,7 @@ static int _ccv_nnc_upsample_nearest_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
                                        input:inputSizeTensor 
                                         mode:MPSGraphResizeNearest 
                                 centerResult:YES
-                                alignCorners:NO 
+								alignCorners:(align_corners ? YES : NO)
                                       layout:MPSGraphTensorNamedDataLayoutNCHW
                                         name:nil];
 				// No need for NHCW to NHWC

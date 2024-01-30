@@ -226,6 +226,7 @@ typedef struct {
 			int type; /**< [upsample.type] 0 - nearest, 1 - bilinear. */
 			float width_scale; /**< [upsample.width_scale] scale for width parameter. It is between 1 and 2 at the moment. */
 			float height_scale; /**< [upsample.height_scale] scale for height parameter. It is between 1 and 2 at the moment. */
+			int align_corners; /**< [upsample.align_corners] Whether to scale to align corners. Thus, for 0...1, if false, it will align to -0.25, 0.25, 0.75, 1.25, if true, it will align to 0, 0.3333, 0.6666, 1.0 */
 		} upsample;
 		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
@@ -4434,10 +4435,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_embedding(const int datatype, const 
  * @param type The type of upsample, whether nearest or bilinear.
  * @param width_scale The scale of the width of the input.
  * @param height_scale The scale of the height of the input.
+ * @param align_corners Whether to align corners when doing upsample.
  * @param name The unique name of the model.
  * @return A upsample model.
  */
-ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, const float height_scale, const char* const name);
+ccv_cnnp_model_t* ccv_cnnp_upsample(const int type, const float width_scale, const float height_scale, const int align_corners, const char* const name);
 /**
  * A sum value reducer model.
  * @param axis The axis to be reduced.
