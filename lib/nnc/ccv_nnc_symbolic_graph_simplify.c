@@ -547,8 +547,8 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 			{
 				if (i + 1 < node->output_size)
 				{
-					node->inputs[i] = node->inputs[i + 1];
-					node->outputs[i] = node->outputs[i + 1];
+					node->inputs[i] = node->inputs[node->output_size - 1];
+					node->outputs[i] = node->outputs[node->output_size - 1];
 				}
 				--node->output_size;
 				--i;
