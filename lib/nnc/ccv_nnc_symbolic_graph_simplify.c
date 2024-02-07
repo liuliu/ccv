@@ -504,15 +504,20 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					// If either are inputs / outputs connecting the parent graph, we cannot do anything.
 					if (input->p_ref || output->p_ref)
 						continue;
-					// Either input or output cannot be in the outputs nor the binds.
-					if ((has_binds[output_ref >> 5] & (1u << (output_ref & 0x1f))) || (has_binds[input_ref >> 5] & (1u << (input_ref & 0x1f))))
-						continue;
 					// If the type is the same, check which one is the alias.
 					// We always prefer alias.
 					if (output->alias_ref)
+					{
+						// Input cannot be binds.
+						if (has_binds[input_ref >> 5] & (1u << (input_ref & 0x1f)))
+							continue;
 						refs[input_ref] = output_ref;
-					 else // if (input->alias_ref), else
+					} else { // if (input->alias_ref), else
+						// Output cannot be binds.
+						if (has_binds[output_ref >> 5] & (1u << (output_ref & 0x1f)))
+							continue;
 						refs[output_ref] = input_ref;
+					}
 				}
 		} ccv_nnc_graph_visit_endfor
 		// Make sure refs reference to the end.
