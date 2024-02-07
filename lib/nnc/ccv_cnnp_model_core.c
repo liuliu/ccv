@@ -182,10 +182,18 @@ static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 
 KHASH_MAP_INIT_INT64(io_node, ccv_array_t*)
 
+typedef struct {
+	ccv_array_t* nodes;
+	ccv_nnc_graph_exec_symbol_new_hook_f previous_func;
+	void* previous_context;
+} ccv_functional_model_build_node_hook_t;
+
 static void _ccv_cnnp_functional_model_build_node_new(void* context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
 {
-		ccv_array_t* const nodes = (ccv_array_t*)context;
-		ccv_array_push(nodes, &symbol);
+		ccv_functional_model_build_node_hook_t* const hook = (ccv_functional_model_build_node_hook_t*)context;
+		ccv_array_push(hook->nodes, &symbol);
+		if (hook->previous_func)
+			hook->previous_func(hook->previous_context, symbol, cmd, inputs, input_size, outputs, output_size, name);
 }
 
 static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -238,6 +246,7 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 			}
 		// Go through each sub model to build the graph.
 		ccv_array_t* nodes;
+		ccv_functional_model_build_node_hook_t hook;
 		const ccv_array_t* const dependencies = self->sequence[i]->dependencies;
 		if ((dependencies && dependencies->rnum > 0) || self->sequence[i]->dependents > 0)
 		{
@@ -247,13 +256,14 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 				nodes = kh_val(io_node_map, k) = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
 			else
 				nodes = kh_val(io_node_map, k);
-			ccv_nnc_graph_exec_symbol_new_hook(graph, _ccv_cnnp_functional_model_build_node_new, nodes);
+			hook.nodes = nodes;
+			hook.previous_context = ccv_nnc_graph_exec_symbol_new_hook(graph, _ccv_cnnp_functional_model_build_node_new, &hook, &hook.previous_func);
 		}
 		sub_model->data = self->super.data;
 		ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, self->sequence[i]->outputs, sub_model->output_size);
 		if ((dependencies && dependencies->rnum > 0) || self->sequence[i]->dependents > 0)
 		{
-			ccv_nnc_graph_exec_symbol_new_hook(graph, 0, 0);
+			ccv_nnc_graph_exec_symbol_new_hook(graph, hook.previous_func, hook.previous_context, 0);
 			if (dependencies)
 				for (j = 0; j < dependencies->rnum; j++)
 				{

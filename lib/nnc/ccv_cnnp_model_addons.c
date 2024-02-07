@@ -3568,7 +3568,7 @@ ccv_cnnp_model_t* ccv_cnnp_move(const char* const name)
 {
 	ccv_cnnp_model_move_t* const model_move = (ccv_cnnp_model_move_t*)cccalloc(1, sizeof(ccv_cnnp_model_move_t));
 	model_move->super.isa = &ccv_cnnp_move_isa;
-	model_move->super.input_size = 0;
+	model_move->super.input_size = 2;
 	model_move->super.outputs = &model_move->output;
 	model_move->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_move->super, name);

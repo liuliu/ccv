@@ -81,9 +81,9 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < parameter_size; i++)
 		parameter_symbols[i] = parameters[i]->symbol;
 	ccv_array_t* const symbol_stack = ccv_array_new(sizeof(ccv_nnc_tape_symbol_t), 1, 0);
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack, 0);
 	ccv_nnc_tensor_symbol_t updated_parameter_symbols[parameter_size];
 	const int saved_aux_size = parameter_size * ccv_nnc_minimizer_saved_aux_size(minimizer);
 	ccv_nnc_tensor_symbol_map_t saved_aux_symbols[saved_aux_size];
@@ -124,9 +124,9 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 			}
 		}
 	}
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
 	// Bind generated tensors.
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), dynamic_graph->vars->rnum + 2, 0);
 	for (i = 0; i < dynamic_graph->vars->rnum; i++)

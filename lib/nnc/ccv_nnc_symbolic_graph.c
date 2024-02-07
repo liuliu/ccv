@@ -192,8 +192,10 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* cons
 	return symbol;
 }
 
-void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context)
+void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_new_hook_f* previous_hook)
 {
+	if (previous_hook)
+		*previous_hook = graph->hooks.tensor_symbol_new.func;
 	void* const prev = graph->hooks.tensor_symbol_new.context;
 	graph->hooks.tensor_symbol_new.func = hook;
 	graph->hooks.tensor_symbol_new.context = context;
@@ -253,8 +255,10 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	return alias;
 }
 
-void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context)
+void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_alias_new_hook_f* previous_hook)
 {
+	if (previous_hook)
+		*previous_hook = graph->hooks.tensor_symbol_alias_new.func;
 	void* const prev = graph->hooks.tensor_symbol_alias_new.context;
 	graph->hooks.tensor_symbol_alias_new.func = hook;
 	graph->hooks.tensor_symbol_alias_new.context = context;
@@ -895,8 +899,10 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 	return symbol;
 }
 
-void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context)
+void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context, ccv_nnc_graph_exec_symbol_new_hook_f* previous_hook)
 {
+	if (previous_hook)
+		*previous_hook = graph->hooks.graph_exec_symbol_new.func;
 	void* const prev = graph->hooks.graph_exec_symbol_new.context;
 	graph->hooks.graph_exec_symbol_new.func = hook;
 	graph->hooks.graph_exec_symbol_new.context = context;

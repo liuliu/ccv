@@ -411,7 +411,7 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	init->graph = ccv_nnc_symbolic_graph_new();
 	ccv_array_t* const stack = ccv_array_new(sizeof(int), 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(init->graph, _ccv_cnnp_graph_push_graph_exec_symbol, stack);
+	ccv_nnc_graph_exec_symbol_new_hook(init->graph, _ccv_cnnp_graph_push_graph_exec_symbol, stack, 0);
 	_ccv_cnnp_model_compile(init, inputs, input_size, compiled_data->loss);
 	init->parallel_count = model->parallel_count;
 	init->memory_compression = model->memory_compression;
@@ -420,7 +420,7 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 	init->compiled_data->minimize.max_saved_aux_size = model->compiled_data->minimize.max_saved_aux_size;
 	if (model->compiled_data->gradient_mode != CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
 		_ccv_cnnp_model_gradient_init(init, model->compiled_data->gradient_mode, model->compiled_data->disable_outgrad, 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(init->graph, 0, 0, 0);
 	ccv_nnc_symbolic_graph_tensor_auto(init->graph, TRAVERSE_FULL);
 	int i, j;
 	// Verify parameters, internals and saved_aux in both graph has the same dimensionality.
@@ -991,9 +991,9 @@ static void _ccv_cnnp_model_set_rewindables(ccv_cnnp_model_t* const model)
 	assert(compiled_data);
 	if (!compiled_data->rewindables)
 		compiled_data->rewindables = ccv_array_new(sizeof(ccv_cnnp_rewind_symbol_t), 0, 0);
-	ccv_nnc_tensor_symbol_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_new_hook, compiled_data->rewindables);
-	ccv_nnc_tensor_symbol_alias_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_alias_new_hook, compiled_data->rewindables);
-	ccv_nnc_graph_exec_symbol_new_hook(model->graph, _ccv_cnnp_model_graph_exec_symbol_new_hook, compiled_data->rewindables);
+	ccv_nnc_tensor_symbol_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_new_hook, compiled_data->rewindables, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_alias_new_hook, compiled_data->rewindables, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(model->graph, _ccv_cnnp_model_graph_exec_symbol_new_hook, compiled_data->rewindables, 0);
 }
 
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, const uint64_t disable_outgrad, ccv_nnc_tensor_t* const* const fits, const int fit_size)

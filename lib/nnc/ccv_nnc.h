@@ -1991,8 +1991,9 @@ typedef void(*ccv_nnc_tensor_symbol_new_hook_f)(void* context, const ccv_nnc_ten
  * @param graph The symbolic graph.
  * @param hook The function to be called if a new tensor symbol created.
  * @param context The context associated with the callback function.
+ * @param previous_hook Return the previous hook if provided.
  */
-void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context);
+void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_new_hook_f* previous_hook);
 /**
  * Function prototype for tensor symbol alias creation callback.
  */
@@ -2002,8 +2003,9 @@ typedef void(*ccv_nnc_tensor_symbol_alias_new_hook_f)(void* context, const ccv_n
  * @param graph The symbolic graph.
  * @param hook The function to be called if a new tensor symbol alias created.
  * @param context The context associated with the callback function.
+ * @param previous_hook The function to be called if a new tensor symbol alias created.
  */
-void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context);
+void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_alias_new_hook_f* previous_hook);
 /**
  * Set the pair reference for tensor symbols. Peer reference for tensor symbols has very specific meanings.
  * For a backward pass involves sub-graphs. The commands in the sub-graph could reference to tensor symbols of
@@ -2024,7 +2026,7 @@ typedef void(*ccv_nnc_graph_exec_symbol_new_hook_f)(void* context, const ccv_nnc
  * @param hook The function to be called if a new execution node symbol created.
  * @param context The context associated with the callback function.
  */
-void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context);
+void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context, ccv_nnc_graph_exec_symbol_new_hook_f* previous_hook);
 /**
  * Set the pair reference for exec. This is very similar to the one for concrete graph. A pair reference
  * of a backward pass execution node is its forward pass counterpart.

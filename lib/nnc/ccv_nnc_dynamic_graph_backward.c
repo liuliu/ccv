@@ -111,9 +111,9 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < input_size; i++)
 		input_symbols[i] = inputs[i]->symbol;
 	ccv_array_t* const symbol_stack = ccv_array_new(sizeof(ccv_nnc_tape_symbol_t), 1, 0);
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack, 0);
 	ccv_nnc_symbolic_graph_backward(dynamic_graph->tape,
 		f_symbols, f_variable_size, input_symbols, input_size,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
@@ -325,9 +325,9 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_array_push(destinations, &destination);
 	}
 	// Remove the hook only at this point.
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
 	ccv_nnc_dy_xpu_alloc_t xpu_alloc = {
 		.xpu_alloc = &dynamic_graph->xpu_alloc,
 		.stream = stream_context

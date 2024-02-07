@@ -46,9 +46,9 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_graph_exec_symbol_t minimizes[parameter_size];
 	ccv_nnc_tensor_variable_t freeables[parameter_size + saved_aux_size];
 	ccv_array_t* const symbol_stack = ccv_array_new(sizeof(ccv_nnc_tape_symbol_t), 1, 0);
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol, symbol_stack, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_tensor_symbol_alias, symbol_stack, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, ccv_nnc_dynamic_graph_push_backward_graph_exec_symbol, symbol_stack, 0);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), parameter_size * 3 + saved_aux_size * 2, 0);
 	const int parallel_count = ccv_max(parallel, 1);
 	const int per_parameter_size = parameter_size / parallel_count;
@@ -194,9 +194,9 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 		parallel_count > 1 ? allreduces : sources, parallel_count > 1 ? per_parameter_size : parameter_size,
 		minimizes, parameter_size,
 		&graph, &tensor_arena, &exec_arena);
-	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
-	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);
+	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0, 0);
+	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0, 0);
 	ccv_array_free(tensor_binds);
 	// Remove newly added symbols to restore the graph.
 	for (i = 0; i < symbol_stack->rnum; i++)
