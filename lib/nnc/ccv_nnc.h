@@ -4557,6 +4557,26 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_parameter(const ccv_nnc_tensor_param
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar(const int type, const int format, const int datatype, const float value, const char* const name);
 /**
+ * An empty variable that can be used. This is usually paired to ccv_cnnp_move to make this "input"
+ * as destination. This is also different from ccv_cnnp_parameter because that will be persisted.
+ * @param params The parameters for the tensor.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and return the variable.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_variable(const ccv_nnc_tensor_param_t params, const char* const name);
+/**
+ * A special model that takes two inputs but copies value in the first input to the second. The
+ * second input then returned as the output. This is special because it enables you to violate
+ * single-static assignment rule otherwise without using this method, it won't trigger. However,
+ * it does have a special place because it enables hand-written optimizations that otherwise require
+ * you to either implement a new optimization pass in nnc (difficult to do it correctly) or it is
+ * not possible to do with CNNP models and you have to go to Level-3 API, which may not be exposed
+ * on high-level language bindings such as s4nnc.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and copies first input to the second.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_move(const char* const name);
+/**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
  * or (q, k, v, attn_mask) if has_attn_mask is 1.
  * @param scale The scale to be applied to the qk dot product.

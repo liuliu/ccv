@@ -576,7 +576,7 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 			{
 				const ccv_cnnp_model_io_t dependency = *(ccv_cnnp_model_io_t*)ccv_array_get(output->dependencies, j);
 				++dependency->visit; // Mark it as visited.
-				if (dependency->visit != dependency->outgoings->rnum + dependency->dependents) // Not all dependencies visited.
+				if (dependency->visit != (dependency->outgoings ? dependency->outgoings->rnum : 0) + dependency->dependents) // Not all dependencies visited.
 					continue;
 				if (!CCV_CNNP_IS_MODEL_INPUT(dependency->model) && !CCV_CNNP_IS_MODEL_PARAMETER(dependency))
 					ccv_array_push(reverse_top, &dependency);

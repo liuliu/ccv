@@ -3501,6 +3501,86 @@ static ccv_cnnp_model_t* _ccv_cnnp_scalar_copy(const ccv_cnnp_model_t* const sup
 	return ccv_cnnp_scalar(self->type, self->format, self->datatype, self->value, self->super.name);
 }
 
+// MARK - Variable Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_param_t params;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_variable_t;
+
+static void _ccv_cnnp_variable_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 0);
+	assert(output_size == 1);
+	ccv_cnnp_model_variable_t* const self = (ccv_cnnp_model_variable_t*)super;
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, self->params, 0);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_variable_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_variable_isa = {
+	.build = _ccv_cnnp_variable_build,
+	.copy = _ccv_cnnp_variable_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_variable(const ccv_nnc_tensor_param_t params, const char* const name)
+{
+	ccv_cnnp_model_variable_t* const model_variable = (ccv_cnnp_model_variable_t*)cccalloc(1, sizeof(ccv_cnnp_model_variable_t));
+	model_variable->super.isa = &ccv_cnnp_variable_isa;
+	model_variable->super.input_size = 0;
+	model_variable->super.outputs = &model_variable->output;
+	model_variable->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_variable->super, name);
+	model_variable->params = params;
+	return (ccv_cnnp_model_t*)model_variable;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_variable_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_variable_t* const self = (const ccv_cnnp_model_variable_t*)super;
+	return ccv_cnnp_variable(self->params, self->super.name);
+}
+
+// MARK - Move Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_move_t;
+
+static void _ccv_cnnp_move_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 2);
+	assert(output_size == 1);
+	outputs[0] = inputs[1];
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), inputs, 1, outputs, 1, "move");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_move_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_move_isa = {
+	.build = _ccv_cnnp_move_build,
+	.copy = _ccv_cnnp_move_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_move(const char* const name)
+{
+	ccv_cnnp_model_move_t* const model_move = (ccv_cnnp_model_move_t*)cccalloc(1, sizeof(ccv_cnnp_model_move_t));
+	model_move->super.isa = &ccv_cnnp_move_isa;
+	model_move->super.input_size = 0;
+	model_move->super.outputs = &model_move->output;
+	model_move->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_move->super, name);
+	return (ccv_cnnp_model_t*)model_move;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_move_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_move_t* const self = (const ccv_cnnp_model_move_t*)super;
+	return ccv_cnnp_move(self->super.name);
+}
+
 // MARK - Scaled-Dot Product Attention Layer
 
 typedef struct {

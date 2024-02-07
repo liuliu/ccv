@@ -1832,4 +1832,80 @@ TEST_CASE("pad a tensor with padding")
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("use move semantics to write output to the empty space of the input tensor")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_io_t input0 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(0), DIM_ALLOC(1), "first reshape"), MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t input1 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), "second reshape"), MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t move0 = ccv_cnnp_model_apply(ccv_cnnp_move("move"), MODEL_IO_LIST(out1, input1));
+	const ccv_cnnp_model_io_t input2 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t out1_final = ccv_cnnp_model_apply(ccv_cnnp_sum("sum"), MODEL_IO_LIST(move0, input2));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input, input2), MODEL_IO_LIST(out1_final), 0, "tiny");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const z = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 2);
+	ccv_nnc_tensor_param_t input2_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params, input2_params), CMD_NOOP(), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	t->data.f32[0] = 2.4;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear, ALL_PARAMETERS, 0), t);
+	x->data.f32[0] = 10;
+	x->data.f32[1] = 0;
+	y->data.f32[0] = 3;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x, y), TENSOR_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(z->data.f32[0], 2.4 * 10 + 3, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[1], 2.4 * 10, 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(t);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(z);
+	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("use variable and move semantics to co-locate input in the same tensor")
+{
+	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input1));
+	ccv_cnnp_model_io_t var = ccv_cnnp_model_apply(ccv_cnnp_variable(CPU_TENSOR_NHWC(32F, 2), "var"), MODEL_IO_LIST());
+	ccv_cnnp_model_io_t var0 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(0), DIM_ALLOC(1), "first reshape"), MODEL_IO_LIST(var));
+	ccv_cnnp_model_io_t var1 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), "second reshape"), MODEL_IO_LIST(var));
+	ccv_cnnp_model_io_t move0 = ccv_cnnp_model_apply(ccv_cnnp_move("move"), MODEL_IO_LIST(out0, var0));
+	ccv_cnnp_model_io_t move1 = ccv_cnnp_model_apply(ccv_cnnp_move("move"), MODEL_IO_LIST(out1, var1));
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_io_t out1_final = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(var));
+	ccv_cnnp_model_add_dependencies(out1_final, MODEL_IO_LIST(move0, move1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(out1_final), 0, "tiny");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const z = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_nnc_tensor_param_t input2_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params, input2_params), CMD_NOOP(), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const t0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	t0->data.f32[0] = 2.4;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear0, ALL_PARAMETERS, 0), t0);
+	ccv_nnc_tensor_t* const t1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	t1->data.f32[0] = -1.1;
+	t1->data.f32[1] = 1.2;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear1, ALL_PARAMETERS, 0), t1);
+	x->data.f32[0] = 10;
+	y->data.f32[0] = 3;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x, y), TENSOR_LIST(z), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(z->data.f32[0], -1.1 * 2.4 * 10 + 3 * 2.4 * 1.2, 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(t0);
+	ccv_nnc_tensor_free(t1);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(z);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"
