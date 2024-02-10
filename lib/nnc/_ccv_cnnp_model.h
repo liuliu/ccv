@@ -70,6 +70,7 @@ typedef struct {
 } ccv_cnnp_rewind_symbol_t;
 
 #define CCV_NNC_TENSOR(tv) ((ccv_nnc_tensor_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
+#define CCV_NNC_INIT_V(v) ((uint32_t*)((uintptr_t)(v) & ~(uintptr_t)1))
 
 // This contains relevant information after model compilation.
 typedef struct {
@@ -96,7 +97,7 @@ typedef struct {
 	ccv_array_t* rewindables;
 	struct {
 		int size;
-		uint32_t* v;
+		uint32_t* v; // If the last is 1, we know it is incomplete (thus, the tensors_init_1 hasn't been called yet. This is to save RAM usage.
 	} tensors_init;
 	struct {
 		ccv_nnc_tensor_t** internals; // Additional need to retained tensors.
@@ -331,6 +332,7 @@ static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* con
 
 void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 void ccv_cnnp_model_tensors_init_1(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
+int ccv_cnnp_model_tensors_any_to_alloc(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 ccv_nnc_stream_context_t* ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type);
 
 #endif

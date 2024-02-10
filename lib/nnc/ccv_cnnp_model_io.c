@@ -82,6 +82,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 	const int internal_size = compiled_data->internals->rnum;
 	char internal_name[2048 + 16];
 	char* file_backed_dir = model_out->file_backed_dir;
+	uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
 	for (i = 0; i < parameter_size; i++)
 	{
 		const char* const id = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
@@ -99,7 +100,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 			{ assert(!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1)); }
 		if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, info, compiled_data->tensors.parameters + i) == CCV_IO_FINAL)
 		{
-			compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+			init_v[d >> 5] |= (1u << (d & 0x1f));
 			// Create this tensor for other data parallel allocations.
 			info = compiled_data->tensors.parameters[i]->info; // In case we loaded a different info.
 			for (j = 1; j < parallel_count; j++)
@@ -136,9 +137,13 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
 			}
 			if (_model_tensor_read(model_out, conn, internal_name, file_backed_dir, options, info, compiled_data->tensors.internals + i * internal_size + j) == CCV_IO_FINAL)
-				compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+				init_v[d >> 5] |= (1u << (d & 0x1f));
 		}
-	ccv_cnnp_model_tensors_init_1(model_out, compiled_data);
+	// Mark it as to have some other tensors to allocate.
+	if (ccv_cnnp_model_tensors_any_to_alloc(model_out, compiled_data))
+		compiled_data->tensors_init.v = (uint32_t*)((uintptr_t)compiled_data->tensors_init.v | (uintptr_t)1);
+	else // Remove the flag.
+		compiled_data->tensors_init.v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
 	return CCV_IO_FINAL;
 }
 
