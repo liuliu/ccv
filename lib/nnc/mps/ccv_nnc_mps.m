@@ -40,7 +40,7 @@ ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 	return context;
 }
 
-MPSGraphDevice* _ccv_nnc_default_mps_device(void)
+MPSGraphDevice* ccv_nnc_default_mps_device(void)
 {
 	static dispatch_once_t once;
 	static MPSGraphDevice* device;
@@ -438,7 +438,7 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		// Need more investigation into what this does.
 		compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
 		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
-		MPSGraphExecutable* executable = [[graph compileWithDevice:_ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
+		MPSGraphExecutable* executable = [[graph compileWithDevice:ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
 		executable.options = MPSGraphOptionsSynchronizeResults;
 		[compilationDescriptor release];
 		[graph release];

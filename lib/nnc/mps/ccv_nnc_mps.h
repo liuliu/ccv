@@ -65,6 +65,7 @@ off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
+MPSGraphDevice* ccv_nnc_default_mps_device(void);
 CCV_WARN_UNUSED(MTLCommandBatch*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);

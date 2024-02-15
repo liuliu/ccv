@@ -122,8 +122,8 @@ static int _ccv_nnc_adam_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			};
 			if (vm && um)
 			{
-				tensors[7] = mpgetbuffer(vm);
-				tensors[8] = mpgetbuffer(um);
+				tensors[7] = mpgetbuffer((ccv_nnc_tensor_t*)vm);
+				tensors[8] = mpgetbuffer((ccv_nnc_tensor_t*)um);
 				tensor_offsets[7] = vm->dataof;
 				tensor_offsets[8] = um->dataof;
 			}
