@@ -87,36 +87,57 @@ REGISTER_COMMAND(CCV_NNC_BATCH_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 
 static int _ccv_nnc_layer_norm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 3 inputs (x, gamma, beta)
-	// 3 outputs (y, saved_mean, saved_inv_std)
-	if (input_bitmasks[0] == 7u && output_bitmasks[0] == 7u)
-		return 1;
-	// 3 inputs (x, gamma, beta)
-	// 1 output (y)
-	if (input_bitmasks[0] == 7u && output_bitmasks[0] == 1u)
-		return 1;
+	if (cmd.lnorm.elementwise_affine)
+	{
+		// 3 inputs (x, gamma, beta)
+		// 3 outputs (y, saved_mean, saved_inv_std)
+		if (input_bitmasks[0] == 7u && output_bitmasks[0] == 7u)
+			return 1;
+		// 3 inputs (x, gamma, beta)
+		// 1 output (y)
+		if (input_bitmasks[0] == 7u && output_bitmasks[0] == 1u)
+			return 1;
+	} else {
+		// 1 inputs (x)
+		// 3 outputs (y, saved_mean, saved_inv_std)
+		if (input_bitmasks[0] == 1u && output_bitmasks[0] == 7u)
+			return 1;
+		// 1 inputs (x)
+		// 1 output (y)
+		if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
+			return 1;
+	}
 	return 0;
 }
 
 static int _ccv_nnc_layer_norm_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 0b110011001
-	// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
-	// Output the propagated error, dgamma and dbeta
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
-		return 1;
+	if (cmd.lnorm.elementwise_affine)
+	{
+		// 0b110011001
+		// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
+		// Output the propagated error, dgamma and dbeta
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
+			return 1;
+	} else {
+		// 0b1101001
+		// Inputs (gradient, 0, 0, x, 0, saved_mean, saved_inv_std)
+		// Output the propagated error
+		if ((input_bitmasks[0] & 105u) == 105u && (output_bitmasks[0] & 1u) == 1u)
+			return 1;
+	}
 	return 0;
 }
 
 static void _ccv_nnc_layer_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 1);
 	assert(output_size == 1 || output_size == 3);
 	outputs[0] = inputs[0];
 	if (output_size == 1)
@@ -132,7 +153,7 @@ static void _ccv_nnc_layer_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, 
 
 static void _ccv_nnc_layer_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 9);
+	assert(input_size == 9 || input_size == 7);
 	assert(output_size == 1 || output_size == 3);
 	outputs[0] = inputs[0];
 	int i, j;
@@ -159,42 +180,63 @@ REGISTER_COMMAND(CCV_NNC_LAYER_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_LAYER_NORM_FORWARD)
-#define CMD_LAYER_NORM_FORWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_LAYER_NORM_BACKWARD)
-#define CMD_LAYER_NORM_BACKWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 
 static int _ccv_nnc_group_norm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 3 inputs (x, gamma, beta)
-	// 3 outputs (y, saved_mean, saved_inv_std)
-	if (input_bitmasks[0] == 7u && output_bitmasks[0] == 7u)
-		return 1;
-	// 3 inputs (x, gamma, beta)
-	// 1 output (y)
-	if (input_bitmasks[0] == 7u && output_bitmasks[0] == 1u)
-		return 1;
+	if (cmd.gnorm.elementwise_affine)
+	{
+		// 3 inputs (x, gamma, beta)
+		// 3 outputs (y, saved_mean, saved_inv_std)
+		if (input_bitmasks[0] == 7u && output_bitmasks[0] == 7u)
+			return 1;
+		// 3 inputs (x, gamma, beta)
+		// 1 output (y)
+		if (input_bitmasks[0] == 7u && output_bitmasks[0] == 1u)
+			return 1;
+	} else {
+		// 1 inputs (x)
+		// 3 outputs (y, saved_mean, saved_inv_std)
+		if (input_bitmasks[0] == 1u && output_bitmasks[0] == 7u)
+			return 1;
+		// 1 inputs (x)
+		// 1 output (y)
+		if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)
+			return 1;
+	}
 	return 0;
 }
 
 static int _ccv_nnc_group_norm_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 0b110011001
-	// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
-	// Output the propagated error, dgamma and dbeta
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
-		return 1;
-	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
-		return 1;
+	if (cmd.gnorm.elementwise_affine)
+	{
+		// 0b110011001
+		// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
+		// Output the propagated error, dgamma and dbeta
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 5u) == 5u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 3u) == 3u)
+			return 1;
+		if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 1u) == 1u)
+			return 1;
+	} else {
+		// 0b1101001
+		// Inputs (gradient, 0, 0, x, 0, saved_mean, saved_inv_std)
+		// Output the propagated error
+		if ((input_bitmasks[0] & 105u) == 105u && (output_bitmasks[0] & 7u) == 1u)
+			return 1;
+	}
 	return 0;
 }
 
 static void _ccv_nnc_group_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 1);
 	assert(output_size == 1 || output_size == 3);
 	outputs[0] = inputs[0];
 	if (output_size == 1)
@@ -211,7 +253,7 @@ static void _ccv_nnc_group_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, 
 
 static void _ccv_nnc_group_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 9);
+	assert(input_size == 9 || input_size == 7);
 	assert(output_size == 1 || output_size == 3);
 	outputs[0] = inputs[0];
 	int i, j;
@@ -239,9 +281,9 @@ REGISTER_COMMAND(CCV_NNC_GROUP_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GROUP_NORM_FORWARD)
-#define CMD_GROUP_NORM_FORWARD(_group_axis, _groups, _epsilon, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
+#define CMD_GROUP_NORM_FORWARD(_group_axis, _groups, _epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GROUP_NORM_BACKWARD)
-#define CMD_GROUP_NORM_BACKWARD(_group_axis, _groups, _epsilon, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
+#define CMD_GROUP_NORM_BACKWARD(_group_axis, _groups, _epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
 
 static int _ccv_nnc_rmsnorm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {

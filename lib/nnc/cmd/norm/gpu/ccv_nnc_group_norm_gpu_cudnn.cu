@@ -42,7 +42,7 @@ static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int
 
 static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	static const float one = 1, zero = 0, neg_one = -1;
@@ -50,14 +50,23 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	_ccv_break_axis_to_groups(&at, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, at.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &at);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
-	ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[1]);
-	_ccv_break_axis_to_groups(&scalet, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, scalet.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &scalet);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
-	ccv_nnc_tensor_view_t biast = ccv_nnc_get_tensor_view(inputs[2]);
-	_ccv_break_axis_to_groups(&biast, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, biast.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &biast);
+	const int elementwise_affine = cmd.info.gnorm.elementwise_affine;
+	ccv_nnc_cudnn_tensor_view_descriptor_t scale;
+	ccv_nnc_cudnn_tensor_view_descriptor_t bias;
+	if (elementwise_affine)
+	{
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
+		ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[1]);
+		_ccv_break_axis_to_groups(&scalet, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, scalet.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
+		scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &scalet);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
+		ccv_nnc_tensor_view_t biast = ccv_nnc_get_tensor_view(inputs[2]);
+		_ccv_break_axis_to_groups(&biast, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, biast.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
+		bias = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &biast);
+	} else {
+		scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, 0);
+		bias = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, 0);
+	}
 	ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[0]);
 	_ccv_break_axis_to_groups(&bt, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, bt.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &bt);
@@ -112,9 +121,12 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		_ccv_nnc_inv_std_kernel<<<CUDA_GET_BLOCKS(rcount), CUDA_NUM_THREADS, 0, stream>>>(rcount, epsilon, (__half*)saved_inv_std.data.f16, (__half*)saved_inv_std.data.f16);
 	cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
 	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, b.descriptor, b.data.u8));
-	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, scale.descriptor, scale.data.u8, &zero, b.descriptor, b.data.u8));
-	cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
-	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, bias.descriptor, bias.data.u8, &zero, b.descriptor, b.data.u8));
+	if (elementwise_affine)
+	{
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, scale.descriptor, scale.data.u8, &zero, b.descriptor, b.data.u8));
+		cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, bias.descriptor, bias.data.u8, &zero, b.descriptor, b.data.u8));
+	}
 	ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce);
 	ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, op);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
@@ -128,7 +140,7 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 9);
+	assert(input_size == 9 || input_size == 7);
 	assert(output_size >= 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	ccv_nnc_tensor_view_t gt = ccv_nnc_get_tensor_view(inputs[0]);
@@ -140,16 +152,23 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_t ht = ccv_nnc_get_tensor_view(outputs[0]);
 	_ccv_break_axis_to_groups(&ht, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, ht.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &ht);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[4]));
-	ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[4]);
-	_ccv_break_axis_to_groups(&scalet, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, scalet.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &scalet);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[7]));
-	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(inputs[7]);
+	const int elementwise_affine = cmd.info.gnorm.elementwise_affine;
+	ccv_nnc_cudnn_tensor_view_descriptor_t scale;
+	if (elementwise_affine)
+	{
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[4]));
+		ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[4]);
+		_ccv_break_axis_to_groups(&scalet, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, scalet.info.dim[cmd.info.gnorm.group_axis] / cmd.info.gnorm.groups);
+		scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &scalet);
+	} else {
+		scale = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, 0);
+	}
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[elementwise_affine ? 7 : 5]));
+	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(inputs[elementwise_affine ? 7 : 5]);
 	_ccv_break_axis_to_groups(&saved_meant, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, 1);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t saved_mean = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &saved_meant);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[8]));
-	ccv_nnc_tensor_view_t saved_inv_stdt = ccv_nnc_get_tensor_view(inputs[8]);
+	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[elementwise_affine ? 8 : 6]));
+	ccv_nnc_tensor_view_t saved_inv_stdt = ccv_nnc_get_tensor_view(inputs[elementwise_affine ? 8 : 6]);
 	_ccv_break_axis_to_groups(&saved_inv_stdt, cmd.info.gnorm.group_axis, cmd.info.gnorm.groups, 1);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t saved_inv_std = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, &saved_inv_stdt);
 	ccv_nnc_tensor_view_t dscalet;
@@ -171,8 +190,8 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	int gdim[CCV_NNC_MAX_DIM_ALLOC];
 	int rdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[0], gdim);
-	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[7], rdim);
-	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[8], rdim));
+	ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 7 : 5], rdim);
+	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 8 : 6], rdim));
 	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[3], gdim));
 	assert(ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim));
 	static const float one = 1, zero = 0, neg_one = -1;
@@ -220,8 +239,13 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, ah.descriptor, ah.data.u8, &one, g.descriptor, g.data.u8, &zero, ahgss.descriptor, ahgss.data.u8));
 	if (dscale.descriptor)
 		{ CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, workspace, workspace_size, &one, ahgss.descriptor, ahgss.data.u8, &zero, dscale.descriptor, dscale.data.u8)); }
-	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, g.descriptor, g.data.u8, &one, scale.descriptor, scale.data.u8, &zero, gss.descriptor, gss.data.u8));
-	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, gss.descriptor, gss.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, gss.descriptor, gss.data.u8));
+	if (elementwise_affine)
+	{
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, g.descriptor, g.data.u8, &one, scale.descriptor, scale.data.u8, &zero, gss.descriptor, gss.data.u8));
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, gss.descriptor, gss.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, gss.descriptor, gss.data.u8));
+	} else {
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, g.descriptor, g.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, gss.descriptor, gss.data.u8));
+	}
 	CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, workspace, workspace_size, &one, gss.descriptor, gss.data.u8, &zero, gssr.descriptor, gssr.data.u8));
 	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, ah.descriptor, ah.data.u8, &one, gss.descriptor, gss.data.u8, &zero, ahgss.descriptor, ahgss.data.u8));
 	CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, workspace, workspace_size, &one, ahgss.descriptor, ahgss.data.u8, &zero, ahgssr.descriptor, ahgssr.data.u8));

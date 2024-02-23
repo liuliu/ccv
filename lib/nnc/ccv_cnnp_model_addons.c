@@ -2098,22 +2098,33 @@ static void _ccv_cnnp_layer_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 		bias_params.dim[i] = 1;
 	for (i = 0; i < self->params.lnorm.count; i++)
 		bias_params.dim[self->params.lnorm.axis[i]] = params.dim[self->params.lnorm.axis[i]];
-	// Both scale and bias are shared between if this model is reused.
-	if (!self->scale.graph)
-		self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
-	if (!self->bias.graph)
-		self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+	if (self->params.lnorm.elementwise_affine)
+	{
+		// Both scale and bias are shared between if this model is reused.
+		if (!self->scale.graph)
+			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
+		if (!self->bias.graph)
+			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+	}
 	const ccv_nnc_cmd_t layer_norm = ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, self->params, 0);
 	ccv_nnc_tensor_param_t output_params[3];
-	ccv_nnc_hint_tensor_auto(layer_norm, (ccv_nnc_tensor_param_t []){
-			params,
-			bias_params,
-			bias_params,
-		}, 3, ccv_nnc_no_hint, output_params, 3);
+	if (self->params.lnorm.elementwise_affine)
+		ccv_nnc_hint_tensor_auto(layer_norm, (ccv_nnc_tensor_param_t []){
+				params,
+				bias_params,
+				bias_params,
+			}, 3, ccv_nnc_no_hint, output_params, 3);
+	else
+		ccv_nnc_hint_tensor_auto(layer_norm, (ccv_nnc_tensor_param_t []){
+				params,
+			}, 1, ccv_nnc_no_hint, output_params, 3);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 	const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, output_params[1], "saved_mean");
 	const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, output_params[2], "saved_inv_std");
-	ccv_nnc_graph_exec_symbol_new(graph, layer_norm, TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "layer_norm");
+	if (self->params.lnorm.elementwise_affine)
+		ccv_nnc_graph_exec_symbol_new(graph, layer_norm, TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "layer_norm");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, layer_norm, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "layer_norm");
 	outputs[0] = output;
 }
 
@@ -2144,7 +2155,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_layer_norm_isa = {
 	.copy = _ccv_cnnp_layer_norm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_layer_norm_t* const model_layer_norm = (ccv_cnnp_model_layer_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_layer_norm_t));
 	model_layer_norm->super.isa = &ccv_cnnp_layer_norm_isa;
@@ -2159,6 +2170,7 @@ ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NN
 	model_layer_norm->bias.graph = 0;
 	model_layer_norm->params.lnorm.epsilon = epsilon;
 	model_layer_norm->params.lnorm.count = axis_count;
+	model_layer_norm->params.lnorm.elementwise_affine = elementwise_affine;
 	memcpy(model_layer_norm->params.lnorm.axis, axis, sizeof(int) * axis_count);
 	return (ccv_cnnp_model_t*)model_layer_norm;
 }
@@ -2166,7 +2178,7 @@ ccv_cnnp_model_t* ccv_cnnp_layer_norm(const float epsilon, const int axis[CCV_NN
 static ccv_cnnp_model_t* _ccv_cnnp_layer_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_layer_norm_t* const self = (const ccv_cnnp_model_layer_norm_t*)super;
-	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_layer_norm(self->params.lnorm.epsilon, self->params.lnorm.axis, self->params.lnorm.count, self->params.lnorm.elementwise_affine, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Group Norm Layer
@@ -2191,22 +2203,33 @@ static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	for (i = 0; i < nd; i++)
 		bias_params.dim[i] = 1;
 	bias_params.dim[self->params.gnorm.group_axis] = params.dim[self->params.gnorm.group_axis];
-	// Both scale and bias are shared between if this model is reused.
-	if (!self->scale.graph)
-		self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
-	if (!self->bias.graph)
-		self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+	if (self->params.gnorm.elementwise_affine)
+	{
+		// Both scale and bias are shared between if this model is reused.
+		if (!self->scale.graph)
+			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, "scale");
+		if (!self->bias.graph)
+			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+	}
 	const ccv_nnc_cmd_t group_norm = ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, self->params, 0);
 	ccv_nnc_tensor_param_t output_params[3];
-	ccv_nnc_hint_tensor_auto(group_norm, (ccv_nnc_tensor_param_t []){
-			params,
-			bias_params,
-			bias_params,
-		}, 3, ccv_nnc_no_hint, output_params, 3);
+	if (self->params.gnorm.elementwise_affine)
+		ccv_nnc_hint_tensor_auto(group_norm, (ccv_nnc_tensor_param_t []){
+				params,
+				bias_params,
+				bias_params,
+			}, 3, ccv_nnc_no_hint, output_params, 3);
+	else
+		ccv_nnc_hint_tensor_auto(group_norm, (ccv_nnc_tensor_param_t []){
+				params,
+			}, 1, ccv_nnc_no_hint, output_params, 3);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 	const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, output_params[1], "saved_mean");
 	const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, output_params[2], "saved_inv_std");
-	ccv_nnc_graph_exec_symbol_new(graph, group_norm, TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "group_norm");
+	if (self->params.gnorm.elementwise_affine)
+		ccv_nnc_graph_exec_symbol_new(graph, group_norm, TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "group_norm");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, group_norm, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(output, saved_mean, saved_inv_std), "group_norm");
 	outputs[0] = output;
 }
 
@@ -2237,7 +2260,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_group_norm_isa = {
 	.copy = _ccv_cnnp_group_norm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, const float epsilon, const int reduce_axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_group_norm_t* const model_group_norm = (ccv_cnnp_model_group_norm_t*)cccalloc(1, sizeof(ccv_cnnp_model_group_norm_t));
 	model_group_norm->super.isa = &ccv_cnnp_group_norm_isa;
@@ -2254,6 +2277,7 @@ ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, co
 	model_group_norm->params.gnorm.groups = groups;
 	model_group_norm->params.gnorm.epsilon = epsilon;
 	model_group_norm->params.gnorm.reduce_count = axis_count;
+	model_group_norm->params.gnorm.elementwise_affine = elementwise_affine;
 	memcpy(model_group_norm->params.gnorm.reduce_axis, reduce_axis, sizeof(int) * axis_count);
 	return (ccv_cnnp_model_t*)model_group_norm;
 }
@@ -2261,7 +2285,7 @@ ccv_cnnp_model_t* ccv_cnnp_group_norm(const int group_axis, const int groups, co
 static ccv_cnnp_model_t* _ccv_cnnp_group_norm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_group_norm_t* const self = (const ccv_cnnp_model_group_norm_t*)super;
-	return ccv_cnnp_group_norm(self->params.gnorm.group_axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->params.gnorm.reduce_axis, self->params.gnorm.reduce_count, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_group_norm(self->params.gnorm.group_axis, self->params.gnorm.groups, self->params.gnorm.epsilon, self->params.gnorm.reduce_axis, self->params.gnorm.reduce_count, self->params.gnorm.elementwise_affine, self->super.is_trainable, self->super.name);
 }
 
 // MARK - RMSNorm Layer

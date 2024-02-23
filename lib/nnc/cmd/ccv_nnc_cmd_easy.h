@@ -167,13 +167,13 @@
 // CCV_NNC_BATCH_NORM_BACKWARD
 #define CMD_BATCH_NORM_BACKWARD(_epsilon, _is_test, _momentum, ...) ccv_nnc_cmd(CCV_NNC_BATCH_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.bnorm={.epsilon=_epsilon,.is_test=_is_test,.momentum=_momentum,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_LAYER_NORM_FORWARD
-#define CMD_LAYER_NORM_FORWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_LAYER_NORM_BACKWARD
-#define CMD_LAYER_NORM_BACKWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_GROUP_NORM_FORWARD
-#define CMD_GROUP_NORM_FORWARD(_group_axis, _groups, _epsilon, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
+#define CMD_GROUP_NORM_FORWARD(_group_axis, _groups, _epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_GROUP_NORM_BACKWARD
-#define CMD_GROUP_NORM_BACKWARD(_group_axis, _groups, _epsilon, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
+#define CMD_GROUP_NORM_BACKWARD(_group_axis, _groups, _epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_GROUP_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gnorm={.group_axis=_group_axis,.groups=_groups,.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.reduce_count=LIST_COUNT(__VA_ARGS__),.reduce_axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_RMSNORM_FORWARD
 #define CMD_RMSNORM_FORWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_RMSNORM_BACKWARD

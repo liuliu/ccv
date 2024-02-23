@@ -15,10 +15,10 @@
 
 static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 1);
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_view_t* const bias = (ccv_nnc_tensor_view_t*)inputs[2];
+	ccv_nnc_tensor_view_t* const scale = input_size >= 2 ? (ccv_nnc_tensor_view_t*)inputs[1] : 0;
+	ccv_nnc_tensor_view_t* const bias = input_size >= 3 ? (ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)outputs[2];
@@ -37,8 +37,10 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	int scale_stride[CCV_NNC_MAX_DIM_ALLOC];
 	int bias_stride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(a, astride);
-	ccv_nnc_tensor_view_get_stride(scale, scale_stride);
-	ccv_nnc_tensor_view_get_stride(bias, bias_stride);
+	if (scale)
+		ccv_nnc_tensor_view_get_stride(scale, scale_stride);
+	if (bias)
+		ccv_nnc_tensor_view_get_stride(bias, bias_stride);
 	ccv_nnc_tensor_view_get_stride(b, bstride);
 	// The epsilon is used a little bit differently from batch norm, it is outside of the sqrt in this case.
 	const float epsilon = cmd.info.lnorm.epsilon;
@@ -104,45 +106,79 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 		}
 	}
-	float* const scalep = scale->data.f32;
-	float* const biasp = bias->data.f32;
-	int sdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_dim(scale, sdim);
-	int bias_dim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_dim(bias, bias_dim);
-	// Do the straight-forward one, y = (x - mean) * inv_std * scale + bias, we cannot allocate extra memory to help.
-	// There is no need for precompute since scale / bias is per element.
-	float* const bp = b->data.f32;
-	for (i[0] = 0; i[0] < adim[0]; i[0]++)
+	if (cmd.info.lnorm.elementwise_affine)
 	{
-		float* const ap0 = ap + i[0] * astride[0];
-		float* const bp0 = bp + i[0] * bstride[0];
-		float* const meanp0 = rdim[0] == 1 ? meanp : meanp + i[0] * saved_mean_stride[0];
-		float* const varp0 = rdim[0] == 1 ? varp : varp + i[0] * saved_inv_std_stride[0];
-		float* const scalep0 = sdim[0] == 1 ? scalep : scalep + i[0] * scale_stride[0];
-		float* const biasp0 = bias_dim[0] == 1 ? biasp : biasp + i[0] * bias_stride[0];
-		for (i[1] = 0; i[1] < adim[1]; i[1]++)
+		assert(scale && bias && "Should have both scale and bias");
+		float* const scalep = scale->data.f32;
+		float* const biasp = bias->data.f32;
+		int sdim[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_view_get_dim(scale, sdim);
+		int bias_dim[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_view_get_dim(bias, bias_dim);
+		// Do the straight-forward one, y = (x - mean) * inv_std * scale + bias, we cannot allocate extra memory to help.
+		// There is no need for precompute since scale / bias is per element.
+		float* const bp = b->data.f32;
+		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
-			float* ap1 = ap0 + i[1] * astride[1];
-			float* bp1 = bp0 + i[1] * bstride[1];
-			float* const meanp1 = rdim[1] == 1 ? meanp0 : meanp0 + i[1] * saved_mean_stride[1];
-			float* const varp1 = rdim[1] == 1 ? varp0 : varp0 + i[1] * saved_inv_std_stride[1];
-			float* const scalep1 = sdim[1] == 1 ? scalep0 : scalep0 + i[1] * scale_stride[1];
-			float* const biasp1 = bias_dim[1] == 1 ? biasp0 : biasp0 + i[1] * bias_stride[1];
-			for (i[2] = 0; i[2] < adim[2]; i[2]++)
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			float* const meanp0 = rdim[0] == 1 ? meanp : meanp + i[0] * saved_mean_stride[0];
+			float* const varp0 = rdim[0] == 1 ? varp : varp + i[0] * saved_inv_std_stride[0];
+			float* const scalep0 = sdim[0] == 1 ? scalep : scalep + i[0] * scale_stride[0];
+			float* const biasp0 = bias_dim[0] == 1 ? biasp : biasp + i[0] * bias_stride[0];
+			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
-				float* const meanp2 = rdim[2] == 1 ? meanp1 : meanp1 + i[2] * saved_mean_stride[2];
-				float* const varp2 = rdim[2] == 1 ? varp1 : varp1 + i[2] * saved_inv_std_stride[2];
-				float* const scalep2 = sdim[2] == 1 ? scalep1 : scalep1 + i[2] * scale_stride[2];
-				float* const biasp2 = bias_dim[2] == 1 ? biasp1 : biasp1 + i[2] * bias_stride[2];
-				if (rdim[3] == 1)
-					for (x = 0; x < adim[3]; x++)
-						bp1[x] = (ap1[x * astride[3]] - meanp2[0]) * varp2[0] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
-				else
-					for (x = 0; x < adim[3]; x++)
-						bp1[x] = (ap1[x * astride[3]] - meanp2[x]) * varp2[x] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
-				ap1 += astride[2];
-				bp1 += bstride[2];
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				float* const meanp1 = rdim[1] == 1 ? meanp0 : meanp0 + i[1] * saved_mean_stride[1];
+				float* const varp1 = rdim[1] == 1 ? varp0 : varp0 + i[1] * saved_inv_std_stride[1];
+				float* const scalep1 = sdim[1] == 1 ? scalep0 : scalep0 + i[1] * scale_stride[1];
+				float* const biasp1 = bias_dim[1] == 1 ? biasp0 : biasp0 + i[1] * bias_stride[1];
+				for (i[2] = 0; i[2] < adim[2]; i[2]++)
+				{
+					float* const meanp2 = rdim[2] == 1 ? meanp1 : meanp1 + i[2] * saved_mean_stride[2];
+					float* const varp2 = rdim[2] == 1 ? varp1 : varp1 + i[2] * saved_inv_std_stride[2];
+					float* const scalep2 = sdim[2] == 1 ? scalep1 : scalep1 + i[2] * scale_stride[2];
+					float* const biasp2 = bias_dim[2] == 1 ? biasp1 : biasp1 + i[2] * bias_stride[2];
+					if (rdim[3] == 1)
+						for (x = 0; x < adim[3]; x++)
+							bp1[x] = (ap1[x * astride[3]] - meanp2[0]) * varp2[0] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
+					else
+						for (x = 0; x < adim[3]; x++)
+							bp1[x] = (ap1[x * astride[3]] - meanp2[x]) * varp2[x] * scalep2[sdim[3] == 1 ? 0 : x] + biasp2[bias_dim[3] == 1 ? 0 : x];
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
+			}
+		}
+	} else {
+		// Do the straight-forward one, y = (x - mean) * inv_std, we cannot allocate extra memory to help.
+		float* const bp = b->data.f32;
+		for (i[0] = 0; i[0] < adim[0]; i[0]++)
+		{
+			float* const ap0 = ap + i[0] * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			float* const meanp0 = rdim[0] == 1 ? meanp : meanp + i[0] * saved_mean_stride[0];
+			float* const varp0 = rdim[0] == 1 ? varp : varp + i[0] * saved_inv_std_stride[0];
+			for (i[1] = 0; i[1] < adim[1]; i[1]++)
+			{
+				float* ap1 = ap0 + i[1] * astride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				float* const meanp1 = rdim[1] == 1 ? meanp0 : meanp0 + i[1] * saved_mean_stride[1];
+				float* const varp1 = rdim[1] == 1 ? varp0 : varp0 + i[1] * saved_inv_std_stride[1];
+				for (i[2] = 0; i[2] < adim[2]; i[2]++)
+				{
+					float* const meanp2 = rdim[2] == 1 ? meanp1 : meanp1 + i[2] * saved_mean_stride[2];
+					float* const varp2 = rdim[2] == 1 ? varp1 : varp1 + i[2] * saved_inv_std_stride[2];
+					if (rdim[3] == 1)
+						for (x = 0; x < adim[3]; x++)
+							bp1[x] = (ap1[x * astride[3]] - meanp2[0]) * varp2[0];
+					else
+						for (x = 0; x < adim[3]; x++)
+							bp1[x] = (ap1[x * astride[3]] - meanp2[x]) * varp2[x];
+					ap1 += astride[2];
+					bp1 += bstride[2];
+				}
 			}
 		}
 	}
@@ -151,13 +187,14 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 9);
+	assert(input_size == 9 || input_size == 7);
 	assert(output_size >= 1);
+	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[3];
-	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[4];
-	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[7];
-	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[8];
+	ccv_nnc_tensor_view_t* const scale = elementwise_affine ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
+	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 7 : 5];
+	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 8 : 6];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const dscale = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	ccv_nnc_tensor_view_t* const dbias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
@@ -171,7 +208,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_get_dim(saved_mean, rdim);
 	assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
 	int sdim[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_view_get_dim(scale, sdim);
+	if (scale)
+		ccv_nnc_tensor_view_get_dim(scale, sdim);
 	if (dscale)
 		{ assert(ccv_nnc_tensor_view_check_dim(dscale, sdim)); }
 	assert(ccv_nnc_tensor_view_check_dim(a, gdim));
@@ -188,7 +226,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_get_stride(a, astride);
 	ccv_nnc_tensor_view_get_stride(g, gstride);
 	ccv_nnc_tensor_view_get_stride(h, hstride);
-	ccv_nnc_tensor_view_get_stride(scale, scale_stride);
+	if (scale)
+		ccv_nnc_tensor_view_get_stride(scale, scale_stride);
 	ccv_nnc_tensor_view_get_stride(saved_mean, mean_stride);
 	ccv_nnc_tensor_view_get_stride(saved_inv_std, inv_std_stride);
 	if (dscale)
@@ -286,29 +325,51 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	} else {
 		float* gssp = gss;
 		const float* const gp = g->data.f32;
-		const float* const scalep = scale->data.f32;
-		for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+		if (elementwise_affine)
 		{
-			const float* const gp0 = gp + i[0] * gstride[0];
-			const float* const inv_stdp0 = rdim[0] == 1 ? inv_stdp : inv_stdp + i[0] * inv_std_stride[0];
-			const float* const scalep0 = sdim[0] == 1 ? scalep : scalep + i[0] * scale_stride[0];
-			for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+			const float* const scalep = scale->data.f32;
+			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 			{
-				const float* gp1 = gp0 + i[1] * gstride[1];
-				const float* const inv_stdp1 = rdim[1] == 1 ? inv_stdp0 : inv_stdp0 + i[1] * inv_std_stride[1];
-				const float* const scalep1 = sdim[1] == 1 ? scalep0 : scalep0 + i[1] * scale_stride[1];
-				for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+				const float* const gp0 = gp + i[0] * gstride[0];
+				const float* const inv_stdp0 = rdim[0] == 1 ? inv_stdp : inv_stdp + i[0] * inv_std_stride[0];
+				const float* const scalep0 = sdim[0] == 1 ? scalep : scalep + i[0] * scale_stride[0];
+				for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 				{
-					const float* const inv_stdp2 = rdim[2] == 1 ? inv_stdp1 : inv_stdp1 + i[2] * inv_std_stride[2];
-					const float* const scalep2 = sdim[2] == 1 ? scalep1 : scalep1 + i[2] * scale_stride[2];
-					if (sdim[3] == 1)
+					const float* gp1 = gp0 + i[1] * gstride[1];
+					const float* const inv_stdp1 = rdim[1] == 1 ? inv_stdp0 : inv_stdp0 + i[1] * inv_std_stride[1];
+					const float* const scalep1 = sdim[1] == 1 ? scalep0 : scalep0 + i[1] * scale_stride[1];
+					for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+					{
+						const float* const inv_stdp2 = rdim[2] == 1 ? inv_stdp1 : inv_stdp1 + i[2] * inv_std_stride[2];
+						const float* const scalep2 = sdim[2] == 1 ? scalep1 : scalep1 + i[2] * scale_stride[2];
+						if (sdim[3] == 1)
+							for (x = 0; x < gdim[3]; x++)
+								gssp[x] = gp1[x] * scalep2[0] * inv_stdp2[rdim[3] == 1 ? 0 : x];
+						else
+							for (x = 0; x < gdim[3]; x++)
+								gssp[x] = gp1[x] * scalep2[x] * inv_stdp2[rdim[3] == 1 ? 0 : x];
+						gp1 += gstride[2];
+						gssp += gdim[3];
+					}
+				}
+			}
+		} else {
+			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+			{
+				const float* const gp0 = gp + i[0] * gstride[0];
+				const float* const inv_stdp0 = rdim[0] == 1 ? inv_stdp : inv_stdp + i[0] * inv_std_stride[0];
+				for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+				{
+					const float* gp1 = gp0 + i[1] * gstride[1];
+					const float* const inv_stdp1 = rdim[1] == 1 ? inv_stdp0 : inv_stdp0 + i[1] * inv_std_stride[1];
+					for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+					{
+						const float* const inv_stdp2 = rdim[2] == 1 ? inv_stdp1 : inv_stdp1 + i[2] * inv_std_stride[2];
 						for (x = 0; x < gdim[3]; x++)
-							gssp[x] = gp1[x] * scalep2[0] * inv_stdp2[rdim[3] == 1 ? 0 : x];
-					else
-						for (x = 0; x < gdim[3]; x++)
-							gssp[x] = gp1[x] * scalep2[x] * inv_stdp2[rdim[3] == 1 ? 0 : x];
-					gp1 += gstride[2];
-					gssp += gdim[3];
+							gssp[x] = gp1[x] * inv_stdp2[rdim[3] == 1 ? 0 : x];
+						gp1 += gstride[2];
+						gssp += gdim[3];
+					}
 				}
 			}
 		}
