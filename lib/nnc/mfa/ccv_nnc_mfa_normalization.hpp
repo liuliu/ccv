@@ -7,6 +7,7 @@ typedef struct {
   uint32_t channel_groups;
   uint32_t sequence_count;
   float epsilon;
+  uint8_t elementwise_affine;
   uint8_t scale_translation_batched;
   uint8_t normalization_type;
   uint8_t reuse_saved_statistics;
@@ -38,6 +39,7 @@ public:
   uint32_t channel_groups;
   uint32_t sequence_count;
   float epsilon;
+  uint8_t elementwise_affine;
   uint8_t scale_translation_batched;
   Type normalization_type;
   uint8_t reuse_saved_statistics;

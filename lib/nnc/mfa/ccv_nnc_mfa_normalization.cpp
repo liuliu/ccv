@@ -28,7 +28,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     encoder->setBuffer(tensors[num_tensors], tensor_offsets[num_tensors], NS::UInteger(num_tensors));
     num_tensors += 1;
   }
-  CCV_NNC_MFA_PRECONDITION(num_tensors == 6 || num_tensors == 4);
+  CCV_NNC_MFA_PRECONDITION(num_tensors == 6 || num_tensors == 4 || num_tensors == 3);
   
   uint16_t data_type_size = 0;
   switch (params.data_type) {
@@ -107,7 +107,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   encoder->setComputePipelineState(pipeline->normalization_pso.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
-  if (num_tensors == 6) {
+  if (num_tensors == 6) { // This is for layer norm.
     if (params.reuse_saved_statistics) {
       encoder->useResource(tensors[2], MTL::ResourceUsageRead);
       encoder->useResource(tensors[3], MTL::ResourceUsageRead);
@@ -117,13 +117,30 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     }
     encoder->useResource(tensors[4], MTL::ResourceUsageRead);
     encoder->useResource(tensors[5], MTL::ResourceUsageRead);
-  } else {
-    if (params.reuse_saved_statistics) {
-      encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-    } else {
-      encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+  } else if (num_tensors == 4) {
+    if (params.elementwise_affine) { // This is for RMSNorm.
+      if (params.reuse_saved_statistics) {
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+      } else {
+        encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+      }
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    } else { // This is for layer norm without elementwise affine.
+      if (params.reuse_saved_statistics) {
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+      } else {
+        encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+        encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+      }
     }
-    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+  } else { // This is for RMSNorm.
+    if (params.reuse_saved_statistics) {
+      encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    } else {
+      encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
+    }
+    encoder->useResource(tensors[2], MTL::ResourceUsageRead);
   }
   
   auto grid_size = pipeline->grid_size;
@@ -141,6 +158,7 @@ mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   channel_groups = params.channel_groups;
   sequence_count = params.sequence_count;
   epsilon = params.epsilon;
+  elementwise_affine = params.elementwise_affine;
   scale_translation_batched = params.scale_translation_batched;
   normalization_type = (Type)params.normalization_type;
   reuse_saved_statistics = params.reuse_saved_statistics;
@@ -153,6 +171,7 @@ bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) 
   (channel_groups == hash.channel_groups) &&
   (sequence_count == hash.sequence_count) &&
   (epsilon == hash.epsilon) &&
+  (elementwise_affine == hash.elementwise_affine) &&
   (scale_translation_batched == hash.scale_translation_batched) &&
   (normalization_type == hash.normalization_type) &&
   (reuse_saved_statistics == hash.reuse_saved_statistics);
@@ -165,6 +184,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .channel_groups = " << hash.channel_groups << ',';
   os << " .sequence_count = " << hash.sequence_count << ',';
   os << " .epsilon = " << double(hash.epsilon) << ',';
+  os << " .elementwise_affine = " << bool(hash.elementwise_affine) << ',';
   os << " .scale_translation_batched = " << bool(hash.scale_translation_batched) << ',';
   os << " .normalization_type = " << hash.normalization_type << ',';
   os << " .reuse_saved_statistics = " << bool(hash.reuse_saved_statistics) << " ";
@@ -178,7 +198,7 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   combine_64(seed, hash.data_type);
   combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
   combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.scale_translation_batched, hash.normalization_type, hash.reuse_saved_statistics, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.elementwise_affine, hash.scale_translation_batched, hash.normalization_type, hash.reuse_saved_statistics }));
   return seed;
 }
 
@@ -200,10 +220,12 @@ kernel void normalization(
   device real *source [[buffer(0)]],
   device real *destination [[buffer(1)]],
   device real *saved_standard_deviation_reciprocal [[buffer(2)]],
+#if ELEMENTWISE_AFFINE
   device real *channel_scales [[buffer(3)]],
   
 #if SCALE_TRANSLATION_BATCHED
   constant ulong4 *scale_translation_offsets [[buffer(10)]],
+#endif
 #endif
   
   uint3 tgid [[threadgroup_position_in_grid]],
@@ -216,6 +238,7 @@ kernel void normalization(
     source += io_offset;
     destination += io_offset;
   }
+#if ELEMENTWISE_AFFINE
   channel_scales += lid;
 
 #if SCALE_TRANSLATION_BATCHED
@@ -224,6 +247,7 @@ kernel void normalization(
     channel_scale = (device real*)((device uchar*)channel_scale + offsets[0]);
     channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
   }
+#endif
 #endif
   
   const uint cache_bulk_size = bulk_size / threadgroup_size;
@@ -275,15 +299,23 @@ kernel void normalization(
     real deviation = cache_bulk[i / threadgroup_size];
     deviation *= standard_deviation_reciprocal;
 
+#if ELEMENTWISE_AFFINE
     real scale = channel_scales[i];
     destination[i] = scale * deviation;
+#else
+    destination[i] = deviation;
+#endif
   }
   if (padding_size > 0 && lid < padding_size) {
     real deviation = cache_padding;
     deviation *= standard_deviation_reciprocal;
 
+#if ELEMENTWISE_AFFINE
     real scale = channel_scales[bulk_size];
     destination[bulk_size] = scale * deviation;
+#else
+    destination[bulk_size] = deviation;
+#endif
   }
 }
 )";
@@ -300,11 +332,13 @@ kernel void normalization(
   device real *destination [[buffer(1)]],
   device real *saved_mean [[buffer(2)]],
   device real *saved_standard_deviation_reciprocal [[buffer(3)]],
+#if ELEMENTWISE_AFFINE
   device real *channel_scales [[buffer(4)]],
   device real *channel_translations [[buffer(5)]],
   
 #if SCALE_TRANSLATION_BATCHED
   constant ulong4 *scale_translation_offsets [[buffer(10)]],
+#endif
 #endif
   
   uint3 tgid [[threadgroup_position_in_grid]],
@@ -317,6 +351,7 @@ kernel void normalization(
     source += io_offset;
     destination += io_offset;
   }
+#if ELEMENTWISE_AFFINE
   channel_scales += lid;
   channel_translations += lid;
 
@@ -326,6 +361,7 @@ kernel void normalization(
     channel_scale = (device real*)((device uchar*)channel_scale + offsets[0]);
     channel_translation = (device real*)((device uchar*)channel_translation + offsets[1]);
   }
+#endif
 #endif
   
   const uint cache_bulk_size = bulk_size / threadgroup_size;
@@ -397,17 +433,25 @@ kernel void normalization(
     real deviation = cache_bulk[i / threadgroup_size];
     deviation *= standard_deviation_reciprocal;
 
+#if ELEMENTWISE_AFFINE
     real scale = channel_scales[i];
     real translation = channel_translations[i];
     destination[i] = scale * deviation + translation;
+#else
+    destination[i] = deviation;
+#endif
   }
   if (padding_size > 0 && lid < padding_size) {
     real deviation = cache_padding;
     deviation *= standard_deviation_reciprocal;
 
+#if ELEMENTWISE_AFFINE
     real scale = channel_scales[bulk_size];
     real translation = channel_translations[bulk_size];
     destination[bulk_size] = scale * deviation + translation;
+#else
+    destination[bulk_size] = deviation;
+#endif
   }
 }
 )";
@@ -486,6 +530,14 @@ kernel void normalization(
   defines += std::to_string(threadgroup_size) + ";";
   defines += "\n";
   this->group_size = MTL::Size(threadgroup_size, 1, 1);
+  
+  if (hash.elementwise_affine) {
+    defines += "#define ELEMENTWISE_AFFINE 1";
+    defines += "\n";
+  } else {
+    defines += "#define ELEMENTWISE_AFFINE 0";
+    defines += "\n";
+  }
   
   if (hash.scale_translation_batched) {
     defines += "#define SCALE_TRANSLATION_BATCHED 1";

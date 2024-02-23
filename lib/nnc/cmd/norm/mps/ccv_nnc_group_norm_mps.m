@@ -30,17 +30,23 @@ static void _ccv_break_axis_to_groups(ccv_nnc_tensor_view_t* const tv, const int
 
 static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 1);
 	assert(output_size == 3);
 	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	const int group_axis = cmd.info.gnorm.group_axis;
 	_ccv_break_axis_to_groups(&at, group_axis, cmd.info.gnorm.groups, at.info.dim[group_axis] / cmd.info.gnorm.groups);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
-	ccv_nnc_tensor_view_t scalet = ccv_nnc_get_tensor_view(inputs[1]);
-	_ccv_break_axis_to_groups(&scalet, group_axis, cmd.info.gnorm.groups, scalet.info.dim[group_axis] / cmd.info.gnorm.groups);
-	assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
-	ccv_nnc_tensor_view_t biast = ccv_nnc_get_tensor_view(inputs[2]);
-	_ccv_break_axis_to_groups(&biast, group_axis, cmd.info.gnorm.groups, biast.info.dim[group_axis] / cmd.info.gnorm.groups);
+	const int elementwise_affine = cmd.info.gnorm.elementwise_affine;
+	ccv_nnc_tensor_view_t scalet;
+	ccv_nnc_tensor_view_t biast;
+	if (elementwise_affine)
+	{
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
+		scalet = ccv_nnc_get_tensor_view(inputs[1]);
+		_ccv_break_axis_to_groups(&scalet, group_axis, cmd.info.gnorm.groups, scalet.info.dim[group_axis] / cmd.info.gnorm.groups);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[2]));
+		biast = ccv_nnc_get_tensor_view(inputs[2]);
+		_ccv_break_axis_to_groups(&biast, group_axis, cmd.info.gnorm.groups, biast.info.dim[group_axis] / cmd.info.gnorm.groups);
+	}
 	ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[0]);
 	_ccv_break_axis_to_groups(&bt, group_axis, cmd.info.gnorm.groups, bt.info.dim[group_axis] / cmd.info.gnorm.groups);
 	ccv_nnc_tensor_view_t saved_meant = ccv_nnc_get_tensor_view(outputs[1]);
@@ -79,16 +85,21 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 			[inputTensors addObject:mps_input_a];
 			[inputShapedTypes addObject:mps_a_shape];
-			MPSGraphTensor* mps_input_scale;
-			MPSGraphTensor* mps_scale = ccv_nnc_mps_graph_tensor_input(graph, &scalet, scalet.info.dim, scalet.stride, &mps_input_scale);
-			[inputTensors addObject:mps_input_scale];
-			MPSGraphShapedType* mps_scale_shape = ccv_nnc_mps_graph_tensor_input_shape(&scalet, scalet.info.dim, scalet.stride);
-			[inputShapedTypes addObject:mps_scale_shape];
-			MPSGraphTensor* mps_input_bias;
-			MPSGraphTensor* mps_bias = ccv_nnc_mps_graph_tensor_input(graph, &biast, biast.info.dim, biast.stride, &mps_input_bias);
-			[inputTensors addObject:mps_input_bias];
-			MPSGraphShapedType* mps_bias_shape = ccv_nnc_mps_graph_tensor_input_shape(&biast, biast.info.dim, biast.stride);
-			[inputShapedTypes addObject:mps_bias_shape];
+			MPSGraphTensor* mps_scale;
+			MPSGraphTensor* mps_bias;
+			if (elementwise_affine)
+			{
+				MPSGraphTensor* mps_input_scale;
+				mps_scale = ccv_nnc_mps_graph_tensor_input(graph, &scalet, scalet.info.dim, scalet.stride, &mps_input_scale);
+				[inputTensors addObject:mps_input_scale];
+				MPSGraphShapedType* mps_scale_shape = ccv_nnc_mps_graph_tensor_input_shape(&scalet, scalet.info.dim, scalet.stride);
+				[inputShapedTypes addObject:mps_scale_shape];
+				MPSGraphTensor* mps_input_bias;
+				mps_bias = ccv_nnc_mps_graph_tensor_input(graph, &biast, biast.info.dim, biast.stride, &mps_input_bias);
+				[inputTensors addObject:mps_input_bias];
+				MPSGraphShapedType* mps_bias_shape = ccv_nnc_mps_graph_tensor_input_shape(&biast, biast.info.dim, biast.stride);
+				[inputShapedTypes addObject:mps_bias_shape];
+			}
 			NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
 			const int rnd = ccv_nnc_tensor_nd(saved_meant.info.dim);
 			for (i = 0; i < rnd; i++)
@@ -115,7 +126,9 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
 				mps_saved_inv_std = [graph castTensor:mps_inv_std_f32 toType:MPSDataTypeFloat16 name:@"inv_std"];
 			}
-			MPSGraphTensor* mps_b = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_subtract_mean secondaryTensor:mps_saved_inv_std name:nil] secondaryTensor:mps_scale name:nil] secondaryTensor:mps_bias name:nil];
+			MPSGraphTensor* mps_b = [graph multiplicationWithPrimaryTensor:mps_a_subtract_mean secondaryTensor:mps_saved_inv_std name:nil];
+			if (elementwise_affine)
+				mps_b = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_scale name:nil] secondaryTensor:mps_bias name:nil];
 			if (group_axis > 0 && CCV_IS_TENSOR_VIEW(outputs[0]) && (bt.stride[group_axis - 1] % bt.stride[group_axis]) != 0)
 			{
 				NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
@@ -135,13 +148,22 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			data_a = ccv_nnc_mps_graph_tensor_data((ccv_nnc_tensor_view_t*)inputs[0], inputs[0]->info.dim, ((ccv_nnc_tensor_view_t*)inputs[0])->stride);
 		else
 			data_a = ccv_nnc_mps_graph_tensor_data(&at, at.info.dim, at.stride);
-		MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(&scalet, scalet.info.dim, scalet.stride);
-		MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(&biast, biast.info.dim, biast.stride);
-		MPSGraphTensorData* data[] = {data_a, data_scale, data_bias};
-		if (group_axis > 0 && CCV_IS_TENSOR_VIEW(outputs[0]) && (bt.stride[group_axis - 1] % bt.stride[group_axis]) != 0)
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ (ccv_nnc_tensor_view_t*)outputs[0], &saved_meant, &saved_inv_stdt }, (int*[]){ outputs[0]->info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ ((ccv_nnc_tensor_view_t*)outputs[0])->stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
-		else
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ &bt, &saved_meant, &saved_inv_stdt }, (int*[]){ bt.info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ bt.stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
+		if (elementwise_affine)
+		{
+			MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(&scalet, scalet.info.dim, scalet.stride);
+			MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(&biast, biast.info.dim, biast.stride);
+			MPSGraphTensorData* data[] = {data_a, data_scale, data_bias};
+			if (group_axis > 0 && CCV_IS_TENSOR_VIEW(outputs[0]) && (bt.stride[group_axis - 1] % bt.stride[group_axis]) != 0)
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ (ccv_nnc_tensor_view_t*)outputs[0], &saved_meant, &saved_inv_stdt }, (int*[]){ outputs[0]->info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ ((ccv_nnc_tensor_view_t*)outputs[0])->stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
+			else
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], (ccv_nnc_tensor_view_t* []){ &bt, &saved_meant, &saved_inv_stdt }, (int*[]){ bt.info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ bt.stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
+		} else {
+			MPSGraphTensorData* data[] = {data_a};
+			if (group_axis > 0 && CCV_IS_TENSOR_VIEW(outputs[0]) && (bt.stride[group_axis - 1] % bt.stride[group_axis]) != 0)
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]]], (ccv_nnc_tensor_view_t* []){ (ccv_nnc_tensor_view_t*)outputs[0], &saved_meant, &saved_inv_stdt }, (int*[]){ outputs[0]->info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ ((ccv_nnc_tensor_view_t*)outputs[0])->stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
+			else
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]]], (ccv_nnc_tensor_view_t* []){ &bt, &saved_meant, &saved_inv_stdt }, (int*[]){ bt.info.dim, saved_meant.info.dim, saved_inv_stdt.info.dim }, (int*[]){ bt.stride, saved_meant.stride, saved_inv_stdt.stride }, 3, 0);
+		}
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -149,14 +171,15 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 9);
+	assert(input_size == 9 || input_size == 7);
 	assert(output_size >= 1);
 
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[3];
-	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[4];
-	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[7];
-	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[8];
+	const int elementwise_affine = cmd.info.gnorm.elementwise_affine;
+	ccv_nnc_tensor_view_t* const scale = elementwise_affine ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
+	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 7 : 5];
+	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 8 : 6];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const dscale = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	ccv_nnc_tensor_view_t* const dbias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
@@ -197,11 +220,15 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
 
-				MPSGraphTensor* mps_input_scale;
-				MPSGraphTensor* mps_scale = ccv_nnc_mps_graph_tensor_input(graph, scale, scale->info.dim, scale->stride, &mps_input_scale);
-				[inputTensors addObject:mps_input_scale];
-				MPSGraphShapedType* mps_scale_shape = ccv_nnc_mps_graph_tensor_input_shape(scale, scale->info.dim, scale->stride);
-				[inputShapedTypes addObject:mps_scale_shape];
+				MPSGraphTensor* mps_scale;
+				if (elementwise_affine)
+				{
+					MPSGraphTensor* mps_input_scale;
+					mps_scale = ccv_nnc_mps_graph_tensor_input(graph, scale, scale->info.dim, scale->stride, &mps_input_scale);
+					[inputTensors addObject:mps_input_scale];
+					MPSGraphShapedType* mps_scale_shape = ccv_nnc_mps_graph_tensor_input_shape(scale, scale->info.dim, scale->stride);
+					[inputShapedTypes addObject:mps_scale_shape];
+				}
 
 				MPSGraphTensor* mps_input_saved_mean;
 				MPSGraphTensor* mps_saved_mean = ccv_nnc_mps_graph_tensor_input(graph, saved_mean, saved_mean->info.dim, saved_mean->stride, &mps_input_saved_mean);
@@ -256,9 +283,12 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				// gp1[x] * scalep2[x]
 				if (g->info.datatype == CCV_16F)
 					mps_g = [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
-				if (scale->info.datatype == CCV_16F)
-					mps_scale = [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
-				mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
+				if (elementwise_affine)
+				{
+					if (scale->info.datatype == CCV_16F)
+						mps_scale = [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
+				}
 				mps_g = [graph reshapeTensor:mps_g withShape:group_reducible_shape name:nil];
 				// inv_n
 				MPSGraphTensor* inv_n = [graph constantWithScalar:1.0 / (float)n dataType:mps_a.dataType];
@@ -291,11 +321,19 @@ static int _ccv_nnc_group_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 			MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(scale, scale->info.dim, scale->stride);
-			MPSGraphTensorData* data_saved_mean = ccv_nnc_mps_graph_tensor_data(saved_mean, saved_mean->info.dim, saved_mean->stride);
-			MPSGraphTensorData* data_saved_inv_std = ccv_nnc_mps_graph_tensor_data(saved_inv_std, saved_inv_std->info.dim, saved_inv_std->stride);
-			MPSGraphTensorData* data[] = {data_g, data_a, data_scale, data_saved_mean, data_saved_inv_std};
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]], data[indices[4]]], (ccv_nnc_tensor_view_t* []){ h }, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1, 0);
+			if (elementwise_affine)
+			{
+				MPSGraphTensorData* data_scale = ccv_nnc_mps_graph_tensor_data(scale, scale->info.dim, scale->stride);
+				MPSGraphTensorData* data_saved_mean = ccv_nnc_mps_graph_tensor_data(saved_mean, saved_mean->info.dim, saved_mean->stride);
+				MPSGraphTensorData* data_saved_inv_std = ccv_nnc_mps_graph_tensor_data(saved_inv_std, saved_inv_std->info.dim, saved_inv_std->stride);
+				MPSGraphTensorData* data[] = {data_g, data_a, data_scale, data_saved_mean, data_saved_inv_std};
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]], data[indices[4]]], (ccv_nnc_tensor_view_t* []){ h }, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1, 0);
+			} else {
+				MPSGraphTensorData* data_saved_mean = ccv_nnc_mps_graph_tensor_data(saved_mean, saved_mean->info.dim, saved_mean->stride);
+				MPSGraphTensorData* data_saved_inv_std = ccv_nnc_mps_graph_tensor_data(saved_inv_std, saved_inv_std->info.dim, saved_inv_std->stride);
+				MPSGraphTensorData* data[] = {data_g, data_a, data_saved_mean, data_saved_inv_std};
+				ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]], data[indices[3]]], (ccv_nnc_tensor_view_t* []){ h }, (int*[]){ h->info.dim }, (int*[]){ h->stride }, 1, 0);
+			}
 		}
 
 
