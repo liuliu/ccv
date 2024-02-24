@@ -94,6 +94,11 @@ enum {
 	CCV_NNC_UPSAMPLE_BILINEAR = 1, /**< Using bilinear interpolation. */
 };
 
+enum {
+	CCV_NNC_PAD_ZERO = 0, /**< Pad 0s. */
+	CCV_NNC_PAD_REPLICATE = 1, /**< Pad by replicating the edge. */
+};
+
 /**
  * Parameters for command.
  */
@@ -252,6 +257,10 @@ typedef struct {
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
 			int upcast; /**< [scaled_dot_product_attention.upcast] Whether we want to run the attention computation at higher precision (from FP16 to FP32). */
 		} scaled_dot_product_attention;
+		struct {
+			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
+			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
+		} pad;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;

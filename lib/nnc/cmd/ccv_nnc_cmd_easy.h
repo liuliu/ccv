@@ -178,6 +178,10 @@
 #define CMD_RMSNORM_FORWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 // CCV_NNC_RMSNORM_BACKWARD
 #define CMD_RMSNORM_BACKWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+// CCV_NNC_PAD_FORWARD
+#define CMD_PAD_FORWARD(_type, _begin, _end) ccv_nnc_cmd(CCV_NNC_PAD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={ESCAPE_X _begin}},.pad={.type=_type,.end={ESCAPE_X _end}}}), 0)
+// CCV_NNC_PAD_BACKWARD
+#define CMD_PAD_BACKWARD(_type, _begin, _end) ccv_nnc_cmd(CCV_NNC_PAD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={ESCAPE_X _begin}},.pad={.type=_type,.end={ESCAPE_X _end}}}), 0)
 // CCV_NNC_MAX_POOL_FORWARD
 #define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_MAX_POOL_BACKWARD
