@@ -872,13 +872,6 @@ cudnnOpTensorDescriptor_t ccv_nnc_stream_context_get_op_tensor_descriptor(const 
 	return desc;
 }
 
-cudnnTensorTransformDescriptor_t ccv_nnc_stream_context_get_tensor_transform_descriptor(const ccv_nnc_stream_context_t* const stream_context)
-{
-	cudnnTensorTransformDescriptor_t desc;
-	cudnnCreateTensorTransformDescriptor(&desc);
-	return desc;
-}
-
 cudnnPoolingDescriptor_t ccv_nnc_stream_context_get_pooling_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnPoolingDescriptor_t desc;
@@ -937,11 +930,6 @@ void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_contex
 void ccv_nnc_stream_context_return_op_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnOpTensorDescriptor_t op_tensor_desc)
 {
 	cudnnDestroyOpTensorDescriptor(op_tensor_desc);
-}
-
-void ccv_nnc_stream_context_return_tensor_transform_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnTensorTransformDescriptor_t tensor_desc)
-{
-	cudnnDestroyTensorTransformDescriptor(tensor_desc);
 }
 
 void ccv_nnc_stream_context_return_pooling_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnPoolingDescriptor_t pooling_desc)
