@@ -36,8 +36,8 @@ static int _ccv_nnc_group_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	const int group_axis = cmd.info.gnorm.group_axis;
 	_ccv_break_axis_to_groups(&at, group_axis, cmd.info.gnorm.groups, at.info.dim[group_axis] / cmd.info.gnorm.groups);
 	const int elementwise_affine = cmd.info.gnorm.elementwise_affine;
-	ccv_nnc_tensor_view_t scalet;
-	ccv_nnc_tensor_view_t biast;
+	ccv_nnc_tensor_view_t scalet = {};
+	ccv_nnc_tensor_view_t biast = {};
 	if (elementwise_affine)
 	{
 		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));
