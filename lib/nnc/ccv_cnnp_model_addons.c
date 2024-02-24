@@ -550,6 +550,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_reshape_copy(const ccv_cnnp_model_t* const su
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	int type;
 	int begin[CCV_NNC_MAX_DIM_ALLOC];
 	int end[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_cnnp_model_pad_t;
@@ -566,11 +567,10 @@ static void _ccv_cnnp_pad_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_
 	for (i = 0 ; i < nd; i++)
 		params.dim[i] += self->begin[i] + self->end[i];
 	const ccv_nnc_tensor_symbol_t padded = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_tensor_symbol_set_flags(graph, padded, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
-	int stride[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_get_stride(params.dim, stride);
-	const ccv_nnc_tensor_symbol_t unpadded = ccv_nnc_tensor_symbol_alias_new(graph, padded, self->begin, stride, input_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(unpadded), "pad");
+	ccv_nnc_cmd_t pad = CMD_PAD_FORWARD(self->type, (), ());
+	memcpy(pad.info.size.dim, self->begin, sizeof(pad.info.size.dim));
+	memcpy(pad.info.pad.end, self->end, sizeof(pad.info.pad.end));
+	ccv_nnc_graph_exec_symbol_new(graph, pad, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(padded), "pad");
 	outputs[0] = padded;
 }
 
@@ -581,7 +581,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_pad_isa = {
 	.copy = _ccv_cnnp_pad_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_pad(const int begin[CCV_NNC_MAX_DIM_ALLOC], const int end[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_pad(const int type, const int begin[CCV_NNC_MAX_DIM_ALLOC], const int end[CCV_NNC_MAX_DIM_ALLOC], const char* const name)
 {
 	ccv_cnnp_model_pad_t* const model_pad = (ccv_cnnp_model_pad_t*)cccalloc(1, sizeof(ccv_cnnp_model_pad_t));
 	model_pad->super.isa = &ccv_cnnp_pad_isa;
@@ -589,6 +589,7 @@ ccv_cnnp_model_t* ccv_cnnp_pad(const int begin[CCV_NNC_MAX_DIM_ALLOC], const int
 	model_pad->super.outputs = &model_pad->output;
 	model_pad->super.output_size = 1;
 	ccv_cnnp_model_copy_name(&model_pad->super, name);
+	model_pad->type = type;
 	memcpy(model_pad->begin, begin, sizeof(model_pad->begin));
 	memcpy(model_pad->end, end, sizeof(model_pad->end));
 	return (ccv_cnnp_model_t*)model_pad;
@@ -597,7 +598,7 @@ ccv_cnnp_model_t* ccv_cnnp_pad(const int begin[CCV_NNC_MAX_DIM_ALLOC], const int
 static ccv_cnnp_model_t* _ccv_cnnp_pad_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_pad_t* const self = (const ccv_cnnp_model_pad_t*)super;
-	return ccv_cnnp_pad(self->begin, self->end, self->super.name);
+	return ccv_cnnp_pad(self->type, self->begin, self->end, self->super.name);
 }
 
 typedef struct {

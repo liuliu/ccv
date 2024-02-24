@@ -1795,7 +1795,7 @@ TEST_CASE("pad a tensor with padding")
 {
 	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const pad = ccv_cnnp_pad(DIM_ALLOC(0, 2, 2, 0), DIM_ALLOC(0, 1, 2, 1), "pad");
+	ccv_cnnp_model_t* const pad = ccv_cnnp_pad(CCV_NNC_PAD_ZERO, DIM_ALLOC(0, 2, 2, 0), DIM_ALLOC(0, 1, 2, 1), "pad");
 	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(pad, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out0, input1));
