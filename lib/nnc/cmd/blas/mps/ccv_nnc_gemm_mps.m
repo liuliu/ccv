@@ -173,8 +173,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		const int is_mfa_gemv = !is_batched && ((a_rows == 1 && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM);
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION) && (is_mfa_gemv || !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
 
 		size_t a_data_size = 0;
 		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
@@ -265,6 +266,91 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
 				w_data = scratch;
 				w_dataof = a_data_size;
+			}
+			if (is_mfa_gemv)
+			{
+				// This is GEMV, use GEMV kernel.
+				ccv_nnc_mfa_gemv_params_t params;
+				if (a_rows == 1 && is_transpose_w)
+				{
+					params = (ccv_nnc_mfa_gemv_params_t){
+						.data_type = mtl_data_type,
+						.ncols = w_rows,
+						.nrows = w_cols,
+						.fused_bias = bias ? 1 : 0,
+					};
+				} else {
+					params = (ccv_nnc_mfa_gemv_params_t){
+						.data_type = mtl_data_type,
+						.ncols = a_cols,
+						.nrows = a_rows,
+						.fused_bias = bias ? 1 : 0,
+					};
+				}
+				ccv_nnc_mfa_prepare_gemv(context, params);
+
+				// Creating a new command buffer has a >10 µs penalty CPU-side. Still
+				// faster the >50 µs penalty for MPSGraph (probably why
+				// MPSMatrixMultiplication is faster for GEMM).
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+				{
+					mtl_buffer_t* tensors[3] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+						(mtl_buffer_t*)scratch, // B
+						NULL,
+					};
+					size_t tensor_offsets[2] = {
+						a->dataof, // A offset
+						0, // B offset
+					};
+					ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
+				}
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					mtl_buffer_t* tensors[3] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)w), // A
+						(mtl_buffer_t*)scratch, // B
+						NULL,
+					};
+					size_t tensor_offsets[2] = {
+						w->dataof, // A offset
+						a_data_size, // B offset
+					};
+					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				}
+				mtl_buffer_t* bias_buffer = NULL;
+				if (bias) {
+					bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+				}
+				mtl_buffer_t* tensors[5] = {
+					NULL,
+					NULL,
+					mpgetbuffer((ccv_nnc_tensor_t*)b), // C
+					bias_buffer, // D
+					NULL,
+				};
+				size_t tensor_offsets[4] = {
+					0,
+					0,
+					b->dataof, // C offset
+					bias ? bias->dataof : 0, // D offset
+				};
+				if (a_rows == 1 && is_transpose_w)
+				{
+					tensors[0] = w_data;
+					tensors[1] = a_data;
+					tensor_offsets[0] = w_dataof;
+					tensor_offsets[1] = a_dataof;
+				} else {
+					tensors[0] = a_data;
+					tensors[1] = w_data;
+					tensor_offsets[0] = a_dataof;
+					tensor_offsets[1] = w_dataof;
+				}
+				ccv_nnc_mfa_encode_gemv(context, params, command_batch, tensors, tensor_offsets);
+				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+				return CCV_NNC_EXEC_SUCCESS;
 			}
 			// On supported devices, use Metal directly.
 			ccv_nnc_mfa_gemm_params_t params = {

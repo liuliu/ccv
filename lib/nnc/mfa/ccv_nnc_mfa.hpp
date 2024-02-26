@@ -9,6 +9,7 @@
 #include "ccv_nnc_mfa_depalettize.hpp"
 #include "ccv_nnc_mfa_adam.hpp"
 #include "ccv_nnc_mfa_cmul.hpp"
+#include "ccv_nnc_mfa_gemv.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
@@ -50,6 +51,7 @@ public:
   cache<depalettize::hash, depalettize::pipeline> depalettize_cache;
   cache<adam::hash, adam::pipeline> adam_cache;
   cache<cmul::hash, cmul::pipeline> cmul_cache;
+  cache<gemv::hash, gemv::pipeline> gemv_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };
