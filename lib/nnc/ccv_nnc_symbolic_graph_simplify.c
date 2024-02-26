@@ -460,6 +460,8 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 				node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_FORWARD &&
 				node->cmd.cmd != CCV_NNC_FORMAT_TRANSFORM_BACKWARD)
 				continue;
+			if (node->flags & CCV_NNC_GRAPH_EXEC_DISABLE_OPT) // If optimization pass disabled, skip.
+				continue;
 			for (i = 0; i < node->output_size; i++) // For data transfer, we only respect output size.
 				if (node->inputs[i] >= 0 && node->outputs[i] >= 0)
 				{

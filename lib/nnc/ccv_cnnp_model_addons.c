@@ -3606,6 +3606,63 @@ static ccv_cnnp_model_t* _ccv_cnnp_move_copy(const ccv_cnnp_model_t* const super
 	return ccv_cnnp_move(self->super.name);
 }
 
+// MARK - "Making" Contiguous Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_contiguous_t;
+
+static void _ccv_cnnp_contiguous_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
+	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If we are not reshape an alias, it is straightforward.
+	{
+		outputs[0] = inputs[0];
+		return;
+	}
+	// Otherwise, we need to check its stride to know if it is contiguous.
+	int old_stride[CCV_NNC_MAX_DIM_ALLOC];
+	ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], 0, old_stride);
+	// We identify permute by checking if the stride is not in descending order.
+	// This also covered "permute" through reshape, rather than using ccv_cnnp_permute directly.
+	if (ccv_nnc_is_tensor_stride_packed(old_stride, params.dim))
+	{
+		outputs[0] = inputs[0];
+		return;
+	}
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_t make_contiguous = ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), inputs, 1, outputs, 1, "contiguous");
+	ccv_nnc_graph_exec_symbol_set_flags(graph, make_contiguous, CCV_NNC_GRAPH_EXEC_DISABLE_OPT);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_contiguous_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_contiguous_isa = {
+	.build = _ccv_cnnp_contiguous_build,
+	.copy = _ccv_cnnp_contiguous_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_contiguous(const char* const name)
+{
+	ccv_cnnp_model_contiguous_t* const model_contiguous = (ccv_cnnp_model_contiguous_t*)cccalloc(1, sizeof(ccv_cnnp_model_contiguous_t));
+	model_contiguous->super.isa = &ccv_cnnp_contiguous_isa;
+	model_contiguous->super.input_size = 1;
+	model_contiguous->super.outputs = &model_contiguous->output;
+	model_contiguous->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_contiguous->super, name);
+	return (ccv_cnnp_model_t*)model_contiguous;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_contiguous_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_contiguous_t* const self = (const ccv_cnnp_model_contiguous_t*)super;
+	return ccv_cnnp_contiguous(self->super.name);
+}
+
 // MARK - Scaled-Dot Product Attention Layer
 
 typedef struct {

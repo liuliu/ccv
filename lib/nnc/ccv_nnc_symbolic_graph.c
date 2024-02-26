@@ -941,6 +941,23 @@ void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const 
 	symbol_info->cmd = cmd;
 }
 
+void ccv_nnc_graph_exec_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const int flags)
+{
+	assert(graph == exec.graph);
+	assert(exec.d < graph->exec_symbol_info->rnum);
+	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, exec.d);
+	assert(!(flags & 0xffff)); // the pass-in flag shouldn't set the lower 16-bit.
+	symbol_info->flags = flags | (symbol_info->flags & 0xffff);
+}
+
+int ccv_nnc_graph_exec_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec)
+{
+	assert(graph == exec.graph);
+	assert(exec.d < graph->exec_symbol_info->rnum);
+	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, exec.d);
+	return (symbol_info->flags & 0xffff0000);
+}
+
 ccv_nnc_cmd_t ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec)
 {
 	assert(graph == exec.graph);

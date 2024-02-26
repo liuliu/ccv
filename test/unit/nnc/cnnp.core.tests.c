@@ -1908,4 +1908,43 @@ TEST_CASE("use variable and move semantics to co-locate input in the same tensor
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("use contiguous to make certain tensor contiguous during model inference")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(4, 1, 1, "linear");
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(x));
+	// Get the middle 2, and then apply GELU, which in Float32 / CPU, requires to be contiguous for now.
+	ccv_cnnp_model_io_t y0 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(2, 2), DIM_ALLOC(0, 2), DIM_ALLOC(4, 1), "reshape"), MODEL_IO_LIST(y));
+	/* Using just data transfer is not enough.
+	ccv_cnnp_model_io_t moved = ccv_cnnp_model_apply(ccv_cnnp_variable(CPU_TENSOR_NHWC(32F, 2, 2), 0), MODEL_IO_LIST());
+	ccv_cnnp_model_io_t y_copied = ccv_cnnp_model_apply(ccv_cnnp_move(0), MODEL_IO_LIST(y0, moved));
+	ccv_cnnp_model_io_t z = ccv_cnnp_model_apply(ccv_cnnp_sigmoid("sigmoid"), MODEL_IO_LIST(y_copied));
+	*/
+	// Have to use the new contiguous model.
+	ccv_cnnp_model_io_t y_copied = ccv_cnnp_model_apply(ccv_cnnp_contiguous(0), MODEL_IO_LIST(y0));
+	ccv_cnnp_model_io_t z = ccv_cnnp_model_apply(ccv_cnnp_sigmoid("sigmoid"), MODEL_IO_LIST(y_copied));
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(z), 0, "tiny");
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(x_tensor->info), CMD_NOOP(), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const t0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	t0->data.f32[0] = 2.4;
+	t0->data.f32[1] = -0.4;
+	t0->data.f32[2] = 1.2;
+	t0->data.f32[3] = -3.6;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear0, ALL_PARAMETERS, 0), t0);
+	x_tensor->data.f32[0] = 1;
+	x_tensor->data.f32[1] = -1;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x_tensor), TENSOR_LIST(z_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.0 / (1.0 + exp(-1.2)), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[1], 1.0 / (1.0 + exp(3.6)), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[2], 1.0 / (1.0 + exp(1.2)), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[3], 1.0 / (1.0 + exp(-3.6)), 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(t0);
+	ccv_nnc_tensor_free(z_tensor);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

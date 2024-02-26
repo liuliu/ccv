@@ -1437,6 +1437,7 @@ enum {
 	CCV_NNC_GRAPH_EXEC_DEAD = 0x1, /**< Mark this node as dead. */
 	CCV_NNC_GRAPH_EXEC_P_WHILE = 0x10, /**< Mark this node keyword is while */
 	CCV_NNC_GRAPH_EXEC_CASE_OF = 0x20, /**< Mark this node keyword is case_of */
+	CCV_NNC_GRAPH_EXEC_DISABLE_OPT = 0x10000, /**< Mark this node to avoid optimization pass. */
 };
 
 #define CCV_NNC_GRAPH_EXEC_IS_DEAD(x) ((x) & CCV_NNC_GRAPH_EXEC_DEAD)
@@ -1825,6 +1826,19 @@ CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const
  * @param cmd The new wrapped command.
  */
 void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_cmd_t cmd);
+/**
+ * Set the flags for this exec symbol. The flags are only used for symbol. We can only set higher 16-bit.
+ * @param graph The symbolic graph.
+ * @param tensor The execution node symbol reference.
+ * @param flags A reserved field for flags.
+ */
+void ccv_nnc_graph_exec_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const int flags);
+/**
+ * Get the flags for a tensor. We can only retrieve the higher 16-bit.
+ * @param graph The symbolic graph.
+ * @param tensor The execution node symbol reference.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
 /**
  * Return the command on this exec symbol.
  * @param graph The symbolic graph.
@@ -4592,6 +4606,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_variable(const ccv_nnc_tensor_param_
  * @return A model that can be applied and copies first input to the second.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_move(const char* const name);
+/**
+ * If the input is not contiguous, this model will make it contiguous. Normally, such graph operation
+ * will be optimized away when calling ccv_nnc_symbolic_graph_simplify. In this case, we will disable
+ * such optimization on the generated node. If the input is not contiguous, the output of this model
+ * is the same as the input, hence, skipped.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and making the input contiguous.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_contiguous(const char* const name);
 /**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
  * or (q, k, v, attn_mask) if has_attn_mask is 1.

@@ -39,7 +39,7 @@ typedef struct {
 	int input_size;
 	int output_size;
 	int graph_ref_size;
-	int flags; // Mark this node as dead.
+	int flags; // Mark this node as dead. Lower 16 bits is for internal use, such as mark as dead. Higher 16-bit can be set.
 	int pair_ref; // Reference to its pair. Starts at 1.
 	int* inputs;
 	int* outputs;
