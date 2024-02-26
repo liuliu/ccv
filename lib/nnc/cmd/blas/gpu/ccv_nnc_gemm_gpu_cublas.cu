@@ -9,6 +9,125 @@ extern "C" {
 
 #ifdef HAVE_CUDA
 
+#define GGML_CUDA_DMMV_X 32
+#define GGML_CUDA_MMV_Y 1
+#define WARP_SIZE 32
+
+// This is a kernel rewrote from ggml. Note that we kept the name, but specialize it for F16 only.
+template <int qk, int qr> // qk / qr is always 1, but we will keep it this way.
+static __global__ void dequantize_mul_mat_vec(const half* __restrict__ x, const half* __restrict__ y, half* __restrict__ dst, const int ncols, const int nrows)
+{
+	// qk = quantized weights per x block
+	// qr = number of quantized weights per data value in x block
+	const int row = blockIdx.x * blockDim.y + threadIdx.y;
+
+	if (row >= nrows) {
+		return;
+	}
+
+	const int tid = threadIdx.x;
+
+	const int iter_stride = 2 * GGML_CUDA_DMMV_X;
+	const int vals_per_iter = iter_stride / WARP_SIZE; // num quantized vals per thread and i iter
+	const int y_offset = qr == 1 ? 1 : qk / 2;
+
+// partial sum for each thread
+	half2 tmp = {0.0f, 0.0f}; // two sums for f16 to take advantage of half2 intrinsics
+
+	for (int i = 0; i < ncols; i += iter_stride) {
+		const int col = i + vals_per_iter * tid;
+		const int ib = (row*ncols + col) / qk; // x block index
+		const int iqs = (col % qk) / qr; // x quant index
+		const int iybs = col - col % qk; // y block start index
+
+// processing >2 values per i iter is faster for fast GPUs
+#pragma unroll
+		for (int j = 0; j < vals_per_iter; j += 2) {
+			// process 2 vals per j iter
+			// dequantize
+			// for qr = 2 the iqs needs to increase by 1 per j iter because 2 weights per data val
+			half2 v;
+			// automatic half -> float type cast if dfloat == float
+			v.x = x[ib + iqs + 0];
+			v.y = x[ib + iqs + 1];
+
+			// matrix multiplication
+			// for qr = 2 the y index needs to increase by 1 per j iter because of y_offset = qk/2
+			tmp += __hmul2(v, {
+				y[iybs + iqs + j / qr + 0],
+				y[iybs + iqs + j / qr + y_offset]
+			});
+		}
+	}
+
+	// sum up partial sums and write back result
+#pragma unroll
+	for (int mask = 16; mask > 0; mask >>= 1) {
+		tmp += __shfl_xor_sync(0xffffffff, tmp, mask, 32);
+	}
+
+	if (tid == 0) {
+		dst[row] = tmp.x + tmp.y;
+	}
+}
+
+template <int qk, int qr> // qk / qr is always 1, but we will keep it this way.
+static __global__ void dequantize_mul_mat_vec_add_bias(const half* __restrict__ x, const half* __restrict__ y, const half* __restrict__ bias, half* __restrict__ dst, const int ncols, const int nrows)
+{
+	// qk = quantized weights per x block
+	// qr = number of quantized weights per data value in x block
+	const int row = blockIdx.x * blockDim.y + threadIdx.y;
+
+	if (row >= nrows) {
+		return;
+	}
+
+	const int tid = threadIdx.x;
+
+	const int iter_stride = 2 * GGML_CUDA_DMMV_X;
+	const int vals_per_iter = iter_stride / WARP_SIZE; // num quantized vals per thread and i iter
+	const int y_offset = qr == 1 ? 1 : qk / 2;
+
+// partial sum for each thread
+	half2 tmp = {0.0f, 0.0f}; // two sums for f16 to take advantage of half2 intrinsics
+
+	for (int i = 0; i < ncols; i += iter_stride) {
+		const int col = i + vals_per_iter * tid;
+		const int ib = (row*ncols + col) / qk; // x block index
+		const int iqs = (col % qk) / qr; // x quant index
+		const int iybs = col - col % qk; // y block start index
+
+// processing >2 values per i iter is faster for fast GPUs
+#pragma unroll
+		for (int j = 0; j < vals_per_iter; j += 2) {
+			// process 2 vals per j iter
+			// dequantize
+			// for qr = 2 the iqs needs to increase by 1 per j iter because 2 weights per data val
+			half2 v;
+			// automatic half -> float type cast if dfloat == float
+			v.x = x[ib + iqs + 0];
+			v.y = x[ib + iqs + 1];
+
+			// matrix multiplication
+			// for qr = 2 the y index needs to increase by 1 per j iter because of y_offset = qk/2
+			tmp += __hmul2(v, {
+				y[iybs + iqs + j / qr + 0],
+				y[iybs + iqs + j / qr + y_offset]
+			});
+		}
+	}
+
+	// sum up partial sums and write back result
+#pragma unroll
+	for (int mask = 16; mask > 0; mask >>= 1) {
+		tmp += __shfl_xor_sync(0xffffffff, tmp, mask, 32);
+	}
+
+	if (tid == 0) {
+		dst[row] = bias[row] + tmp.x + tmp.y;
+	}
+}
+
 static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* const ones, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const bias, const int bias_datatype, const int bias_nd, const int* const biasdim, const int* const biasstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc)
 {
 	static const half one_f16 = 1;
@@ -136,10 +255,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a_rows == b_rows);
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
-	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
-	ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, ccv_nnc_cublas_workspace_size_in_bytes(inputs, input_size, outputs, output_size));
 	const int transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
 	const int transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
+
 	int astride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
 	int wstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
 	int bstride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -169,22 +287,24 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
 	const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
 	size_t a_data_size = 0;
+	int a_datatype = a->info.datatype;
 	if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t a_params = a->info;
-		const int palette_datatype = (a_params.datatype & 0xff) << 12;
+		a_datatype = (a_params.datatype & 0xff) << 12;
 		ccv_nnc_tensor_param_t depalettize_a_params = a_params;
-		depalettize_a_params.datatype = palette_datatype;
+		depalettize_a_params.datatype = a_datatype;
 		depalettize_a_params.reserved = 0;
 		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
 	}
 	size_t w_data_size = 0;
+	int w_datatype = w->info.datatype;
 	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t w_params = w->info;
-		const int palette_datatype = (w_params.datatype & 0xff) << 12;
+		w_datatype = (w_params.datatype & 0xff) << 12;
 		ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-		depalettize_w_params.datatype = palette_datatype;
+		depalettize_w_params.datatype = w_datatype;
 		depalettize_w_params.reserved = 0;
 		w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
 	}
@@ -196,23 +316,54 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		ccv_nnc_tensor_param_t a_params = a->info;
 		const size_t count = ccv_nnc_tensor_count(a_params);
-		const int palette_datatype = (a_params.datatype & 0xff) << 12;
 		const int qbits = (a_params.datatype & 0xf00) >> 8;
 		const int number_in_blocks = a_params.reserved;
 		a_data = (unsigned char*)workspace;
-		ccv_nnc_compat_depalettize(a->data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
+		ccv_nnc_compat_depalettize(a->data.u8, a_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
 	}
 	unsigned char* w_data = w->data.u8;
 	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t w_params = w->info;
 		const size_t count = ccv_nnc_tensor_count(w_params);
-		const int palette_datatype = (w_params.datatype & 0xff) << 12;
 		const int qbits = (w_params.datatype & 0xf00) >> 8;
 		const int number_in_blocks = w_params.reserved;
 		w_data = (unsigned char*)workspace + a_data_size;
-		ccv_nnc_compat_depalettize(w->data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
+		ccv_nnc_compat_depalettize(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
 	}
+	// Check if we can shortcut this and use dequantize_mul_mat_vec which will be faster for gmmv.
+	if (CCV_IS_TENSOR_CONTIGUOUS(a) && a_datatype == CCV_16F && a_batch_size == 1 &&
+		CCV_IS_TENSOR_CONTIGUOUS(w) && w_datatype == CCV_16F && w_batch_size == 1 &&
+		(!bias || (bias->info.datatype == CCV_16F && CCV_IS_TENSOR_CONTIGUOUS(bias))) &&
+		((a_rows == 1 && transpose_w && (w_cols % GGML_CUDA_DMMV_X) == 0) || (!transpose_a && w_cols == 1 && (a_rows % GGML_CUDA_DMMV_X) == 0)))
+	{
+		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+		if (a_rows == 1 && transpose_w)
+		{
+			const int block_num_y = (w_cols + GGML_CUDA_MMV_Y - 1) / GGML_CUDA_MMV_Y;
+			const dim3 block_nums(block_num_y, 1, 1);
+			const dim3 block_dims(WARP_SIZE, GGML_CUDA_MMV_Y, 1);
+			if (bias)
+				dequantize_mul_mat_vec_add_bias<1, 1>
+					<<<block_nums, block_dims, 0, stream>>>((half*)w_data, (half*)a_data, (half*)bias->data.f16, (half*)b->data.f16, w_rows, w_cols);
+			else
+				dequantize_mul_mat_vec<1, 1>
+					<<<block_nums, block_dims, 0, stream>>>((half*)w_data, (half*)a_data, (half*)b->data.f16, w_rows, w_cols);
+		} else {
+			const int block_num_y = (a_rows + GGML_CUDA_MMV_Y - 1) / GGML_CUDA_MMV_Y;
+			const dim3 block_nums(block_num_y, 1, 1);
+			const dim3 block_dims(WARP_SIZE, GGML_CUDA_MMV_Y, 1);
+			if (bias)
+				dequantize_mul_mat_vec_add_bias<1, 1>
+					<<<block_nums, block_dims, 0, stream>>>((half*)a_data, (half*)w_data, (half*)bias->data.f16, (half*)b->data.f16, a_cols, a_rows);
+			else
+				dequantize_mul_mat_vec<1, 1>
+					<<<block_nums, block_dims, 0, stream>>>((half*)a_data, (half*)w_data, (half*)b->data.f16, a_cols, a_rows);
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
+	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
+	ccv_nnc_stream_context_set_cublas_workspace(cublas, stream_context, ccv_nnc_cublas_workspace_size_in_bytes(inputs, input_size, outputs, output_size));
 	if (bias)
 	{
 		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
