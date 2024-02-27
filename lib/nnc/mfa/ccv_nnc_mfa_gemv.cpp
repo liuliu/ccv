@@ -223,7 +223,22 @@ kernel void gemv(
     defines += "\n";
   }
 
-  defines += "constant uint N = 8;\n";
+  unsigned int N = 8;
+  if (strstr(context->device->name()->utf8String(), "M1") != 0 ||
+      strstr(context->device->name()->utf8String(), "M2") != 0 ||
+      strstr(context->device->name()->utf8String(), "M3") != 0 ||
+      strstr(context->device->name()->utf8String(), "M4") != 0) {
+    // If it is M* chip, check if it is Pro / Ultra / Max.
+	if (strstr(context->device->name()->utf8String(), "Pro") != 0) {
+      N = 2; // For Pro, we set N = 2 to maximize core utilization.
+    } else if (strstr(context->device->name()->utf8String(), "Max") != 0 ||
+        strstr(context->device->name()->utf8String(), "Ultra") != 0) {
+      N = 1; // For Ultra / Max, we set N = 1 to maximize core utilization.
+    }
+  }
+  defines += "constant uint N = ";
+  defines += std::to_string(N) + ";";
+  defines += "\n";
   defines += "constant uint ncols = ";
   defines += std::to_string(hash.ncols) + ";";
   defines += "\n";
@@ -231,7 +246,7 @@ kernel void gemv(
   defines += std::to_string(hash.nrows) + ";";
   defines += "\n";
   this->group_size = MTL::Size(32, 1, 1);
-  this->grid_size = MTL::Size((hash.nrows + 8 - 1) / 8, 1, 1);
+  this->grid_size = MTL::Size((hash.nrows + N - 1) / N, 1, 1);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   NS::SharedPtr<MTL::ComputePipelineState>* pso = &gemv_pso;
