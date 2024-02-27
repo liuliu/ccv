@@ -120,6 +120,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				.channel_groups = (uint32_t)channel_groups,
 				.sequence_count = (uint32_t)sequence_count,
 				.epsilon = cmd.info.rmsnorm.epsilon,
+				.elementwise_affine = 1,
 				.scale_translation_batched = scale_translation_batched,
 				.normalization_type = 2,
 				.reuse_saved_statistics = false,
