@@ -119,12 +119,12 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     encoder->useResource(tensors[5], MTL::ResourceUsageRead);
   } else if (num_tensors == 4) {
     if (params.elementwise_affine) { // This is for RMSNorm.
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
       if (params.reuse_saved_statistics) {
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
       } else {
         encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
       }
-      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
     } else { // This is for layer norm without elementwise affine.
       if (params.reuse_saved_statistics) {
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);

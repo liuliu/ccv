@@ -244,9 +244,7 @@ mfa::gemm::pipeline::pipeline(mfa::context* context, mfa::gemm::hash hash) {
   } else if (is_half && hash.K >= 73 && hash.K <= 80) {
     K_simd = 40; // 2 * 40
   } else if (C_elements > 1000 * 1000) {
-    if (hash.K <= 16) {
-      K_simd = 16; // 1 * 16
-    } else if (hash.K <= 24) {
+    if (hash.K <= 24) {
       K_simd = 24; // 1 * 24
     } else if (hash.K <= 32) {
       K_simd = 32; // 1 * 32
