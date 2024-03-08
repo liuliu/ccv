@@ -2834,7 +2834,8 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 		for (i = 0; i < parameter_size * parallel_count; i++)
 			// If it is not marked as not belonging, we can free it.
 			if (!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1))
-				ccv_nnc_tensor_free(compiled_data->tensors.parameters[i]);
+				if (compiled_data->tensors.parameters[i])
+					ccv_nnc_tensor_free(compiled_data->tensors.parameters[i]);
 		for (i = 0; i < internal_size * parallel_count; i++)
 			if (compiled_data->tensors.internals[i])
 				ccv_nnc_tensor_free(compiled_data->tensors.internals[i]);
