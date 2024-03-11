@@ -255,13 +255,12 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset)
 {
 	@autoreleasepool {
 		MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
-		fileBackedBuffer.path = path;
+		fileBackedBuffer.path = @(file);
 		fileBackedBuffer.size = size;
 		fileBackedBuffer.offset = offset;
 		assert(offset % vm_page_size == 0);
-		dest = (void*)fileBackedBuffer;
+		return (void*)fileBackedBuffer;
 	}
-	return dest;
 }
 
 void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n)
