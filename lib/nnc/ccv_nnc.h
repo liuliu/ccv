@@ -565,6 +565,14 @@ static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 /**
+ * Create a new tensor with data from a file. This will create a mmap tensor if that is preferred.
+ * @param params Tensor parameters.
+ * @param filename The file to load tensor content from.
+ * @param offset The offset to the tensor content from the file.
+ * @return The newly created tensor.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset);
+/**
  * Create a new tensor on stack.
  * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
  * @param params Tensor parameters.
@@ -692,25 +700,13 @@ enum {
  * Read a tensor from a SQLite database with a given name.
  * @param handle The SQLite handle.
  * @param name The name to find the tensor in the database.
- * @param dir If the dir is provided, the tensor we read will be backed by a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
  * @param options If provided, we will use this to decode any data that identifier != 0.
  * @param flags Additional flag to configure how we read tensor.
  * @param tensor_params If provided, we will use this to create the tensor if tensor_out is not provided.
  * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
  * @return CCV_IO_FINAL for success, otherwise error.
  */
-int ccv_nnc_tensor_read(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
-/**
- * Swap a tensor to be backed by a file instead. Currently, once swapped, there is no way to swap back.
- * @param tensor The tensor.
- * @param name The name for the tensor when swapping to disk.
- * @param dir The directory for the tensor to be swapped on a file at this path if possible (depending on underlying implementation, right now only MPS backend supported this feature).
- * @param data If provided, the content of the tensor will be filled with the data pointer.
- * @param data_size The size of the data content.
- * @return 0 for success.
- */
-int ccv_nnc_tensor_swap(ccv_nnc_tensor_t* const tensor, const char* const name, const char* const dir, const void* const data, const size_t data_size);
-
+int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
 /** @} */
 
 /**
@@ -3841,12 +3837,11 @@ typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, 
  * The prototype for the reader function to load parameters.
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.
  * @param name The name give to a particular parameter.
- * @param dir The directory for a particular parameter if it is file-backed.
  * @param options The IO options that can do data encode / decode before persistence.
  * @param info The recommended tensor params.
  * @param tensor_out The tensor to be loaded.
  */
-typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const char* const dir, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_t** const tensor_out);
+typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_t** const tensor_out);
 /**
  * Set IO interceptor for loading weights from / to the model to replace the default SQLite reader / writer.
  * @param model The model.
@@ -3885,14 +3880,6 @@ void ccv_cnnp_model_set_max_concurrency(ccv_cnnp_model_t* const model, const int
  * @param memory_compression Whether to enable the memory compression (1 - enable, 0 - disable (default))
  */
 void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
-/**
- * Use file backed read-only parameters for model parameter loading. The model parameters if eligible
- * will be backed by a just-in-time allocated mmap buffer, thus, saving VRAM usage on devices. Right
- * now, this is only supported for MPS backend and it is read-only.
- * @param model The composed model.
- * @param dir The directory. If set to 0, this feature is disabled.
- */
-void ccv_cnnp_model_set_file_backed_parameters(ccv_cnnp_model_t* const model, const char* const dir);
 /**
  * Set compile parameters on the model so it compiles the graph with the said parameters.
  * @param model The composed model.

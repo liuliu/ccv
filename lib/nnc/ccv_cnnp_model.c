@@ -646,23 +646,6 @@ void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const 
 		{ assert(!compiled_data->graph); }
 }
 
-void ccv_cnnp_model_set_file_backed_parameters(ccv_cnnp_model_t* const model, const char* const dir)
-{
-	if (dir)
-	{
-		const size_t len = strnlen(dir, 1023);
-		const size_t n = len + 1;
-		model->file_backed_dir = (char*)ccmalloc(n);
-		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-		memcpy(model->file_backed_dir, dir, n);
-		model->file_backed_dir[len] = 0;
-	} else {
-		if (model->file_backed_dir)
-			ccfree(model->file_backed_dir);
-		model->file_backed_dir = 0;
-	}
-}
-
 typedef struct {
 	int parallel_count;
 	ccv_nnc_symbolic_graph_t* graph;
@@ -2915,7 +2898,5 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 		_ccv_cnnp_compiled_data_free(model, model->compiled_data);
 	if (model->name)
 		ccfree(model->name);
-	if (model->file_backed_dir)
-		ccfree(model->file_backed_dir);
 	ccfree(model);
 }

@@ -6,6 +6,8 @@
 #elif defined(HAVE_MPS)
 #include "mps/ccv_nnc_mps.h"
 #endif
+#include <fcntl.h>
+#include <sys/mman.h>
 
 // MARK - Level-1 API
 
@@ -97,6 +99,91 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
 	} else
 		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
+	return tensor;
+}
+
+ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset)
+{
+	ccv_nnc_tensor_t* tensor;
+	// this specific form can be toll-free bridging to ccv_dense_matrix_t (On CPU, and 3 dims (channels, rows, cols), and channels is smaller than max channels of ccv_dense_matrix_t).
+	const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
+	tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
+	tensor->dataof = 0;
+	tensor->alias_ref = 0;
+	tensor->sig = 0;
+	tensor->refcount = 1;
+	tensor->info = params;
+	if (tfb)
+	{
+		tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
+		// This corresponding to mat->step
+		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
+	} else // This won't be recognized by ccv_dense_matrix_t
+		tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
+	const size_t size = ccv_nnc_tensor_data_size(params);
+#ifdef HAVE_CUDA
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		if (size > 0)
+		{
+			// This is not supported yet on CUDA.
+			tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+			int fd = open(filename, O_RDONLY, 0);
+			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
+			close(fd);
+			madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+			cumemcpy(tensor->data.u8, CCV_TENSOR_GPU_MEMORY, bufptr, CCV_TENSOR_CPU_MEMORY, size);
+			munmap(bufptr, size);
+		} else
+			tensor->data.u8 = 0;
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		if (size > 0)
+		{
+			int fd = open(filename, O_RDONLY, 0);
+			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
+			close(fd);
+			madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+			tensor->data.u8 = bufptr;
+			tensor->type |= CCV_MAPPED_MEM;
+		} else
+			tensor->data.u8 = 0;
+	}
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		if (size > 0)
+			tensor->data.u8 = (uint8_t*)mpmemmap(filename, size, offset);
+		else
+			tensor->data.u8 = 0;
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		if (size > 0)
+		{
+			int fd = open(filename, O_RDONLY, 0);
+			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
+			close(fd);
+			madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+			tensor->data.u8 = bufptr;
+			tensor->type |= CCV_MAPPED_MEM;
+		} else
+			tensor->data.u8 = 0;
+	}
+#else
+	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+	if (size > 0)
+	{
+		int fd = open(filename, O_RDONLY, 0);
+		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
+		close(fd);
+		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+		tensor->data.u8 = bufptr;
+		tensor->type |= CCV_MAPPED_MEM;
+	} else
+		tensor->data.u8 = 0;
+#endif
 	return tensor;
 }
 
@@ -222,12 +309,19 @@ int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor)
 
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 {
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY && tensor->type & CCV_MAPPED_MEM)
+	{
+		// The size might be different than the ones when we allocated (for example, the tensor might rewrite its size to be smaller).
+		// This might cause issues in the future.
+		const size_t size = ccv_nnc_tensor_data_size(tensor->info);
+		munmap(tensor->data.u8, size);
+	}
 #ifdef HAVE_CUDA
+	if (tensor->type & CCV_PINNED_MEM)
+		cuunregister(tensor->data.u8);
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY &&
 		!(tensor->type & CCV_NO_DATA_ALLOC)) // If this is GPU memory and it is allocated, free.
 		cufree(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), tensor->data.u8);
-	if (tensor->type & CCV_PINNED_MEM)
-		cuunregister(tensor->data.u8);
 #elif defined(HAVE_MPS)
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY &&
 		!(tensor->type & CCV_NO_DATA_ALLOC)) // If this is GPU memory and it is allocated, free.

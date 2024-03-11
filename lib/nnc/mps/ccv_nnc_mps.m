@@ -28,6 +28,7 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @interface MTLFileBackedBuffer: NSObject
 @property (nonatomic, copy) NSString* path;
 @property (nonatomic, assign) NSUInteger size;
+@property (nonatomic, assign) NSUInteger offset;
 @end
 
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
@@ -223,7 +224,8 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 		MTLFileBackedBuffer* fileBackedBuffer = (MTLFileBackedBuffer*)obj;
 		int fd = open(fileBackedBuffer.path.UTF8String, O_RDONLY, 0);
 		size_t size = fileBackedBuffer.size;
-		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+		off_t offset = (off_t)fileBackedBuffer.offset;
+		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
 		close(fd);
 		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -vm_page_size);
 		assert(aligned_ptr == bufptr);
@@ -249,18 +251,14 @@ off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 	return tensor->dataof;
 }
 
-void* mpmemmap(void* dest, const void* src, size_t n, size_t expected_n, const char* dir, const char* name)
+void* mpmemmap(const char* file, const size_t size, const off_t offset)
 {
 	@autoreleasepool {
-		NSString* path = [@(dir) stringByAppendingPathComponent:@(name)];
-		FILE* w = fopen(path.UTF8String, "w+");
-		fwrite(src, 1, n, w);
-		fclose(w);
-		id<MTLBuffer> buffer_b = (id<MTLBuffer>)dest;
-		[buffer_b release];
 		MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
 		fileBackedBuffer.path = path;
-		fileBackedBuffer.size = expected_n;
+		fileBackedBuffer.size = size;
+		fileBackedBuffer.offset = offset;
+		assert(offset % vm_page_size == 0);
 		dest = (void*)fileBackedBuffer;
 	}
 	return dest;

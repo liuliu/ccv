@@ -90,6 +90,7 @@ enum {
 	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
 	CCV_TAPE_ALLOC    = 0x08000000, // matrix is allocated on a tape.
 	CCV_PINNED_MEM    = 0x04000000, // matrix is pinned in CUDA.
+	CCV_MAPPED_MEM    = 0x02000000, // matrix is memory-mapped.
 };
 
 #define CCV_GET_TAPE_ALLOC(type) ((type) & CCV_TAPE_ALLOC)
