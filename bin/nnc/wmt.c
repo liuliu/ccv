@@ -326,10 +326,10 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 	if (SQLITE_OK == sqlite3_open("wmt.checkpoint", &conn))
 	{
 		ccv_nnc_tensor_t* src_vocab_vec_ = ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec);
-		ccv_nnc_tensor_read(conn, "src_vocab", 0, 0, 0, 0, &src_vocab_vec_);
+		ccv_nnc_tensor_read(conn, "src_vocab", 0, 0, 0, &src_vocab_vec_);
 		assert(src_vocab_vec_ == ccv_nnc_tensor_from_variable(dynamic_graph, src_vocab_vec));
 		ccv_nnc_tensor_t* tgt_vocab_vec_ = ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec);
-		ccv_nnc_tensor_read(conn, "tgt_vocab", 0, 0, 0, 0, &tgt_vocab_vec_);
+		ccv_nnc_tensor_read(conn, "tgt_vocab", 0, 0, 0, &tgt_vocab_vec_);
 		assert(tgt_vocab_vec_ == ccv_nnc_tensor_from_variable(dynamic_graph, tgt_vocab_vec));
 		sqlite3_close(conn);
 	}
