@@ -263,9 +263,7 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset, const in
 			assert(offset % vm_page_size == 0);
 			return (void*)fileBackedBuffer;
 		} else {
-			int fd = open(fileBackedBuffer.path.UTF8String, O_RDONLY, 0);
-			size_t size = fileBackedBuffer.size;
-			off_t offset = (off_t)fileBackedBuffer.offset;
+			int fd = open(file, O_RDONLY, 0);
 			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
 			close(fd);
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -vm_page_size);
