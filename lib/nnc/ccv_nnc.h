@@ -564,14 +564,19 @@ static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
  * @return The newly created tensor.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
+enum {
+	CCV_NNC_TENSOR_MEMORY_MAP_EAGER = 0x1, /**< Load tensor mapped directly. */
+	CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND = 0x2, /**< Defer tensor map until read on supported devices. */
+};
 /**
  * Create a new tensor with data from a file. This will create a mmap tensor if that is preferred.
  * @param params Tensor parameters.
  * @param filename The file to load tensor content from.
  * @param offset The offset to the tensor content from the file.
+ * @param flags Reserved flags for this loading.
  * @return The newly created tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset, const int flags);
 /**
  * Create a new tensor on stack.
  * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.

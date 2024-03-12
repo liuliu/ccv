@@ -102,7 +102,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	return tensor;
 }
 
-ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset)
+ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t params, const char* const filename, const off_t offset, const int flags)
 {
 	ccv_nnc_tensor_t* tensor;
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t (On CPU, and 3 dims (channels, rows, cols), and channels is smaller than max channels of ccv_dense_matrix_t).
@@ -155,7 +155,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t para
 	{
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
 		if (size > 0)
-			tensor->data.u8 = (uint8_t*)mpmemmap(filename, size, offset);
+			tensor->data.u8 = (uint8_t*)mpmemmap(filename, size, offset, flags);
 		else
 			tensor->data.u8 = 0;
 	} else {

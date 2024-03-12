@@ -13,7 +13,7 @@ void mpobjfree(int device, void* ptr);
 typedef void(*mpmp_f)(int device_id, void* const context);
 int mpregmp(int device_id, mpmp_f func, void* const context); // register memory pressure handler
 void mpunregmp(const int id); // un-register memory pressure handler.
-void* mpmemmap(const char* file, const size_t size, const off_t offset);
+void* mpmemmap(const char* file, const size_t size, const off_t offset, const int flags);
 void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n);
 
 // Stream context

@@ -63,11 +63,11 @@ TEST_CASE("tensor mapped from file")
 	one->data.f32[0] = 1;
 	ccv_nnc_tensor_t* one_gpu = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(one), TENSOR_LIST(one_gpu), 0);
-	ccv_nnc_tensor_t* tensor_a = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 5), "tensor.bin", 0);
+	ccv_nnc_tensor_t* tensor_a = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 5), "tensor.bin", 0, 0);
 	ccv_nnc_tensor_t* a_result = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5), 0);
 	ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.5, 0.2), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_a, one_gpu), TENSOR_LIST(a_result), 0);
 	float a[] = {1 * 0.5 + 0.2, 2 * 0.5 + 0.2, 3 * 0.5 + 0.2, 4 * 0.5 + 0.2, 5 * 0.5 + 0.2};
-	ccv_nnc_tensor_t* tensor_b = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 4), "tensor.bin", (4096 * 4 * 4));
+	ccv_nnc_tensor_t* tensor_b = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 4), "tensor.bin", (4096 * 4 * 4), 0);
 	ccv_nnc_tensor_t* b_result = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
 	ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_b, one_gpu), TENSOR_LIST(b_result), 0);
 	float b[] = {4096 * 4 + 1 + 1, 4096 * 4 + 2 + 1, 4096 * 4 + 3 + 1, 4096 * 4 + 4 + 1};

@@ -251,15 +251,41 @@ off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 	return tensor->dataof;
 }
 
-void* mpmemmap(const char* file, const size_t size, const off_t offset)
+void* mpmemmap(const char* file, const size_t size, const off_t offset, const int flags)
 {
 	@autoreleasepool {
-		MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
-		fileBackedBuffer.path = @(file);
-		fileBackedBuffer.size = size;
-		fileBackedBuffer.offset = offset;
-		assert(offset % vm_page_size == 0);
-		return (void*)fileBackedBuffer;
+		if (flags & CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND)
+		{
+			MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
+			fileBackedBuffer.path = @(file);
+			fileBackedBuffer.size = size;
+			fileBackedBuffer.offset = offset;
+			assert(offset % vm_page_size == 0);
+			return (void*)fileBackedBuffer;
+		} else {
+			int fd = open(fileBackedBuffer.path.UTF8String, O_RDONLY, 0);
+			size_t size = fileBackedBuffer.size;
+			off_t offset = (off_t)fileBackedBuffer.offset;
+			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
+			close(fd);
+			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -vm_page_size);
+			assert(aligned_ptr == bufptr);
+			madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+			id obj;
+			if (ccv_nnc_flags() & CCV_NNC_DISABLE_MMAP_MTL_BUFFER)
+			{
+#ifdef __x86_64__
+				obj = [ccv_nnc_default_device() newBufferWithBytes:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate];
+#else
+				obj = [ccv_nnc_default_device() newBufferWithBytes:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+#endif
+				munmap(bufptr, size);
+			} else
+				obj = [ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:^(void *ptr, NSUInteger len) {
+					munmap(ptr, len);
+				}];
+			return obj;
+		}
 	}
 }
 

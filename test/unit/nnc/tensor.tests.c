@@ -133,10 +133,10 @@ TEST_CASE("tensor mapped from file")
 	fclose(w);
 	ccfree(w_a);
 	float a[] = {1, 2, 3, 4, 5};
-	ccv_nnc_tensor_t* tensor_a = ccv_nnc_tensor_new_from_file(CPU_TENSOR_NHWC(32F, 5), "data/tensor.bin", 0);
+	ccv_nnc_tensor_t* tensor_a = ccv_nnc_tensor_new_from_file(CPU_TENSOR_NHWC(32F, 5), "data/tensor.bin", 0, 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensor_a->data.f32, a, 5, 1e-5, "the first 5 element should be equal");
 	float b[] = {4096 * 4 + 1, 4096 * 4 + 2, 4096 * 4 + 3, 4096 * 4 + 4};
-	ccv_nnc_tensor_t* tensor_b = ccv_nnc_tensor_new_from_file(CPU_TENSOR_NHWC(32F, 4), "data/tensor.bin", (4096 * 4 * 4));
+	ccv_nnc_tensor_t* tensor_b = ccv_nnc_tensor_new_from_file(CPU_TENSOR_NHWC(32F, 4), "data/tensor.bin", (4096 * 4 * 4), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensor_b->data.f32, b, 4, 1e-5, "the first 4 element should be equal");
 	ccv_nnc_tensor_free(tensor_a);
 	ccv_nnc_tensor_free(tensor_b);
