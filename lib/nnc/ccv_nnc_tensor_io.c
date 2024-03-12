@@ -36,9 +36,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	sqlite3_stmt* tensor_insert_stmt = 0;
 	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_insert_qs, sizeof(tensor_insert_qs), &tensor_insert_stmt, 0));
 	sqlite3_bind_text(tensor_insert_stmt, 1, name, -1, 0);
-	sqlite3_bind_int(tensor_insert_stmt, 3, tensor->info.format);
-	sqlite3_bind_int64(tensor_insert_stmt, 4, ((sqlite_int64)tensor->info.reserved << 32) | tensor->info.datatype);
-	sqlite3_bind_blob(tensor_insert_stmt, 5, tensor->info.dim, sizeof(tensor->info.dim), 0);
+	ccv_nnc_tensor_param_t params = tensor->info;
 	const size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
 	unsigned char* workspace = 0;
 	unsigned int identifier = 0;
@@ -51,10 +49,10 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 			cumemcpy(workspace, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->info.type, data_size);
 			sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
 		} else {
-			workspace = ccmalloc(data_size * 2);
+			workspace = ccmalloc(data_size * 2 + 4);
 			cumemcpy(workspace, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->info.type, data_size);
-			size_t encoded_size = data_size;
-			if (options->encode(workspace, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace + data_size, &encoded_size, &identifier))
+			size_t encoded_size = data_size + 4;
+			if (options->encode(workspace, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace + data_size, &encoded_size, &params, &identifier))
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace + data_size, encoded_size, 0);
 			else
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
@@ -63,9 +61,9 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 		if (!options || !options->encode)
 			sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
 		else {
-			workspace = ccmalloc(data_size);
-			size_t encoded_size = data_size;
-			if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &identifier))
+			workspace = ccmalloc(data_size + 4);
+			size_t encoded_size = data_size + 4;
+			if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &params, &identifier))
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, encoded_size, 0);
 			else
 				sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
@@ -80,10 +78,10 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 			mpmemcpy(workspace, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->dataof, tensor->info.type, data_size);
 			sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
 		} else {
-			workspace = ccmalloc(data_size * 2);
+			workspace = ccmalloc(data_size * 2 + 4);
 			mpmemcpy(workspace, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->dataof, tensor->info.type, data_size);
-			size_t encoded_size = data_size;
-			if (options->encode(workspace, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace + data_size, &encoded_size, &identifier))
+			size_t encoded_size = data_size + 4;
+			if (options->encode(workspace, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace + data_size, &encoded_size, &params, &identifier))
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace + data_size, encoded_size, 0);
 			else
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, data_size, 0);
@@ -92,9 +90,9 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 		if (!options || !options->encode)
 			sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
 		else {
-			workspace = ccmalloc(data_size);
-			size_t encoded_size = data_size;
-			if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &identifier))
+			workspace = ccmalloc(data_size + 4); // Allocate extra 4 bytes in case we need to copy the QX tensor out.
+			size_t encoded_size = data_size + 4;
+			if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &params, &identifier))
 				sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, encoded_size, 0);
 			else
 				sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
@@ -104,15 +102,18 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	if (!options || !options->encode)
 		sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
 	else {
-		workspace = ccmalloc(data_size);
-		size_t encoded_size = data_size;
-		if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &identifier))
+		workspace = ccmalloc(data_size + 4);
+		size_t encoded_size = data_size + 4;
+		if (options->encode(tensor->data.u8, data_size, tensor->info.datatype, tensor->info.dim, ccv_nnc_tensor_nd(tensor->info.dim), options->context, workspace, &encoded_size, &params, &identifier))
 			sqlite3_bind_blob(tensor_insert_stmt, 6, workspace, encoded_size, 0);
 		else
 			sqlite3_bind_blob(tensor_insert_stmt, 6, tensor->data.u8, data_size, 0);
 	}
 #endif
-	sqlite3_bind_int64(tensor_insert_stmt, 2, ((sqlite_int64)identifier << 32) | tensor->info.type);
+	sqlite3_bind_int64(tensor_insert_stmt, 2, ((sqlite_int64)identifier << 32) | params.type);
+	sqlite3_bind_int(tensor_insert_stmt, 3, params.format);
+	sqlite3_bind_int64(tensor_insert_stmt, 4, ((sqlite_int64)params.reserved << 32) | params.datatype);
+	sqlite3_bind_blob(tensor_insert_stmt, 5, params.dim, sizeof(params.dim), 0);
 	sqlite3_step(tensor_insert_stmt);
 	sqlite3_reset(tensor_insert_stmt);
 	sqlite3_clear_bindings(tensor_insert_stmt);

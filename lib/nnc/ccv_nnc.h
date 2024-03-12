@@ -674,10 +674,11 @@ typedef int (*ccv_nnc_tensor_io_option_decode_f)(const void* const data, const s
  * @param context The context associated with this encoder.
  * @param encoded The buffer for encoded data.
  * @param encoded_size The size of the buffer.
+ * @param tensor_params The tensor parameters that can be modified.
  * @param identifier The identifier identifies this encoder (non-zero).
  * @return 1 if it is processed, 0 otherwise.
  */
-typedef int (*ccv_nnc_tensor_io_option_encode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, unsigned int* const identifier);
+typedef int (*ccv_nnc_tensor_io_option_encode_f)(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, ccv_nnc_tensor_param_t* const tensor_params, unsigned int* const identifier);
 /**
  * Additional options to regulate tensor write / read behavior. For example, you can pass
  * encryptor / compressor to encrypt / compress the data prior to write to disk. You can
