@@ -124,6 +124,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t para
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
+		// Remove this flag so it can be deallocated as usual.
+		tensor->type &= ~CCV_NO_DATA_ALLOC;
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
 		if (size > 0)
 		{
@@ -153,6 +155,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t para
 #elif defined(HAVE_MPS)
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
+		// Remove this flag so it can be deallocated as usual.
+		tensor->type &= ~CCV_NO_DATA_ALLOC;
 		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
 		if (size > 0)
 			tensor->data.u8 = (uint8_t*)mpmemmap(filename, size, offset, flags);
