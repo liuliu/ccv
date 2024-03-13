@@ -289,6 +289,8 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset, const in
 
 void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n)
 {
+	if (n <= 0)
+		return;
 	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY)
 	{
 		unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)src & -vm_page_size);

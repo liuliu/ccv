@@ -264,8 +264,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-							memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
-						else
+						{
+							if (decoded_size > 0)
+								memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
+						} else
 							ccv_half_precision_to_float((uint16_t*)workspace, tensor_out[0]->data.f32, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(uint16_t)));
 					} else {
 						if (!tensor)
@@ -277,8 +279,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-							memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
-						else
+						{
+							if (decoded_size > 0)
+								memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
+						} else
 							ccv_float_to_half_precision((float*)workspace, (uint16_t*)tensor_out[0]->data.f16, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(float)));
 					} else {
 						if (!tensor)
@@ -357,8 +361,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-							memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
-						else
+						{
+							if (decoded_size > 0)
+								memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
+						} else
 							ccv_half_precision_to_float((uint16_t*)workspace, tensor_out[0]->data.f32, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(uint16_t)));
 					} else {
 						if (!tensor)
@@ -370,8 +376,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-							memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
-						else
+						{
+							if (decoded_size > 0)
+								memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
+						} else
 							ccv_float_to_half_precision((float*)workspace, (uint16_t*)tensor_out[0]->data.f16, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(float)));
 					} else {
 						if (!tensor)
@@ -400,8 +408,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 				{
 					if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-						memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
-					else
+					{
+						if (decoded_size > 0)
+							memcpy(tensor_out[0]->data.f32, workspace, ccv_min(source_data_size, decoded_size));
+					} else
 						ccv_half_precision_to_float((uint16_t*)workspace, tensor_out[0]->data.f32, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(uint16_t)));
 				} else {
 					if (!tensor)
@@ -413,8 +423,10 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace, &decoded_size))
 				{
 					if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
-						memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
-					else
+					{
+						if (decoded_size > 0)
+							memcpy(tensor_out[0]->data.f16, workspace, ccv_min(source_data_size, decoded_size));
+					} else
 						ccv_float_to_half_precision((float*)workspace, (uint16_t*)tensor_out[0]->data.f16, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(float)));
 				} else {
 					if (!tensor)

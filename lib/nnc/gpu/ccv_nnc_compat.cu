@@ -207,6 +207,8 @@ void cudevice(int device)
 
 void cumemcpy(void* dest, const int dest_type, const void* src, const int src_type, size_t n)
 {
+	if (n <= 0)
+		return;
 	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
 		const int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
 		CUDA_ENFORCE(cudaSetDevice(device_b));
