@@ -13,7 +13,7 @@ TEST_SETUP()
 
 TEST_CASE("data conversion from float to half precision")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_MPS));
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	int i;

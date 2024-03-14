@@ -122,6 +122,18 @@ void mfa::cache<mfa::gemv::hash, mfa::gemv::pipeline>::prepare(mfa::context* con
   _mfa_cache_prepare(&map, context, hash);
 }
 
+template <>
+void mfa::cache<mfa::cast::hash, mfa::cast::pipeline>::prepare(mfa::context* context, mfa::cast::hash hash)
+{
+  _mfa_cache_prepare(&map, context, hash);
+}
+
+template <>
+void mfa::cache<mfa::add::hash, mfa::add::pipeline>::prepare(mfa::context* context, mfa::add::hash hash)
+{
+  _mfa_cache_prepare(&map, context, hash);
+}
+
 mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
