@@ -9,11 +9,6 @@
 #include <time.h>
 #include <sys/time.h>
 
-#ifdef __MACH__
-#include <mach/mach.h>
-#include <mach/mach_time.h>
-#endif
-
 typedef struct {
 	const uint32_t cmd;
 	const char* name;
@@ -304,13 +299,9 @@ int ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, co
 // This returns absolute time.
 uint64_t ccv_nnc_cmd_mono_time(void)
 {
-#ifdef __MACH__
-	return mach_absolute_time();
-#else
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-#endif
 }
 
 uint32_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memory, const int tensor_formats, const int tensor_datatypes)
