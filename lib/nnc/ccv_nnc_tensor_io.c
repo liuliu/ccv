@@ -37,7 +37,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_insert_qs, sizeof(tensor_insert_qs), &tensor_insert_stmt, 0));
 	sqlite3_bind_text(tensor_insert_stmt, 1, name, -1, 0);
 	ccv_nnc_tensor_param_t params = tensor->info;
-	const size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+	const size_t data_size = ccv_nnc_tensor_data_size_without_padding(tensor->info);
 	unsigned char* workspace = 0;
 	unsigned int identifier = 0;
 #ifdef HAVE_CUDA
@@ -203,6 +203,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			const size_t data_size = ccv_nnc_tensor_data_size(tensor_params);
 			unsigned char* workspace;
 			unsigned char* copying;
+			size_t decoded_size = data_size;
 			if (!options || !options->decode)
 			{
 				copying = workspace = ccmalloc(data_size);
@@ -216,36 +217,42 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				copying = workspace = ccmalloc(data_size + source_data_size);
 				if (datatype == CCV_16F && tensor_params.datatype == CCV_32F)
 				{
-					size_t decoded_size = source_data_size;
+					decoded_size = source_data_size;
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace + data_size, &decoded_size))
 					{
-						// If we loaded quantized tensor, don't do the conversion..
+						// If we loaded quantized tensor, don't do the conversion.
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
 							copying = workspace + data_size;
-						else
+						else {
 							ccv_half_precision_to_float((uint16_t*)(workspace + data_size), (float*)workspace, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(uint16_t)));
+							decoded_size = data_size;
+						}
 					} else {
 						if (!tensor)
 							*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
 						ccv_half_precision_to_float((uint16_t*)data, (float*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+						decoded_size = data_size;
 					}
 				} else if (datatype == CCV_32F && tensor_params.datatype == CCV_16F) {
-					size_t decoded_size = source_data_size;
+					decoded_size = source_data_size;
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace + data_size, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
 							copying = workspace + data_size;
-						else
+						else {
 							ccv_float_to_half_precision((float*)(workspace + data_size), (uint16_t*)workspace, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(float)));
+							decoded_size = data_size;
+						}
 					} else {
 						if (!tensor)
 							*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
 						ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+						decoded_size = data_size;
 					}
 				} else
 					{ assert(0); }
 			}
-			cumemcpy(tensor_out[0]->data.u8, tensor_out[0]->info.type, copying, CCV_TENSOR_CPU_MEMORY, data_size);
+			cumemcpy(tensor_out[0]->data.u8, tensor_out[0]->info.type, copying, CCV_TENSOR_CPU_MEMORY, decoded_size);
 			ccfree(workspace);
 		} else {
 			if (!options || !options->decode)
@@ -300,6 +307,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			const size_t data_size = ccv_nnc_tensor_data_size(tensor_params);
 			unsigned char* workspace;
 			unsigned char* copying;
+			size_t decoded_size = data_size;
 			if (!options || !options->decode)
 			{
 				copying = workspace = ccmalloc(data_size);
@@ -313,36 +321,42 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				copying = workspace = ccmalloc(data_size + source_data_size);
 				if (datatype == CCV_16F && tensor_params.datatype == CCV_32F)
 				{
-					size_t decoded_size = source_data_size;
+					decoded_size = source_data_size;
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace + data_size, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
 							copying = workspace + data_size;
-						else
+						else {
 							ccv_half_precision_to_float((uint16_t*)(workspace + data_size), (float*)workspace, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(uint16_t)));
+							decoded_size = data_size;
+						}
 					} else {
 						if (!tensor)
 							*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
 						ccv_half_precision_to_float((uint16_t*)data, (float*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(uint16_t)));
+						decoded_size = data_size;
 					}
 				} else if (datatype == CCV_32F && tensor_params.datatype == CCV_16F) {
-					size_t decoded_size = source_data_size;
+					decoded_size = source_data_size;
 					if (options->decode(data, sqlite3_column_bytes(tensor_select_stmt, 0), datatype, dim, nd, identifier, options->context, tensor_params, tensor_out, workspace + data_size, &decoded_size))
 					{
 						if (CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX)
 							copying = workspace + data_size;
-						else
+						else {
 							ccv_float_to_half_precision((float*)(workspace + data_size), (uint16_t*)workspace, ccv_min(tensor_count, ccv_min(source_data_size, decoded_size) / sizeof(float)));
+							decoded_size = data_size;
+						}
 					} else {
 						if (!tensor)
 							*tensor_out = tensor = ccv_nnc_tensor_new(0, tensor_params, 0);
 						ccv_float_to_half_precision((float*)data, (uint16_t*)workspace, ccv_min(tensor_count, sqlite3_column_bytes(tensor_select_stmt, 0) / sizeof(float)));
+						decoded_size = data_size;
 					}
 				} else
 					{ assert(0); }
 			}
 			assert(tensor_out[0]->dataof == 0);
-			mpmemcpy(tensor_out[0]->data.u8, tensor_out[0]->dataof, tensor_out[0]->info.type, copying, 0, CCV_TENSOR_CPU_MEMORY, data_size);
+			mpmemcpy(tensor_out[0]->data.u8, tensor_out[0]->dataof, tensor_out[0]->info.type, copying, 0, CCV_TENSOR_CPU_MEMORY, decoded_size);
 			ccfree(workspace);
 		} else {
 			if (!options || !options->decode)
