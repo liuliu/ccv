@@ -59,6 +59,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	if (bias)
 	{
+		assert(CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX);
 		const int bias_nd = ccv_nnc_tensor_nd(bias->info.dim);
 		// Align bias to this.
 		assert(bias_nd <= 2 || bias_nd == b_nd);

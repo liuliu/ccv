@@ -26,6 +26,11 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		&saved_inv_stdt,
 		&bt
 	}, 4);
+	if (elementwise_affine)
+	{
+		assert(CCV_GET_DATA_TYPE(inputs[1]->info.datatype) != CCV_QX);
+		assert(CCV_GET_DATA_TYPE(inputs[2]->info.datatype) != CCV_QX);
+	}
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;

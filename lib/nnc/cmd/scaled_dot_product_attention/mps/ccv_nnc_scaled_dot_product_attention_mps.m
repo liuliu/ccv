@@ -21,7 +21,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const weights = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
 	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	if (bias) // bias always requires a weight matrix.
-		{ assert(weights); }
+	{
+		assert(CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX);
+		assert(weights);
+	}
 
 	ccv_nnc_tensor_view_t* const saved_softmax = NULL;
 	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];

@@ -30,6 +30,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int biasstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	if (bias)
 	{
+		assert(CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX);
 		assert(ccv_nnc_tensor_nd(bias->info.dim) == 1);
 		int i;
 		for (i = 0; i < CCV_NNC_MAX_DIM + 2; i++)

@@ -893,8 +893,9 @@ MPSGraphTensorNamedDataLayout ccv_nnc_mps_tensor_data_layout(const int format)
 MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC], MPSGraphTensor** input)
 {
 	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
-	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
-	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
+	const int datatype = CCV_GET_DATA_TYPE(tensor_view->info.datatype) == CCV_QX ? ((tensor_view->info.datatype & 0xff) << 12) : tensor_view->info.datatype;
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
 	int i;
 	NSInteger full_count, partial_count;
@@ -941,12 +942,12 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			remaining_start = ccv_min(sorted_dim[0] * sorted_stride[0] - partial_count, offc);
 			assert(remaining_start <= offc);
 			full_count = offc - remaining_start + sorted_dim[0] * sorted_stride[0];
-			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(datatype) name:nil];
 			*input = desc;
 			desc = [graph sliceTensor:desc dimension:0 start:offc - remaining_start length:sorted_dim[0] * sorted_stride[0] name:nil];
 			desc = [graph reshapeTensor:desc withShape:shape name:nil];
 		} else {
-			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(datatype) name:nil];
 			*input = desc;
 		}
 		[shape release];
@@ -1008,12 +1009,12 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 			for (i = 1; i < nd; i++)
 				partial_count *= dim[i];
 			full_count = offc + partial_count;
-			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			desc = [graph placeholderWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(datatype) name:nil];
 			*input = desc;
 			desc = [graph sliceTensor:desc dimension:0 start:offc length:partial_count name:nil];
 			desc = [graph reshapeTensor:desc withShape:shape name:nil];
 		} else {
-			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype) name:nil];
+			desc = [graph placeholderWithShape:shape dataType:ccv_nnc_mps_datatype(datatype) name:nil];
 			*input = desc;
 		}
 		[shape release];
@@ -1024,8 +1025,9 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	const off_t offset = mpgetoffset((ccv_nnc_tensor_t*)tensor_view);
-	assert(offset % (CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype)) == 0);
-	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(tensor_view->info.datatype);
+	const int datatype = CCV_GET_DATA_TYPE(tensor_view->info.datatype) == CCV_QX ? ((tensor_view->info.datatype & 0xff) << 12) : tensor_view->info.datatype;
+	assert(offset % (CCV_GET_DATA_TYPE_SIZE(datatype)) == 0);
+	const off_t offc = offset / CCV_GET_DATA_TYPE_SIZE(datatype);
 	const int nd = ccv_nnc_tensor_nd(dim);
 	int i;
 	NSInteger full_count, partial_count;
@@ -1070,9 +1072,9 @@ CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const 
 			remaining_start = ccv_min(sorted_dim[0] * sorted_stride[0] - partial_count, offc);
 			assert(remaining_start <= offc);
 			full_count = offc - remaining_start + sorted_dim[0] * sorted_stride[0];
-			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(datatype)];
 		} else {
-			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(datatype)];
 		}
 		[shape release];
 		return [shapedType autorelease];
@@ -1087,9 +1089,9 @@ CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const 
 			for (i = 1; i < nd; i++)
 				partial_count *= dim[i];
 			full_count = offc + partial_count;
-			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:@[@(full_count)] dataType:ccv_nnc_mps_datatype(datatype)];
 		} else {
-			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+			shapedType = [[MPSGraphShapedType alloc] initWithShape:shape dataType:ccv_nnc_mps_datatype(datatype)];
 		}
 		[shape release];
 		return [shapedType autorelease];

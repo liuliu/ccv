@@ -110,7 +110,7 @@ kernel void depalettize(
 }
     )";
   } else if (hash.qbits == 8) {
-    if (hash.length % hash.number_in_blocks == 0) {
+    if ((hash.length % hash.number_in_blocks) == 0) {
       shader = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -202,11 +202,11 @@ kernel void depalettize(
     const int num_blocks = (hash.length + hash.number_in_blocks - 1) / hash.number_in_blocks;
     CCV_NNC_MFA_PRECONDITION((hash.number_in_blocks % (256 * 4)) == 0);
     const int repeat_4 = hash.number_in_blocks / (256 * 4);
-    if (hash.length % hash.number_in_blocks != 0) {
+    if ((hash.length % hash.number_in_blocks) != 0) {
       defines += "constant uint number_of_elements_per_segment = ";
       defines += std::to_string(repeat_4) + ";";
       defines += "\n";
-      this->grid_size = MTL::Size(repeat_4 * num_blocks, 1, 1);
+      this->grid_size = MTL::Size(hash.length / (256 * 4), 1, 1);
     } else {
       this->grid_size = MTL::Size(repeat_4, num_blocks, 1);
     }
