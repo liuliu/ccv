@@ -4177,6 +4177,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sum(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const int axis, const char* const name);
 /**
+ * Chunk the input tensor into n pieces.
+ * @param n How many pieces we chunk the tensor into.
+ * @param axis Along this axis, we chunk the tensor. Other dimensions need to be exactly the same.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate outputs that are chunks of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_chunk(const int n, const int axis, const char* const name);
+/**
  * A convolution model.
  * @param groups The number of kernel groups in the model.
  * @param filters The total number of filters in the model (filters = groups * per group filters).

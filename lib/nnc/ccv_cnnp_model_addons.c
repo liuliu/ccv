@@ -441,6 +441,94 @@ static ccv_cnnp_model_t* _ccv_cnnp_concat_copy(const ccv_cnnp_model_t* const sup
 
 typedef struct {
 	ccv_cnnp_model_t super;
+	int axis;
+	ccv_nnc_tensor_symbol_t outputs[1];
+} ccv_cnnp_model_chunk_t;
+
+static void _ccv_cnnp_chunk_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_concat_t* const self = (const ccv_cnnp_model_concat_t*)super;
+	assert(input_size == 1);
+	const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params = input_params;
+	int i;
+	const int nd = ccv_nnc_tensor_nd(output_params.dim);
+	const int axis = self->axis;
+	assert(axis < nd);
+	const int n = self->super.output_size;
+	assert(n == output_size);
+	assert(output_params.dim[axis] % n == 0);
+	output_params.dim[axis] = output_params.dim[axis] / n;
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+	ccv_nnc_tensor_get_stride(input_params.dim, stride);
+	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
+	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If we are not reshape an alias, it is straightforward.
+	{
+		for (i = 0; i < output_size; i++)
+		{
+			outputs[i] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, stride, output_params, 0);
+			ofs[axis] += output_params.dim[axis];
+		}
+	} else {
+		// Otherwise, we need to check if it is permute. For permute, we cannot do alias directly.
+		// We need to first materialize the permute and then run reshape on top of it, otherwise it will be wrong.
+		int old_stride[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], 0, old_stride);
+		// We identify permute by checking if the stride is not in descending order.
+		// This also covered "permute" through reshape, rather than using ccv_cnnp_permute directly.
+		int i, no_permute = 1;
+		for (i = 1; no_permute && i < nd; i++)
+			if (old_stride[i - 1] < old_stride[i])
+				no_permute = 0;
+		if (no_permute)
+		{ // Just straightforward reshape if there is no no permute.
+			for (i = 0; i < output_size; i++)
+			{
+				outputs[i] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, old_stride, output_params, 0);
+				ofs[axis] += output_params.dim[axis];
+			}
+		} else {
+			// Otherwise, we first do format transform to plain tensor and then do reshape.
+			ccv_nnc_tensor_symbol_t permuted = ccv_nnc_tensor_symbol_new(graph, input_params, 0);
+			ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(permuted), "reshape");
+			for (i = 0; i < output_size; i++)
+			{
+				outputs[i] = ccv_nnc_tensor_symbol_alias_new(graph, permuted, ofs, stride, output_params, 0);
+				ofs[axis] += output_params.dim[axis];
+			}
+		}
+	}
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_chunk_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_chunk_isa = {
+	.build = _ccv_cnnp_chunk_build,
+	.copy = _ccv_cnnp_chunk_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_chunk(const int n, const int axis, const char* const name)
+{
+	assert(n >= 1);
+	ccv_cnnp_model_chunk_t* const model_chunk = (ccv_cnnp_model_chunk_t*)cccalloc(1, sizeof(ccv_cnnp_model_chunk_t) + sizeof(ccv_nnc_tensor_symbol_t) * (n - 1));
+	model_chunk->super.isa = &ccv_cnnp_chunk_isa;
+	model_chunk->super.input_size = 1;
+	model_chunk->super.outputs = model_chunk->outputs;
+	model_chunk->super.output_size = n;
+	model_chunk->axis = axis;
+	ccv_cnnp_model_copy_name(&model_chunk->super, name);
+	return (ccv_cnnp_model_t*)model_chunk;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_chunk_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_chunk_t* const self = (const ccv_cnnp_model_chunk_t*)super;
+	return ccv_cnnp_chunk(self->super.output_size, self->axis, self->super.name);
+}
+
+typedef struct {
+	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
 	int format;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];

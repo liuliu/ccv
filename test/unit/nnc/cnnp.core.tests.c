@@ -1947,4 +1947,42 @@ TEST_CASE("use contiguous to make certain tensor contiguous during model inferen
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("chunk a tensor into several smaller ones")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_t* const chunk = ccv_cnnp_chunk(2, 1, "chunk");
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(chunk, MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t y0 = ccv_cnnp_model_apply(ccv_cnnp_extract(0, "index0"), MODEL_IO_LIST(y));
+	ccv_cnnp_model_io_t o0 = ccv_cnnp_model_apply(ccv_cnnp_contiguous(0), MODEL_IO_LIST(y0));
+	ccv_cnnp_model_io_t y1 = ccv_cnnp_model_apply(ccv_cnnp_extract(1, "index1"), MODEL_IO_LIST(y));
+	ccv_cnnp_model_io_t o1 = ccv_cnnp_model_apply(ccv_cnnp_contiguous(0), MODEL_IO_LIST(y1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(o0, o1), 0, "tiny");
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(x_tensor->info), CMD_NOOP(), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	x_tensor->data.f32[0] = 1;
+	x_tensor->data.f32[1] = -1;
+	x_tensor->data.f32[2] = 2;
+	x_tensor->data.f32[3] = 3;
+	x_tensor->data.f32[4] = 4;
+	x_tensor->data.f32[5] = 5;
+	x_tensor->data.f32[6] = 6;
+	x_tensor->data.f32[7] = 7;
+	ccv_nnc_tensor_t* const y0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
+	ccv_nnc_tensor_t* const y1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2), 0);
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x_tensor), TENSOR_LIST(y0_tensor, y1_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(y0_tensor->data.f32[0], 1, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y0_tensor->data.f32[1], -1, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y0_tensor->data.f32[2], 4, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y0_tensor->data.f32[3], 5, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y1_tensor->data.f32[0], 2, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y1_tensor->data.f32[1], 3, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y1_tensor->data.f32[2], 6, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y1_tensor->data.f32[3], 7, 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(y0_tensor);
+	ccv_nnc_tensor_free(y1_tensor);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"
