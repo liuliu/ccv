@@ -235,6 +235,20 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	};
 	model->data = &build_data;
 	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
+	for (i = 0; i < model->output_size; i++)
+	{
+		const ccv_nnc_tensor_symbol_t output = model->outputs[i];
+		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(model->graph, output);
+		if (alias_to.d == CCV_NNC_NO_TENSOR_SYMBOL)
+			continue;
+		// If output is an alias, insert data transform regardless for result correctness (we cannot bind an alias). You can check ccv_nnc_tensor_bind_symbol method
+		// to see that we can correctly bind a tensor which from it, has aliases, but we cannot bind an alias tensor correctly (this is expected, sort of, to be
+		// honest, because we cannot handle cases of alias is part of the original tensor but bind differently).
+		const ccv_nnc_tensor_param_t output_params = ccv_nnc_tensor_symbol_params(model->graph, output);
+		model->outputs[i] = ccv_nnc_tensor_symbol_new(model->graph, output_params, 0);
+		ccv_nnc_graph_exec_symbol_t make_contiguous = ccv_nnc_graph_exec_symbol_new(model->graph, CMD_FORMAT_TRANSFORM_FORWARD(), &output, 1, model->outputs + i, 1, "contiguous");
+		ccv_nnc_graph_exec_symbol_set_flags(model->graph, make_contiguous, CCV_NNC_GRAPH_EXEC_DISABLE_OPT);
+	}
 	model->data = 0;
 	kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
 	if (model_sequence.sequences)
