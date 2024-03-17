@@ -228,7 +228,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	int p = 0, q = 1;
 	const int epoch_end = (training_set->rnum + batch_size * device_count - 1) / (batch_size * device_count);
 	ccv_cnnp_model_set_data_parallel(cifar_10, device_count);
-	// ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0);
+	// ccv_cnnp_model_read_from_file("cifar-10.checkpoint", 0, cifar_10);
 	unsigned int current_time = get_current_time();
 	ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[p]);
 	ccv_nnc_tensor_t** input_fits[device_count * 2];
@@ -298,7 +298,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			ccv_nnc_stream_context_wait(stream_contexts[p]);
 			ccv_nnc_stream_context_wait(stream_contexts[q]);
 			unsigned int elapsed_time = get_current_time() - current_time;
-			ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0, 0);
+			ccv_cnnp_model_write_to_file(cifar_10, "cifar-10.checkpoint", 0);
 			int correct = 0;
 			p = 0, q = 1;
 			for (j = 0; j < test_set->rnum; j += batch_size * device_count)

@@ -146,21 +146,25 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
 	return CCV_IO_FINAL;
 }
 
-void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags, const ccv_nnc_tensor_io_option_t* const options)
+void ccv_cnnp_model_write_to_file(ccv_cnnp_model_t* const model, const char* const fn, const ccv_nnc_tensor_io_option_t* const options)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data); // The model has to be compiled.
 	sqlite3* conn = 0;
 	if (SQLITE_OK != sqlite3_open(fn, &conn))
 		return;
-	const int tensors_init = !!compiled_data->tensors_init.v;
-	if (!tensors_init || flags == CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY)
-	{
-		ccv_cnnp_model_read(conn, 0, options, model);
-		sqlite3_close(conn);
-		return;
-	}
 	ccv_cnnp_model_write(model, conn, 0, options);
+	sqlite3_close(conn);
+}
+
+void ccv_cnnp_model_read_from_file(const char* const fn, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data); // The model has to be compiled.
+	sqlite3* conn = 0;
+	if (SQLITE_OK != sqlite3_open(fn, &conn))
+		return;
+	ccv_cnnp_model_read(conn, 0, options, model);
 	sqlite3_close(conn);
 }
 

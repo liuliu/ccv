@@ -73,13 +73,13 @@ TEST_CASE("compile simple cifar-10 model")
 			max = output_tensor->data.f32[i], t = i;
 	REQUIRE_EQ(target, t, "should fit");
 	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
-	ccv_cnnp_model_checkpoint(sequential, "/tmp/compile_simple_cifar_10_model.checkpoint", 0, 0);
+	ccv_cnnp_model_write_to_file(sequential, "/tmp/compile_simple_cifar_10_model.checkpoint", 0);
 	CNNP_MODEL_GEN(sequential, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(sequential);
 	ccv_cnnp_model_t* const sequential2 = simple_cifar_10();
 	ccv_cnnp_model_compile(sequential2, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	// Load from the checkpoint file.
-	ccv_cnnp_model_checkpoint(sequential2, "/tmp/compile_simple_cifar_10_model.checkpoint", 0, 0);
+	ccv_cnnp_model_read_from_file("/tmp/compile_simple_cifar_10_model.checkpoint", 0, sequential2);
 	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	ccv_cnnp_model_evaluate(sequential2, (ccv_cnnp_evaluate_param_t){

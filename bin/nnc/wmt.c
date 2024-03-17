@@ -302,7 +302,7 @@ static void eval_wmt(const int max_length, const int embedding_size, const char*
 	inputs[2] = GPU_TENSOR_NCHW(000, 32S, 1, max_length, max_length);
 	inputs[3] = GPU_TENSOR_NCHW(000, 32S, 1, max_length, max_length);
 	ccv_cnnp_model_compile(wmt, inputs, 4, adam, CMD_NOOP());
-	ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY, 0);
+	ccv_cnnp_model_read_from_file("wmt.checkpoint", 0, wmt);
 	ccv_nnc_tensor_t* const seq_vec_ = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, max_length, embedding_size), 0);
 	int i;
 	for (i = 0; i < max_length; i++)
@@ -761,7 +761,7 @@ static void train_wmt(const int epoch_limit, const int src_vocab_size, const int
 			const double accuracy = (double)correct / overall;
 			overall_accuracy = overall_accuracy * 0.9 + accuracy * 0.1;
 			printf("epoch %d (%d/%d), batch accuracy %lf, overall accuracy %lf, tokens per sec %.2lf\n", epoch, (i + 1) - epoch * epoch_end, epoch_end, accuracy, overall_accuracy, token_per_sec);
-			ccv_cnnp_model_checkpoint(wmt, "wmt.checkpoint", 0, 0);
+			ccv_cnnp_model_write_to_file(wmt, "wmt.checkpoint", 0);
 			sqlite3* conn = 0;
 			if (SQLITE_OK == sqlite3_open("wmt.checkpoint", &conn))
 			{

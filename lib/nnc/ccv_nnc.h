@@ -3808,16 +3808,6 @@ enum {
 	CCV_CNNP_MODEL_CHECKPOINT_WRITE_ONLY,
 };
 /**
- * This method checkpoint the given model. If the model is initialized, it will persist all parameters
- * to the given file path. If it is not initialized, this method will try to load tensors off the
- * disk. Under the hood, it calls ccv_cnnp_model_write / ccv_cnnp_model_read when appropriate.
- * @param model The composed model.
- * @param fn The file name.
- * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
- * @param options The IO options that can do data encode / decode before persistence.
- */
-void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags, const ccv_nnc_tensor_io_option_t* const options);
-/**
  * Write model's tensors to a SQLite database with a given name. Note that we specifically say
  * "model's tensors" because it doesn't persist the model's structure. Hence, you shouldn't
  * expect us to take a name to then have a fully functional model restored from there. You still
@@ -3830,6 +3820,14 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
  * @return CCV_IO_FINAL for success, otherwise error.
  */
 int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options);
+/**
+ * Write model's tensors to a SQLite database implicitly with "" name. This is a convenience method
+ * to ccv_cnnp_model_write particularly useful at training time.
+ * @param model The composed model.
+ * @param fn The file name.
+ * @param options The IO options that can do data encode / decode before persistence.
+ */
+void ccv_cnnp_model_write_to_file(ccv_cnnp_model_t* const model, const char* const fn, const ccv_nnc_tensor_io_option_t* const options);
 /**
  * The prototype for the writer function when exporting parameters out.
  * @param tensor The tensor to be written to disk.
@@ -3865,6 +3863,15 @@ void ccv_cnnp_model_set_io(ccv_cnnp_model_t* const model, ccv_cnnp_model_io_read
  * @return CCV_IO_FINAL for success, otherwise error.
  */
 int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model_out);
+/**
+ * Read model's tensors to a SQLite database implicitly with "" name. This is a convenience method
+ * to ccv_cnnp_model_read particularly useful at training time.
+ * @param fn The file name.
+ * @param options The IO options that can do data encode / decode before persistence.
+ * @param model_out The model which you want to restore the tensors. It should have the same
+ *                  structure as the one in write to.
+ */
+void ccv_cnnp_model_read_from_file(const char* const fn, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model);
 /**
  * Apply data parallel to the composed model. This method has to be called before we call either
  * evaluate or fit and after the model is compiled.
