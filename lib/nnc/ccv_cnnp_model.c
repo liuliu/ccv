@@ -1740,9 +1740,6 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		ccv_nnc_symbolic_graph_memory_compression(model->graph, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	compiled_data->backward.to_size = _ccv_nnc_array_dedup_graph_exec_symbols(compiled_data->backward.tos, compiled_data->backward.to_size);
 	compiled_data->gradient_mode = gradient_mode;
-	FILE* w = fopen("/home/liu/workspace/swift-diffusion/graph.dot", "w+");
-	ccv_nnc_symbolic_graph_dot(model->graph, CCV_NNC_LONG_DOT_GRAPH, w);
-	fclose(w);
 }
 
 void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data)
