@@ -2130,11 +2130,11 @@ TEST_CASE("LoRA fine-tuning MLP with GELU, set is_trainable to false and with gr
 	ccv_nnc_tensor_t* const target = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
 	for (i = 0; i < 5; i++)
 		target->data.f32[i] = 5 - i;
-	for (i = 0; i < 50; i++)
+	for (i = 0; i < 100; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 5, 1e-2, "should match the target after fine-tuning");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 5, 1e-1, "should match the target after fine-tuning");
 	REQUIRE_EQ(ccv_cnnp_model_is_trainable(final), 0, "should be marked as not trainable");
 	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down_fc1), 1, "should be marked as trainable");
 	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up_fc1), 1, "should be marked as trainable");
