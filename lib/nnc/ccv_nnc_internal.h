@@ -228,7 +228,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 		int _incoming_edges_ = 0; \
 		for (_i_ = 0; _i_ < (node_size); _i_++) /* assuming it is all reached */ \
 			_incoming_edges_ += ((nodes)[_i_].outgoings) ? (nodes)[_i_].outgoings->rnum : 0; \
-		const int _heap_mem_ = (node_size + _incoming_edges_ > 1024); \
+		const int _heap_mem_ = ((node_size) + _incoming_edges_ > 1024); \
 		ccv_nnc_incoming_t* _incomings_; \
 		if (_heap_mem_) \
 			_incomings_ = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * ((node_size) * 2 + _incoming_edges_)); \
@@ -270,7 +270,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 						if (_incomings_[d].r != 0) \
 							continue; \
 						_incomings_[d].r = 1; \
-						assert(_exist_size_[_q_] < node_size); \
+						assert(_exist_size_[_q_] < (node_size)); \
 						_exists_[_q_][_exist_size_[_q_]] = d; \
 						++_exist_size_[_q_]; \
 					} \
@@ -314,7 +314,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 						if (_incomings_[d].r != 2) \
 							continue; \
 						_incomings_[d].r = 3; \
-						assert(_exist_size_[_q_] < node_size); \
+						assert(_exist_size_[_q_] < (node_size)); \
 						_exists_[_q_][_exist_size_[_q_]] = d; \
 						++_exist_size_[_q_]; \
 					} \
@@ -349,7 +349,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 						if (_incomings_[d].r != 4) \
 							continue; \
 						_incomings_[d].r = 5; \
-						assert(_exist_size_[_q_] < node_size); \
+						assert(_exist_size_[_q_] < (node_size)); \
 						_exists_[_q_][_exist_size_[_q_]] = d; \
 						++_exist_size_[_q_]; \
 					} \
@@ -407,7 +407,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 							/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
 							if (_incomings_[d].c == 0 && _incomings_[d].r == 6 && _d_ < (destination_size)) \
 							{ \
-								assert(_exist_size_[_q_] < node_size); \
+								assert(_exist_size_[_q_] < (node_size)); \
 								_exists_[_q_][_exist_size_[_q_]] = d; \
 								++_exist_size_[_q_]; \
 							} \

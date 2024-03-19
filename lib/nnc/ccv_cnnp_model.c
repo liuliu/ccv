@@ -1080,7 +1080,7 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 			{
 				if (!reversed_nodes[tos[j]].outgoings)
 					reversed_nodes[tos[j]].outgoings = ccv_array_new(sizeof(int), 1, 0);
-				ccv_array_push(reversed_nodes[tos[j]].outgoings, &i);
+				ccv_array_add_unique_int(reversed_nodes[tos[j]].outgoings, i);
 			}
 	}
 	uint32_t* const maskbit = cccalloc((exec_rnum + 31) >> 5, sizeof(uint32_t));
@@ -1090,9 +1090,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 	ccv_array_t* const parameter_trainables = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
-	ccv_cnnp_model_sequence_t model_sequence = {
-		.bank = kh_init(ccv_cnnp_model_name_bank)
-	};
 	ccv_array_t* newly_input_execs = ccv_array_new(sizeof(int), 0, 0);
 	int max_output_size = 0;
 	for (i = 0; i < gradient_checkpoints->rnum; i++)
@@ -1102,7 +1099,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 	}
 	ccv_nnc_tensor_symbol_t* max_outputs = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * max_output_size);
 	ccv_array_t* newly_used_outputs = ccv_array_new(sizeof(int), 0, 0);
-	ccv_array_t* const ws = ccv_array_new(sizeof(int), 0, 0);
 	for (i = 0; i < gradient_checkpoints->rnum; i++)
 	{
 		ccv_cnnp_model_gradient_checkpoint_t* const checkpoint = (ccv_cnnp_model_gradient_checkpoint_t*)ccv_array_get(gradient_checkpoints, i);
@@ -1159,15 +1155,14 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 					if (gradient_symbol.d < 0)
 						continue;
 					const ccv_nnc_graph_exec_symbol_t backward = ccv_nnc_graph_exec_symbol_for_backward(graph, gradient_symbol);
-					if (backward.d >= 0)
-					{
-						int flag = 0;
-						for (l = 0; !flag && l < output_gradient_execs->rnum; l++)
-							if (((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, l))->d == backward.d)
-								flag = 1;
-						if (!flag)
-							ccv_array_push(output_gradient_execs, &backward);
-					}
+					if (backward.d < 0)
+						continue;
+					int flag = 0;
+					for (l = 0; !flag && l < output_gradient_execs->rnum; l++)
+						if (((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, l))->d == backward.d)
+							flag = 1;
+					if (!flag)
+						ccv_array_push(output_gradient_execs, &backward);
 				}
 			if (exec_info[d].outgoings && exec_info[d].outgoings->rnum > 0)
 				for (k = 0; k < exec_info[d].outgoings->rnum; k++)
@@ -1214,21 +1209,21 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 					}
 				}
 		}
-		ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_gradient_execs, 0), input_gradient_execs->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, 0), output_gradient_execs->rnum, 0);
+		// Note that we have to use up-to-date ones because the exec_info might have outgoings that is up-to-date.
+		ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, exec_info, graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_gradient_execs, 0), input_gradient_execs->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, 0), output_gradient_execs->rnum, 1);
 		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-			maskbit[idx >> 5] |= (1u << (idx & 0x1f));
+			if (idx < exec_rnum)
+				maskbit[idx >> 5] |= (1u << (idx & 0x1f));
 		} ccv_nnc_graph_visit_endfor
-		// Add more backward pass to the list.
+		ccv_array_clear(visited_backward_execs);
+		// Add more backward pass to the list. Note that we don't add everything, particularly there are new nodes created through gradient checkpointing are ignored.
 #define visitor(node, idx, _) \
-		if (maskbit[idx >> 5] & (1u << (idx & 0x1f))) \
+		if (idx < exec_rnum && maskbit[idx >> 5] & (1u << (idx & 0x1f))) \
 			ccv_array_add_unique_int(visited_backward_execs, idx);
 		CCV_NNC_GRAPH_VISIT(graph, reversed_nodes, exec_rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, 0), output_gradient_execs->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_gradient_execs, 0), input_gradient_execs->rnum, 0, visitor);
+		for (j = 0; j < input_gradient_execs->rnum; j++)
+			ccv_array_add_unique_int(visited_backward_execs, ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_gradient_execs, j))->d);
 #undef visitor
-		// Now go from outputs to inputs, unmark visited ones.
-		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
-			maskbit[idx >> 5] &= ~(1u << (idx & 0x1f));
-		} ccv_nnc_graph_visit_endfor
-		ccv_nnc_graph_visit_free(visit);
 		ccv_cnnp_gradient_checkpoint_build_t build = {
 			.tensor_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0),
 			.graph_exec_symbols = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0),
@@ -1241,9 +1236,9 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		ccv_array_clear(parameter_trainables);
 		ccv_array_clear(internals);
 		ccv_array_clear(internal_ids);
-		kh_clear(ccv_cnnp_model_name_bank, model_sequence.bank);
-		if (model_sequence.sequences)
-			ccv_array_clear(model_sequence.sequences);
+		ccv_cnnp_model_sequence_t model_sequence = {
+			.bank = kh_init(ccv_cnnp_model_name_bank)
+		};
 		ccv_cnnp_model_add_to_array_context_t add_to_parameter_context = {
 			.sequence = &model_sequence,
 			.prefix = 't',
@@ -1273,10 +1268,17 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		checkpoint->model->data = &build_data;
 		checkpoint->build(checkpoint->model, graph, checkpoint->inputs, checkpoint->input_size, max_outputs, checkpoint->output_size);
 		checkpoint->model->data = 0;
+		kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
+		if (model_sequence.sequences)
+			ccv_array_free(model_sequence.sequences);
 		ccv_nnc_tensor_symbol_new_hook(graph, build.old_tensor_symbol_new_hook, build.old_tensor_symbol_new_hook_context, 0);
 		ccv_nnc_tensor_symbol_alias_new_hook(graph, build.old_tensor_symbol_alias_new_hook, build.old_tensor_symbol_alias_new_hook_context, 0);
 		ccv_nnc_graph_exec_symbol_new_hook(graph, build.old_graph_exec_symbol_new_hook, build.old_graph_exec_symbol_new_hook_context, 0);
 		ccv_nnc_graph_exec_symbol_autogen(graph, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(build.graph_exec_symbols, 0), build.graph_exec_symbols->rnum, 0);
+		for (j = 0; j < parameter_ids->rnum; j++)
+			ccfree(*(char**)ccv_array_get(parameter_ids, j));
+		for (j = 0; j < internal_ids->rnum; j++)
+			ccfree(*(char**)ccv_array_get(internal_ids, j));
 		// Note that there is no graph optimization applied here.
 		exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0);
 		ccv_array_clear(newly_input_execs);
@@ -1350,6 +1352,8 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		for (j = 0; j < visited_backward_execs->rnum; j++)
 		{
 			const int idx = *(int*)ccv_array_get(visited_backward_execs, j);
+			assert(idx >= 0);
+			assert(idx < exec_rnum);
 			if (!ccv_nnc_cmd_is_backward(exec_info[idx].cmd))
 				continue;
 			for (k = 0; k < exec_info[idx].input_size; k++)
@@ -1374,12 +1378,14 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 			for (k = 0; k < replaced_backward_execs->rnum; k++)
 			{
 				const int idx = *(int*)ccv_array_get(replaced_backward_execs, k);
+				assert(idx >= 0);
+				assert(idx < exec_rnum);
 				assert(ccv_nnc_cmd_is_backward(exec_info[idx].cmd));
 				int flag = 0;
 				for (x = 0; !flag && x < exec_info[idx].input_size; x++)
 					for (y = 0; !flag && y < exec_info[symbol->d].output_size; y++)
-					if (exec_info[idx].inputs[x] == exec_info[symbol->d].outputs[y])
-						flag = 1;
+						if (exec_info[idx].inputs[x] == exec_info[symbol->d].outputs[y])
+							flag = 1;
 				if (flag)
 					ccv_nnc_graph_exec_symbol_concat(graph, *symbol, (ccv_nnc_graph_exec_symbol_t){
 						.graph = graph,
@@ -1389,12 +1395,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		}
 		// Find parents to visited_backward_execs, and use that as the starting point of all newly added graph_exec_symbols. Use the visited backward execs as the source, use all its parents as destination, go through with graph visit.
 		ccv_sparse_matrix_t* const exec_dep = ccv_sparse_matrix_new(graph->exec_symbol_info->rnum, graph->exec_symbol_info->rnum, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
-		ccv_array_clear(ws);
-		for (j = 0; j < input_gradient_execs->rnum; j++)
-		{
-			const int d = ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_gradient_execs, j))->d;
-			ccv_array_push(ws, &d);
-		}
 		int* buf = (int*)ccmalloc(sizeof(int) * visited_backward_execs->rnum);
 		int buf_size;
 #define for_block(x, val) \
@@ -1403,38 +1403,39 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 				buf[buf_size++] = x; \
 		} while (0)
 		const uint8_t one = 1;
-		for (j = 0; j < ws->rnum; j++)
-		{
-			const int d = *(int*)ccv_array_get(ws, j);
-			int flag = 0;
-			for (k = 0; !flag && k < output_gradient_execs->rnum; k++)
-				flag = (d == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, k))->d);
-			if (flag)
-				continue;
-			buf_size = 0; /* save all its parent deps to this buffer */
-			ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, d);
-			if (vector)
-				CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-			ccv_nnc_graph_exec_symbol_info_t* const info = ccv_array_get(graph->exec_symbol_info, d);
-			if (info->outgoings && info->outgoings->rnum > 0)
+		// Now go from outputs to inputs, unmark visited ones.
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			if (idx < exec_rnum && maskbit[idx >> 5] & (1u << (idx & 0x1f)))
 			{
-				ccv_array_t* const outgoings = info->outgoings;
-				for (k = 0; k < outgoings->rnum; k++)
+				buf_size = 0; /* save all its parent deps to this buffer */
+				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
+				if (vector)
+					CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
+				assert(buf_size <= visited_backward_execs->rnum);
+				if (node->outgoings && node->outgoings->rnum > 0)
 				{
-					const int outgoing_d = *(int*)ccv_array_get(outgoings, k);
-					int l;
-					int flag = 0;
-					for (l = 0; !flag && l < output_gradient_execs->rnum; l++)
-						flag = (outgoing_d == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, l))->d);
-					// We cannot avoid the ones that visited, because these may not contain all the deps.
-					if (!flag)
-						ccv_array_push(ws, &outgoing_d);
-					ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, d, &one);
-					for (l = 0; l < buf_size; l++)
-						ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, buf[l], &one);
+					ccv_array_t* const outgoings = node->outgoings;
+					for (k = 0; k < outgoings->rnum; k++)
+					{
+						const int outgoing_d = *(int*)ccv_array_get(outgoings, k);
+						int l;
+						int flag = 0;
+						for (l = 0; !flag && l < output_gradient_execs->rnum; l++)
+							flag = (outgoing_d == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, l))->d);
+						// We cannot avoid the ones that visited, because these may not contain all the deps.
+						ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, idx, &one);
+						for (l = 0; l < buf_size; l++)
+							ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, buf[l], &one);
+					}
 				}
 			}
-		}
+		} ccv_nnc_graph_visit_endfor
+		// Now go from outputs to inputs, unmark visited ones.
+		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+			if (idx < exec_rnum)
+				maskbit[idx >> 5] &= ~(1u << (idx & 0x1f));
+		} ccv_nnc_graph_visit_endfor
+		ccv_nnc_graph_visit_free(visit);
 #undef for_block
 		ccfree(buf);
 		// Go through visited backward execs, remove the ones that has no dependency on any replaced backward execs.
@@ -1484,15 +1485,17 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 			// If this one has no parents that is within the visited_backward_execs, it is a good place for us to add all its parents as dependency for input_execs.
 			if (!flag)
 			{
+				assert(idx < exec_rnum);
 				ccv_array_t* const outgoings = reversed_nodes[idx].outgoings;
 				assert(outgoings);
 				for (k = 0; k < outgoings->rnum; k++)
 				{
+					const int d = *(int*)ccv_array_get(outgoings, k);
 					for (l = 0; l < newly_input_execs->rnum; l++)
 					{
 						ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
 							.graph = graph,
-							.d = *(int*)ccv_array_get(outgoings, k)
+							.d = d
 						}, (ccv_nnc_graph_exec_symbol_t){
 							.graph = graph,
 							.d = *(int*)ccv_array_get(newly_input_execs, l)
@@ -1532,7 +1535,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 					flag = ccv_array_contain_int(newly_used_outputs, outputs[k]) || ccv_array_contain_int(forward_pass_inputs, outputs[k]);
 				if (flag)
 					continue;
-
 				ccv_array_t* const d_outgoings = exec_info[symbol->d].outgoings;
 				// Otherwise, we can free this one. Before that, we check if it is one of the outgoings in the parents of any backward pass.
 				if (d_outgoings && d_outgoings->rnum > 0)
@@ -1540,6 +1542,7 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 					for (k = 0; k < replaced_backward_execs->rnum; k++)
 					{
 						const int idx = *(int*)ccv_array_get(replaced_backward_execs, k);
+						assert(idx < exec_rnum);
 						ccv_array_t* outgoings = reversed_nodes[idx].outgoings;
 						if (!outgoings || outgoings->rnum == 0)
 							continue;
@@ -1583,20 +1586,12 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		kh_destroy(ccv_cnnp_tensor_symbol_map, symbol_map);
 	}
 	ccfree(max_outputs);
-	ccv_array_free(ws);
 	ccv_array_free(newly_used_outputs);
 	ccv_array_free(newly_input_execs);
-	kh_destroy(ccv_cnnp_model_name_bank, model_sequence.bank);
-	if (model_sequence.sequences)
-		ccv_array_free(model_sequence.sequences);
 	ccv_array_free(parameters);
-	for (i = 0; i < parameter_ids->rnum; i++)
-		ccfree(*(char**)ccv_array_get(parameter_ids, i));
 	ccv_array_free(parameter_ids);
 	ccv_array_free(parameter_trainables);
 	ccv_array_free(internals);
-	for (i = 0; i < internal_ids->rnum; i++)
-		ccfree(*(char**)ccv_array_get(internal_ids, i));
 	ccv_array_free(internal_ids);
 	ccfree(maskbit);
 	ccv_array_free(input_gradient_execs);
@@ -1745,6 +1740,9 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		ccv_nnc_symbolic_graph_memory_compression(model->graph, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	compiled_data->backward.to_size = _ccv_nnc_array_dedup_graph_exec_symbols(compiled_data->backward.tos, compiled_data->backward.to_size);
 	compiled_data->gradient_mode = gradient_mode;
+	FILE* w = fopen("/home/liu/workspace/swift-diffusion/graph.dot", "w+");
+	ccv_nnc_symbolic_graph_dot(model->graph, CCV_NNC_LONG_DOT_GRAPH, w);
+	fclose(w);
 }
 
 void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data)

@@ -223,7 +223,11 @@ static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, ccv_cn
 static inline ccv_cnnp_model_t* _ccv_cnnp_model_copy(const ccv_cnnp_model_t* const model, void* const context)
 {
 	assert(model->isa->copy);
-	return model->isa->copy(model, context);
+	ccv_cnnp_model_t* const copy = model->isa->copy(model, context);
+	copy->memory_compression = model->memory_compression;
+	copy->max_stream_count = model->max_stream_count;
+	copy->gradient_checkpointing = model->gradient_checkpointing;
+	return copy;
 }
 
 static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const char* const name)

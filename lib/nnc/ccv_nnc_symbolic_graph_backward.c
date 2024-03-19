@@ -2010,7 +2010,11 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc
 		dd = symbol_info->alias_ref - 1;
 	assert(dd >= 0);
 	assert(dd < graph->backward.exec_symbol_size);
-	assert(graph->backward.exec_symbol_idx[dd] >= 0);
+	if (graph->backward.exec_symbol_idx[dd] < 0)
+		return (ccv_nnc_graph_exec_symbol_t){
+			.graph = 0,
+			.d = CCV_NNC_NO_GRAPH_EXEC_SYMBOL
+		};
 	ccv_nnc_graph_exec_symbol_t exec = {
 		.d = graph->backward.exec_symbol_idx[dd],
 		.graph = graph
