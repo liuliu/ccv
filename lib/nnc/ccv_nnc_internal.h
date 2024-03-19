@@ -174,6 +174,15 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 	ccv_array_push(ints, &idx);
 }
 
+static inline int ccv_array_contain_int(ccv_array_t* ints, const int idx)
+{
+	int i;
+	for (i = 0; i < ints->rnum; i++)
+		if (*(int*)ccv_array_get(ints, i) == idx)
+			return 1;
+	return 0;
+}
+
 static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t idx)
 {
 	int i;

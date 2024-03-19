@@ -317,7 +317,9 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD ||
 			node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
 			node->cmd.cmd == CCV_NNC_CUSTOM_FORWARD ||
-			node->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+			node->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD ||
+			// No need to process a opt disabled node.
+			(node->flags & CCV_NNC_GRAPH_EXEC_DISABLE_OPT))
 			continue;
 		uint64_t hashout, hashin[3];
 		siphash((uint8_t*)&hashin[0], (const uint8_t*)&node->cmd.info, sizeof(node->cmd.info), key_siphash);
@@ -367,6 +369,9 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
 		// If already marked as dead, skip.
 		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
+		// No need to visit a opt disabled node.
+		if (node->flags & CCV_NNC_GRAPH_EXEC_DISABLE_OPT)
 			continue;
 		for (i = 0; i < node->input_size; i++)
 			if (node->inputs[i] >= 0)

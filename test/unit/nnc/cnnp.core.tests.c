@@ -2023,4 +2023,51 @@ TEST_CASE("chunk a tensor into several smaller ones, variant 2")
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false and with gradient checkpointing")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, -1, "linear");
+	ccv_cnnp_model_t* const down = ccv_cnnp_dense(2, 1, 1, "down");
+	ccv_cnnp_model_t* const up = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_down = ccv_cnnp_model_apply(down, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_up = ccv_cnnp_model_apply(up, MODEL_IO_LIST(out_down));
+	ccv_cnnp_model_t* const add = ccv_cnnp_sum("sum");
+	ccv_cnnp_model_io_t out_final = ccv_cnnp_model_apply(add, MODEL_IO_LIST(out, out_up));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out_final), 0, "tiny");
+	ccv_cnnp_model_set_gradient_checkpointing(final, 1);
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* const tlinear = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 10), 0);
+	int i;
+	for (i = 0; i < 10 * 10; i++)
+		tlinear->data.f32[i] = (i / 10 == i % 10) ? 1 : 0;
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 2), 0);
+	for (i = 0; i < 10 * 2; i++)
+		t->data.f32[i] = 0;
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 10);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_SGD_FORWARD(1, 0.01, 1, 0.1, 0, 0), CMD_MSE_FORWARD(CCV_NNC_MSE_REDUCE_MEAN));
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(linear, ALL_PARAMETERS, 0), tlinear);
+	ccv_nnc_tensor_free(tlinear);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(up, ALL_PARAMETERS, 0), t);
+	ccv_nnc_tensor_free(t);
+	for (i = 0; i < 10; i++)
+		x->data.f32[i] = i;
+	ccv_nnc_tensor_t* const target = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	for (i = 0; i < 10; i++)
+		target->data.f32[i] = 10 - i;
+	for (i = 0; i < 10; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
+	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 10, 1e-2, "should match the target after fine-tuning");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(final), 0, "should be marked as not trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up), 1, "should be marked as trainable");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(target);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

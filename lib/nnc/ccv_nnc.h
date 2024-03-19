@@ -3894,6 +3894,14 @@ void ccv_cnnp_model_set_max_concurrency(ccv_cnnp_model_t* const model, const int
  */
 void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
 /**
+ * Set the computations in this model to be gradient checkpointing. This can be strategically applied
+ * to models within the higher-level composed models such that these models can effectively save 0
+ * gradients during backprop with the cost of running forward pass twice.
+ * @param model The model that will turn on gradient checkpointing.
+ * @param gradient_checkpointing Whether to enable gradient checkpointing (1 - enable, 0 - disable (default))
+ */
+void ccv_cnnp_model_set_gradient_checkpointing(ccv_cnnp_model_t* const model, const int gradient_checkpointing);
+/**
  * Set compile parameters on the model so it compiles the graph with the said parameters.
  * @param model The composed model.
  * @param compile_params A ccv_nnc_symbolic_graph_compile_param_t struct defines compilation parameters.
