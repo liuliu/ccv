@@ -2070,4 +2070,82 @@ TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false and with gradient che
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("LoRA fine-tuning MLP with GELU, set is_trainable to false and with gradient checkpointing")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const fc1 = ccv_cnnp_dense(10, 1, -1, "fc1");
+	ccv_cnnp_model_t* const fc2 = ccv_cnnp_dense(10, 1, -1, "fc2");
+	ccv_cnnp_model_t* const down_fc1 = ccv_cnnp_dense(2, 1, 1, "down_fc1");
+	ccv_cnnp_model_t* const up_fc1 = ccv_cnnp_dense(10, 1, 1, "up_fc1");
+	ccv_cnnp_model_t* const down_fc2 = ccv_cnnp_dense(2, 1, 1, "down_fc2");
+	ccv_cnnp_model_t* const up_fc2 = ccv_cnnp_dense(10, 1, 1, "up_fc2");
+	ccv_cnnp_model_t* const fc3 = ccv_cnnp_dense(5, 1, -1, "fc3");
+	ccv_cnnp_model_t* const down_fc3 = ccv_cnnp_dense(2, 1, 1, "down_fc3");
+	ccv_cnnp_model_t* const up_fc3 = ccv_cnnp_dense(5, 1, 1, "up_fc3");
+	ccv_cnnp_model_io_t out_fc1 = ccv_cnnp_model_apply(fc1, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_fc2 = ccv_cnnp_model_apply(fc2, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_down_fc1 = ccv_cnnp_model_apply(down_fc1, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_up_fc1 = ccv_cnnp_model_apply(up_fc1, MODEL_IO_LIST(out_down_fc1));
+	ccv_cnnp_model_io_t out_down_fc2 = ccv_cnnp_model_apply(down_fc2, MODEL_IO_LIST(input));
+	ccv_cnnp_model_io_t out_up_fc2 = ccv_cnnp_model_apply(up_fc2, MODEL_IO_LIST(out_down_fc2));
+	ccv_cnnp_model_io_t out_sum_fc1 = ccv_cnnp_model_apply(ccv_cnnp_sum("sum_fc1"), MODEL_IO_LIST(out_fc1, out_up_fc1));
+	ccv_cnnp_model_io_t out_sum_fc2 = ccv_cnnp_model_apply(ccv_cnnp_sum("sum_fc2"), MODEL_IO_LIST(out_fc2, out_up_fc2));
+	ccv_cnnp_model_io_t out_gelu_fc2 = ccv_cnnp_model_apply(ccv_cnnp_gelu(0, "gelu_fc2"), MODEL_IO_LIST(out_sum_fc2));
+	ccv_cnnp_model_io_t out_mul_fc12 = ccv_cnnp_model_apply(ccv_cnnp_mul(1, "mul_fc12"), MODEL_IO_LIST(out_sum_fc1, out_gelu_fc2));
+	ccv_cnnp_model_io_t out_fc3 = ccv_cnnp_model_apply(fc3, MODEL_IO_LIST(out_mul_fc12));
+	ccv_cnnp_model_io_t out_down_fc3 = ccv_cnnp_model_apply(down_fc3, MODEL_IO_LIST(out_mul_fc12));
+	ccv_cnnp_model_io_t out_up_fc3 = ccv_cnnp_model_apply(up_fc3, MODEL_IO_LIST(out_down_fc3));
+	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(ccv_cnnp_sum("sum_fc3"), MODEL_IO_LIST(out_fc3, out_up_fc3));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(out), 0, "tiny");
+	ccv_cnnp_model_set_gradient_checkpointing(final, 1);
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* const tlinear = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 10), 0);
+	int i;
+	for (i = 0; i < 10 * 10; i++)
+		tlinear->data.f32[i] = (i / 10 == i % 10) ? 1 : 0;
+	ccv_nnc_tensor_t* const t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 2), 0);
+	for (i = 0; i < 10 * 2; i++)
+		t->data.f32[i] = 0;
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 10);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(input_params), CMD_SGD_FORWARD(1, 0.001, 1, 0.1, 0, 0), CMD_MSE_FORWARD(CCV_NNC_MSE_REDUCE_MEAN));
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(fc1, ALL_PARAMETERS, 0), tlinear);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(fc2, ALL_PARAMETERS, 0), tlinear);
+	ccv_nnc_tensor_free(tlinear);
+	ccv_nnc_tensor_t* const tlinear_fc3 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 10), 0);
+	for (i = 0; i < 5 * 10; i++)
+		tlinear_fc3->data.f32[i] = (i / 10 == i % 10) ? 1 : 0;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(fc3, ALL_PARAMETERS, 0), tlinear_fc3);
+	ccv_nnc_tensor_free(tlinear_fc3);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(up_fc1, ALL_PARAMETERS, 0), t);
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(up_fc2, ALL_PARAMETERS, 0), t);
+	ccv_nnc_tensor_free(t);
+	ccv_nnc_tensor_t* const t_fc3 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 2), 0);
+	for (i = 0; i < 5 * 2; i++)
+		t_fc3->data.f32[i] = 0;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(up_fc3, ALL_PARAMETERS, 0), t_fc3);
+	ccv_nnc_tensor_free(t_fc3);
+	for (i = 0; i < 10; i++)
+		x->data.f32[i] = i;
+	ccv_nnc_tensor_t* const target = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	for (i = 0; i < 5; i++)
+		target->data.f32[i] = 5 - i;
+	for (i = 0; i < 50; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
+	ccv_cnnp_model_fit(final, TENSOR_LIST(x), TENSOR_LIST(target), TENSOR_LIST(y), 0, 0);
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y->data.f32, target->data.f32, 5, 1e-2, "should match the target after fine-tuning");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(final), 0, "should be marked as not trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down_fc1), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up_fc1), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down_fc2), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up_fc2), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(down_fc3), 1, "should be marked as trainable");
+	REQUIRE_EQ(ccv_cnnp_model_is_trainable(up_fc3), 1, "should be marked as trainable");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(target);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

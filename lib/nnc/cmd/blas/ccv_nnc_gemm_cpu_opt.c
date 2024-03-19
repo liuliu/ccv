@@ -82,8 +82,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
 			// Cannot handle this with DIRECT.
-			if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(g->info.dim) > 2 ||
-				ccv_nnc_tensor_nd(dw->info.dim) > 2 ||
+			if ((!a || ccv_nnc_tensor_nd(a->info.dim) > 2) || ccv_nnc_tensor_nd(g->info.dim) > 2 ||
+				(!dw || ccv_nnc_tensor_nd(dw->info.dim) > 2) ||
 				(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
 				cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
 				cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
