@@ -1090,7 +1090,8 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 	ccv_array_t* const parameter_trainables = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
-	ccv_array_t* newly_input_execs = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t* const newly_input_execs = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t* const buf = ccv_array_new(sizeof(int), 0, 0);
 	int max_output_size = 0;
 	for (i = 0; i < gradient_checkpoints->rnum; i++)
 	{
@@ -1395,37 +1396,33 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		}
 		// Find parents to visited_backward_execs, and use that as the starting point of all newly added graph_exec_symbols. Use the visited backward execs as the source, use all its parents as destination, go through with graph visit.
 		ccv_sparse_matrix_t* const exec_dep = ccv_sparse_matrix_new(graph->exec_symbol_info->rnum, graph->exec_symbol_info->rnum, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
-		int* buf = (int*)ccmalloc(sizeof(int) * visited_backward_execs->rnum);
-		int buf_size;
 #define for_block(x, val) \
 		do { \
 			if (((uint8_t*)val)[0] != 0) \
-				buf[buf_size++] = x; \
+				ccv_array_push(buf, &x); \
 		} while (0)
 		const uint8_t one = 1;
 		// Now go from outputs to inputs, unmark visited ones.
 		ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 			if (idx < exec_rnum && maskbit[idx >> 5] & (1u << (idx & 0x1f)))
 			{
-				buf_size = 0; /* save all its parent deps to this buffer */
+				ccv_array_clear(buf);
 				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
 				if (vector)
 					CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-				assert(buf_size <= visited_backward_execs->rnum);
 				if (node->outgoings && node->outgoings->rnum > 0)
 				{
 					ccv_array_t* const outgoings = node->outgoings;
 					for (k = 0; k < outgoings->rnum; k++)
 					{
 						const int outgoing_d = *(int*)ccv_array_get(outgoings, k);
+						if (outgoing_d >= exec_rnum)
+							continue;
 						int l;
-						int flag = 0;
-						for (l = 0; !flag && l < output_gradient_execs->rnum; l++)
-							flag = (outgoing_d == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(output_gradient_execs, l))->d);
 						// We cannot avoid the ones that visited, because these may not contain all the deps.
 						ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, idx, &one);
-						for (l = 0; l < buf_size; l++)
-							ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, buf[l], &one);
+						for (l = 0; l < buf->rnum; l++)
+							ccv_set_sparse_matrix_cell(exec_dep, outgoing_d, *(int*)ccv_array_get(buf, l), &one);
 					}
 				}
 			}
@@ -1437,7 +1434,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		} ccv_nnc_graph_visit_endfor
 		ccv_nnc_graph_visit_free(visit);
 #undef for_block
-		ccfree(buf);
 		// Go through visited backward execs, remove the ones that has no dependency on any replaced backward execs.
 		for (j = 0; j < visited_backward_execs->rnum;)
 		{
@@ -1586,6 +1582,7 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 		kh_destroy(ccv_cnnp_tensor_symbol_map, symbol_map);
 	}
 	ccfree(max_outputs);
+	ccv_array_free(buf);
 	ccv_array_free(newly_used_outputs);
 	ccv_array_free(newly_input_execs);
 	ccv_array_free(parameters);
