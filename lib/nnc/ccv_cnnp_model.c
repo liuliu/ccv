@@ -301,6 +301,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		ccv_array_get(parameters, 0), parameters_rnum + input_size,
 		model->outputs, output_size,
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	// Size it down.
 	parameters->rnum = parameters_rnum;
 	ccv_cnnp_compiled_data_t* compiled_data = model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (output_size * 2 - 1));
@@ -344,6 +345,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 		0, 0, // No need to provide binds at this point.
 		compiled_data->f, model->output_size,
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	// If inputs are from GPU, stream type is GPU.
 	compiled_data->parameters = parameters;
 	compiled_data->parameter_flags = parameter_flags;
@@ -1090,7 +1092,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 	ccv_array_t* const parameter_trainables = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const internals = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_array_t* const internal_ids = ccv_array_new(sizeof(char*), 0, 0);
-	ccv_array_t* const newly_input_execs = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const buf = ccv_array_new(sizeof(int), 0, 0);
 	int max_output_size = 0;
 	for (i = 0; i < gradient_checkpoints->rnum; i++)
@@ -1274,7 +1275,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 			ccv_array_free(model_sequence.sequences);
 		ccv_nnc_tensor_symbol_new_hook(graph, build.old_tensor_symbol_new_hook, build.old_tensor_symbol_new_hook_context, 0);
 		ccv_nnc_tensor_symbol_alias_new_hook(graph, build.old_tensor_symbol_alias_new_hook, build.old_tensor_symbol_alias_new_hook_context, 0);
-		ccv_nnc_graph_exec_symbol_new_hook(graph, build.old_graph_exec_symbol_new_hook, build.old_graph_exec_symbol_new_hook_context, 0);
 		ccv_nnc_graph_exec_symbol_autogen(graph, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(build.graph_exec_symbols, 0), build.graph_exec_symbols->rnum, 0);
 		for (j = 0; j < parameter_ids->rnum; j++)
 			ccfree(*(char**)ccv_array_get(parameter_ids, j));
@@ -1282,10 +1282,18 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 			ccfree(*(char**)ccv_array_get(internal_ids, j));
 		// Note that there is no graph optimization applied here.
 		exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0);
+		// Reuse existing one.
+		ccv_array_t* const newly_input_execs = input_execs;
+		ccv_array_t* const newly_output_execs = output_execs;
 		ccv_array_clear(newly_input_execs);
+		ccv_array_clear(newly_output_execs);
 		for (j = 0; j < build.graph_exec_symbols->rnum; j++)
 		{
 			const int idx = ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(build.graph_exec_symbols, j))->d;
+			const ccv_nnc_graph_exec_symbol_t symbol = {
+				.graph = graph,
+				.d = idx
+			};
 			const int* inputs = exec_info[idx].inputs;
 			int input_size = exec_info[idx].input_size;
 			// Only go through forward pass.
@@ -1298,8 +1306,30 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 					if (checkpoint->inputs[l].d >= 0 && inputs[k] == checkpoint->inputs[l].d)
 						flag = 1;
 			if (flag)
-				ccv_array_push(newly_input_execs, &idx);
+				ccv_array_push(newly_input_execs, &symbol);
+			flag = 0;
+			const int* outputs = exec_info[idx].outputs;
+			int output_size = exec_info[idx].output_size;
+			for (k = 0; inputs && k < output_size && !flag; k++)
+				if (outputs[k] >= 0)
+				for (l = 0; l < checkpoint->output_size && !flag; l++)
+					if (max_outputs[l].d >= 0 && outputs[k] == max_outputs[l].d)
+						flag = 1;
+			if (flag)
+				ccv_array_push(newly_output_execs, &symbol);
 		}
+		for (j = 0; j < checkpoint->input_size; j++)
+			if (checkpoint->inputs[j].d >= 0)
+				ccv_array_push(parameters, checkpoint->inputs + j);
+		ccv_nnc_symbolic_graph_simplify(graph,
+			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
+				CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
+				CCV_NNC_SIMPLIFY_OPS_FUSION),
+			ccv_array_get(parameters, 0), parameters->rnum,
+			max_outputs, checkpoint->output_size,
+			ccv_array_get(newly_input_execs, 0), newly_input_execs->rnum, ccv_array_get(newly_output_execs, 0), newly_output_execs->rnum);
+		ccv_nnc_graph_exec_symbol_new_hook(graph, build.old_graph_exec_symbol_new_hook, build.old_graph_exec_symbol_new_hook_context, 0);
+		ccv_nnc_graph_exec_symbol_autogen(graph, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(build.graph_exec_symbols, 0), build.graph_exec_symbols->rnum, 0);
 		// Build a map between old tensor symbols and new tensor symbols.
 		khash_t(ccv_cnnp_tensor_symbol_map)* symbol_map = kh_init(ccv_cnnp_tensor_symbol_map);
 		assert(build.tensor_symbols->rnum <= checkpoint->tensor_symbols->rnum);
@@ -1492,10 +1522,7 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 						ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
 							.graph = graph,
 							.d = d
-						}, (ccv_nnc_graph_exec_symbol_t){
-							.graph = graph,
-							.d = *(int*)ccv_array_get(newly_input_execs, l)
-						});
+						}, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(newly_input_execs, l));
 					}
 				}
 			}
@@ -1584,7 +1611,6 @@ static void _ccv_cnnp_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const
 	ccfree(max_outputs);
 	ccv_array_free(buf);
 	ccv_array_free(newly_used_outputs);
-	ccv_array_free(newly_input_execs);
 	ccv_array_free(parameters);
 	ccv_array_free(parameter_ids);
 	ccv_array_free(parameter_trainables);

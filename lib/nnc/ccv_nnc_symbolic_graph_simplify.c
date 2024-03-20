@@ -73,8 +73,6 @@ static void _ccv_nnc_symbolic_graph_simplify_apply(ccv_nnc_symbolic_graph_simpli
 				.d = i,
 				.graph = simplify->graph,
 			});
-	// autogen the sources / destinations.
-	ccv_nnc_graph_exec_symbol_autogen(simplify->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 }
 
 static void _ccv_nnc_symbolic_graph_simplify_free(ccv_nnc_symbolic_graph_simplify_t* const simplify)

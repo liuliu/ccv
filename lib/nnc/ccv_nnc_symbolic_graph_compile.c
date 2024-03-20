@@ -564,7 +564,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 			const int type = tensor_blocks[p].type;
 #define for_block(y, val) do { \
 				if (((int*)val)[0] > 0 && !assigned[y] && tensor_blocks[y].type == type && tensor_blocks[y].size <= a.size) \
+				{ \
 					tensor_block_cannot_insert[y >> 5] &= ~(1u << (y & 0x1f)); \
+					if (tensor_blocks[y].companion_ref) \
+					{ \
+						const int companion_ref = tensor_blocks[y].companion_ref - 1; \
+						tensor_block_cannot_insert[companion_ref >> 5] |= (1u << (companion_ref & 0x1f)); \
+					} \
+				} \
 			} while(0)
 			ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(tensor_dt, p);
 			if (y_vector)
@@ -572,7 +579,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 #undef for_block
 #define for_block(x, val) do { \
 				if (((int*)val)[0] > 0 && !assigned[x] && tensor_blocks[x].type == type && tensor_blocks[x].size <= a.size) \
+				{ \
 					tensor_block_cannot_insert[x >> 5] &= ~(1u << (x & 0x1f)); \
+					if (tensor_blocks[x].companion_ref) \
+					{ \
+						const int companion_ref = tensor_blocks[x].companion_ref - 1; \
+						tensor_block_cannot_insert[companion_ref >> 5] |= (1u << (companion_ref & 0x1f)); \
+					} \
+				} \
 			} while(0)
 			ccv_sparse_matrix_vector_t* const x_vector = ccv_get_sparse_matrix_vector(tensor_df, q);
 			if (x_vector)

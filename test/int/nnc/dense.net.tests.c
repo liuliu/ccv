@@ -98,6 +98,7 @@ TEST_CASE("dense net with GEMM as the core and autograd")
 		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION, CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(dw1), GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(de1));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;

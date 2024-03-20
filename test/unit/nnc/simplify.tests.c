@@ -29,6 +29,7 @@ TEST_CASE("simplify graph (x + y) * (x + y)")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(z), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -70,6 +71,7 @@ TEST_CASE("simplify graph with data transfer")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(z), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -112,6 +114,7 @@ TEST_CASE("simplify graph with softmax + crossentropy")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(da0), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
@@ -193,6 +196,7 @@ TEST_CASE("simplify graph with case..of")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(q), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -252,6 +256,7 @@ TEST_CASE("simplify graph with while, variant 1")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(z2), SYMBOLIC_GRAPH_SOURCES(while_graph), SYMBOLIC_GRAPH_DESTINATIONS(while_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -302,6 +307,7 @@ TEST_CASE("simplify graph with while, variant 2")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(z2), SYMBOLIC_GRAPH_SOURCES(while_graph), SYMBOLIC_GRAPH_DESTINATIONS(while_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -352,6 +358,7 @@ TEST_CASE("simplify graph with while, variant 3")
 			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 		0, 0,
 		TENSOR_SYMBOL_LIST(z2), SYMBOLIC_GRAPH_SOURCES(while_graph), SYMBOLIC_GRAPH_DESTINATIONS(while_graph));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
