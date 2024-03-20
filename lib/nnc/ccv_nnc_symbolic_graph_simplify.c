@@ -60,7 +60,7 @@ static void _ccv_nnc_symbolic_graph_simplify_apply(ccv_nnc_symbolic_graph_simpli
 				.d = i,
 				.graph = simplify->graph,
 			});
-		else // If it is not marked as dead, go through to unmark tensor 
+		else // If it is not marked as dead, go through to unmark tensor
 			for (j = 0; j < simplify->exec_symbol_info[i].output_size; j++)
 			{
 				const int d = simplify->exec_symbol_info[i].outputs[j];
