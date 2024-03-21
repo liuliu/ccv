@@ -2069,7 +2069,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-		if (!node->outgoings || term)
+		if (!node->outgoings)
 			continue;
 		for (i = 0; i < node->outgoings->rnum; i++)
 		{
