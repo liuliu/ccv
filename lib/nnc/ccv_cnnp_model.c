@@ -671,6 +671,11 @@ void ccv_cnnp_model_set_gradient_checkpointing(ccv_cnnp_model_t* const model, co
 	model->gradient_checkpointing = gradient_checkpointing;
 }
 
+int ccv_cnnp_model_gradient_checkpointing(ccv_cnnp_model_t* const model)
+{
+	return model->gradient_checkpointing;
+}
+
 typedef struct {
 	int parallel_count;
 	ccv_nnc_symbolic_graph_t* graph;
