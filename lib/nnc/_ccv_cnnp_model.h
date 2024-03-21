@@ -166,6 +166,7 @@ struct ccv_cnnp_model_s {
 	int memory_compression; // Whether to enable memory compression for training phase.
 	int gradient_checkpointing; // Whether to enable gradient checkpointing for training phase.
 	int is_trainable; // Whether this model can be trained or not.
+	int memory_reduction; // Whether to enable memory reduction techniques for training phase.
 	size_t workspace_size; // Set the default workspace size.
 	struct {
 		ccv_cnnp_model_io_reader_f reader;
@@ -224,7 +225,9 @@ static inline ccv_cnnp_model_t* _ccv_cnnp_model_copy(const ccv_cnnp_model_t* con
 {
 	assert(model->isa->copy);
 	ccv_cnnp_model_t* const copy = model->isa->copy(model, context);
+	copy->parallel_count = model->parallel_count;
 	copy->memory_compression = model->memory_compression;
+	copy->memory_reduction = model->memory_reduction;
 	copy->max_stream_count = model->max_stream_count;
 	copy->gradient_checkpointing = model->gradient_checkpointing;
 	return copy;
@@ -413,9 +416,19 @@ static inline void ccv_cnnp_model_add_to_parameter_indices(ccv_cnnp_model_t* con
 	}
 }
 
+typedef struct {
+	ccv_cnnp_model_sequence_t* sequence;
+	char prefix;
+	ccv_array_t* symbols;
+	ccv_array_t* ids;
+	ccv_array_t* trainables;
+} ccv_cnnp_model_add_to_array_context_t;
+
 void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 void ccv_cnnp_model_tensors_init_1(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 int ccv_cnnp_model_tensors_any_to_alloc(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 ccv_nnc_stream_context_t* ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type);
+void ccv_cnnp_model_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const compiled_data, ccv_nnc_symbolic_graph_t* const graph);
+void ccv_cnnp_model_add_to_array(void* const context, const ccv_nnc_tensor_symbol_t symbol, const int is_trainable);
 
 #endif

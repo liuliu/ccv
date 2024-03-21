@@ -3894,6 +3894,13 @@ void ccv_cnnp_model_set_max_concurrency(ccv_cnnp_model_t* const model, const int
  */
 void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
 /**
+ * Apply memory reduction to the composed model. The memory reduction technique can reduce memory
+ * usage losslessly. Right now, the supported memory reduction technique is to redo datatype conversion.
+ * @param model The composed model.
+ * @param memory_reduction Whether to enable the memory reduction (1 - enable, 0 - disable (default))
+ */
+void ccv_cnnp_model_set_memory_reduction(ccv_cnnp_model_t* const model, const int memory_reduction);
+/**
  * Set the computations in this model to be gradient checkpointing. This can be strategically applied
  * to models within the higher-level composed models such that these models can effectively save 0
  * gradients during backprop with the cost of running forward pass twice.
@@ -3901,6 +3908,11 @@ void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const 
  * @param gradient_checkpointing Whether to enable gradient checkpointing (1 - enable, 0 - disable (default))
  */
 void ccv_cnnp_model_set_gradient_checkpointing(ccv_cnnp_model_t* const model, const int gradient_checkpointing);
+/**
+ * Get whether gradient checkpointing is enabled or not for this model.
+ * @param model The model that will turn on gradient checkpointing.
+ */
+int ccv_cnnp_model_gradient_checkpointing(ccv_cnnp_model_t* const model);
 /**
  * Set compile parameters on the model so it compiles the graph with the said parameters.
  * @param model The composed model.

@@ -552,6 +552,7 @@ cc_library(
 		"nnc/ccv_cnnp_model_io.c",
 		"nnc/ccv_cnnp_model_core.c",
 		"nnc/ccv_cnnp_model_addons.c",
+		"nnc/ccv_cnnp_model_gradient_checkpointing.c",
 	],
 	hdrs = [
 		"nnc/ccv_nnc.h",
