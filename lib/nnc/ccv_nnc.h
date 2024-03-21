@@ -1831,14 +1831,14 @@ void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const 
 /**
  * Set the flags for this exec symbol. The flags are only used for symbol. We can only set higher 16-bit.
  * @param graph The symbolic graph.
- * @param tensor The execution node symbol reference.
+ * @param exec The execution node symbol reference.
  * @param flags A reserved field for flags.
  */
 void ccv_nnc_graph_exec_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const int flags);
 /**
  * Get the flags for a tensor. We can only retrieve the higher 16-bit.
  * @param graph The symbolic graph.
- * @param tensor The execution node symbol reference.
+ * @param exec The execution node symbol reference.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
 /**
@@ -2019,6 +2019,7 @@ typedef void(*ccv_nnc_tensor_symbol_new_hook_f)(void* context, const ccv_nnc_ten
  * @param hook The function to be called if a new tensor symbol created.
  * @param context The context associated with the callback function.
  * @param previous_hook Return the previous hook if provided.
+ * @return The previous context associated with the previous hook function.
  */
 void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_new_hook_f* previous_hook);
 /**
@@ -2031,6 +2032,7 @@ typedef void(*ccv_nnc_tensor_symbol_alias_new_hook_f)(void* context, const ccv_n
  * @param hook The function to be called if a new tensor symbol alias created.
  * @param context The context associated with the callback function.
  * @param previous_hook The function to be called if a new tensor symbol alias created.
+ * @return The previous context associated with the previous hook function.
  */
 void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context, ccv_nnc_tensor_symbol_alias_new_hook_f* previous_hook);
 /**
@@ -2052,6 +2054,8 @@ typedef void(*ccv_nnc_graph_exec_symbol_new_hook_f)(void* context, const ccv_nnc
  * @param graph The symbolic graph.
  * @param hook The function to be called if a new execution node symbol created.
  * @param context The context associated with the callback function.
+ * @param previous_hook The previous hook function associated with this operation.
+ * @return The previous context associated with the previous hook function.
  */
 void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context, ccv_nnc_graph_exec_symbol_new_hook_f* previous_hook);
 /**
@@ -3842,7 +3846,7 @@ typedef int (*ccv_cnnp_model_io_writer_f)(const ccv_nnc_tensor_t* const tensor, 
  * @param handle The custom handle that you passed in from ``ccv_cnnp_model_read`` method.
  * @param name The name give to a particular parameter.
  * @param options The IO options that can do data encode / decode before persistence.
- * @param info The recommended tensor params.
+ * @param params The recommended tensor params.
  * @param tensor_out The tensor to be loaded.
  */
 typedef int (*ccv_cnnp_model_io_reader_f)(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t params, ccv_nnc_tensor_t** const tensor_out);
@@ -3871,7 +3875,7 @@ int ccv_cnnp_model_read(void* const handle, const char* const name, const ccv_nn
  * @param model_out The model which you want to restore the tensors. It should have the same
  *                  structure as the one in write to.
  */
-void ccv_cnnp_model_read_from_file(const char* const fn, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model);
+void ccv_cnnp_model_read_from_file(const char* const fn, const ccv_nnc_tensor_io_option_t* const options, const ccv_cnnp_model_t* const model_out);
 /**
  * Apply data parallel to the composed model. This method has to be called before we call either
  * evaluate or fit and after the model is compiled.
@@ -3976,6 +3980,7 @@ CCV_WARN_UNUSED(const char*) ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* con
 void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters);
 
 /**
+ * @param context The context pass to the share method.
  * @param source_name The name of the parameter from the from model.
  * @param updated_name The name of the parameter from the model. You can update the value.
  * @param provided_size The size of the updated_name buffer.
@@ -3992,7 +3997,7 @@ typedef int(*ccv_cnnp_model_parameters_renamer_f)(void* const context, const cha
  * @param from_model The model to copy parameters from.
  * @param from_parameters The parameters to be shared from.
  * @param renamer The provided rename function that can get the new name from the from_parameters.
- * @param renamer_context The context for renamer function.
+ * @param context The context for renamer function.
  */
 void ccv_cnnp_model_share_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters, ccv_cnnp_model_parameters_renamer_f renamer, void* const context);
 /**
