@@ -73,12 +73,16 @@ typedef struct {
 	int okay;
 	int original;
 	ccv_nnc_tensor_param_t info;
+	ccv_array_t* old_conversion_nodes;
 	struct {
-		int source;
-		int destination;
+		ccv_array_t* sources;
 		ccv_array_t* nodes;
 	} reconversion;
 } ccv_nnc_conversion_info_t;
+
+typedef struct {
+	ccv_array_t* outgoings;
+} ccv_nnc_graph_exec_symbol_reverse_t;
 
 void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
@@ -92,8 +96,19 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 	const int exec_symbol_info_size = graph->exec_symbol_info->rnum;
 	uint32_t* const tensor_marked = (uint32_t*)cccalloc(((tensor_symbol_info_size + 31) >> 5) * 2, sizeof(uint32_t));
 	uint32_t* const tensor_used = tensor_marked + ((tensor_symbol_info_size + 31) >> 5);
+	ccv_nnc_graph_exec_symbol_reverse_t* const reversed_nodes = cccalloc(exec_symbol_info_size, sizeof(ccv_nnc_graph_exec_symbol_reverse_t));
 	int i, j, k;
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		if (node->flags & CCV_NNC_GRAPH_EXEC_DEAD)
+			continue;
+		if (node->outgoings)
+			for (i = 0; i < node->outgoings->rnum; i++)
+			{
+				const int d = *(int*)ccv_array_get(node->outgoings, i);
+				if (!reversed_nodes[d].outgoings)
+					reversed_nodes[d].outgoings = ccv_array_new(sizeof(int), 1, 0);
+				ccv_array_add_unique_int(reversed_nodes[d].outgoings, idx);
+			}
 		if (node->cmd.cmd == CCV_NNC_DATATYPE_CONVERSION_FORWARD && node->output_size >= 1 && node->outputs[0] >= 0)
 		{
 			const int d = node->outputs[0];
@@ -129,7 +144,12 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 		{
 			const int d = node->outputs[0];
 			if (d >= 0 && (tensor_marked[d >> 5] & (1u << (d & 0x1f))))
+			{
 				conversion_info[d].original = node->inputs[0];
+				if (!conversion_info[d].old_conversion_nodes)
+					conversion_info[d].old_conversion_nodes = ccv_array_new(sizeof(int), 0, 0);
+				ccv_array_add_unique_int(conversion_info[d].old_conversion_nodes, idx);
+			}
 		} else if (ccv_nnc_cmd_is_backward(node->cmd))
 			for (i = 0; i < node->input_size; i++)
 			{
@@ -138,11 +158,10 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 				{
 					if (!conversion_info[d].reconversion.nodes)
 						conversion_info[d].reconversion.nodes = ccv_array_new(sizeof(int), 0, 0);
-					ccv_array_push(conversion_info[d].reconversion.nodes, &idx);
+					ccv_array_add_unique_int(conversion_info[d].reconversion.nodes, idx);
 				}
 			}
 	} ccv_nnc_graph_visit_endfor
-	ccv_array_t* const commons = ccv_array_new(sizeof(int), 0, 0);
 	for (i = 0; i < tensor_symbol_info_size; i++)
 	{
 		if (!conversion_info[i].reconversion.nodes)
@@ -153,95 +172,73 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 		if (CCV_GET_DATA_TYPE_SIZE(original_datatype) >= CCV_GET_DATA_TYPE_SIZE(converted_datatype))
 			continue;
 		// If we have more than one destination, need to find the common ancestor.
-		ccv_array_t* reconversion_nodes = conversion_info[i].reconversion.nodes;
-		if (reconversion_nodes && reconversion_nodes->rnum > 1)
+		ccv_array_t* const nodes = conversion_info[i].reconversion.nodes;
+		ccv_array_t* const old_conversion_nodes = conversion_info[i].old_conversion_nodes;
+		assert(nodes->rnum > 0);
+		assert(old_conversion_nodes && old_conversion_nodes->rnum > 0);
+		int flag = 0;
+		for (j = 0; j < nodes->rnum; j++)
 		{
-			ccv_array_clear(commons);
-			ccv_array_t* const nodes = conversion_info[i].reconversion.nodes;
-			const int d = *(int*)ccv_array_get(nodes, 0);
-			ccv_array_push(commons, &d);
-#define for_block(x, val) \
-			do { \
-				const int dd = ((int32_t*)val)[0]; \
-				if (dd > 0) \
-					ccv_array_push(commons, &x); \
-			} while (0)
+			const int d = *(int*)ccv_array_get(nodes, j);
 			ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, d);
-			if (vector)
-				CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-#undef for_block
-			for (j = 0; j < commons->rnum;)
+			assert(vector);
+			for (k = 0; k < old_conversion_nodes->rnum; k++)
 			{
-				const int d = *(int*)ccv_array_get(commons, j);
-				int flag = 0;
-				for (k = 1; k < nodes->rnum && !flag; k++)
-				{
-					const int dd = *(int*)ccv_array_get(nodes, k);
-					if (dd == d) // If it is the same as the commons, keep.
-						continue;
-					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, dd, d);
-					// If I cannot reach from this destination to the ancestor. This is not an ancestor.
-					// Remove it from the list.
-					if (!cell.i32 || cell.i32[0] == 0)
-						flag = 1;
-				}
-				if (flag)
-				{
-					if (j < commons->rnum - 1)
-						*(int*)ccv_array_get(commons, j) = *(int*)ccv_array_get(commons, commons->rnum - 1);
-					--commons->rnum;
-					continue;
-				}
-				++j;
+				const int dd = *(int*)ccv_array_get(old_conversion_nodes, k);
+				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell_from_vector(exec_dep, vector, dd);
+				if (cell.i32 && cell.i32[0] <= 3) // If the old conversion node to existing node has only hop distance of 3, no need to insert new conversion nodes. This is an empirical value.
+					flag = 1;
 			}
-			// If there is no common ancestor. We cannot do this. Abort the whole thing.
-			if (commons->rnum == 0)
-				continue;
-			reconversion_nodes = commons;
+			if (flag)
+				break;
 		}
-		// Find source / destination for decompress nodes.
-		// First, find the node that everyone can reach it.
-		int reconversion_destination = -1;
-		for (j = 0; j < reconversion_nodes->rnum; j++)
+		// If there is no need to reconvert. Abort the whole thing.
+		if (flag)
+			continue;
+		ccv_array_t* const reconversion_sources = ccv_array_new(sizeof(int), 0, 0);
+		for (j = 0; j < nodes->rnum; j++)
 		{
-			int flag = 0;
-			const int dj = *(int*)ccv_array_get(reconversion_nodes, j);
-			for (k = 0; !flag && k < reconversion_nodes->rnum; k++)
-				if (j != k)
+			const int d = *(int*)ccv_array_get(nodes, j);
+			ccv_array_t* const outgoings = reversed_nodes[d].outgoings;
+			if (!outgoings)
+				continue;
+			int x, y;
+			for (x = 0; x < outgoings->rnum; x++)
+			{
+				const int dd = *(int*)ccv_array_get(outgoings, x);
+				int flag = 0;
+				for (y = 0; !flag && y < nodes->rnum; y++)
 				{
-					const int dk = *(int*)ccv_array_get(reconversion_nodes, k);
-					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, dj, dk);
-					if (!cell.i32 || cell.i32[0] == 0)
+					if (j == y)
+						continue;
+					const int ddd = *(int*)ccv_array_get(nodes, y);
+					// If the outgoing is one of the nodes, we cannot add it as source.
+					if (ddd == dd)
+					{
+						flag = 1;
+						continue;
+					}
+					// Check dependencies, if there is a dependency from y node to dd, dd cannot be source.
+					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, dd, ddd);
+					if (cell.i32 && cell.i32[0] > 0)
 						flag = 1;
 				}
-			if (!flag)
-				reconversion_destination = (reconversion_destination == -1) ? dj : -2;
+				if (!flag)
+					ccv_array_add_unique_int(reconversion_sources, dd);
+			}
 		}
-		// Cannot continue, either we cannot find the node that is child node of everyone, or
-		// it has more than one of these.
-		if (reconversion_destination < 0)
+		// If there is no sources. Abort the whole thing.
+		if (reconversion_sources->rnum == 0)
+		{
+			ccv_array_free(reconversion_sources);
 			continue;
-		conversion_info[i].reconversion.destination = reconversion_destination;
-		int hop = exec_symbol_info_size;
-#define for_block(x, val) \
-		do { \
-			const int dd = ((int32_t*)val)[0]; \
-			if (dd > 0 && dd < hop) \
-			{ \
-				conversion_info[i].reconversion.source = x; \
-				hop = dd; \
-			} \
-		} while (0)
-		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, reconversion_destination);
-		if (vector)
-			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-		if (hop == exec_symbol_info_size)
-			continue;
+		}
 		// Mark it as ready to be compressed.
+		conversion_info[i].reconversion.sources = reconversion_sources;
 		conversion_info[i].info = tensor_symbol_info[i].info;
 		conversion_info[i].okay = 1;
 	}
-	// Do the graph mutation now based on the compression info.
+	// Do the graph mutation now based on the conversion info.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (conversion_info[i].okay)
 		{
@@ -251,24 +248,25 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 				.d = conversion_info[i].original
 			};
 			const ccv_nnc_graph_exec_symbol_t reconversion_node = ccv_nnc_graph_exec_symbol_new(graph, CMD_DATATYPE_CONVERSION_FORWARD(), TENSOR_SYMBOL_LIST(original), TENSOR_SYMBOL_LIST(reconverted), 0);
-			ccv_nnc_graph_exec_symbol_disjoin(graph, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = conversion_info[i].reconversion.source,
-			}, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = conversion_info[i].reconversion.destination
-			});
-			ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = conversion_info[i].reconversion.source,
-			}, reconversion_node);
-			ccv_nnc_graph_exec_symbol_concat(graph, reconversion_node, (ccv_nnc_graph_exec_symbol_t){
-				.graph = graph,
-				.d = conversion_info[i].reconversion.destination
-			});
-			for (j = 0; j < conversion_info[i].reconversion.nodes->rnum; j++)
+			ccv_array_t* const nodes = conversion_info[i].reconversion.nodes;
+			assert(nodes && nodes->rnum > 0);
+			ccv_array_t* const sources = conversion_info[i].reconversion.sources;
+			assert(sources && sources->rnum > 0);
+			for (j = 0; j < sources->rnum; j++)
 			{
-				const int d = *(int*)ccv_array_get(conversion_info[i].reconversion.nodes, j);
+				const int d = *(int*)ccv_array_get(sources, j);
+				ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
+					.graph = graph,
+					.d = d,
+				}, reconversion_node);
+			}
+			for (j = 0; j < nodes->rnum; j++)
+			{
+				const int d = *(int*)ccv_array_get(nodes, j);
+				ccv_nnc_graph_exec_symbol_concat(graph, reconversion_node, (ccv_nnc_graph_exec_symbol_t){
+					.graph = graph,
+					.d = d
+				});
 				ccv_nnc_graph_exec_symbol_info_t* const destination_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, d);
 				for (k = 0; k < destination_info->input_size; k++)
 					if (destination_info->inputs[k] == i)
@@ -276,11 +274,20 @@ void ccv_nnc_symbolic_graph_memory_reduction(ccv_nnc_symbolic_graph_t* const gra
 			}
 		}
 	ccv_nnc_graph_visit_free(visit);
-	ccv_array_free(commons);
 	ccv_matrix_free(exec_dep);
 	ccfree(tensor_marked);
 	for (i = 0; i < tensor_symbol_info_size; i++)
+	{
+		if (conversion_info[i].old_conversion_nodes)
+			ccv_array_free(conversion_info[i].old_conversion_nodes);
 		if (conversion_info[i].reconversion.nodes)
 			ccv_array_free(conversion_info[i].reconversion.nodes);
+		if (conversion_info[i].reconversion.sources)
+			ccv_array_free(conversion_info[i].reconversion.sources);
+	}
+	for (i = 0; i < exec_symbol_info_size; i++)
+		if (reversed_nodes[i].outgoings)
+			ccv_array_free(reversed_nodes[i].outgoings);
+	ccfree(reversed_nodes);
 	ccfree(conversion_info);
 }
