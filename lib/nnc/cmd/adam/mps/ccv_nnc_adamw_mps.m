@@ -74,11 +74,11 @@ static int _ccv_nnc_adamw_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[0]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[1]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[2]) ||
-					(!um || !CCV_IS_TENSOR_CONTIGUOUS(um)) ||
+					(um && !CCV_IS_TENSOR_CONTIGUOUS(um)) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(inputs[1]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(inputs[2]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(inputs[3]) ||
-					(!vm || !CCV_IS_TENSOR_CONTIGUOUS(vm)))
+					(vm && !CCV_IS_TENSOR_CONTIGUOUS(vm)))
 			{
 				use_mfa = false;
 				fallback_reason = "Strided.";

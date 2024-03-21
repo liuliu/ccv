@@ -1106,9 +1106,12 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		if (to_size == 0) // If this is the end (no minimizers afterwards). We need to attach this as a destination. Otherwise this is covered in update_nodes.
 		{
 			const ccv_nnc_graph_exec_symbol_t* destinations = ccv_nnc_symbolic_graph_destinations(model->graph);
+			const int destination_count = ccv_nnc_symbolic_graph_destination_size(model->graph);
+			const int outgrad_destination_start = destination_count - (parameter_size_maybe_more - parameter_size);
+			assert(outgrad_destination_start >= 0);
 			int flag = 0;
 			for (j = i - 1; !flag && j >= 0; j--)
-				flag = (destinations[j + parameter_size].d == outgrad.d);
+				flag = (destinations[j + outgrad_destination_start].d == outgrad.d);
 			if (!flag) // Only if we cannot find it, we add it.
 				ccv_nnc_symbolic_graph_add_destination(model->graph, outgrad);
 		}

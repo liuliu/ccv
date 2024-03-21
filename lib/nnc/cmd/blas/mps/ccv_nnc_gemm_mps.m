@@ -627,6 +627,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // // It is a 2-d or 3-d array
 	const int is_transpose_a = a || h ? ccv_nnc_is_matrix_transpose(a ? a->info : h->info, cmd.info.blas.transpose_a) : 0;
 	const int is_transpose_w = w || dw ? ccv_nnc_is_matrix_transpose(w ? w->info : dw->info, cmd.info.blas.transpose_b) : 0;
+	const int a_datatype = a ? (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype) : 0;
+	const int w_datatype = w ? (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype) : 0;
 
 	@autoreleasepool {
 		const int is_contiguous =
@@ -637,9 +639,9 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(h ? (!CCV_IS_TENSOR_VIEW(h) || ccv_nnc_tensor_view_is_contiguous(h->info.dim, h->stride)) : 1);
 
 		const int is_same_dtype =
-			(w ? (g->info.datatype == w->info.datatype) : 1) &&
+			(w ? (g->info.datatype == w_datatype) : 1) &&
 			(dw ? (g->info.datatype == dw->info.datatype) : 1) &&
-			(a ? (g->info.datatype == a->info.datatype) : 1) &&
+			(a ? (g->info.datatype == a_datatype) : 1) &&
 			(h ? (g->info.datatype == h->info.datatype) : 1);
 
 		int is_supported_dtype = 0;
