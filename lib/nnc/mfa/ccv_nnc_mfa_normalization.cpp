@@ -4,6 +4,8 @@
 using namespace ccv::nnc;
 
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 // MARK: - C
 
@@ -190,6 +192,12 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .reuse_saved_statistics = " << bool(hash.reuse_saved_statistics) << " ";
   os << "}";
   return os;
+}
+
+static std::string high_precision_to_string(float value) {
+    std::ostringstream oss;
+    oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
+    return oss.str();
 }
 
 std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normalization::hash& hash) const noexcept {
@@ -474,7 +482,7 @@ kernel void normalization(
   defines += "\n";
   
   defines += "constant float epsilon = ";
-  defines += std::to_string(hash.epsilon) + ";";
+  defines += high_precision_to_string(hash.epsilon) + ";";
   defines += "\n";
   
   uint16_t threadgroup_size;
