@@ -1050,6 +1050,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
+			printf("triggered this code path\n");
 			mtl_buffer_t* a_data = 0;
 			size_t a_dataof = 0;
 			if (a && dw)
@@ -1157,32 +1158,30 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					if (!is_transpose_w)
 						mps_w = [graph transposeTensor:mps_w dimension:-2 withDimension:-1 name:nil];
 
-					MPSGraphShapedType* mps_h_target_shape = ccv_nnc_mps_graph_tensor_input_shape(h, h->info.dim, h->stride);
-
 					MPSGraphTensor* mps_h = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_w name:nil];
 					if (is_transpose_a)
 						mps_h = [graph transposeTensor:mps_h dimension:-2 withDimension:-1 name:nil];
 
 					const NSUInteger mps_h_nd = mps_h.shape.count;
-					const NSUInteger h_target_nd = mps_h_target_shape.shape.count;
-					int flag = (h_target_nd < mps_h_nd);
+					int flag = (h_nd < mps_h_nd);
 					int i;
 					for (i = 0; !flag && i < mps_h_nd; i++)
-						if (mps_h.shape[i].integerValue != mps_h_target_shape.shape[i].integerValue)
+						if (mps_h.shape[i].integerValue != h->info.dim[i])
 							flag = 1;
 
 					// if target h nd smaller than current mps_h_nd (for example, doing batch), mps_h needs to be reduced
 					if (flag) {
-						NSMutableArray<NSNumber*>* h_target_shape = mps_h_target_shape.shape.mutableCopy;
 						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-						for (i = 0; i < mps_h_nd - h_target_nd; i++)
-							[h_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-						for (i = 0; i < mps_h_nd; i++)
-							if (mps_h.shape[i].integerValue != h_target_shape[i].integerValue)
+						for (i = 0; i < mps_h_nd - h_nd; i++)
+							if (mps_h.shape[i].integerValue != 1)
+								[axes addObject:@(i)];
+						const int h_start = mps_h_nd - h_nd;
+						assert(h_start >= 0);
+						for (i = h_start; i < mps_h_nd; i++)
+							if (mps_h.shape[i].integerValue != h->info.dim[i - h_start])
 								[axes addObject:@(i)];
 						if (axes.count > 0)
 							mps_h = [graph reductionSumWithTensor:mps_h axes:axes name:nil];
-						[h_target_shape release];
 						[axes release];
 					}
 					[resultTensors addObject:mps_h];
@@ -1215,34 +1214,30 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					if (!is_transpose_a)
 						mps_a = [graph transposeTensor:mps_a dimension:-2 withDimension:-1 name:nil];
 
-					MPSGraphShapedType* mps_dw_target_shape = ccv_nnc_mps_graph_tensor_input_shape(dw, dw->info.dim, dw->stride);
-
 					MPSGraphTensor* mps_dw = [graph matrixMultiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_g name:nil];
 					if (is_transpose_w)
 						mps_dw = [graph transposeTensor:mps_dw dimension:-2 withDimension:-1 name:nil];
 
 					const NSUInteger mps_dw_nd = mps_dw.shape.count;
-					const NSUInteger dw_target_nd = mps_dw_target_shape.shape.count;
-					int flag = (dw_target_nd < mps_dw_nd);
+					int flag = (dw_nd < mps_dw_nd);
 					int i;
 					for (i = 0; !flag && i < mps_dw_nd; i++)
-						if (mps_dw.shape[i].integerValue != mps_dw_target_shape.shape[i].integerValue)
+						if (mps_dw.shape[i].integerValue != dw->info.dim[i])
 							flag = 1;
 
 					// if target dw nd smaller than current mupltiplication nd (like we are doing batch), mps_dw needs to be reduced
 					if (flag) {
-						NSMutableArray<NSNumber*>* dw_target_shape = mps_dw_target_shape.shape.mutableCopy;
 						NSMutableArray<NSNumber*>* axes = [NSMutableArray new];
-						for (i = 0; i < mps_dw_nd - dw_target_nd; i++)
-							[dw_target_shape insertObject:@(1) atIndex:0]; // [1,..,1,N]
-
-						int i;
-						for (i = 0; i < mps_dw_nd; i++)
-							if (mps_dw.shape[i].integerValue != dw_target_shape[i].integerValue)
+						for (i = 0; i < mps_dw_nd - dw_nd; i++)
+							if (mps_dw.shape[i].integerValue != 1)
+								[axes addObject:@(i)];
+						const int dw_start = mps_dw_nd - dw_nd;
+						assert(dw_start >= 0);
+						for (i = dw_start; i < mps_dw_nd; i++)
+							if (mps_dw.shape[i].integerValue != dw->info.dim[i - dw_start])
 								[axes addObject:@(i)];
 						if (axes.count > 0)
 							mps_dw = [graph reductionSumWithTensor:mps_dw axes:axes name:nil];
-						[dw_target_shape release];
 						[axes release];
 					}
 

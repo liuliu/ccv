@@ -245,41 +245,84 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(I_dim == wdim[w_nd - 3]);
 			O = wdim[w_nd - 4];
 
-			ccv_nnc_mfa_gemm_params_t params = {
-				.data_type = mtl_data_type,
-				.M = (uint32_t)(H * W),
-				.N = (uint32_t)O,
-				.K = (uint32_t)I_dim,
-				.A_trans = (a->info.format == CCV_TENSOR_FORMAT_NHWC ? 0 : 1),
-				.B_trans = 1,
-				.D_trans = 0,
-				.alpha = (float)1.0,
-				.beta = (float)0.0,
-				.batched = is_batched,
-				.fused_activation_function = 0,
-				.fused_bias = (bias ? 1 : 0),
+			ccv_nnc_mfa_gemm_params_t params;
+			if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
+			{
+				params = (ccv_nnc_mfa_gemm_params_t){
+					.data_type = mtl_data_type,
+					.M = (uint32_t)(H * W),
+					.N = (uint32_t)O,
+					.K = (uint32_t)I_dim,
+					.A_trans = 0,
+					.B_trans = 1,
+					.D_trans = 0,
+					.alpha = (float)1.0,
+					.beta = (float)0.0,
+					.batched = is_batched,
+					.fused_activation_function = 0,
+					.fused_bias = (bias ? 1 : 0),
 
-				.batch_dims_a = { 0 },
-				.batch_dims_b = { 0 },
-				.batch_dims_d = { 0 },
-			};
+					.batch_dims_a = { 0 },
+					.batch_dims_b = { 0 },
+					.batch_dims_d = { 0 },
+				};
+			} else {
+				params = (ccv_nnc_mfa_gemm_params_t){
+					.data_type = mtl_data_type,
+					.M = (uint32_t)O,
+					.N = (uint32_t)(H * W),
+					.K = (uint32_t)I_dim,
+					.A_trans = 0,
+					.B_trans = 0,
+					.D_trans = 1,
+					.alpha = (float)1.0,
+					.beta = (float)0.0,
+					.batched = is_batched,
+					.fused_activation_function = 0,
+					.fused_bias = (bias ? 1 : 0),
+
+					.batch_dims_a = { 0 },
+					.batch_dims_b = { 0 },
+					.batch_dims_d = { 0 },
+				};
+			}
 
 			if (is_batched) {
-				// Create a null-terminated list of batch dimensions.
-				int A_batch_dim = a_nd - 3;
-				for (int i = 0; i < A_batch_dim; ++i) {
-					params.batch_dims_a[i] = adim[i];
-				}
-				if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-					params.batch_dims_a[A_batch_dim] = 0;
-				}
+				if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
+				{
+					// Create a null-terminated list of batch dimensions.
+					int A_batch_dim = a_nd - 3;
+					for (int i = 0; i < A_batch_dim; ++i) {
+						params.batch_dims_a[i] = adim[i];
+					}
+					if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+						params.batch_dims_a[A_batch_dim] = 0;
+					}
 
-				int B_batch_dim = w_nd - 4;
-				for (int i = 0; i < B_batch_dim; ++i) {
-					params.batch_dims_b[i] = w->info.dim[i];
-				}
-				if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-					params.batch_dims_b[B_batch_dim] = 0;
+					int B_batch_dim = w_nd - 4;
+					for (int i = 0; i < B_batch_dim; ++i) {
+						params.batch_dims_b[i] = w->info.dim[i];
+					}
+					if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+						params.batch_dims_b[B_batch_dim] = 0;
+					}
+				} else {
+					// Create a null-terminated list of batch dimensions.
+					int B_batch_dim = w_nd - 4;
+					for (int i = 0; i < B_batch_dim; ++i) {
+						params.batch_dims_a[i] = w->info.dim[i];
+					}
+					if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+						params.batch_dims_a[B_batch_dim] = 0;
+					}
+
+					int A_batch_dim = a_nd - 3;
+					for (int i = 0; i < A_batch_dim; ++i) {
+						params.batch_dims_b[i] = adim[i];
+					}
+					if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
+						params.batch_dims_b[A_batch_dim] = 0;
+					}
 				}
 
 				params.batch_dims_d[0] = 1;
@@ -305,20 +348,38 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (bias) {
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
 			}
-			mtl_buffer_t* tensors[5] = {
-				mpgetbuffer((ccv_nnc_tensor_t*)a), // A
-				w_data, // B
-				mpgetbuffer((ccv_nnc_tensor_t*)b), // C
-				bias_buffer, // D
-				NULL,
-			};
-			size_t tensor_offsets[4] = {
-				a->dataof, // A offset
-				w_dataof, // B offset
-				b->dataof, // C offset
-				bias ? bias->dataof : 0, // D offset
-			};
-			ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+			if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
+			{
+				mtl_buffer_t* tensors[5] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)a), // A
+					w_data, // B
+					mpgetbuffer((ccv_nnc_tensor_t*)b), // C
+					bias_buffer, // D
+					NULL,
+				};
+				size_t tensor_offsets[4] = {
+					a->dataof, // A offset
+					w_dataof, // B offset
+					b->dataof, // C offset
+					bias ? bias->dataof : 0, // D offset
+				};
+				ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+			} else {
+				mtl_buffer_t* tensors[5] = {
+					w_data, // A
+					mpgetbuffer((ccv_nnc_tensor_t*)a), // B
+					mpgetbuffer((ccv_nnc_tensor_t*)b), // C
+					bias_buffer, // D
+					NULL,
+				};
+				size_t tensor_offsets[4] = {
+					w_dataof, // A offset
+					a->dataof, // B offset
+					b->dataof, // C offset
+					bias ? bias->dataof : 0, // D offset
+				};
+				ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
+			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);

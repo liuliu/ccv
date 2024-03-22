@@ -61,7 +61,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         }
         batch_dims = params.batch_dims_d;
       }
-      
+
       for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
         if (batch_dims[i] == 0) {
           break;
@@ -69,25 +69,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         num_batch_dims[operand] += 1;
         batch_sizes[operand] *= batch_dims[i];
       }
-      
-      bool dims_match_a = true;
-      if (num_batch_dims[0] != num_batch_dims[operand]) {
-        dims_match_a = false;
-      } else if (batch_sizes[0] != batch_sizes[operand]) {
-        dims_match_a = false;
-      } else {
-        for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-          if (params.batch_dims_a[i] != batch_dims[i]) {
-            dims_match_a = false;
-          }
-        }
-      }
-      
-      if (!dims_match_a) {
-        CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
-      }
     }
-    
+
     uint16_t data_type_size = 0;
     switch (params.data_type) {
       case MTL::DataTypeHalf: {
@@ -106,15 +89,19 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     uint64_t byte_stride_b = hash.K * hash.N * data_type_size;
     uint64_t byte_stride_c = hash.M * hash.N * data_type_size;
     uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * data_type_size;
+    if (batch_sizes[0] == 1) {
+      byte_stride_a = 0;
+    }
     if (batch_sizes[1] == 1) {
       byte_stride_b = 0;
     }
     if (batch_sizes[3] == 1) {
       byte_stride_d = 0;
     }
-    
-    simd::ulong4 matrix_offsets[batch_sizes[0]];
-    for (int i = 0; i < batch_sizes[0]; ++i) {
+
+    const unsigned long batch_size = std::max(batch_sizes[0], batch_sizes[1]);
+    simd::ulong4 matrix_offsets[batch_size];
+    for (int i = 0; i < batch_size; ++i) {
       matrix_offsets[i] = simd::ulong4 {
         i * byte_stride_a,
         i * byte_stride_b,
@@ -122,7 +109,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         i * byte_stride_d,
       };
     }
-    encoder->setBytes(matrix_offsets, batch_sizes[0] * 32, 10);
+    encoder->setBytes(matrix_offsets, batch_size * 32, 10);
   }
   
   auto grid_size = pipeline->grid_size;
