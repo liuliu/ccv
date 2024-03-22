@@ -1050,7 +1050,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
-			printf("triggered this code path\n");
 			mtl_buffer_t* a_data = 0;
 			size_t a_dataof = 0;
 			if (a && dw)
