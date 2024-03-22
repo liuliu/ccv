@@ -704,7 +704,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && is_same_batch && !bias && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && is_same_batch && !bias && !(ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM);
 
 		size_t a_data_size = 0;
 		if (a && dw && CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)

@@ -1108,10 +1108,10 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 			const ccv_nnc_graph_exec_symbol_t* destinations = ccv_nnc_symbolic_graph_destinations(model->graph);
 			const int destination_count = ccv_nnc_symbolic_graph_destination_size(model->graph);
 			int flag = 0;
-			const int outgrad_destination_start = destination_count - i;
-			assert(outgrad_destination_start >= 0);
+			const int outgrad_destination_start = ccv_max(0, destination_count - i);
 			for (j = i - 1; !flag && j >= 0; j--)
-				flag = (destinations[j + outgrad_destination_start].d == outgrad.d);
+				if (j + outgrad_destination_start < destination_count)
+					flag = (destinations[j + outgrad_destination_start].d == outgrad.d);
 			if (!flag) // Only if we cannot find it, we add it.
 				ccv_nnc_symbolic_graph_add_destination(model->graph, outgrad);
 		}

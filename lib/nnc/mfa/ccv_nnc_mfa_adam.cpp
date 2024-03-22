@@ -4,6 +4,8 @@
 using namespace ccv::nnc;
 
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 // MARK: - C
 
@@ -135,6 +137,12 @@ std::size_t std::hash<mfa::adam::hash>::operator()(const mfa::adam::hash& hash) 
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.decay), *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
   combine_64(seed, hash.length);
   return seed;
+}
+
+static std::string high_precision_to_string(float value) {
+    std::ostringstream oss;
+    oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
+    return oss.str();
 }
 
 mfa::adam::pipeline::pipeline(mfa::context* context, mfa::adam::hash hash) {
@@ -309,24 +317,24 @@ kernel void adam(
   if (hash.adamw)
   {
     defines += "constant float rate_decay = ";
-    defines += std::to_string(hash.rate * hash.decay) + ";";
+    defines += high_precision_to_string(hash.rate * hash.decay) + ";";
     defines += "\n";
   } else {
     defines += "constant float decay = ";
-    defines += std::to_string(hash.decay) + ";";
+    defines += high_precision_to_string(hash.decay) + ";";
     defines += "\n";
   }
   defines += "constant float scale = ";
-  defines += std::to_string(hash.scale) + ";";
+  defines += high_precision_to_string(hash.scale) + ";";
   defines += "\n";
   defines += "constant float beta1 = ";
-  defines += std::to_string(hash.beta1) + ";";
+  defines += high_precision_to_string(hash.beta1) + ";";
   defines += "\n";
   defines += "constant float beta2 = ";
-  defines += std::to_string(hash.beta2) + ";";
+  defines += high_precision_to_string(hash.beta2) + ";";
   defines += "\n";
   defines += "constant float epsilon = ";
-  defines += std::to_string(hash.epsilon) + ";";
+  defines += high_precision_to_string(hash.epsilon) + ";";
   defines += "\n";
   this->group_size = MTL::Size(threadgroup_size, 1, 1);
 
