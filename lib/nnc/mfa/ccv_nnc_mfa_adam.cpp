@@ -62,12 +62,15 @@ void ccv_nnc_mfa_encode_adam(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_adam_pa
   } else {
     encoder->useResource(tensors[4], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
   }
-  if (tensors[7] != tensors[8])
+  if (num_tensors == 9)
   {
-    encoder->useResource(tensors[7], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[8], MTL::ResourceUsageWrite);
-  } else {
-    encoder->useResource(tensors[7], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+    if (tensors[7] != tensors[8])
+    {
+      encoder->useResource(tensors[7], MTL::ResourceUsageRead);
+      encoder->useResource(tensors[8], MTL::ResourceUsageWrite);
+    } else {
+      encoder->useResource(tensors[7], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+    }
   }
   
   auto grid_size = pipeline->grid_size;
@@ -308,6 +311,10 @@ kernel void adam(
     defines += "constant float rate_decay = ";
     defines += std::to_string(hash.rate * hash.decay) + ";";
     defines += "\n";
+  } else {
+    defines += "constant float decay = ";
+    defines += std::to_string(hash.decay) + ";";
+    defines += "\n";
   }
   defines += "constant float scale = ";
   defines += std::to_string(hash.scale) + ";";
@@ -317,9 +324,6 @@ kernel void adam(
   defines += "\n";
   defines += "constant float beta2 = ";
   defines += std::to_string(hash.beta2) + ";";
-  defines += "\n";
-  defines += "constant float decay = ";
-  defines += std::to_string(hash.decay) + ";";
   defines += "\n";
   defines += "constant float epsilon = ";
   defines += std::to_string(hash.epsilon) + ";";
