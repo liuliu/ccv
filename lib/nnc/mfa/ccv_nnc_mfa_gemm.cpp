@@ -110,8 +110,15 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       };
     }
     if (batch_size * 32 > 4096) {
-        auto buffer = context->device->newBuffer(matrix_offsets, batch_size * 32, MTL::ResourceStorageModeShared);
-        encoder->setBuffer(buffer, 0, 10);
+#ifdef __x86_64__
+          auto buffer = context->device->newBuffer(batch_size * 32, MTL::ResourceStorageModePrivate);
+#else
+          auto buffer = context->device->newBuffer(batch_size * 32, MTL::ResourceStorageModeShared);
+#endif
+          void* bufferPointer = buffer->contents();
+          memcpy(bufferPointer, matrix_offsets, batch_size * 32);
+          encoder->setBuffer(buffer, 0, 10);
+          buffer->release();
     } else {
         encoder->setBytes(matrix_offsets, batch_size * 32, 10);
     }
