@@ -12,7 +12,7 @@ For old-schooler, run `./configure && make` in `/lib` directory will generate `l
 
 	clang -L"~/ccv/lib" -I"~/ccv/lib" sift.c -lccv `cat ~/ccv/lib/.deps`
 
-That it. The only magic sauce is `~/ccv/lib/.deps`, which gives you all the dependencies you have to link to when you compile ccv the first time. If your ccv compiled with no dependency, it is empty (and ccv works with zero dependency).
+That's it. The only magic sauce is `~/ccv/lib/.deps`, which gives you all the dependencies you have to link to when you compile ccv the first time. If your ccv compiled with no dependency, it is empty (and ccv works with zero dependency).
 
 **Remember to checkout `./serve/makefile` to see how a real-world program that uses ccv organizes.**
 
