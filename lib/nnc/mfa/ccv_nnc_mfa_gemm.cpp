@@ -111,7 +111,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     }
     if (batch_size * 32 > 4096) {
         auto buffer = context->device->newBuffer(matrix_offsets, batch_size * 32, MTL::ResourceStorageModeShared);
-        encoder->useResource(buffer, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        encoder->useResource(buffer, MTL::ResourceUsageRead);
         encoder->setBuffer(buffer, 0, 10);
         buffer->release();
     } else {
