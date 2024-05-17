@@ -38,6 +38,7 @@ static void _ccv_cnnp_sequential_model_deinit(ccv_cnnp_model_t* const super)
 static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sequential_model_build] 1. %p, sequence_size: %d\n", self, self->sequence_size);
 	ccv_cnnp_model_t* const sub_model = self->sequence[0];
 	// Go through each sub model to build the graph.
 	ccv_nnc_tensor_symbol_t input;
@@ -56,6 +57,7 @@ static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_
 		input = output;
 	}
 	outputs[0] = input;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sequential_model_build] 2. %p\n", self);
 }
 
 static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -199,6 +201,7 @@ static void _ccv_cnnp_functional_model_build_node_new(void* context, const ccv_n
 static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_functional_model_build] 1. %p, input_size: %d, output_size: %d\n", self, input_size, output_size);
 	assert(self->super.input_size == input_size);
 	assert(self->super.output_size == output_size);
 	int i, j, k;
@@ -300,6 +303,7 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 		i += sub_model->output_size;
 	}
 	assert(i == output_size);
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_functional_model_build] 2. %p\n", self);
 }
 
 static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -688,6 +692,7 @@ static void _ccv_cnnp_dynamic_model_deinit(ccv_cnnp_model_t* const super)
 static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_dynamic_model_build] 1. %p, func: %p\n", self, self->func);
 	if (!self->model)
 	{
 		ccv_nnc_tensor_param_t input_params[input_size];
@@ -703,6 +708,7 @@ static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc
 	self->model->data = self->super.data;
 	ccv_cnnp_model_build(self->model, graph, inputs, input_size, outputs, output_size);
 	self->model->data = 0;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_dynamic_model_build] 2. %p\n", self);
 }
 
 static void _ccv_cnnp_dynamic_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -780,6 +786,7 @@ typedef struct {
 static void _ccv_cnnp_cmd_exec_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_cmd_exec_t* const self = (ccv_cnnp_model_cmd_exec_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_cmd_exec_build] -\n");
 	ccv_nnc_tensor_param_t input_params[ccv_max(1, self->input_size)];
 	int i, j;
 	for (i = 0, j = 0; i < self->input_size; i++)

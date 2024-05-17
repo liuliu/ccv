@@ -1938,9 +1938,19 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
 					node->inputs[i] = _ccv_nnc_any_tensor_from_tensor_multiview((ccv_nnc_tensor_multiview_t*)node->inputs[i]); \
 			PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+			{ \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+				if (node->inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
+					ccv_nnc_print_tensor_shape(node->inputs[i]); \
+				PRINT(CCV_CLI_VERBOSE, "\n"); \
+			} \
 			for (i = 0; i < node->output_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
+			{ \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
+				if (node->outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
+					ccv_nnc_print_tensor_shape(node->outputs[i]); \
+				PRINT(CCV_CLI_VERBOSE, "\n"); \
+			} \
 			node->cmd = ccv_nnc_cmd_autotune(node->cmd, max_workspace_size, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
 		} \
 	} while (0)

@@ -635,13 +635,23 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 					ccv_nnc_print_tensor_info(input_tensors[k + i * per_input_size]);
 				PRINT(CCV_CLI_INFO, "\n");
 			}
-			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
 			for (k = 0; k < per_output_size; k++)
 			{
 				PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", k + 1, output_tensors[k], (output_tensors[k] ? output_tensors[k]->data.u8 : 0), (output_tensors[k] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[k]->info.type) : -1));
 				if (output_tensors[k] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
-					ccv_nnc_print_tensor_info(output_tensors[k]);
+					ccv_nnc_print_tensor_shape(output_tensors[k]);
 				PRINT(CCV_CLI_INFO, "\n");
+			}
+			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
+			if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+			{
+				for (k = 0; k < per_output_size; k++)
+				{
+					PRINT(CCV_CLI_VERBOSE, "POST: |<- %d. %p (%p:%d)", k + 1, output_tensors[k], (output_tensors[k] ? output_tensors[k]->data.u8 : 0), (output_tensors[k] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[k]->info.type) : -1));
+					if (output_tensors[k])
+						ccv_nnc_print_tensor_info(output_tensors[k]);
+					PRINT(CCV_CLI_VERBOSE, "\n");
+				}
 			}
 			if (stream_context && stream_0)
 			{

@@ -223,6 +223,15 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 		}
 }
 
+void ccv_nnc_print_tensor_shape(const ccv_nnc_tensor_t* const tensor)
+{
+	int i;
+	PRINT(CCV_CLI_INFO, " [%d", tensor->info.dim[0]);
+	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && tensor->info.dim[i]; i++)
+		PRINT(CCV_CLI_INFO, "x%d", tensor->info.dim[i]);
+	PRINT(CCV_CLI_INFO, "]");
+}
+
 void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 {
 	int i;
@@ -487,6 +496,13 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 				ccv_nnc_print_tensor_info(inputs[i]);
 			PRINT(CCV_CLI_INFO, "\n");
 		}
+		for (i = 0; i < node->output_size; i++)
+		{
+			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
+			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
+				ccv_nnc_print_tensor_shape(outputs[i]);
+			PRINT(CCV_CLI_INFO, "\n");
+		}
 		ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(*schd)[0]];
 		ccv_nnc_graph_neighbor_context_discovery_t discovery_context = {
 			.graph = graph,
@@ -495,12 +511,15 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 		};
 		ccv_nnc_stream_context_set_neighbor_discovery(node_stream, _ccv_nnc_graph_neighbor_context_discovery, &discovery_context);
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
-		for (i = 0; i < node->output_size; i++)
+		if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 		{
-			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
-			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_INFO))
-				ccv_nnc_print_tensor_info(outputs[i]);
-			PRINT(CCV_CLI_INFO, "\n");
+			for (i = 0; i < node->output_size; i++)
+			{
+				PRINT(CCV_CLI_VERBOSE, "POST: |<- %d. %p (%p:%d)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? CCV_TENSOR_GET_DEVICE_ID(outputs[i]->info.type) : -1));
+				if (outputs[i])
+					ccv_nnc_print_tensor_info(outputs[i]);
+				PRINT(CCV_CLI_VERBOSE, "\n");
+			}
 		}
 		flag = 0;
 		for (i = 0; i < schd->stream_size; i++)

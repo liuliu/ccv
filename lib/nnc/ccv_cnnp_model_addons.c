@@ -308,6 +308,7 @@ int ccv_cnnp_model_parameter_gradients_isnan(ccv_cnnp_model_t* const model, cons
 
 static void _ccv_cnnp_sum_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sum_build] -\n");
 	assert(output_size == 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_symbol_params(graph, inputs[0]), 0);
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_EWSUM_FORWARD(), inputs, input_size, outputs, output_size, 0);
@@ -350,6 +351,7 @@ typedef struct {
 static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_concat_t* const self = (const ccv_cnnp_model_concat_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_concat_build] 1. -\n");
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t output_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	int i, j;
@@ -371,8 +373,17 @@ static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 		const int input_nd = ccv_nnc_tensor_nd(input_params.dim);
 		if (input_nd == 0)
 		{
+			PRINT(CCV_CLI_VERBOSE, "[cnnp_concat_build] %d. input[%d]: -\n", i + 2, i);
 			input_is_contiguous = 0;
 			continue;
+		}
+		if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+		{
+			PRINT(CCV_CLI_VERBOSE, "[cnnp_concat_build] %d. input[%d]: (%d", i + 2, i, input_params.dim[0]);
+			int i;
+			for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && input_params.dim[i] > 0; i++)
+				PRINT(CCV_CLI_VERBOSE, ", %d", input_params.dim[i]);
+			PRINT(CCV_CLI_VERBOSE, ")\n");
 		}
 		assert(input_nd == nd);
 		for (j = 0; j < nd; j++)
@@ -448,8 +459,17 @@ typedef struct {
 static void _ccv_cnnp_chunk_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_concat_t* const self = (const ccv_cnnp_model_concat_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_chunk_build] 1. axis: %d\n", self->axis);
 	assert(input_size == 1);
 	const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+	{
+		PRINT(CCV_CLI_VERBOSE, "[cnnp_chunk_build] 2. input: (%d", input_params.dim[0]);
+		int i;
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && input_params.dim[i] > 0; i++)
+			PRINT(CCV_CLI_VERBOSE, ", %d", input_params.dim[i]);
+		PRINT(CCV_CLI_VERBOSE, ")\n");
+	}
 	ccv_nnc_tensor_param_t output_params = input_params;
 	int i;
 	const int nd = ccv_nnc_tensor_nd(output_params.dim);
@@ -541,7 +561,30 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_reshape_t* const self = (ccv_cnnp_model_reshape_t*)super;
+	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+	{
+		PRINT(CCV_CLI_VERBOSE, "[cnnp_reshape_build] 1. dim: (%d", self->dim[0]);
+		int i;
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && self->dim[i] > 0; i++)
+			PRINT(CCV_CLI_VERBOSE, ", %d", self->dim[i]);
+		const int count = i;
+		PRINT(CCV_CLI_VERBOSE, "), ofs: (%d", self->ofs[0]);
+		for (i = 1; i < count; i++)
+			PRINT(CCV_CLI_VERBOSE, ", %d", self->ofs[i]);
+		PRINT(CCV_CLI_VERBOSE, "), stride: (%d", self->stride[0]);
+		for (i = 1; i < count; i++)
+			PRINT(CCV_CLI_VERBOSE, ", %d", self->stride[i]);
+		PRINT(CCV_CLI_VERBOSE, ")\n");
+	}
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+	{
+		PRINT(CCV_CLI_VERBOSE, "[cnnp_reshape_build] 2. input: (%d", params.dim[0]);
+		int i;
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && params.dim[i] > 0; i++)
+			PRINT(CCV_CLI_VERBOSE, ", %d", params.dim[i]);
+		PRINT(CCV_CLI_VERBOSE, ")\n");
+	}
 	if (self->format > 0)
 		params.format = self->format;
 	assert(ccv_nnc_dimension_count(self->dim) <= ccv_nnc_tensor_count(params));
@@ -648,6 +691,7 @@ static void _ccv_cnnp_pad_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_pad_t* const self = (ccv_cnnp_model_pad_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_pad_build] -\n");
 	const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int nd = ccv_nnc_tensor_nd(input_params.dim);
 	ccv_nnc_tensor_param_t params = input_params;
@@ -698,6 +742,7 @@ static void _ccv_cnnp_identity_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 {
 	assert(input_size == 1);
 	assert(output_size == 1);
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_identity_build] -\n");
 	outputs[0] = inputs[0];
 }
 
@@ -736,6 +781,7 @@ static void _ccv_cnnp_permute_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_permute_t* const self = (ccv_cnnp_model_permute_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_permute_build] -\n");
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
 	const int nd = ccv_nnc_tensor_nd(params.dim);
@@ -809,6 +855,7 @@ static void _ccv_cnnp_extract_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 {
 	assert(output_size == 1);
 	ccv_cnnp_model_extract_t* const self = (ccv_cnnp_model_extract_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_extract_build] index: %d\n", self->index);
 	outputs[0] = inputs[self->index];
 }
 
@@ -844,6 +891,7 @@ typedef struct {
 
 static void _ccv_cnnp_flatten_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_flatten_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -898,6 +946,7 @@ static void _ccv_cnnp_batch_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_sy
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_batch_norm_t* const self = (ccv_cnnp_model_batch_norm_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_batch_norm_build] -\n");
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int nd = ccv_nnc_tensor_nd(params.dim);
 	ccv_nnc_tensor_param_t bias_params = params;
@@ -1047,9 +1096,10 @@ typedef struct {
 
 static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_convolution_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	int i;
 	const int nd = CCV_NNC_MAX_DIM + 2;
@@ -1175,9 +1225,10 @@ typedef struct {
 
 static void _ccv_cnnp_convolution_transpose_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_convolution_transpose_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_convolution_transpose_t* const self = (ccv_cnnp_model_convolution_transpose_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	int i;
 	const int nd = CCV_NNC_MAX_DIM + 2;
@@ -1298,9 +1349,10 @@ typedef struct {
 
 static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_dense_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t weights_params = params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
@@ -1399,9 +1451,10 @@ typedef struct {
 
 static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_max_pool_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
 	ccv_nnc_cmd_t cmd;
@@ -1445,9 +1498,10 @@ static ccv_cnnp_model_t* _ccv_cnnp_max_pool_copy(const ccv_cnnp_model_t* const s
 
 static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_average_pool_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
 	ccv_nnc_cmd_t cmd;
@@ -1498,6 +1552,7 @@ typedef struct {
 
 static void _ccv_cnnp_relu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_relu_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1543,6 +1598,7 @@ typedef struct {
 
 static void _ccv_cnnp_sigmoid_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sigmoid_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1588,6 +1644,7 @@ typedef struct {
 
 static void _ccv_cnnp_tanh_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_tanh_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1633,6 +1690,7 @@ typedef struct {
 
 static void _ccv_cnnp_swish_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_swish_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1679,6 +1737,7 @@ typedef struct {
 
 static void _ccv_cnnp_gelu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_gelu_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_gelu_t* const self = (ccv_cnnp_model_gelu_t*)super;
@@ -1728,6 +1787,7 @@ typedef struct {
 
 static void _ccv_cnnp_leaky_relu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_leaky_relu_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_leaky_relu_t* const self = (ccv_cnnp_model_leaky_relu_t*)super;
@@ -1776,6 +1836,7 @@ typedef struct {
 
 static void _ccv_cnnp_softmax_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_softmax_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1823,6 +1884,7 @@ typedef struct {
 
 static void _ccv_cnnp_add_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_add_build] -\n");
 	const ccv_cnnp_model_add_t* const self = (const ccv_cnnp_model_add_t*)super;
 	assert(input_size == 2);
 	assert(output_size == 1);
@@ -1873,6 +1935,7 @@ typedef struct {
 
 static void _ccv_cnnp_mul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_mul_build] -\n");
 	const ccv_cnnp_model_mul_t* const self = (const ccv_cnnp_model_mul_t*)super;
 	assert(input_size == 2);
 	assert(output_size == 1);
@@ -1922,6 +1985,7 @@ typedef struct {
 
 static void _ccv_cnnp_scalar_mul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_scalar_mul_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -1972,6 +2036,7 @@ typedef struct {
 static void _ccv_cnnp_div_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_div_t* const self = (const ccv_cnnp_model_div_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_div_build] -\n");
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
 	int i;
@@ -2029,6 +2094,7 @@ typedef struct {
 
 static void _ccv_cnnp_sqrt_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sqrt_build] -\n");
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[1];
 	ccv_nnc_tensor_param_t output_params;
@@ -2073,6 +2139,7 @@ typedef struct {
 
 static void _ccv_cnnp_cmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_cmul_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
@@ -2119,9 +2186,10 @@ typedef struct {
 
 static void _ccv_cnnp_transpose_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_transpose_t* const self = (ccv_cnnp_model_transpose_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_transpose_build] (%d, %d)\n", self->transpose[0], self->transpose[1]);
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_transpose_t* const self = (ccv_cnnp_model_transpose_t*)super;
 	if (self->transpose[0] == self->transpose[1])
 	{
 		outputs[0] = inputs[0];
@@ -2176,6 +2244,7 @@ typedef struct {
 
 static void _ccv_cnnp_layer_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_layer_norm_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
@@ -2282,6 +2351,7 @@ typedef struct {
 
 static void _ccv_cnnp_group_norm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_group_norm_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
@@ -2388,6 +2458,7 @@ typedef struct {
 
 static void _ccv_cnnp_rmsnorm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_rmsnorm_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_rmsnorm_t* const self = (ccv_cnnp_model_rmsnorm_t*)super;
@@ -2471,6 +2542,7 @@ typedef struct {
 
 static void _ccv_cnnp_matmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_matmul_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_cnnp_model_matmul_t* const self = (ccv_cnnp_model_matmul_t*)super;
@@ -2527,6 +2599,7 @@ typedef struct {
 
 static void _ccv_cnnp_dropout_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_dropout_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -2593,6 +2666,7 @@ typedef struct {
 
 static void _ccv_cnnp_masked_fill_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_masked_fill_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -2637,6 +2711,7 @@ typedef struct {
 
 static void _ccv_cnnp_index_select_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_index_select_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t vocab_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -2689,9 +2764,10 @@ typedef struct {
 
 static void _ccv_cnnp_embedding_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_embedding_build] vocab_size: %d, embed_size: %d\n", self->vocab_size, self->embed_size);
 	assert(input_size == 1);
 	assert(output_size == 1);
-	ccv_cnnp_model_embedding_t* const self = (ccv_cnnp_model_embedding_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t vocab_params = params;
 	memset(vocab_params.dim, 0, sizeof(vocab_params.dim));
@@ -2774,6 +2850,7 @@ typedef struct {
 
 static void _ccv_cnnp_upsample_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_upsample_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_cnnp_model_upsample_t* const self = (ccv_cnnp_model_upsample_t*)super;
@@ -2826,6 +2903,7 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_sum_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_reduce_sum_build] -\n");
 	const ccv_cnnp_model_reduce_sum_t* const self = (const ccv_cnnp_model_reduce_sum_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
@@ -2881,6 +2959,7 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_mean_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_reduce_mean_build] -\n");
 	const ccv_cnnp_model_reduce_mean_t* const self = (const ccv_cnnp_model_reduce_mean_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
@@ -2936,6 +3015,7 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_max_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_reduce_max_build] -\n");
 	const ccv_cnnp_model_reduce_max_t* const self = (const ccv_cnnp_model_reduce_max_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
@@ -2991,6 +3071,7 @@ typedef struct {
 
 static void _ccv_cnnp_reduce_min_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_reduce_min_build] -\n");
 	const ccv_cnnp_model_reduce_min_t* const self = (const ccv_cnnp_model_reduce_min_t*)super;
 	assert(input_size == 1);
 	assert(output_size == 1);
@@ -3047,6 +3128,7 @@ typedef struct {
 static void _ccv_cnnp_reduce_norm2_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_reduce_norm2_t* const self = (const ccv_cnnp_model_reduce_norm2_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_reduce_norm2_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -3101,6 +3183,7 @@ typedef struct {
 static void _ccv_cnnp_argmax_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_argmax_t* const self = (const ccv_cnnp_model_argmax_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_argmax_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -3149,6 +3232,7 @@ typedef struct {
 static void _ccv_cnnp_argmin_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	const ccv_cnnp_model_argmin_t* const self = (const ccv_cnnp_model_argmin_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_argmin_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -3195,6 +3279,7 @@ typedef struct {
 
 static void _ccv_cnnp_min_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_min_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
@@ -3241,6 +3326,7 @@ typedef struct {
 
 static void _ccv_cnnp_max_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_max_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t input_params[2];
@@ -3302,6 +3388,7 @@ static int _ccv_cnnp_lstm_weight_dim(int bidirectional, int num_layers, int inpu
 static void _ccv_cnnp_lstm_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_lstm_t* const self = (ccv_cnnp_model_lstm_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_lstm_build] -\n");
 	assert(input_size == self->super.input_size);
 	assert(output_size == 1);
 	const int proj_size = self->params.rnn.proj_size == 0 ? self->params.rnn.hidden_size : self->params.rnn.proj_size;
@@ -3404,6 +3491,7 @@ typedef struct {
 static void _ccv_cnnp_datatype_conversion_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_datatype_conversion_t* const self = (ccv_cnnp_model_datatype_conversion_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_datatype_conversion_build] -\n");
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	if (self->ref_to_last)
 	{
@@ -3455,6 +3543,7 @@ typedef struct {
 static void _ccv_cnnp_clamp_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_clamp_t* const self = (ccv_cnnp_model_clamp_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_clamp_build] -\n");
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(output_size == 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
@@ -3499,6 +3588,7 @@ typedef struct {
 
 static void _ccv_cnnp_parameter_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_parameter_build] -\n");
 	assert(output_size == 1);
 	ccv_cnnp_model_parameter_t* const self = (ccv_cnnp_model_parameter_t*)super;
 	if (!self->weights.graph)
@@ -3565,6 +3655,7 @@ typedef struct {
 
 static void _ccv_cnnp_scalar_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_scalar_build] -\n");
 	assert(output_size == 1);
 	ccv_cnnp_model_scalar_t* const self = (ccv_cnnp_model_scalar_t*)super;
 	ccv_nnc_tensor_param_t params = {
@@ -3624,6 +3715,7 @@ typedef struct {
 
 static void _ccv_cnnp_variable_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_variable_build] -\n");
 	assert(input_size == 0);
 	assert(output_size == 1);
 	ccv_cnnp_model_variable_t* const self = (ccv_cnnp_model_variable_t*)super;
@@ -3664,6 +3756,7 @@ typedef struct {
 
 static void _ccv_cnnp_move_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_move_build] -\n");
 	assert(input_size == 2);
 	assert(output_size == 1);
 	outputs[0] = inputs[1];
@@ -3703,6 +3796,7 @@ typedef struct {
 
 static void _ccv_cnnp_contiguous_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_contiguous_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -3768,6 +3862,7 @@ typedef struct {
 
 static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_scaled_dot_product_attention_build] -\n");
 	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 1);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const self = (ccv_cnnp_model_scaled_dot_product_attention_t*)super;
