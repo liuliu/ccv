@@ -9,7 +9,8 @@ extern "C" {
 
 #ifdef HAVE_CUDNN
 
-__global__ void _ccv_nnc_ewsum_kernel(const size_t count, const int* const a, const int* const b, int* const c)
+template<typename NUM>
+__global__ void _ccv_nnc_ewsum_kernel(const size_t count, const NUM* const a, const NUM* const b, NUM* const c)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		c[i] = a[i] + b[i];
@@ -37,6 +38,35 @@ static int _ccv_nnc_ewsum_forw_i32(const int k, const ccv_nnc_cmd_t cmd, const c
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static int _ccv_nnc_ewsum_forw_ref(const int k, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	int i;
+	ccv_nnc_tensor_t* const c = outputs[0];
+	const size_t count = ccv_nnc_tensor_count(c->info);
+	const int datatype = c->info.datatype;
+	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+	for (i = 0; i < input_size - 1; i++)
+	{
+		const ccv_nnc_tensor_t* a = i > 0 ? c : inputs[k];
+		const ccv_nnc_tensor_t* b = i >= k ? inputs[i + 1] : inputs[i];
+		assert(a->info.datatype == datatype);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(b->info.datatype == datatype);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+		if (datatype == CCV_16F)
+		{
+			_ccv_nnc_ewsum_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+		} else if (datatype == CCV_32F) {
+			_ccv_nnc_ewsum_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+		} else if (datatype == CCV_64F) {
+			_ccv_nnc_ewsum_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f64, b->data.f64, c->data.f64);
+		}
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size >= 1);
@@ -52,6 +82,10 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		}
 	if (outputs[0]->info.datatype == CCV_32S)
 		return _ccv_nnc_ewsum_forw_i32(k, cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	const int axis_count = ccv_nnc_tensor_nd(outputs[0]->info.dim);
+	// It seems cudnnOpTensor cannot handle dim more than 5.
+	if (axis_count > 5)
+		return _ccv_nnc_ewsum_forw_ref(k, cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	for (z = 0; z < input_size - 1; z++)
