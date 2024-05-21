@@ -642,7 +642,9 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 					ccv_nnc_print_tensor_shape(output_tensors[k]);
 				PRINT(CCV_CLI_INFO, "\n");
 			}
-			ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
+			const int status = ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
+			if (status != 0)
+				PRINT(CCV_CLI_INFO, "Invalid Status: %d\n", status);
 			if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 			{
 				for (k = 0; k < per_output_size; k++)

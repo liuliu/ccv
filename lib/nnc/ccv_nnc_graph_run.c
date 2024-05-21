@@ -510,7 +510,9 @@ static co_routine_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, 
 			.stream = node_stream
 		};
 		ccv_nnc_stream_context_set_neighbor_discovery(node_stream, _ccv_nnc_graph_neighbor_context_discovery, &discovery_context);
-		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
+		const int status = ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
+		if (status != 0)
+			PRINT(CCV_CLI_INFO, "Invalid Status: %d\n", status);
 		if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 		{
 			for (i = 0; i < node->output_size; i++)

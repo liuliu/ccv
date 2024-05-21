@@ -193,13 +193,137 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				_ccv_nnc_cmul_kernel_2d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1), dim3(64, 8, 1), 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
 			}
 		}
-		nd = squeezed_dims;
+		CUDA_ENFORCE(cudaGetLastError());
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+template<typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_conj_kernel(const size_t count, const NUM2* const b, NUM3* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const NUM2 b0 = b[i * 2];
+		const NUM2 b1 = b[i * 2 + 1];
+		c[i * 2] = (NUM3)(b0);
+		c[i * 2 + 1] = (NUM3)(-b1);
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_conj_kernel(const size_t count, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const NUM1 a0 = a[i * 2];
+		const NUM1 a1 = a[i * 2 + 1];
+		const NUM1 b0 = b[i * 2];
+		const NUM1 b1 = b[i * 2 + 1];
+		c[i * 2] = (NUM3)(a0 * b0 + a1 * b1);
+		c[i * 2 + 1] = (NUM3)(-a0 * b1 + a1 * b0);
+	}
+}
+
 static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	int gdim[CCV_NNC_MAX_DIM_ALLOC];
+	int no_broadcasting = 1;
+	if (outputs[0])
+	{
+		assert(input_size >= 3 && inputs[2]);
+		ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim);
+		ccv_nnc_tensor_view_get_broadcast_dim((ccv_nnc_tensor_view_t*)inputs[2], gdim);
+		no_broadcasting = no_broadcasting && (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[2], gdim));
+	}
+	if (no_broadcasting && output_size > 1 && outputs[1])
+	{
+		assert(inputs[1]);
+		ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim);
+		ccv_nnc_tensor_view_get_broadcast_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim);
+		no_broadcasting = no_broadcasting && (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim));
+	}
+	int i;
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (no_broadcasting)
+	{
+		if (outputs[0])
+		{
+			const size_t count = ccv_nnc_tensor_count(outputs[0]->info) / 2;
+			if (inputs[0])
+			{
+				ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
+				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[2];
+				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+					{ assert(b->info.dim[i] == c->info.dim[i]); }
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == b->info.dim[i]); }
+				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				{
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+				}
+			} else {
+				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[2];
+				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+					{ assert(b->info.dim[i] == c->info.dim[i]); }
+				if (b->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				{
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
+				} else if (b->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
+				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
+				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
+				}
+			}
+		}
+		if (output_size > 1 && outputs[1])
+		{
+			const size_t count = ccv_nnc_tensor_count(outputs[1]->info) / 2;
+			if (inputs[0])
+			{
+				ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
+				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[1];
+				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[1];
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+					{ assert(b->info.dim[i] == c->info.dim[i]); }
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == b->info.dim[i]); }
+				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				{
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+				}
+			} else {
+				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[1];
+				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[1];
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+					{ assert(b->info.dim[i] == c->info.dim[i]); }
+				if (b->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				{
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
+				} else if (b->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
+				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
+				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
+				}
+			}
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	return CCV_NNC_EXEC_INVALID;
 }
 
