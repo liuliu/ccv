@@ -2226,6 +2226,28 @@ const char* ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* const model, const c
 	return *(char**)ccv_array_get(compiled_data->ids.parameters, d);
 }
 
+int ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model)
+{
+	assert(model->compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	return compiled_data->parameters->rnum;
+}
+
+ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameter_first_f first, void* const context)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	const int parameter_size = compiled_data->parameters->rnum;
+	int i;
+	for (i = 0; i < parameter_size; i++)
+	{
+		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
+		if (first(model, name, context))
+			return ccv_cnnp_model_parameters(model, -1, i);
+	}
+	return 0;
+}
+
 static ccv_array_t* _ccv_cnnp_model_parameter_indices(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int* const param_ref)
 {
 	const int to_param_sel = parameters->param_sel > 0 ? parameters->param_sel - 1 : parameters->param_sel;

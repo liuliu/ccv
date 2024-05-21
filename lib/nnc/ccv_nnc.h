@@ -3969,6 +3969,25 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_cnnp_model_parameter_tensor_params(c
  */
 CCV_WARN_UNUSED(const char*) ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter);
 /**
+ * This method returns the number of parameters for this particular model. Note that this is only available after
+ * model is compiled.
+ * @param model A model that is compiled.
+ * @return The number of parameters.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model);
+/**
+ * Use this to loop over and if the parameter matches, return 1.
+ */
+typedef int (*ccv_cnnp_model_parameter_first_f)(const ccv_cnnp_model_t* const model, const char* const name, void* const context);
+/**
+ * Loop over a compiled model to find a parameter to either write or modify.
+ * @param model A model that is compiled.
+ * @param first The callback that determines whether a parameter is found.
+ * @param context The context to be passed along with the callback.
+ * @return a ccv_cnnp_model_io_t or 0 if not found.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameter_first_f first, void* const context);
+/**
  * Set parameters from another model. This will override whatever values in these parameters. The
  * given parameters from another model should match the dimension of the parameter. It doesn't matter
  * whether the given tensor is on CPU or GPU. This method can only set when both models are compiled.
