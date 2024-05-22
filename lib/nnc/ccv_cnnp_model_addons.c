@@ -2290,7 +2290,7 @@ static void _ccv_cnnp_layer_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 {
 	ccv_cnnp_model_layer_norm_t* const self = (ccv_cnnp_model_layer_norm_t*)super;
 	if (self->scale.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 }
@@ -2396,7 +2396,7 @@ static void _ccv_cnnp_group_norm_init_states(ccv_cnnp_model_t* const super, ccv_
 {
 	ccv_cnnp_model_group_norm_t* const self = (ccv_cnnp_model_group_norm_t*)super;
 	if (self->scale.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 }
@@ -2489,7 +2489,7 @@ static void _ccv_cnnp_rmsnorm_init_states(ccv_cnnp_model_t* const super, ccv_nnc
 {
 	ccv_cnnp_model_rmsnorm_t* const self = (ccv_cnnp_model_rmsnorm_t*)super;
 	if (self->scale.graph)
-		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
 }
 
 static void _ccv_cnnp_rmsnorm_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
