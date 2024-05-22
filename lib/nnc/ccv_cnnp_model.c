@@ -2233,7 +2233,7 @@ int ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model)
 	return compiled_data->parameters->rnum;
 }
 
-ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameter_first_f first, void* const context)
+ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f first, void* const context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -2246,6 +2246,26 @@ ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model
 			return ccv_cnnp_model_parameters(model, -1, i);
 	}
 	return 0;
+}
+
+ccv_array_t* ccv_cnnp_model_parameters_filter(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f filter, void* const context)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	ccv_array_t* const parameters = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 0, 0);
+	const int parameter_size = compiled_data->parameters->rnum;
+	int i;
+	for (i = 0; i < parameter_size; i++)
+	{
+		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
+		if (filter(model, name, context))
+		{
+			ccv_cnnp_model_io_t parameter = ccv_cnnp_model_parameters(model, -1, i);
+			ccv_array_push(parameters, &parameter);
+		}
+	}
+	return parameters;
+
 }
 
 static ccv_array_t* _ccv_cnnp_model_parameter_indices(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int* const param_ref)

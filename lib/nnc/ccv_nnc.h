@@ -3978,7 +3978,15 @@ CCV_WARN_UNUSED(int) ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const mode
 /**
  * Use this to loop over and if the parameter matches, return 1.
  */
-typedef int (*ccv_cnnp_model_parameter_first_f)(const ccv_cnnp_model_t* const model, const char* const name, void* const context);
+typedef int (*ccv_cnnp_model_parameters_filter_f)(const ccv_cnnp_model_t* const model, const char* const name, void* const context);
+/**
+ * Loop over a compiled model to find a parameter to either write or modify.
+ * @param model A model that is compiled.
+ * @param filter The callback that determines whether this parameter matches.
+ * @param context The context to be passed along with the callback.
+ * @return an array of ccv_cnnp_model_io_t.
+ */
+CCV_WARN_UNUSED(ccv_array_t*) ccv_cnnp_model_parameters_filter(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f filter, void* const context);
 /**
  * Loop over a compiled model to find a parameter to either write or modify.
  * @param model A model that is compiled.
@@ -3986,7 +3994,7 @@ typedef int (*ccv_cnnp_model_parameter_first_f)(const ccv_cnnp_model_t* const mo
  * @param context The context to be passed along with the callback.
  * @return a ccv_cnnp_model_io_t or 0 if not found.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameter_first_f first, void* const context);
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f first, void* const context);
 /**
  * Set parameters from another model. This will override whatever values in these parameters. The
  * given parameters from another model should match the dimension of the parameter. It doesn't matter
