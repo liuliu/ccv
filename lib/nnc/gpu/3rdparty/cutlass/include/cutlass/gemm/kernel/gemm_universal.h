@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -67,9 +67,9 @@ class GemmUniversal<
   Epilogue_,
   ThreadblockSwizzle_,
   void,
-  // 3.x kernels use the first template argument to define the ProblemShape tuple
+  // 3.x kernels use the first template argument to define the ProblemShape
   // We use this invariant to SFINAE dispatch against either the 2.x API or the 3.x API
-  cute::enable_if_t<not cute::is_tuple<Mma_>::value>
+  cute::enable_if_t<not (cute::is_tuple<Mma_>::value || IsCutlass3ArrayKernel<Mma_>::value)>
 > {
 public:
 

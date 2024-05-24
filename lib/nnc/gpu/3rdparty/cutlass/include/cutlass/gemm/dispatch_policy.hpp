@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,6 +53,7 @@ struct KernelTma { };
 struct KernelTmaWarpSpecialized { };
 struct KernelTmaWarpSpecializedPingpong { };
 struct KernelTmaWarpSpecializedCooperative { };
+struct KernelPtrArrayTmaWarpSpecializedCooperative { };
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -65,6 +66,7 @@ struct KernelTmaWarpSpecializedCooperative { };
 struct KernelTmaWarpSpecializedFP8FastAccum : KernelTmaWarpSpecialized { };
 struct KernelTmaWarpSpecializedPingpongFP8FastAccum : KernelTmaWarpSpecializedPingpong { };
 struct KernelTmaWarpSpecializedCooperativeFP8FastAccum: KernelTmaWarpSpecializedCooperative { };
+struct KernelPtrArrayTmaWarpSpecializedCooperativeFP8FastAccum : KernelPtrArrayTmaWarpSpecializedCooperative { };
 
 // Policies to opt into mixed type GEMMs
 struct KernelTmaWarpSpecializedMixedInput : KernelTmaWarpSpecialized { };
@@ -223,6 +225,22 @@ struct MainloopSm90TmaGmmaWarpSpecializedFP8
     cute::is_same_v<KernelSchedule, KernelTmaWarpSpecializedPingpong> ||
     cute::is_same_v<KernelSchedule, KernelTmaWarpSpecializedCooperative>,
     "KernelSchedule must be one of the warp specialized policies");
+};
+
+// n-buffer in smem (Hopper TMA), pipelined with Hopper GMMA and TMA, Warp specialized dynamic schedule for Ptr-Array and Grouped Gemm
+template<
+  int Stages_,
+  class ClusterShape_ = Shape<_1,_1,_1>,
+  class KernelSchedule = KernelPtrArrayTmaWarpSpecializedCooperative
+>
+struct MainloopSm90ArrayTmaGmmaWarpSpecialized {
+  constexpr static int Stages = Stages_;
+  using ClusterShape = ClusterShape_;
+  using ArchTag = arch::Sm90;
+  using Schedule = KernelSchedule;
+  static_assert(
+    cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative, KernelSchedule>,
+    "KernelSchedule must be one of the Ptr-Array or Grouped Gemm TMA Warp Specialized Cooperative policies");
 };
 
 //////////////////////////////////////////////////////////////////////////////

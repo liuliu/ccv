@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -68,7 +68,7 @@ template <
 struct NamedBarrierSync {
   CUTLASS_DEVICE
   static void sync() {
-    cutlass::arch::NamedBarrier::sync(ThreadCount, BarrierId);
+    cutlass::arch::NamedBarrier::sync(ThreadCount, static_cast<arch::ReservedNamedBarriers>(BarrierId));
   }
 };
 
@@ -227,9 +227,9 @@ template <
   uint32_t MaxNumNamedBarriers = 16
 >
 struct NamedBarrierManager {
-  static constexpr uint32_t HardwareMaxNumNamedBarriers = 16;
-  static_assert(MaxNumNamedBarriers <= HardwareMaxNumNamedBarriers);
-  static_assert(MaxNumNamedBarriers + Offset <= HardwareMaxNumNamedBarriers, "Barrier IDs cannot exceed 15");
+
+  static_assert(MaxNumNamedBarriers <= arch::NamedBarrier::HardwareMaxNumNamedBarriers);
+  static_assert(MaxNumNamedBarriers + Offset <= arch::NamedBarrier::HardwareMaxNumNamedBarriers, "Barrier IDs cannot exceed 15");
 
   // Number of threads participating in the barrier
   static constexpr uint32_t ThreadCount = ThreadCount_;

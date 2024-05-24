@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -851,7 +851,9 @@ protected:
       }
       ptr_D += tile_work.tiled_coord.k() * params.batch_stride_D;
       if (ptr_Tensor) {
-        ptr_Tensor += tile_work.tiled_coord.k() * params.batch_stride_Tensor;
+        ptr_Tensor = ReferenceFactory<typename Epilogue::ElementTensor>::add_pointer_offset(
+          ptr_Tensor,
+          tile_work.tiled_coord.k() * params.batch_stride_Tensor);
       }
       if (ptr_Vector) {
         ptr_Vector += tile_work.tiled_coord.k() * params.batch_stride_Vector;
@@ -2024,7 +2026,9 @@ protected:
       ptr_C += tile_work.tiled_coord.k() * params.batch_stride_C;
       ptr_D += tile_work.tiled_coord.k() * params.batch_stride_D;
       if (ptr_Tensor) {
-        ptr_Tensor += tile_work.tiled_coord.k() * params.batch_stride_Tensor;
+        ptr_Tensor = ReferenceFactory<typename Epilogue::ElementTensor>::add_pointer_offset(
+          ptr_Tensor,
+          tile_work.tiled_coord.k() * params.batch_stride_Tensor);
       }
       if (ptr_Vector) {
         ptr_Vector += tile_work.tiled_coord.k() * params.batch_stride_Vector;

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -106,12 +106,12 @@ struct CollectiveMma<
   using TransformB = TransformB_;
   using ArchTag = typename DispatchPolicy::ArchTag;
 
-  using MainloopPipeline = cutlass::PipelineTmaAsync<
-                             DispatchPolicy::Stages,
-                             typename DispatchPolicy::ClusterShape>;
+  using MainloopPipeline = cutlass::PipelineTmaAsync<DispatchPolicy::Stages>;
 
   using PipelineParams = typename MainloopPipeline::Params;
   using PipelineState  = typename cutlass::PipelineState<DispatchPolicy::Stages>;
+
+  static constexpr int ThreadCount = CUTE_STATIC_V(size(TiledMma{}));
 
   static_assert(cute::rank(SmemLayoutAtomA{}) == 2, "SmemLayoutAtom must be rank 2 (M/N, K)");
   static_assert((size<0>(TileShape{}) % size<0>(SmemLayoutAtomA{})) == 0, "SmemLayoutAtom must evenly divide tile shape.");
@@ -147,8 +147,7 @@ struct CollectiveMma<
   using InternalElementA = cute::conditional_t<ConvertF32toTF32A, tfloat32_t, uint_bit_t<sizeof_bits_v<ElementA>>>;
   using InternalElementB = cute::conditional_t<ConvertF32toTF32B, tfloat32_t, uint_bit_t<sizeof_bits_v<ElementB>>>;
 
-  struct SharedStorage
-  {
+  struct SharedStorage {
     cute::array_aligned<typename TiledMma::ValTypeA, cute::cosize_v<SmemLayoutA>> smem_A;
     cute::array_aligned<typename TiledMma::ValTypeB, cute::cosize_v<SmemLayoutB>> smem_B;
 
@@ -244,13 +243,13 @@ struct CollectiveMma<
 
   /// Issue Tma Descriptor Prefetch -- ideally from a single thread for best performance
   CUTLASS_DEVICE
-  static void prefetch_tma_descriptors(Params const& mainloop_params)
-  {
+  static void prefetch_tma_descriptors(Params const& mainloop_params) {
     cute::prefetch_tma_descriptor(mainloop_params.tma_load_a.get_tma_descriptor());
     cute::prefetch_tma_descriptor(mainloop_params.tma_load_b.get_tma_descriptor());
   }
 
   /// Perform a collective-scoped matrix multiply-accumulate
+  /// Producer Perspective
   template <
     class TensorA, class TMA_LOAD_A,
     class TensorB, class TMA_LOAD_B,
@@ -281,8 +280,8 @@ struct CollectiveMma<
       "SM90 GMMA mainloops cannot have a non-void copy atom for smem sourced instructions.");
 
     SharedStorage& storage = *reinterpret_cast<SharedStorage*>(shared_memory);
-    Tensor sA = make_tensor(make_smem_ptr(storage.smem_A.data()), SmemLayoutA{}); // (BLK_M,BLK_K,PIPE)
-    Tensor sB = make_tensor(make_smem_ptr(storage.smem_B.data()), SmemLayoutB{}); // (BLK_N,BLK_K,PIPE)
+    Tensor sA = make_tensor(make_smem_ptr(storage.smem_A.data()), SmemLayoutA{});                 // (BLK_M,BLK_K,PIPE)
+    Tensor sB = make_tensor(make_smem_ptr(storage.smem_B.data()), SmemLayoutB{});                 // (BLK_N,BLK_K,PIPE)
 
     //
     // Prepare the TMA loads for A and B
@@ -295,11 +294,11 @@ struct CollectiveMma<
     auto block_tma_b = tma_load_b.get_slice(cluster_local_block_id.x);
 
     // Applies the mapping from block_tma_a
-    Tensor tAgA = block_tma_a.partition_S(gA);                                   // (TMA,TMA_M,TMA_K,k)
-    Tensor tAsA = block_tma_a.partition_D(sA);                                   // (TMA,TMA_M,TMA_K,PIPE)
+    Tensor tAgA = block_tma_a.partition_S(gA);                                                // (TMA,TMA_M,TMA_K,k)
+    Tensor tAsA = block_tma_a.partition_D(sA);                                                // (TMA,TMA_M,TMA_K,PIPE)
 
-    Tensor tBgB = block_tma_b.partition_S(gB);                                   // (TMA,TMA_N,TMA_K,k)
-    Tensor tBsB = block_tma_b.partition_D(sB);                                   // (TMA,TMA_N,TMA_K,PIPE)
+    Tensor tBgB = block_tma_b.partition_S(gB);                                                // (TMA,TMA_N,TMA_K,k)
+    Tensor tBsB = block_tma_b.partition_D(sB);                                                // (TMA,TMA_N,TMA_K,PIPE)
 
     //
     // Prepare TMA membars and PREFETCH
@@ -335,9 +334,7 @@ struct CollectiveMma<
     params.is_leader = warp_group_thread_idx == 0;
     params.num_consumers = NumThreadsPerWarpGroup;
 
-    MainloopPipeline pipeline(
-      storage.pipeline_storage,
-      params);
+    MainloopPipeline pipeline(storage.pipeline_storage, params, ClusterShape{});
 
     // State variables used for iterating the circular buffer
     // smem_pipe_read / release is used by the consumer of SMEM data - i.e MMA

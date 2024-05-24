@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,7 +80,7 @@ public:
   static int const kElementsPerStoredItem = int(sizeof(Storage) * 8) / sizeof_bits<T>::value;
 
   /// Number of storage elements
-  static size_t const kStorageElements = N / kElementsPerStoredItem;
+  static size_t const kStorageElements = (N + kElementsPerStoredItem - 1) / kElementsPerStoredItem;
 
   /// Number of logical elements
   static size_t const kElements = N;

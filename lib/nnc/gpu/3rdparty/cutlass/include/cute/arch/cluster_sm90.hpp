@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -95,6 +95,7 @@ CUTE_DEVICE dim3 cluster_grid_dims()
   return gridDim;
 #elif defined(_MSC_VER)
   CUTE_RUNTIME_ASSERT("cluster_grid_dims() can only be called on device");
+  return {0, 0, 0};
 #else
   return {0, 0, 0};
 #endif
@@ -114,6 +115,7 @@ CUTE_DEVICE dim3 cluster_id_in_grid()
   return blockIdx;
 #elif defined(_MSC_VER)
   CUTE_RUNTIME_ASSERT("cluster_id_in_grid() can only be called on device");
+  return {0, 0, 0};
 #else
   return {0, 0, 0};
 #endif

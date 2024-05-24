@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1698,13 +1698,13 @@ private:
       //
 
       if (OutputOp::kStoreZ) {
-        destination_iterator += reduce_fragment_idx;
         destination_iterator.store(frag_Z);
+        ++destination_iterator;
       }
 
       if (OutputOp::kStoreT) {
-        tensor_iterator += reduce_fragment_idx;
         tensor_iterator.store(frag_T);
+        ++tensor_iterator;
       }
     }
 };

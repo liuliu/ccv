@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -402,7 +402,7 @@ struct OutputTileThreadLayout: DefaultThreadMapTensorOp<
 
   CUTLASS_DEVICE
   static auto tid2coord(int thread_idx) {
-    return make_layout(ThreadShape{})[thread_idx];
+    return cute::idx2crd(thread_idx, ThreadShape{});
   }
 
   template <class TensorInput>

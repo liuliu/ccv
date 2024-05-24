@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,6 @@
 #include "cutlass/trace.h"
 
 #include "cute/tensor.hpp"
-
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass::gemm::kernel {
@@ -219,6 +218,8 @@ public:
     }
     implementable &= CollectiveMainloop::can_implement(args.problem_shape, args.mainloop);
     implementable &= CollectiveEpilogue::can_implement(args.problem_shape, args.epilogue);
+    implementable &= TileScheduler::can_implement(args.scheduler);
+
     return implementable;
   }
 
@@ -256,13 +257,10 @@ public:
     using namespace cute;
     using X = Underscore;
 
-    // Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
-    #if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
-      if constexpr(size<0>(typename TiledMma::AtomShape_MNK{}) == 64) {
-        printf("ERROR : Arch conditional MMA instruction used without targeting sm90a compute capability. Aborting.\n");
-        return;
-      }
-    #endif
+// Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
+#if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
+    printf("ERROR : Arch conditional MMA instruction used without targeting sm90a compute capability. Aborting.\n");
+#else
 
     // Preconditions
     static_assert(cute::rank(StrideA{}) == 3, "StrideA must be rank-3: [M, K, L]. If batch mode is not needed, set L stride to Int<0>.");
@@ -508,6 +506,7 @@ public:
         work_tile_info = scheduler.get_current_work();
       } // Scheduler work fetch loop
     } // Consumer Warp Groups End
+#endif
   }
 };
 

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,6 @@
 #include "cutlass/gemm/dispatch_policy.hpp"
 #include "cutlass/gemm/kernel/sm90_tile_scheduler.hpp"
 #include "cutlass/trace.h"
-
 #include "cute/tensor.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -82,7 +81,6 @@ public:
   using ProblemShape = ProblemShape_;
   static_assert(cute::rank(ProblemShape{}) == 3 or cute::rank(ProblemShape{}) == 4,
     "ProblemShape{} should be <M,N,K> or <M,N,K,L>");
-
   // Mainloop derived types
   using CollectiveMainloop = CollectiveMainloop_;
   using TileShape = typename CollectiveMainloop::TileShape;
@@ -121,7 +119,8 @@ public:
       sizeof(typename CollectiveMainloop::SharedStorage),
       sizeof(typename CollectiveEpilogue::SharedStorage)));
 
-  static constexpr uint32_t MaxThreadsPerBlock = size(TiledMma{});
+  static constexpr uint32_t MaxThreadsPerBlock = CollectiveMainloop::ThreadCount;
+
   static constexpr uint32_t MinBlocksPerMultiprocessor = 1;
 
   // Device side arguments
@@ -176,6 +175,8 @@ public:
     }
     implementable &= CollectiveMainloop::can_implement(args.problem_shape, args.mainloop);
     implementable &= CollectiveEpilogue::can_implement(args.problem_shape, args.epilogue);
+    implementable &= TileScheduler::can_implement(args.scheduler);
+
     return implementable;
   }
 
@@ -210,13 +211,10 @@ public:
     using namespace cute;
     using X = Underscore;
 
-    // Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
-    #if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
-      if constexpr(size<0>(typename TiledMma::AtomShape_MNK{}) == 64) {
-        printf("ERROR : Arch conditional MMA instruction used without targeting sm90a compute capability. Aborting.\n");
-        return;
-      }
-    #endif
+// Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
+#if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
+    printf("ERROR : Arch conditional MMA instruction used without targeting sm90a compute capability. Aborting.\n");
+#else
 
     // Preconditions
     static_assert(cute::rank(StrideA{}) == 3, "StrideA must be rank-3: [M, K, L]. If batch mode is not needed, set L stride to Int<0>.");
@@ -310,6 +308,7 @@ public:
       thread_idx,
       smem_buf
     );
+#endif
   }
 };
 

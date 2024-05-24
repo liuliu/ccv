@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -63,6 +63,7 @@ public:
   // Type Aliases
   //
   using EpilogueSchedule = EpilogueSchedule_;
+  using DispatchPolicy = EpilogueSchedule_;
   
   // derived types of output thread level operator
   using ThreadEpilogueOp = ThreadEpilogueOp_;
@@ -131,8 +132,9 @@ public:
     return true;
   }
 
+  // Note: SharedStorage is unused for DefaultEpilogue
   CUTLASS_HOST_DEVICE
-  DefaultEpilogue(Params const& params_)
+  DefaultEpilogue(Params const& params_, SharedStorage const& shared_storage = SharedStorage())
       : params(params_), epilogue_op(params_.thread) { }
 
   CUTLASS_DEVICE

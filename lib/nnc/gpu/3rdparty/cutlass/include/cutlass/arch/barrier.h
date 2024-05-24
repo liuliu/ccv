@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,18 @@ namespace cutlass {
 namespace arch {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Enumerates the reserved named barriers to avoid potential conflicts
+// This enum class specifies the NamedBarriers reserved by CUTLASS.
+enum class ReservedNamedBarriers { 
+  EpilogueBarrier = 0,
+  TransposeBarrier = 1,
+  TransformBarrier = 2,
+  StreamkBarrier0 = 3,
+  StreamkBarrier1 = 4
+  , FirstUserBarrier = StreamkBarrier1 + 1
+};
+
+
 class NamedBarrier {
 
   // Data Members:
@@ -60,9 +72,19 @@ class NamedBarrier {
 
  public:
 
+  // Constructor for CUTLASS developers:
+  // effective barrier ID starts from 0
+  CUTLASS_DEVICE
+  NamedBarrier(uint32_t num_threads, ReservedNamedBarriers reserved_named_barriers)
+      : num_threads_(num_threads), id_(static_cast<uint32_t>(reserved_named_barriers)) {}
+
+  // Constructor for CUTLASS users:
+  // effective barrier ID starts from ReservedNamedBarrierCount
   CUTLASS_DEVICE
   NamedBarrier(uint32_t num_threads, uint32_t id = 0)
-      : num_threads_(num_threads), id_(id) {}
+      : num_threads_(num_threads), id_(id + ReservedNamedBarrierCount) {
+    CUTLASS_ASSERT(id + ReservedNamedBarrierCount <= HardwareMaxNumNamedBarriers && "Effective barrier_id should not exceed 16.");
+  }
 
   CUTLASS_DEVICE
   void arrive_and_wait() const {
@@ -80,8 +102,52 @@ class NamedBarrier {
   }
 
   //  Static variants
+
+  // Calling interface for CUTLASS users: 
+  // effective barrier ID starts from ReservedNamedBarrierCount
   CUTLASS_DEVICE
   static void arrive_and_wait(uint32_t num_threads, uint32_t barrier_id) {
+    arrive_and_wait_internal(num_threads, barrier_id + ReservedNamedBarrierCount);
+  }
+
+  // Calling interface for CUTLASS developers: 
+  // effective barrier ID starts from 0
+  CUTLASS_DEVICE
+  static void arrive_and_wait(uint32_t num_threads, ReservedNamedBarriers reserved_named_barriers) {
+    arrive_and_wait_internal(num_threads, static_cast<int>(reserved_named_barriers));
+  }
+
+  // Calling interface for CUTLASS users: 
+  // effective barrier ID starts from ReservedNamedBarrierCount
+  CUTLASS_DEVICE
+  static void arrive(uint32_t num_threads, uint32_t barrier_id) {
+    arrive_internal(num_threads, barrier_id + ReservedNamedBarrierCount);
+  }
+
+  // Calling interface for CUTLASS developers: 
+  // effective barrier ID starts from 0
+  CUTLASS_DEVICE
+  static void arrive(uint32_t num_threads, ReservedNamedBarriers reserved_named_barriers) {
+    arrive_internal(num_threads, static_cast<int>(reserved_named_barriers));
+  }
+
+  // Calling interface for CUTLASS users: 
+  // effective barrier ID starts from ReservedNamedBarrierCount
+  CUTLASS_DEVICE
+  static void sync(uint32_t num_threads, uint32_t barrier_id) {
+    sync_internal(num_threads, barrier_id + ReservedNamedBarrierCount);
+  }
+
+  // Calling interface for CUTLASS developers: 
+  // effective barrier ID starts from 0
+  CUTLASS_DEVICE
+  static void sync(uint32_t num_threads, ReservedNamedBarriers reserved_named_barriers) {
+    sync_internal(num_threads, static_cast<int>(reserved_named_barriers));
+  }
+
+ private:
+  CUTLASS_DEVICE
+  static void arrive_and_wait_internal(uint32_t num_threads, uint32_t barrier_id) {
 #if CUDA_BARRIER_ENABLED
     asm volatile("bar.sync %0, %1;" : : "r"(barrier_id), "r"(num_threads));
 #elif defined(__CUDA_ARCH__)
@@ -90,7 +156,7 @@ class NamedBarrier {
   }
 
   CUTLASS_DEVICE
-  static void arrive(uint32_t num_threads, uint32_t barrier_id) {
+  static void arrive_internal(uint32_t num_threads, uint32_t barrier_id) {
 #if CUDA_BARRIER_ENABLED
     asm volatile("bar.arrive %0, %1;" : : "r"(barrier_id), "r"(num_threads));
 #elif defined(__CUDA_ARCH__)
@@ -99,9 +165,16 @@ class NamedBarrier {
   }
 
   CUTLASS_DEVICE
-  static void sync(uint32_t num_threads, uint32_t barrier_id) {
-    NamedBarrier::arrive_and_wait(num_threads, barrier_id);
+  static void sync_internal(uint32_t num_threads, uint32_t barrier_id) {
+    NamedBarrier::arrive_and_wait_internal(num_threads, barrier_id);
   }
+
+ public:
+  // Currently we reserve 8 NamedBarriers for CUTLASS' own use cases, 
+  // while leaving the renaming for general users.
+  static const uint32_t ReservedNamedBarrierCount = static_cast<uint32_t>(ReservedNamedBarriers::FirstUserBarrier);
+  static const uint32_t HardwareMaxNumNamedBarriers = 16;
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +236,7 @@ public:
     uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
     asm volatile(
         "{\n\t"
-        "mbarrier.init.shared.b64 [%1], %0; \n"
+        "mbarrier.init.shared::cta.b64 [%1], %0; \n"
         "}"
         :
         : "r"(arrive_count), "r"(smem_addr));
@@ -183,7 +256,7 @@ public:
         "{\n\t"
         ".reg .pred       P1; \n\t"
         "LAB_WAIT: \n\t"
-        "mbarrier.try_wait.parity.shared.b64 P1, [%0], %1, %2; \n\t"
+        "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1, %2; \n\t"
         "@P1 bra.uni DONE; \n\t"
         "bra.uni     LAB_WAIT; \n\t"
         "DONE: \n\t"
@@ -207,7 +280,7 @@ public:
         ".reg .pred P1; \n\t"
         ".reg .pred P2; \n\t"
         "setp.eq.u32 P2, %3, 1;\n\t"
-        "@P2 mbarrier.test_wait.parity.shared.b64 P1, [%1], %2; \n\t"
+        "@P2 mbarrier.test_wait.parity.shared::cta.b64 P1, [%1], %2; \n\t"
         "selp.b32 %0, 1, 0, P1; \n\t"
         "}"
         : "=r"(waitComplete)
@@ -229,7 +302,7 @@ public:
     asm volatile(
         "{\n\t"
         ".reg .pred P1; \n\t"
-        "mbarrier.try_wait.parity.shared.b64 P1, [%1], %2; \n\t"
+        "mbarrier.try_wait.parity.shared::cta.b64 P1, [%1], %2; \n\t"
         "selp.b32 %0, 1, 0, P1; \n\t"
         "}"
         : "=r"(waitComplete)
@@ -269,7 +342,7 @@ public:
     uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
     asm volatile(
         "{\n\t"
-        "mbarrier.arrive.shared.b64 _, [%0];\n\t"
+        "mbarrier.arrive.shared::cta.b64 _, [%0];\n\t"
         "}"
         :
         : "r"(smem_addr));
@@ -284,7 +357,7 @@ public:
     uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
     asm volatile(
         "{\n\t"
-        "mbarrier.ival.shared.b64 [%0]; \n\t"
+        "mbarrier.ival.shared::cta.b64 [%0]; \n\t"
         "}"
         :
         : "r"(smem_addr));
@@ -345,7 +418,7 @@ struct ClusterTransactionBarrier : public ClusterBarrier {
     uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
     asm volatile(
         "{\n\t"
-        "mbarrier.arrive.expect_tx.shared.b64 _, [%1], %0; \n\t"
+        "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%1], %0; \n\t"
         "}"
         :
         : "r"(transaction_bytes), "r"(smem_addr));
@@ -382,7 +455,7 @@ struct ClusterTransactionBarrier : public ClusterBarrier {
     uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
     asm volatile(
         "{\n\t"
-        "mbarrier.expect_tx.shared.b64 [%1], %0; \n\t"
+        "mbarrier.expect_tx.shared::cta.b64 [%1], %0; \n\t"
         "}"
         :
         : "r"(transaction_bytes), "r"(smem_addr));
@@ -490,7 +563,7 @@ void cpasync_barrier_arrive(uint64_t const* smem_ptr) {
   uint32_t smem_addr = cute::cast_smem_ptr_to_uint(smem_ptr);
   asm volatile(
     "{\n\t"
-    "cp.async.mbarrier.arrive.shared.b64 [%0];\n\t"
+    "cp.async.mbarrier.arrive.shared::cta.b64 [%0];\n\t"
     "}"
     :
     : "r"(smem_addr));

@@ -10,7 +10,7 @@
 
 void run_mha_fwd(Flash_fwd_params &params, cudaStream_t stream, bool force_split_kernel=false) {
     FP16_SWITCH(!params.is_bf16, [&] {
-        FWD_HEADDIM_SWITCH(params.d, [&] {
+        HEADDIM_SWITCH(params.d, [&] {
             if (params.num_splits <= 1 && !force_split_kernel) {  // If we don't set it num_splits == 0
                 run_mha_fwd_<elem_type, kHeadDim>(params, stream);
             } else {
@@ -64,22 +64,8 @@ int num_splits_heuristic(int batch_nheads_mblocks, int num_SMs, int num_n_blocks
 
 void run_mha_bwd(Flash_bwd_params &params, cudaStream_t stream, const bool configure) {
     FP16_SWITCH(!params.is_bf16, [&] {
-        if (params.d <= 32) {
-            run_mha_bwd_<elem_type, 32>(params, stream, configure);
-        } else if (params.d <= 64) {
-            run_mha_bwd_<elem_type, 64>(params, stream, configure);
-        } else if (params.d <= 96) {
-            run_mha_bwd_<elem_type, 96>(params, stream, configure);
-        } else if (params.d <= 128) {
-            run_mha_bwd_<elem_type, 128>(params, stream, configure);
-        } else if (params.d <= 160) {
-            run_mha_bwd_<elem_type, 160>(params, stream, configure);
-        } else if (params.d <= 192) {
-            run_mha_bwd_<elem_type, 192>(params, stream, configure);
-        } else if (params.d <= 224) {
-          run_mha_bwd_<elem_type, 224>(params, stream, configure);
-        } else if (params.d <= 256) {
-          run_mha_bwd_<elem_type, 256>(params, stream, configure);
-        }
+        HEADDIM_SWITCH(params.d, [&] {
+            run_mha_bwd_<elem_type, kHeadDim>(params, stream);
+        });
     });
 }

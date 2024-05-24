@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,6 @@
 
 namespace cutlass::gemm::collective {
 using namespace cute;
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <
@@ -78,7 +77,8 @@ struct CollectiveMma<
     GmemTiledCopyB_,
     SmemLayoutAtomB_,
     SmemCopyAtomB_,
-    TransformB_>
+    TransformB_
+  >
 {
   //
   // Type Aliases
@@ -286,7 +286,6 @@ struct CollectiveMma<
       copy(smem_tiled_copy_B, tCsB_p(_,_,Int<0>{}), tCrB_copy_view(_,_,Int<0>{}));
     }
 
-
     CUTLASS_PRAGMA_NO_UNROLL
     for ( ; k_tile_count > -(DispatchPolicy::Stages-1); --k_tile_count)
     {
@@ -332,6 +331,7 @@ struct CollectiveMma<
       });
 
     }
+
   }
 };
 
@@ -352,7 +352,8 @@ template <
   class GmemTiledCopyB_,
   class SmemLayoutAtomB_,
   class SmemCopyAtomB_,
-  class TransformB_>
+  class TransformB_
+>
 struct CollectiveMma<
     MainloopSm80CpAsync<Stages>,
     TileShape_,
@@ -368,7 +369,8 @@ struct CollectiveMma<
     GmemTiledCopyB_,
     SmemLayoutAtomB_,
     SmemCopyAtomB_,
-    TransformB_>
+    TransformB_
+   >
 {
   //
   // Type Aliases
@@ -627,7 +629,6 @@ struct CollectiveMma<
       copy(smem_tiled_copy_B, tCsB_p(_,_,Int<0>{}), tCrB_copy_view(_,_,Int<0>{}));
     }
 
-
     CUTLASS_PRAGMA_NO_UNROLL
     for ( ; k_tile_count > -(DispatchPolicy::Stages-1); --k_tile_count)
     {
@@ -678,6 +679,7 @@ struct CollectiveMma<
       });
 
     }
+
   }
 };
 

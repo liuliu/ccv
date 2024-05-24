@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -121,6 +121,12 @@ using CUTE_STL_NAMESPACE::is_empty;
 using CUTE_STL_NAMESPACE::is_empty_v;
 
 using CUTE_STL_NAMESPACE::invoke_result_t;
+
+using CUTE_STL_NAMESPACE::common_type;
+using CUTE_STL_NAMESPACE::common_type_t;
+
+using CUTE_STL_NAMESPACE::remove_pointer;
+using CUTE_STL_NAMESPACE::remove_pointer_t;
 
 // <utility>
 using CUTE_STL_NAMESPACE::declval;

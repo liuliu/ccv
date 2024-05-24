@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -227,20 +227,20 @@ raw_pointer_cast(counting_iterator<T> const& x) {
 template <class T>
 CUTE_HOST_DEVICE void print(T const* const ptr)
 {
-  printf("ptr[%db](%p)", int(sizeof_bits<T>::value), ptr);
+  printf("ptr["); print(sizeof_bits<T>::value); printf("b](%p)", ptr);
 }
 
 template <class T>
 CUTE_HOST_DEVICE void print(counting_iterator<T> ptr)
 {
-  printf("counting_iter_"); print(ptr.n_);
+  printf("counting_iter("); print(ptr.n_); printf(")");
 }
 
 #if !defined(__CUDACC_RTC__)
 template <class T>
 CUTE_HOST std::ostream& operator<<(std::ostream& os, counting_iterator<T> ptr)
 {
-  return os << "counting_iter_" << ptr.n_;
+  return os << "counting_iter(" << ptr.n_ << ")";
 }
 #endif // !defined(__CUDACC_RTC__)
 

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -240,8 +240,10 @@ public:
     NumericArrayConverter<ElementZ, ElementCompute, kElementsPerAccess> convert_z;
     frag_Z = convert_z(result_Z);
 
-    NumericArrayConverter<ElementT, ElementCompute, kElementsPerAccess> convert_t;
-    frag_T = convert_t(result_T);
+    if constexpr (kStoreT) {
+      NumericArrayConverter<ElementT, ElementCompute, kElementsPerAccess> convert_t;
+      frag_T = convert_t(result_T);
+    }
   }
 
   /// Applies the operation when is_source_needed() is false
@@ -269,8 +271,10 @@ public:
     NumericArrayConverter<ElementZ, ElementCompute, kElementsPerAccess> convert_z;
     frag_Z = convert_z(result_Z);
 
-    NumericArrayConverter<ElementT, ElementCompute, kElementsPerAccess> convert_t;
-    frag_T = convert_t(result_T);
+    if constexpr (kStoreT) {
+      NumericArrayConverter<ElementT, ElementCompute, kElementsPerAccess> convert_t;
+      frag_T = convert_t(result_T);
+    }
   }
 };
 

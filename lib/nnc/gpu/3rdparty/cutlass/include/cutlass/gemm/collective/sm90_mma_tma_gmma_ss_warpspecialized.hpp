@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -107,9 +107,7 @@ struct CollectiveMma<
   using TransformB = TransformB_;
   using ArchTag = typename DispatchPolicy::ArchTag;
 
-  using MainloopPipeline = cutlass::PipelineTmaAsync<
-                             DispatchPolicy::Stages,
-                             typename DispatchPolicy::ClusterShape>;
+  using MainloopPipeline = cutlass::PipelineTmaAsync<DispatchPolicy::Stages>;
   using PipelineState = cutlass::PipelineState<DispatchPolicy::Stages>;
 
   using PipelineParams = typename MainloopPipeline::Params;
@@ -255,22 +253,20 @@ struct CollectiveMma<
 
   /// Issue Tma Descriptor Prefetch -- ideally from a single thread for best performance
   CUTLASS_DEVICE
-  static void prefetch_tma_descriptors(Params const& mainloop_params)
-  {
+  static void prefetch_tma_descriptors(Params const& mainloop_params) {
     cute::prefetch_tma_descriptor(mainloop_params.tma_load_a.get_tma_descriptor());
     cute::prefetch_tma_descriptor(mainloop_params.tma_load_b.get_tma_descriptor());
   }
 
   /// Set up the data needed by this collective for load and mma.
   /// Returns a tuple of tensors. The collective and the kernel layer have the contract
-  /// that the tuple must contain at least two elements, with the first two elements being:
+  /// Returned tuple must contain at least two elements, with the first two elements being:
   /// gA_mkl - The tma tensor, A after a local tile so it has shape  (BLK_M,BLK_K,m,k,l)
   /// gB_nkl - The tma tensor, B after a local tile so it has shape  (BLK_N,BLK_K,n,k,l)
   /// The rest of the tensors can be specified as needed by this collective.
-  template <class ProblemShape_MNKL,
-            class TileShapeMNK>
+  template <class ProblemShape_MNKL>
   CUTLASS_DEVICE auto
-  tile_input_tensors(ProblemShape_MNKL const& problem_shape_MNKL, Params const& mainloop_params, TileShapeMNK const& tileshape_mnk) {
+  load_init(ProblemShape_MNKL const& problem_shape_MNKL, Params const& mainloop_params) const {
     using X = Underscore;
     // Separate out problem shape for convenience
     auto [M,N,K,L] = problem_shape_MNKL;
@@ -281,8 +277,8 @@ struct CollectiveMma<
     Tensor mB_nkl = mainloop_params.tma_load_b.get_tma_tensor(make_shape(N,K,L));                            // (n,k,l)
 
     // Make tiled views, defer the slice
-    Tensor gA_mkl = local_tile(mA_mkl, tileshape_mnk, make_coord(_,_,_), Step<_1, X,_1>{});          // (BLK_M,BLK_K,m,k,l)
-    Tensor gB_nkl = local_tile(mB_nkl, tileshape_mnk, make_coord(_,_,_), Step< X,_1,_1>{});          // (BLK_N,BLK_K,n,k,l)
+    Tensor gA_mkl = local_tile(mA_mkl, TileShape{}, make_coord(_,_,_), Step<_1, X,_1>{});        // (BLK_M,BLK_K,m,k,l)
+    Tensor gB_nkl = local_tile(mB_nkl, TileShape{}, make_coord(_,_,_), Step< X,_1,_1>{});        // (BLK_N,BLK_K,n,k,l)
 
     return cute::make_tuple(gA_mkl, gB_nkl);
   }
@@ -298,20 +294,15 @@ struct CollectiveMma<
       Params const& mainloop_params,
       MainloopPipeline pipeline, 
       PipelineState smem_pipe_write,
-      cute::tuple<TensorA, TensorB> const& tiled_tensors,
+      cute::tuple<TensorA, TensorB> const& load_inputs,
       BlockCoord const& blk_coord,
       KTileIterator k_tile_iter, int k_tile_count,
       int thread_idx,
       uint32_t block_rank_in_cluster,
-      TensorStorage& shared_tensors)
-  {
-
-    using namespace cute;
-    int warp_idx = canonical_warp_idx_sync();
-    int warp_idx_in_warp_group  = warp_idx % 4;
+      TensorStorage& shared_tensors) {
     int lane_predicate = cute::elect_one_sync();
 
-    if (warp_idx_in_warp_group == 0 and lane_predicate) {
+    if (lane_predicate) {
       Tensor sA = make_tensor(make_smem_ptr(shared_tensors.smem_A.data()), SmemLayoutA{});        // (BLK_M,BLK_K,PIPE)
       Tensor sB = make_tensor(make_smem_ptr(shared_tensors.smem_B.data()), SmemLayoutB{});        // (BLK_N,BLK_K,PIPE)
 
@@ -322,16 +313,16 @@ struct CollectiveMma<
       constexpr uint32_t cluster_shape_x = get<0>(typename DispatchPolicy::ClusterShape());
       uint2 cluster_local_block_id = {block_rank_in_cluster % cluster_shape_x, block_rank_in_cluster / cluster_shape_x};
 
-      Tensor gA_mkl = get<0>(tiled_tensors);
-      Tensor gB_nkl = get<1>(tiled_tensors);
+      Tensor gA_mkl = get<0>(load_inputs);
+      Tensor gB_nkl = get<1>(load_inputs);
 
       auto block_tma_a = mainloop_params.tma_load_a.get_slice(cluster_local_block_id.y);
       auto block_tma_b = mainloop_params.tma_load_b.get_slice(cluster_local_block_id.x);
 
       // Partition the inputs based on the current block coordinates.
       auto [m_coord, n_coord, k_coord, l_coord] = blk_coord;
-      Tensor gA = gA_mkl(_,_,m_coord,_,l_coord);                                        // (BLK_M,BLK_K,k)
-      Tensor gB = gB_nkl(_,_,n_coord,_,l_coord);                                        // (BLK_N,BLK_K,k)
+      Tensor gA = gA_mkl(_,_,m_coord,_,l_coord);                                                     // (BLK_M,BLK_K,k)
+      Tensor gB = gB_nkl(_,_,n_coord,_,l_coord);                                                     // (BLK_N,BLK_K,k)
 
       // Applies the mapping from block_tma_a
       Tensor tAgA = block_tma_a.partition_S(gA);                                                 // (TMA,TMA_M,TMA_K,k)
@@ -386,16 +377,11 @@ struct CollectiveMma<
 
   /// Perform a Producer Epilogue to prevent early exit of blocks in a Cluster
   CUTLASS_DEVICE void
-  load_tail(
-      MainloopPipeline pipeline, 
-      PipelineState smem_pipe_write)
-  {
-    int warp_idx = canonical_warp_idx_sync();
-    int warp_idx_in_warp_group = warp_idx % 4;
+  load_tail(MainloopPipeline pipeline, PipelineState smem_pipe_write) {
     int lane_predicate = cute::elect_one_sync();
 
     // Issue the epilogue waits
-    if (warp_idx_in_warp_group == 0 and lane_predicate) {
+    if (lane_predicate) {
       /* This helps avoid early exit of blocks in Cluster
        * Waits for all stages to either be released (all 
        * Consumer UNLOCKs), or if the stage was never used
@@ -418,10 +404,7 @@ struct CollectiveMma<
       int k_tile_count,
       int thread_idx,
       TensorStorage& shared_tensors,
-      Params const& mainloop_params)
-  {
-    using namespace cute;
-
+      Params const& mainloop_params) {
     static_assert(is_rmem<FrgTensorC>::value, "C tensor must be rmem resident.");
     static_assert(cute::rank(SmemLayoutA{}) == 3, "Smem layout must be rank 3.");
     static_assert(cute::rank(SmemLayoutB{}) == 3, "Smem layout must be rank 3.");

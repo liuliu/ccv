@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -563,7 +563,6 @@ struct Sm90TreeVisitor : Sm90VisitorImpl<ChildOps..., NodeOp> {
       template get_consumer_store_callbacks<ReferenceSrc>(args);
     return ConsumerStoreCallbacks<decltype(callbacks_tuple)>(std::move(callbacks_tuple));
   }
-
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -614,7 +613,6 @@ struct Sm90SplitTreeVisitor : Sm90VisitorImpl<InputTree, AuxOutTrees..., OutputT
       template get_consumer_store_callbacks<ReferenceSrc>(args);
     return ConsumerStoreCallbacks<decltype(callbacks_tuple)>(std::move(callbacks_tuple));
   }
-
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -692,7 +690,6 @@ struct Sm90TopologicalVisitor : Sm90VisitorImpl<Ops...> {
       template get_consumer_store_callbacks<ReferenceSrc>(args);
     return ConsumerStoreCallbacks<decltype(callbacks_tuple)>(std::move(callbacks_tuple));
   }
-
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

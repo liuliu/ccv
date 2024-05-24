@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2023 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -97,7 +97,7 @@ template <class T, class U,
           __CUTE_REQUIRES(is_std_integral<T>::value &&
                           is_std_integral<U>::value)>
 CUTE_HOST_DEVICE constexpr
-auto
+cute::common_type_t<T, U>
 gcd(T t, U u) {
   while (true) {
     if (t == 0) { return u; }
@@ -112,7 +112,7 @@ template <class T, class U,
           __CUTE_REQUIRES(is_std_integral<T>::value &&
                           is_std_integral<U>::value)>
 CUTE_HOST_DEVICE constexpr
-auto
+cute::common_type_t<T, U>
 lcm(T const& t, U const& u) {
   return (t / gcd(t,u)) * u;
 }
@@ -308,6 +308,19 @@ auto
 safe_div(T const& t, U const& u) {
   //assert(t % u == 0);
   return t / u;
+}
+
+/**
+ * log2 computation
+ */
+
+template <class T>
+CUTE_HOST_DEVICE constexpr
+auto
+log_2(T x) {
+  assert(x > 0);
+  static_assert(is_unsigned<T>::value, "Only to be used for unsigned integral types.");
+  return bit_width(x) - 1;
 }
 
 } // namespace cute
