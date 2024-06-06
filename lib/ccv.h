@@ -43,13 +43,14 @@
 #define CCV_WARN_UNUSED(x) x __attribute__((warn_unused_result))
 
 enum {
-	CCV_8U  = 0x01000,
-	CCV_32S = 0x02000,
-	CCV_32F = 0x04000,
-	CCV_64S = 0x08000,
-	CCV_64F = 0x10000,
-	CCV_16F = 0x20000,
-	CCV_QX  = 0x40000, // QX is a catch-all for quantized models (anything less than or equal to 1-byte). We can still squeeze in 1 more primitive type, which probably will be 8F or BF16. (0xFF000 are for data types).
+	CCV_8U   = 0x01000,
+	CCV_32S  = 0x02000,
+	CCV_32F  = 0x04000,
+	CCV_64S  = 0x08000,
+	CCV_64F  = 0x10000,
+	CCV_16F  = 0x20000,
+	CCV_QX   = 0x40000, // QX is a catch-all for quantized models (anything less than or equal to 1-byte). We can still squeeze in 1 more primitive type, which probably will be 8F or BF16. (0xFF000 are for data types).
+	CCV_16BF = 0x80000, // The winner is BF16. Everything else can be categorized to QX part. BF16 is different enough that it deserves a separate identification.
 };
 
 enum {

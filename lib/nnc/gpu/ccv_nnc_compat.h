@@ -47,8 +47,15 @@ void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const str
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 
+typedef struct {
+	int major;
+	int minor;
+	int multi_processor_count;
+} ccv_nnc_cuda_device_prop_t;
+
 // Misc.
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
+CCV_WARN_UNUSED(ccv_nnc_cuda_device_prop_t) ccv_nnc_gpu_device_props(void);
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
 #ifdef __cplusplus
 }

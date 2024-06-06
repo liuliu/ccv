@@ -399,6 +399,30 @@ int ccv_nnc_gpu_device_count(void)
 	return count;
 }
 
+ccv_nnc_cuda_device_prop_t ccv_nnc_gpu_device_props(void)
+{
+	static __thread ccv_nnc_cuda_device_prop_t* device_props = 0;
+	int device_id;
+	CUDA_ENFORCE(cudaGetDevice(&device_id));
+	if (device_props)
+		return device_props[device_id];
+	device_props = (ccv_nnc_cuda_device_prop_t*)ccmalloc(sizeof(ccv_nnc_cuda_device_prop_t) * ccv_nnc_gpu_device_count());
+	cudaDeviceProp prop;
+	CUDA_ENFORCE(cudaGetDeviceProperties(&prop, device_id));
+	ccv_nnc_cuda_device_prop_t device_prop;
+	device_prop.major = prop.major;
+	device_prop.minor = prop.minor;
+	device_prop.multi_processor_count = prop.multiProcessorCount;
+	device_props[device_id] = device_prop;
+	return device_prop;
+}
+
+extern "C" int ccv_cuda_is_sm8x(void)
+{
+	const ccv_nnc_cuda_device_prop_t props = ccv_nnc_gpu_device_props();
+	return props.major == 8 && props.minor > 0;
+}
+
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);

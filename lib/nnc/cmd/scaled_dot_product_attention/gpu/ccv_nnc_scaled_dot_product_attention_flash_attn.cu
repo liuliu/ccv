@@ -180,15 +180,24 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	params.window_size_left = ccv_max(R, C);
 	params.window_size_right = params.is_causal ? 0 : ccv_max(R, C);
 	params.is_seqlens_k_cumulative = true;
-	void* workspace = ccv_nnc_stream_context_get_workspace(stream_context, batch_size * Hq * R * sizeof(float), CCV_TENSOR_GPU_MEMORY);
-	params.softmax_lse_ptr = workspace;
 	// TODO: Support num_splits.
- 	// const int block_n = D <= 64 ? 256 : (D <= 128 ? 128 : 64);
- 	// const int num_n_blocks = (C + block_n - 1) / block_n;
- 	// Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
- 	// In any case we don't expect seqlen_q to be larger than 64 for inference.
- 	// const int num_m_blocks = (R + 64 - 1) / 64;
- 	params.num_splits = 1; // num_splits_heuristic(batch_size * num_heads * num_m_blocks, dprops->multiProcessorCount, num_n_blocks, 128);
+	const int block_n = D <= 64 ? 256 : (D <= 128 ? 128 : 64);
+	const int num_n_blocks = (C + block_n - 1) / block_n;
+	// Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
+	// In any case we don't expect seqlen_q to be larger than 64 for inference.
+	const int num_m_blocks = (R + 64 - 1) / 64;
+	const ccv_nnc_cuda_device_prop_t props = ccv_nnc_gpu_device_props();
+	params.num_splits = num_splits_heuristic(batch_size * Hq * num_m_blocks, props.multi_processor_count, num_n_blocks, 128);
+	if (params.num_splits > 1)
+	{
+		float* const workspace = (float*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * R + params.num_splits * batch_size * Hq * R + params.num_splits * batch_size * Hq * R * params.d_rounded) * sizeof(float), CCV_TENSOR_GPU_MEMORY);
+		params.softmax_lse_ptr = workspace;
+		params.softmax_lseaccum_ptr = workspace + batch_size * Hq * R;
+		params.oaccum_ptr = workspace + batch_size * Hq * R + params.num_splits * batch_size * Hq * R;
+	} else {
+		void* const workspace = ccv_nnc_stream_context_get_workspace(stream_context, batch_size * Hq * R * sizeof(float), CCV_TENSOR_GPU_MEMORY);
+		params.softmax_lse_ptr = workspace;
+	}
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	run_mha_fwd(params, stream, false);
 	CUDA_ENFORCE(cudaGetLastError());

@@ -198,8 +198,7 @@ void run_mha_fwd_hdim64(Flash_fwd_params &params, cudaStream_t stream) {
 template<typename T>
 void run_mha_fwd_hdim96(Flash_fwd_params &params, cudaStream_t stream) {
     constexpr static int Headdim = 96;
-    // auto dprops = at::cuda::getCurrentDeviceProperties();
-    bool is_sm8x = true; // dprops->major == 8 && dprops->minor > 0;
+    bool is_sm8x = (bool)ccv_cuda_is_sm8x();
     DROPOUT_SWITCH(params.p_dropout < 1.f, Is_dropout, [&] {
         BOOL_SWITCH(params.is_causal, Is_causal, [&] {
             // For sm86 or sm89, 64 x 64 is the fastest for causal (because it's square),
@@ -224,8 +223,7 @@ void run_mha_fwd_hdim96(Flash_fwd_params &params, cudaStream_t stream) {
 template<typename T>
 void run_mha_fwd_hdim128(Flash_fwd_params &params, cudaStream_t stream) {
     constexpr static int Headdim = 128;
-    // auto dprops = at::cuda::getCurrentDeviceProperties();
-    bool is_sm8x = true; // dprops->major == 8 && dprops->minor > 0;
+    bool is_sm8x = (bool)ccv_cuda_is_sm8x();
     DROPOUT_SWITCH(params.p_dropout < 1.f, Is_dropout, [&] {
         BOOL_SWITCH(params.is_causal, Is_causal, [&] {
             if constexpr(!Is_dropout) {
@@ -261,8 +259,7 @@ void run_mha_fwd_hdim128(Flash_fwd_params &params, cudaStream_t stream) {
 template<typename T>
 void run_mha_fwd_hdim160(Flash_fwd_params &params, cudaStream_t stream) {
     constexpr static int Headdim = 160;
-    // auto dprops = at::cuda::getCurrentDeviceProperties();
-    bool is_sm8x = true; // dprops->major == 8 && dprops->minor > 0;
+    bool is_sm8x = (bool)ccv_cuda_is_sm8x();
     DROPOUT_SWITCH(params.p_dropout < 1.f, Is_dropout, [&] {
         BOOL_SWITCH(params.is_causal, Is_causal, [&] {
             // For A100, H100, 128 x 32 is the fastest.

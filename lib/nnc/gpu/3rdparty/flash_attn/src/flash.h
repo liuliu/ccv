@@ -8,6 +8,8 @@
 #include <vector>
 #include <tuple>
 
+extern "C" int ccv_cuda_is_sm8x(void);
+
 #define C10_CUDA_CHECK(EXPR)                                        \
   do {                                                              \
     const cudaError_t __err = EXPR;                                 \
