@@ -280,7 +280,6 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	// Assuming no saved_softmax, we need to recompute from q, k, v.
 	// We cannot do this with masks (yet).
 	assert(input_size >= 6);
-	assert(!cmd.info.scaled_dot_product_attention.is_causal);
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[4];
@@ -375,6 +374,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	float* const dkp = dk->data.f32;
 	float* const dvp = dv->data.f32;
 	const float scale = cmd.info.scaled_dot_product_attention.scale;
+	const int is_causal = cmd.info.scaled_dot_product_attention.is_causal;
 	for (i[0] = 0; i[0] < qdim[0]; i[0]++)
 	{
 		const float* const qp0 = qp + i[0] * qstride[0];
@@ -428,16 +428,33 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 					qk0[y] = scale * v;
 				}
 				// Compute softmax on qk.
-				double maxval = qk0[0];
-				for (y = 1; y < kdim[1]; y++)
-					if (qk0[y] > maxval)
-						maxval = qk0[y];
-				double sumval = 0;
-				for (y = 0; y < kdim[1]; y++)
-					sumval += (qk0[y] = expf(qk0[y] - maxval));
-				sumval = 1.0 / sumval;
-				for (y = 0; y < kdim[1]; y++)
-					qk0[y] *= sumval;
+				if (is_causal)
+				{
+					const int x_end = ccv_max(x - qdim[1] + kdim[1] + 1, 0);
+					for (y = x_end; y < kdim[1]; y++)
+						qk0[y] = 0;
+					double maxval = qk0[0];
+					for (y = 1; y < x_end; y++)
+						if (qk0[y] > maxval)
+							maxval = qk0[y];
+					double sumval = 0;
+					for (y = 0; y < x_end; y++)
+						sumval += (qk0[y] = expf(qk0[y] - maxval));
+					sumval = 1.0 / sumval;
+					for (y = 0; y < x_end; y++)
+						qk0[y] *= sumval;
+				} else {
+					double maxval = qk0[0];
+					for (y = 1; y < kdim[1]; y++)
+						if (qk0[y] > maxval)
+							maxval = qk0[y];
+					double sumval = 0;
+					for (y = 0; y < kdim[1]; y++)
+						sumval += (qk0[y] = expf(qk0[y] - maxval));
+					sumval = 1.0 / sumval;
+					for (y = 0; y < kdim[1]; y++)
+						qk0[y] *= sumval;
+				}
 				for (y = 0; y < kdim[1]; y++)
 				{
 					float* const dvp2 = dvp1 + y * dvstride[1];
@@ -445,7 +462,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 					for (k = 0; k < vdim[3]; k++)
 						dvp2[k * dvstride[3]] += v * gp2[k * gstride[3]];
 				}
-				sumval = 0;
+				double sumval = 0;
 				for (y = 0; y < kdim[1]; y++)
 				{
 					const float* const vp2 = vp1 + y * vstride[1];
