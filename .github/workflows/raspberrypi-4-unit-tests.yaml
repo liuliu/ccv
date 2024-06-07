@@ -1,0 +1,13 @@
+name: raspberrypi-4-unit-tests
+on: [push]
+jobs:
+  build:
+    runs-on: raspberrypi-4
+    steps:
+      - uses: actions/checkout@v2
+      - run: |
+          cd lib && ./configure --enable-neon --with-arch=armv7 && cd ..
+          make -j 4 -C lib
+          make -j 4 -C bin
+          make -j 4 -C test
+          make -C test test
