@@ -22,6 +22,8 @@ struct ccv_nnc_stream_signal_s {
 
 typedef struct {
 	// Empty, this will hold things such as NCCL communicator in subclass.
+	// Putting dummy because C / C++ treats empty struct differently.
+	int dummy;
 } ccv_nnc_stream_resource_container_t;
 
 struct ccv_nnc_stream_context_s {

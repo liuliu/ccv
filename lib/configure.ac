@@ -107,7 +107,7 @@ AC_MSG_CHECKING([fftw3])
 AC_ARG_ENABLE(fftw3, [AS_HELP_STRING([--disable-fftw3], [disable FFTW3 (GPL License)])], [fftw3_enable=$enableval], [fftw3_enable="yes"])
 if test "$fftw3_enable" != no; then
 	AX_CHECK_HEADER_PRESENCE([fftw3.h],
-		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f "])])
 else
 	AC_MSG_RESULT([disabled])
 fi
@@ -135,12 +135,6 @@ if test -n "${OPENMP_CFLAGS}"; then
 	AC_SUBST(MKCFLAGS, ["$MKCFLAGS$OPENMP_CFLAGS "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$OPENMP_CFLAGS "])
 fi
-# only check dispatch if compiled with clang
-if test $CC = clang; then
-	AX_CHECK_HEADER_PRESENCE([dispatch/dispatch.h],
-		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "])])
-	AC_CHECK_LIB(dispatch, dispatch_apply, [AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
-fi
 # check for SSE2 support only we don't enable NEON explicitly
 if test "$neon_support" != yes; then
 	AX_CHECK_HEADER_PRESENCE(xmmintrin.h,
@@ -165,7 +159,7 @@ AC_ARG_WITH(cuda, [AS_HELP_STRING([--with-cuda], [CUDA installation [ARG=/usr/lo
 if [[ -d "$cuda_prefix" ]]; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA "])
 	# CUB requires stdc++, unfortunately.
-	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand -lstdc++ "])
+	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcudart -lcublas -lcurand -lstdc++ "])
 	AC_SUBST(CPPFLAGS, ["$CPPFLAGS-I$cuda_prefix/include "])
 	if [[ -d "$cuda_prefix/lib64" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
@@ -196,6 +190,12 @@ else
 	AC_SUBST(CUDA_COMPAT_LIB, [""])
 	AC_SUBST(CUDA_CMD_LIB, [""])
 	AC_MSG_RESULT(no)
+	# only check dispatch if compiled with clang and no cuda.
+	if test $CC = clang; then
+		AX_CHECK_HEADER_PRESENCE([dispatch/dispatch.h],
+			[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "])])
+		AC_CHECK_LIB(dispatch, dispatch_apply, [AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
+	fi
 fi
 
 # check for MPS support

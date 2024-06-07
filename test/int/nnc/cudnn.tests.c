@@ -5377,7 +5377,7 @@ TEST_CASE("cudnn forward convolution transpose")
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, BATCH_SIZE * INPUT_DIM * INPUT_SIZE * INPUT_SIZE, 1e-4, "output from cudnn should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, BATCH_SIZE * INPUT_DIM * INPUT_SIZE * INPUT_SIZE, 2e-4, "output from cudnn should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);

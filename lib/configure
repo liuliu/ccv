@@ -3884,7 +3884,7 @@ printf "%s\n" "$ax_cv_check_cflags_fftw3_h" >&6; }
 	if test "x$ax_cv_check_cflags_fftw3_h" = xyes
 then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_FFTW3 "
- MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "
+ MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f "
 
 else $as_nop
   :
@@ -4301,90 +4301,6 @@ if test -n "${OPENMP_CFLAGS}"; then
 	MKLDFLAGS="$MKLDFLAGS$OPENMP_CFLAGS "
 
 fi
-# only check dispatch if compiled with clang
-if test $CC = clang; then
-	 		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking dispatch/dispatch.h presence" >&5
-printf %s "checking dispatch/dispatch.h presence... " >&6; }
-if test ${ax_cv_check_cflags_dispatch_dispatch_h+y}
-then :
-  printf %s "(cached) " >&6
-else $as_nop
-
-		ax_check_save_flags=$CFLAGS
-		CFLAGS="$CFLAGS dispatch/dispatch.h"
-		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <dispatch/dispatch.h>
-int
-main (void)
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_cpp "$LINENO"
-then :
-  ax_cv_check_cflags_dispatch_dispatch_h=yes
-else $as_nop
-  ax_cv_check_cflags_dispatch_dispatch_h=no
-fi
-rm -f conftest.err conftest.i conftest.$ac_ext
-		CFLAGS=$ax_check_save_flags
-fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_dispatch_dispatch_h" >&5
-printf "%s\n" "$ax_cv_check_cflags_dispatch_dispatch_h" >&6; }
-	if test "x$ax_cv_check_cflags_dispatch_dispatch_h" = xyes
-then :
-  DEFINE_MACROS="$DEFINE_MACROS-D USE_DISPATCH "
- MKCFLAGS="$MKCFLAGS-fblocks "
-
-else $as_nop
-  :
-fi
-
-	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for dispatch_apply in -ldispatch" >&5
-printf %s "checking for dispatch_apply in -ldispatch... " >&6; }
-if test ${ac_cv_lib_dispatch_dispatch_apply+y}
-then :
-  printf %s "(cached) " >&6
-else $as_nop
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-ldispatch  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-char dispatch_apply ();
-int
-main (void)
-{
-return dispatch_apply ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"
-then :
-  ac_cv_lib_dispatch_dispatch_apply=yes
-else $as_nop
-  ac_cv_lib_dispatch_dispatch_apply=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.beam \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_dispatch_dispatch_apply" >&5
-printf "%s\n" "$ac_cv_lib_dispatch_dispatch_apply" >&6; }
-if test "x$ac_cv_lib_dispatch_dispatch_apply" = xyes
-then :
-  MKLDFLAGS="$MKLDFLAGS-ldispatch -lBlocksRuntime "
-
-fi
-
-fi
 # check for SSE2 support only we don't enable NEON explicitly
 if test "$neon_support" != yes; then
 	 		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking xmmintrin.h presence" >&5
@@ -4590,7 +4506,7 @@ if [ -d "$cuda_prefix" ]; then
 	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDA "
 
 	# CUB requires stdc++, unfortunately.
-	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand -lstdc++ "
+	MKLDFLAGS="$MKLDFLAGS-lcudart -lcublas -lcurand -lstdc++ "
 
 	CPPFLAGS="$CPPFLAGS-I$cuda_prefix/include "
 
@@ -4742,6 +4658,90 @@ else
 
 	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
+	# only check dispatch if compiled with clang and no cuda.
+	if test $CC = clang; then
+		 		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking dispatch/dispatch.h presence" >&5
+printf %s "checking dispatch/dispatch.h presence... " >&6; }
+if test ${ax_cv_check_cflags_dispatch_dispatch_h+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS dispatch/dispatch.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <dispatch/dispatch.h>
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"
+then :
+  ax_cv_check_cflags_dispatch_dispatch_h=yes
+else $as_nop
+  ax_cv_check_cflags_dispatch_dispatch_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_dispatch_dispatch_h" >&5
+printf "%s\n" "$ax_cv_check_cflags_dispatch_dispatch_h" >&6; }
+	if test "x$ax_cv_check_cflags_dispatch_dispatch_h" = xyes
+then :
+  DEFINE_MACROS="$DEFINE_MACROS-D USE_DISPATCH "
+ MKCFLAGS="$MKCFLAGS-fblocks "
+
+else $as_nop
+  :
+fi
+
+		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for dispatch_apply in -ldispatch" >&5
+printf %s "checking for dispatch_apply in -ldispatch... " >&6; }
+if test ${ac_cv_lib_dispatch_dispatch_apply+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ldispatch  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+char dispatch_apply ();
+int
+main (void)
+{
+return dispatch_apply ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  ac_cv_lib_dispatch_dispatch_apply=yes
+else $as_nop
+  ac_cv_lib_dispatch_dispatch_apply=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_dispatch_dispatch_apply" >&5
+printf "%s\n" "$ac_cv_lib_dispatch_dispatch_apply" >&6; }
+if test "x$ac_cv_lib_dispatch_dispatch_apply" = xyes
+then :
+  MKLDFLAGS="$MKLDFLAGS-ldispatch -lBlocksRuntime "
+
+fi
+
+	fi
 fi
 
 # check for MPS support
