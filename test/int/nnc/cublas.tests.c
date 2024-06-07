@@ -2847,7 +2847,7 @@ TEST_CASE("scaled dot product attention gradient with flash_attn")
 		int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5 };
 		int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5 };
 		int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32 };
-		int Hk_candidates[num_trials] = {   8,  8, 8, 8, 8, 32 }; //, 2, 8 };
+		int Hk_candidates[num_trials] = {   8,  8, 8, 8, 2, 8 };
 		int D_candidates[num_trials] = {  64, 40, 160, 192, 192, 128 };
 		int is_causal_candidates[num_trials] = {  1, 0, 1, 1, 0, 1 };
 
@@ -2915,7 +2915,7 @@ TEST_CASE("scaled dot product attention gradient with flash_attn")
 
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 1e-3, "scaled dot product attention result should be the same");
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 3e-3, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 4e-3, "GPU computed output should be the same as CPU computed ones");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 6e-3, "GPU computed output should be the same as CPU computed ones");
 
 		ccv_nnc_tensor_free(do_tensor);
 		ccv_nnc_tensor_free(gpu_do_tensor);

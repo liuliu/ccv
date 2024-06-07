@@ -204,6 +204,20 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+template<typename NUM>
+__global__ void _ccv_nnc_sum_out(const int B, const int Hk, const int r, const int D, const NUM* const a, NUM* const b)
+{
+	CUDA_1D_KERNEL_LOOP(i, B * Hk * D) {
+		const int j = i / D;
+		const int k = i % D;
+		const NUM* const arow = a + j * r * D + k;
+		float accum = (float)arow[0];
+		for (int l = 1; l < r; l++)
+			accum += (float)arow[l * D];
+		b[i] = (NUM)accum;
+	}
+}
+
 static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// NNC notation:
@@ -224,7 +238,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		{ assert(weights); }
 	ccv_nnc_tensor_view_t* const o = input_size > 9 ? (ccv_nnc_tensor_view_t*)inputs[9] : 0;
 	ccv_nnc_tensor_view_t* const saved_softmax_lse = input_size > 10 ? (ccv_nnc_tensor_view_t*)inputs[10] : 0;
-	ccv_nnc_tensor_view_t* const qkv = input_size > 11 ? (ccv_nnc_tensor_view_t*)inputs[11] : 0;
+	// ccv_nnc_tensor_view_t* const qkv = input_size > 11 ? (ccv_nnc_tensor_view_t*)inputs[11] : 0;
 	ccv_nnc_tensor_view_t* const dq = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const dk = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* const dv = (ccv_nnc_tensor_view_t*)outputs[2];
@@ -335,7 +349,6 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		(bias ? (q->info.datatype == bias->info.datatype) : 1);
 
 	assert(is_same_dtype);
-	assert(Hq == Hk);
 
 	Flash_bwd_params params;
 	memset(&params, 0, sizeof(params));
@@ -382,14 +395,14 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	params.dk_ptr = dk->data.u8;
 	params.dv_ptr = dv->data.u8;
 	params.dq_row_stride = D * Hq;
-	params.dk_row_stride = D * Hk;
-	params.dv_row_stride = D * Hk;
+	params.dk_row_stride = D * Hq; // This is not a typo, dk / dv is expanded and we sum it later.
+	params.dv_row_stride = D * Hq;
 	params.dq_head_stride = D;
 	params.dk_head_stride = D;
 	params.dv_head_stride = D;
 	params.dq_batch_stride = R * Hq * D;
-	params.dk_batch_stride = C * Hk * D;
-	params.dv_batch_stride = C * Hk * D;
+	params.dk_batch_stride = C * Hq * D;
+	params.dv_batch_stride = C * Hq * D;
 	params.do_ptr = d_o->data.u8;
 	params.do_row_stride = D * Hq;
 	params.do_head_stride = D;
@@ -397,15 +410,30 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	params.deterministic = false; // If it is deterministic, we need to zero out dq_accum.
 	params.dq_accum_split_stride = 0;
 
-	params.softmax_lse_ptr = saved_softmax_lse->data.u8;
-	unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float), CCV_TENSOR_GPU_MEMORY);
-	params.dsoftmax_sum = workspace;
-	params.dq_accum_ptr = workspace + batch_size * Hq * params.seqlen_q_rounded * sizeof(float);
-	params.dk_accum_ptr = 0;
-	params.dv_accum_ptr = 0;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	params.softmax_lse_ptr = saved_softmax_lse->data.u8;
+	if (Hq != Hk)
+	{
+		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float) + batch_size * Hq * C * D * 2 * 2, CCV_TENSOR_GPU_MEMORY);
+		params.dsoftmax_sum = workspace;
+		params.dq_accum_ptr = workspace + batch_size * Hq * params.seqlen_q_rounded * sizeof(float);
+		params.dk_ptr = workspace + (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float);
+		params.dv_ptr = workspace + (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float) + batch_size * Hq * C * D * 2;
+	} else {
+		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float), CCV_TENSOR_GPU_MEMORY);
+		params.dsoftmax_sum = workspace;
+		params.dq_accum_ptr = workspace + batch_size * Hq * params.seqlen_q_rounded * sizeof(float);
+		params.dk_accum_ptr = 0;
+		params.dv_accum_ptr = 0;
+	}
 	run_mha_bwd(params, stream);
 	CUDA_ENFORCE(cudaGetLastError());
+	if (Hq != Hk)
+	{
+		_ccv_nnc_sum_out<<<CUDA_GET_BLOCKS(batch_size * C * Hk * D), CUDA_NUM_THREADS, 0, stream>>>(batch_size * C, Hk, Hq / Hk, D, (__half*)params.dk_ptr, (__half*)dk->data.f16);
+		_ccv_nnc_sum_out<<<CUDA_GET_BLOCKS(batch_size * C * Hk * D), CUDA_NUM_THREADS, 0, stream>>>(batch_size * C, Hk, Hq / Hk, D, (__half*)params.dv_ptr, (__half*)dv->data.f16);
+		CUDA_ENFORCE(cudaGetLastError());
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

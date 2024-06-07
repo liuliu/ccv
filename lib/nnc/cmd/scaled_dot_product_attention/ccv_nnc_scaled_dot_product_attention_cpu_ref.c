@@ -375,6 +375,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	float* const dvp = dv->data.f32;
 	const float scale = cmd.info.scaled_dot_product_attention.scale;
 	const int is_causal = cmd.info.scaled_dot_product_attention.is_causal;
+	const int h_h_k_ratio = qdim[2] / kdim[2];
 	for (i[0] = 0; i[0] < qdim[0]; i[0]++)
 	{
 		const float* const qp0 = qp + i[0] * qstride[0];
@@ -387,32 +388,36 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
 			const float* const qp1 = qp0 + i[1] * qstride[2];
-			const float* const kp1 = kp0 + (i[1] % kdim[2]) * kstride[2];
-			const float* const vp1 = vp0 + (i[1] % vdim[2]) * vstride[2];
+			const float* const kp1 = kp0 + (i[1] / h_h_k_ratio) * kstride[2];
+			const float* const vp1 = vp0 + (i[1] / h_h_k_ratio) * vstride[2];
 			const float* const gp1 = gp0 + i[1] * gstride[2];
 			float* const dqp1 = dqp0 + i[1] * dqstride[2];
-			float* const dkp1 = dkp0 + (i[1] % dkdim[2]) * dkstride[2];
-			float* const dvp1 = dvp0 + (i[1] % dvdim[2]) * dvstride[2];
+			float* const dkp1 = dkp0 + (i[1] / h_h_k_ratio) * dkstride[2];
+			float* const dvp1 = dvp0 + (i[1] / h_h_k_ratio) * dvstride[2];
 			// Compute Q @ K^T
 			int x, y, k;
-			for (y = 0; y < kdim[1]; y++)
-			{
-				float* const dvp2 = dvp1 + y * dvstride[1];
-				for (k = 0; k < vdim[3]; k++)
-					dvp2[k * dvstride[3]] = 0;
-			}
 			for (x = 0; x < qdim[1]; x++)
 			{
 				float* const dqp2 = dqp1 + x * dqstride[1];
 				for (k = 0; k < qdim[3]; k++)
 					dqp2[k * dqstride[3]] = 0;
 			}
-			for (y = 0; y < kdim[1]; y++)
-			{
-				float* const dkp2 = dkp1 + y * dkstride[1];
-				for (k = 0; k < qdim[3]; k++)
-					dkp2[k * dkstride[3]] = 0;
-			}
+			// Only zero out when it is at 0-index.
+			if (i[1] % h_h_k_ratio == 0)
+				for (y = 0; y < kdim[1]; y++)
+				{
+					float* const dkp2 = dkp1 + y * dkstride[1];
+					for (k = 0; k < qdim[3]; k++)
+						dkp2[k * dkstride[3]] = 0;
+				}
+			// Only zero out when it is at 0-index.
+			if (i[1] % h_h_k_ratio == 0)
+				for (y = 0; y < kdim[1]; y++)
+				{
+					float* const dvp2 = dvp1 + y * dvstride[1];
+					for (k = 0; k < vdim[3]; k++)
+						dvp2[k * dvstride[3]] = 0;
+				}
 			for (x = 0; x < qdim[1]; x++)
 			{
 				const float* const qp2 = qp1 + x * qstride[1];
