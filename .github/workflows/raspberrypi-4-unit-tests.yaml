@@ -5,9 +5,12 @@ jobs:
     runs-on: raspberrypi-4
     steps:
       - uses: actions/checkout@v2
-      - run: |
+      - name: configure & build
+        run: |
           cd lib && ./configure --enable-neon --with-arch=armv7 && cd ..
           make -j 4 -C lib
           make -j 4 -C bin
           make -j 4 -C test
+      - name: tests
+        run: |
           make -C test test
