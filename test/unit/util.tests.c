@@ -335,6 +335,7 @@ TEST_CASE("loop over sparse matrix dense vector")
 	ccv_matrix_free(b);
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("matrix slice")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -345,6 +346,7 @@ TEST_CASE("matrix slice")
 	ccv_matrix_free(image);
 	ccv_matrix_free(b);
 }
+#endif
 
 TEST_CASE("matrix flatten")
 {

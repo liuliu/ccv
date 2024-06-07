@@ -2,6 +2,7 @@
 #include "case.h"
 #include "ccv_case.h"
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("image saturation")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -31,5 +32,6 @@ TEST_CASE("image contrast")
 	ccv_matrix_free(b);
 	ccv_matrix_free(image);
 }
+#endif
 
 #include "case_main.h"

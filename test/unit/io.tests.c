@@ -334,6 +334,7 @@ TEST_CASE("read raw memory with no copy mode")
 	ccv_matrix_free(x);
 }
 
+#ifdef HAVE_LIBJPEG
 TEST_CASE("read JPEG from memory")
 {
 	ccv_dense_matrix_t* x = 0;
@@ -352,7 +353,9 @@ TEST_CASE("read JPEG from memory")
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 }
+#endif
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("read PNG from memory")
 {
 	ccv_dense_matrix_t* x = 0;
@@ -371,7 +374,9 @@ TEST_CASE("read PNG from memory")
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 }
+#endif
 
+#ifdef HAVE_LIBJPEG
 TEST_CASE("write JPEG to memory")
 {
 	char sanitized_test_case_name[1024] = "/tmp/";
@@ -423,7 +428,9 @@ TEST_CASE("write JPEG to memory fail at small memory allocation")
 	ccfree(data);
 	ccv_matrix_free(x);
 }
+#endif
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("write PNG to memory")
 {
 	char sanitized_test_case_name[1024] = "/tmp/";
@@ -475,7 +482,9 @@ TEST_CASE("write PNG to memory fail at small memory allocation")
 	ccfree(data);
 	ccv_matrix_free(x);
 }
+#endif
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("write binary to memory")
 {
 	char sanitized_test_case_name[1024] = "/tmp/";
@@ -527,5 +536,6 @@ TEST_CASE("write binary to memory fail at small memory allocation")
 	ccfree(data);
 	ccv_matrix_free(x);
 }
+#endif
 
 #include "case_main.h"

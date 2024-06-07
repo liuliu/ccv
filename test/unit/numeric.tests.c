@@ -79,6 +79,7 @@ double gaussian(double x, double y, void* data)
 	return exp(-(x * x + y * y) / 20) / sqrt(CCV_PI * 20);
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("Gaussian blur with kernel size even & odd")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -106,6 +107,7 @@ TEST_CASE("Gaussian blur with kernel size even & odd")
 	REQUIRE_MATRIX_FILE_EQ(y, "data/street.g101.bin", "should be Gaussian blur of 101x101 (odd) on street.png");
 	ccv_matrix_free(y);
 }
+#endif
 
 TEST_CASE("ccv_filter centre point for even number window size, hint: (size - 1) / 2")
 {
@@ -147,6 +149,7 @@ TEST_CASE("ccv_filter centre point for odd number window size, hint: (size - 1) 
 
 #include "ccv_internal.h"
 
+#ifdef HAVE_LIBPNG
 static void naive_ssd(ccv_dense_matrix_t* image, ccv_dense_matrix_t* template, ccv_dense_matrix_t* out)
 {
 	int thw = template->cols / 2;
@@ -246,6 +249,7 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 	ccv_matrix_free(final);
 	ccv_matrix_free(ref);
 }
+#endif
 
 // divide & conquer method for distance transform (copied directly from dpm-matlab (voc-release4)
 
@@ -305,6 +309,7 @@ void daq_min_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 	ccv_matrix_free(dc);
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using divide & conquer (O(nlog(n)))")
 {
 	ccv_dense_matrix_t* geometry = 0;
@@ -322,6 +327,7 @@ TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using di
 	ccv_matrix_free(ref);
 	ccv_matrix_free(distance);
 }
+#endif
 
 // dt helper function
 void dt_max_helper(float *src, float *dst, int *ptr, int step, 
@@ -377,6 +383,7 @@ void daq_max_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 	ccv_matrix_free(dc);
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("ccv_distance_transform to compute max distance")
 {
 	ccv_dense_matrix_t* geometry = 0;
@@ -435,5 +442,6 @@ TEST_CASE("ccv_kmeans1d to compute the 1D K-means")
 	ccfree(indices);
 	ccv_matrix_free(a);
 }
+#endif
 
 #include "case_main.h"

@@ -89,6 +89,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 	return vgg;
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("run vgg-d graph with nnc")
 {
 	ccv_convnet_t* convnet = ccv_convnet_read(0, "../../../samples/image-net-2012-vgg-d.sqlite3");
@@ -119,5 +120,6 @@ TEST_CASE("run vgg-d graph with nnc")
 	ccv_array_free(tensors);
 	ccv_convnet_free(convnet);
 }
+#endif
 
 #include "case_main.h"

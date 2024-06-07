@@ -2,6 +2,7 @@
 #include "case.h"
 #include "ccv_case.h"
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("sobel operation")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -161,5 +162,6 @@ TEST_CASE("dilate operation")
 	ccv_matrix_free(x);
 	ccv_matrix_free(y);
 }
+#endif
 
 #include "case_main.h"

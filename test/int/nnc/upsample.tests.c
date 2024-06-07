@@ -11,6 +11,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("upsample bilinear NHWC in float")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_UPSAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -106,6 +107,7 @@ TEST_CASE("downsample bilinear NCHW in float")
 	ccv_nnc_tensor_free(hb);
 	ccv_matrix_free(image);
 }
+#endif
 
 TEST_CASE("downsample bilinear NHWC in half precision")
 {

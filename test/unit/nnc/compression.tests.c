@@ -11,6 +11,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("LSSC for natural image")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -43,6 +44,7 @@ TEST_CASE("LSSC for natural image")
 	ccv_nnc_tensor_free(b16);
 	ccv_nnc_tensor_free(c16);
 }
+#endif
 
 TEST_CASE("LSSC should give exact result for 2-value data")
 {

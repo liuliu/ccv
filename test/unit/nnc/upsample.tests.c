@@ -9,6 +9,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("upsample chessbox")
 {
 	ccv_dense_matrix_t* image = 0;
@@ -78,6 +79,7 @@ TEST_CASE("downsample chessbox in NCHW")
 	ccv_matrix_free(image);
 	ccv_nnc_tensor_free(bt);
 }
+#endif
 
 TEST_CASE("upsample nearest")
 {

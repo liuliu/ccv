@@ -1,0 +1,20 @@
+name: macos-arm-unit-tests
+on: [push]
+jobs:
+  build:
+    runs-on: mac-mini-m2
+    steps:
+      - uses: actions/checkout@v2
+      - name: configure & build
+        run: |
+          cd lib && ./configure --enable-mps && cd ..
+          make -j 16 -C lib
+          make -j 16 -C bin
+          make -j 16 -C test
+          make -j 16 -C test/int/nnc
+      - name: tests
+        run: |
+          make -C test test
+      - name: integration tests
+        run: |
+          make -C test/int/nnc test

@@ -87,6 +87,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 	return symbolic_vgg;
 }
 
+#ifdef HAVE_LIBPNG
 TEST_CASE("run vgg-d graph from its symbolic representation")
 {
 	ccv_convnet_t* convnet = ccv_convnet_read(0, "../../../samples/image-net-2012-vgg-d.sqlite3");
@@ -162,5 +163,6 @@ TEST_CASE("run vgg-d graph from its symbolic representation")
 	ccfree(bias_symbols);
 	ccv_convnet_free(convnet);
 }
+#endif
 
 #include "case_main.h"
