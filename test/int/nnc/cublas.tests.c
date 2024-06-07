@@ -2836,29 +2836,31 @@ TEST_CASE("scaled dot product attention gradient with flash_attn")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
-#define num_long_trials 4
-#define num_short_trials 2
+#define num_long_trials 8
+#define num_short_trials 4
 #define num_trials (num_long_trials + num_short_trials)
 
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 10);
 	for (int trial = 0; trial < num_trials; ++trial) {
-		int B_candidates[num_trials] = {  32,   12, 16, 1, 2, 1 };
-		int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5 };
-		int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5 };
-		int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32 };
-		int Hk_candidates[num_trials] = {   8,  8, 8, 8, 2, 8 };
-		int D_candidates[num_trials] = {  64, 40, 160, 192, 192, 128 };
-		int is_causal_candidates[num_trials] = {  1, 0, 1, 1, 0, 1 };
+		const int B_candidates[num_trials] = {  32,   12, 16, 1, 2, 1, 32,   12, 16, 1, 2, 1 };
+		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
+		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
+		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
+		const int Hk_candidates[num_trials] = {   8,  8, 8, 8, 2, 8, 8,  8, 8, 8, 2, 8 };
+		const int D_candidates[num_trials] = {  64, 40, 160, 192, 192, 128, 64, 40, 160, 192, 192, 128 };
+		const int is_causal_candidates[num_trials] = {  1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 };
+		const int deterministic_candidates[num_trials] = {  0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
 
-		int B = B_candidates[trial];
-		int R = R_candidates[trial];
-		int C = C_candidates[trial];
-		int Hq = Hq_candidates[trial];
-		int Hk = Hk_candidates[trial];
-		int D = D_candidates[trial];
-		int is_causal = is_causal_candidates[trial];
-		float scale = 1.0 / sqrt((float)D);
+		const int B = B_candidates[trial];
+		const int R = R_candidates[trial];
+		const int C = C_candidates[trial];
+		const int Hq = Hq_candidates[trial];
+		const int Hk = Hk_candidates[trial];
+		const int D = D_candidates[trial];
+		const int is_causal = is_causal_candidates[trial];
+		const int deterministic = deterministic_candidates[trial];
+		const float scale = 1.0 / sqrt((float)D);
 
 		ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
@@ -2901,7 +2903,9 @@ TEST_CASE("scaled dot product attention gradient with flash_attn")
 		ccv_nnc_tensor_t* const gpu_softmax_lse = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hq, R), 0);
 		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, gpu_softmax_lse), 0);
 
-		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, is_causal), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_do_tensor, 0, 0, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, 0, 0, gpu_o_tensor, gpu_softmax_lse), TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), 0);
+		ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, is_causal);
+		cmd.info.scaled_dot_product_attention.deterministic = deterministic;
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_do_tensor, 0, 0, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, 0, 0, gpu_o_tensor, gpu_softmax_lse), TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), 0);
 
 		ccv_nnc_tensor_t* const copy_of_gpu_dq_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const copy_of_gpu_dk_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, Hk, D), 0);

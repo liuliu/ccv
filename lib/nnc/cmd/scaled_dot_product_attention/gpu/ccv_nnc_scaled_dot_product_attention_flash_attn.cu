@@ -407,25 +407,38 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	params.do_row_stride = D * Hq;
 	params.do_head_stride = D;
 	params.do_batch_stride = R * Hq * D;
-	params.deterministic = false; // If it is deterministic, we need to zero out dq_accum.
-	params.dq_accum_split_stride = 0;
+	params.deterministic = cmd.info.scaled_dot_product_attention.deterministic;
 
-	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	size_t dq_accum_size;
+	if (params.deterministic)
+	{
+		const ccv_nnc_cuda_device_prop_t props = ccv_nnc_gpu_device_props();
+		const int nsplits = (props.multi_processor_count + batch_size * Hq - 1) / (batch_size * Hq);
+		dq_accum_size = sizeof(float) * nsplits * batch_size * params.seqlen_q_rounded * Hq * params.d_rounded;
+		params.dq_accum_split_stride = batch_size * params.seqlen_q_rounded * Hq * params.d_rounded;
+	} else {
+		dq_accum_size = sizeof(float) * batch_size * params.seqlen_q_rounded * Hq * params.d_rounded;
+		params.dq_accum_split_stride = 0;
+	}
+
 	params.softmax_lse_ptr = saved_softmax_lse->data.u8;
 	if (Hq != Hk)
 	{
-		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float) + batch_size * Hq * C * D * 2 * 2, CCV_TENSOR_GPU_MEMORY);
+		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * batch_size * Hq * params.seqlen_q_rounded + dq_accum_size + sizeof(short) * batch_size * Hq * C * D * 2, CCV_TENSOR_GPU_MEMORY);
 		params.dsoftmax_sum = workspace;
-		params.dq_accum_ptr = workspace + batch_size * Hq * params.seqlen_q_rounded * sizeof(float);
-		params.dk_ptr = workspace + (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float);
-		params.dv_ptr = workspace + (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float) + batch_size * Hq * C * D * 2;
+		params.dq_accum_ptr = workspace + sizeof(float) * batch_size * Hq * params.seqlen_q_rounded;
+		params.dk_ptr = workspace + sizeof(float) * batch_size * Hq * params.seqlen_q_rounded + dq_accum_size;
+		params.dv_ptr = workspace + sizeof(float) * batch_size * Hq * params.seqlen_q_rounded + dq_accum_size + sizeof(short) * batch_size * Hq * C * D;
 	} else {
-		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, (batch_size * Hq * params.seqlen_q_rounded + batch_size * params.seqlen_q_rounded * Hq * params.d_rounded) * sizeof(float), CCV_TENSOR_GPU_MEMORY);
+		unsigned char* const workspace = (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * batch_size * Hq * params.seqlen_q_rounded + dq_accum_size, CCV_TENSOR_GPU_MEMORY);
 		params.dsoftmax_sum = workspace;
-		params.dq_accum_ptr = workspace + batch_size * Hq * params.seqlen_q_rounded * sizeof(float);
+		params.dq_accum_ptr = workspace + sizeof(float) * batch_size * Hq * params.seqlen_q_rounded;
 		params.dk_accum_ptr = 0;
 		params.dv_accum_ptr = 0;
 	}
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (params.deterministic)
+		cudaMemsetAsync(params.dq_accum_ptr, 0, dq_accum_size, stream);
 	run_mha_bwd(params, stream);
 	CUDA_ENFORCE(cudaGetLastError());
 	if (Hq != Hk)

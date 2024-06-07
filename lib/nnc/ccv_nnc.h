@@ -256,6 +256,7 @@ typedef struct {
 			float scale; /**< [scaled_dot_product_attention.scale] The scale we multiple to the dot product of Q & K */
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
 			int upcast; /**< [scaled_dot_product_attention.upcast] Whether we want to run the attention computation at higher precision (from FP16 to FP32). */
+			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 		} scaled_dot_product_attention;
 		struct {
 			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
