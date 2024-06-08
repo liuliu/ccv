@@ -1,0 +1,18 @@
+name: undef-unit-tests
+on: [push]
+jobs:
+  build:
+    runs-on: rtx6000-4x
+    steps:
+      - uses: actions/checkout@v2
+      - name: configure & build
+        run: |
+          cd lib && ./configure --enable-sm80 && cd ..
+          make -j 32 -C lib undef
+          make -j 32 -C bin undef
+          make -j 32 -C bin/nnc undef
+          make -j 32 -C bin/cuda undef
+          make -j 32 -C test undef
+      - name: tests
+        run: |
+          make -C test test

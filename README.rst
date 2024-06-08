@@ -1,11 +1,10 @@
 Build Status
 ------------
 
--  GitHub Action: |Build Status on GitHub Ubuntu| |Build Status on GitHub macOS|
--  Linux x64: |Build Status on Linux|
+-  GitHub-Hosted: |Build Status on GitHub Ubuntu| |Build Status on GitHub macOS|
+-  Linux x64: |Build Status on Linux| |Build Status on Linux CUDA|
+-  Mac ARM64: |Build Status on Mac ARM64|
 -  Raspberry Pi 4: |Build Status on Raspberry Pi 4|
--  Jetson Nano: |Build Status on Jetson Nano|
--  AGX Xavier: |Build Status on AGX Xavier|
 
 Backstory
 ---------
@@ -45,11 +44,11 @@ ccv's data models and documentations are distributed under Creative Commons Attr
    :target: https://github.com/liuliu/ccv/actions/workflows/ubuntu-unit-tests.yaml?query=branch%3Aunstable
 .. |Build Status on GitHub macOS| image:: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml/badge.svg?branch=unstable
    :target: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml?query=branch%3Aunstable
-.. |Build Status on Linux| image:: http://ci.libccv.org/png?builder=linux-x64-runtests
-   :target: http://ci.libccv.org/builders/linux-x64-runtests
-.. |Build Status on Raspberry Pi 4| image:: http://ci.libccv.org/png?builder=rpi-arm-runtests
-   :target: http://ci.libccv.org/builders/rpi-arm-runtests
-.. |Build Status on Jetson Nano| image:: http://ci.libccv.org/png?builder=jetson-nano-arm-runtests
-   :target: http://ci.libccv.org/builders/jetson-nano-arm-runtests
-.. |Build Status on AGX Xavier| image:: http://ci.libccv.org/png?builder=agx-xavier-arm-runtests
-   :target: http://ci.libccv.org/builders/agx-xavier-arm-runtests
+.. |Build Status on Linux| image:: https://github.com/liuliu/ccv/actions/workflows/undef-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/undef-unit-tests.yaml?query=branch%3Aunstable
+.. |Build Status on Linux CUDA| image:: https://github.com/liuliu/ccv/actions/workflows/cuda-int-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/cuda-int-tests.yaml?query=branch%3Aunstable
+.. |Build Status on Mac ARM64| image:: https://github.com/liuliu/ccv/actions/workflows/macos-arm-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/macos-arm-unit-tests.yaml?query=branch%3Aunstable
+.. |Build Status on Raspberry Pi 4| image:: https://github.com/liuliu/ccv/actions/workflows/raspberrypi-4-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/raspberrypi-4-unit-tests.yaml?query=branch%3Aunstable
