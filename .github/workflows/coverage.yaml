@@ -13,4 +13,5 @@ jobs:
         run: |
           make -C test check
       - name: coverage report
+        run: |
           cd test && ./cover-gen.rb ../_coverage
