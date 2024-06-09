@@ -1,4 +1,4 @@
-name: ubsan-unit-tests
+name: analyze
 on: [push]
 jobs:
   build:

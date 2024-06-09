@@ -1,4 +1,4 @@
-name: ubsan-unit-tests
+name: coverage
 on: [push]
 jobs:
   build:
