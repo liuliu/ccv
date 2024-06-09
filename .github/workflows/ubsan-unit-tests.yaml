@@ -1,4 +1,4 @@
-name: undef-unit-tests
+name: ubsan-unit-tests
 on: [push]
 jobs:
   build:
@@ -8,11 +8,11 @@ jobs:
       - name: configure & build
         run: |
           cd lib && ./configure --enable-sm80 && cd ..
-          make -j 32 -C lib undef
-          make -j 32 -C bin undef
-          make -j 32 -C bin/nnc undef
-          make -j 32 -C bin/cuda undef
-          make -j 32 -C test undef
+          make -j 64 -C lib ubsan
+          make -j 64 -C bin ubsan
+          make -j 64 -C bin/nnc ubsan
+          make -j 64 -C bin/cuda ubsan
+          make -j 64 -C test ubsan
       - name: tests
         run: |
           make -C test test

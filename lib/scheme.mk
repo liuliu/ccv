@@ -32,18 +32,18 @@ asan: all
 
 # Undefined Scheme
 
-UNDEF ?= 0
-ifeq ($(UNDEF), 1)
+UBSAN ?= 0
+ifeq ($(UBSAN), 1)
 	CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
 	NVFLAGS += -g -O0
 	LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
 endif
 
-undef: CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
-undef: NVFLAGS += -g -O0
-undef: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
-undef: export UNDEF = 1
-undef: all
+ubsan: CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+ubsan: NVFLAGS += -g -O0
+ubsan: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+ubsan: export UBSAN = 1
+ubsan: all
 
 # Coverage Scheme
 

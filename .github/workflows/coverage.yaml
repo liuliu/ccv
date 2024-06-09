@@ -1,4 +1,4 @@
-name: cuda-int-tests
+name: ubsan-unit-tests
 on: [push]
 jobs:
   build:
@@ -8,7 +8,9 @@ jobs:
       - name: configure & build
         run: |
           cd lib && ./configure --enable-sm80 && cd ..
-          make -j 64 -C test/int/nnc
-      - name: integration tests
+          make -j 64 -C test COVER=1 all.tests
+      - name: tests
         run: |
-          make -C test/int/nnc test
+          make -C test check
+      - name: coverage report
+          cd test && ./cover-gen.rb ../_coverage

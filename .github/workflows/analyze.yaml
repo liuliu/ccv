@@ -1,0 +1,13 @@
+name: ubsan-unit-tests
+on: [push]
+jobs:
+  build:
+    runs-on: rtx6000-4x
+    steps:
+      - uses: actions/checkout@v2
+      - name: configure
+        run: |
+          cd lib && ./configure --enable-sm80 --disable-openmp && cd ..
+      - name: analyze
+        run: |
+          cd lib && scan-build -o ../_analyze --use-cc clang make
