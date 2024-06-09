@@ -11,3 +11,9 @@ jobs:
       - name: analyze
         run: |
           cd lib && scan-build -o ../_analyze --use-cc clang make
+      - name: upload report
+        run: |
+          cd _analyze
+          FILE=$(ls)
+          mv $FILE /var/public_html/analyze/$FILE
+          echo "View [$FILE](https://ci.libccv.org/analyze/$FILE)" >> $GITHUB_STEP_SUMMARY

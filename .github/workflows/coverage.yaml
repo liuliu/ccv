@@ -12,6 +12,12 @@ jobs:
       - name: tests
         run: |
           make -C test check
-      - name: coverage report
+      - name: generate report
         run: |
           cd test && ./cover-gen.rb ../_coverage
+      - name: upload report
+        run: |
+          cd _coverage
+          FILE=$(ls)
+          mv $FILE /var/public_html/coverage/$FILE
+          echo "View [$FILE](https://ci.libccv.org/coverage/$FILE)" >> $GITHUB_STEP_SUMMARY
