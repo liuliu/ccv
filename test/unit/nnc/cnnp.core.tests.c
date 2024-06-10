@@ -2072,6 +2072,7 @@ TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false and with gradient che
 
 TEST_CASE("LoRA fine-tuning MLP with GELU, set is_trainable to false and with gradient checkpointing")
 {
+	ccv_nnc_stream_context_set_seed(0, 47);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* const fc1 = ccv_cnnp_dense(10, 1, -1, "fc1");
 	ccv_cnnp_model_t* const fc2 = ccv_cnnp_dense(10, 1, -1, "fc2");
