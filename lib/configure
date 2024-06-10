@@ -4641,7 +4641,7 @@ fi
 printf "%s\n" "yes" >&6; }
 		DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDA_SM80 "
 
-		CUDA_COMPAT_SM80_LIB="gpu/libnnc-compat-cuda-sm80.o"
+		CUDA_COMPAT_SM80_LIB="libnnc-compat-cuda-sm80.o"
 
 		NV_SM_FLAGS="-arch=sm_80 -std=c++17 --expt-relaxed-constexpr"
 

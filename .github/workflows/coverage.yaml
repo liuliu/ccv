@@ -13,7 +13,7 @@ jobs:
       - name: configure & build
         run: |
           cd lib && ./configure --enable-sm80 && cd ..
-          make -j 32 -C test COVER=1 all.tests
+          make -j 64 -C test COVER=1 all.tests
       - name: tests
         run: |
           make -C test check

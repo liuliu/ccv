@@ -24,7 +24,7 @@ lib: libnnc-compat-cuda.o
 clean:
 	rm -f *.o
 
-libnnc-compat-cuda.o: $(SRC_OBJS)
+libnnc-compat-cuda.o: $(SRC_OBJS) $(CUDA_COMPAT_SM80_LIB)
 	ld -r $^ -o $@
 
 libnnc-compat-cuda-sm80.o: $(FLASH_ATTN_SRC_OBJS)

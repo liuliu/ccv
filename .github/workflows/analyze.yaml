@@ -15,7 +15,7 @@ jobs:
           cd lib && ./configure --enable-sm80 --disable-openmp && cd ..
       - name: analyze
         run: |
-          cd lib && scan-build -o ../_analyze --use-cc clang make -j 32
+          cd lib && scan-build -o ../_analyze --use-cc clang make -j 64
       - name: upload report
         run: |
           cd _analyze
