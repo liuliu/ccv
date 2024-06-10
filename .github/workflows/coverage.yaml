@@ -24,6 +24,6 @@ jobs:
         run: |
           cd _coverage
           FILE=$(ls)
-          chmod -R go+r $FILE
+          chmod -R go+rX $FILE
           mv $FILE /var/www/public_html/coverage/$FILE
           echo "View [$FILE](https://ci.libccv.org/coverage/$FILE)" >> $GITHUB_STEP_SUMMARY
