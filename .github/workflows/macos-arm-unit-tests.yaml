@@ -4,7 +4,9 @@ jobs:
   build:
     runs-on: mac-mini-m2
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: configure & build
         run: |
           cd lib && ./configure --enable-mps && cd ..

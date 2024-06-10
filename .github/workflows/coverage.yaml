@@ -1,10 +1,15 @@
 name: coverage
-on: [push]
+on:
+  push:
+    branches:
+      - unstable
 jobs:
   build:
     runs-on: rtx6000-4x
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: configure & build
         run: |
           cd lib && ./configure --enable-sm80 && cd ..
@@ -19,5 +24,6 @@ jobs:
         run: |
           cd _coverage
           FILE=$(ls)
-          mv $FILE /var/public_html/coverage/$FILE
+          chmod -R go+r $FILE
+          mv $FILE /var/www/public_html/coverage/$FILE
           echo "View [$FILE](https://ci.libccv.org/coverage/$FILE)" >> $GITHUB_STEP_SUMMARY

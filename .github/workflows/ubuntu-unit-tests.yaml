@@ -4,7 +4,9 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - run: sudo apt -y install libpng-dev libjpeg-dev libatlas-base-dev libblas-dev libgsl-dev clang
       - run: |
           cd lib && ./configure --disable-openmp && cd ..

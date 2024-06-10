@@ -1,19 +1,24 @@
 name: analyze
-on: [push]
+on:
+  push:
+    branches:
+      - unstable
 jobs:
   build:
     runs-on: rtx6000-4x
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: configure
         run: |
           cd lib && ./configure --enable-sm80 --disable-openmp && cd ..
       - name: analyze
         run: |
-          cd lib && scan-build -o ../_analyze --use-cc clang make
+          cd lib && scan-build -o ../_analyze --use-cc clang make -j 32
       - name: upload report
         run: |
           cd _analyze
           FILE=$(ls)
-          mv $FILE /var/public_html/analyze/$FILE
+          mv $FILE /var/www/public_html/analyze/$FILE
           echo "View [$FILE](https://ci.libccv.org/analyze/$FILE)" >> $GITHUB_STEP_SUMMARY

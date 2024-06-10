@@ -5,6 +5,8 @@ Build Status
 -  Linux x64: |Build Status on Linux| |Build Status on Linux CUDA|
 -  Mac ARM64: |Build Status on Mac ARM64|
 -  Raspberry Pi 4: |Build Status on Raspberry Pi 4|
+-  Clang Analyzer: |Analyze Run|
+-  Test Coverage: |Coverage Run|
 
 Backstory
 ---------
@@ -44,11 +46,15 @@ ccv's data models and documentations are distributed under Creative Commons Attr
    :target: https://github.com/liuliu/ccv/actions/workflows/ubuntu-unit-tests.yaml?query=branch%3Aunstable
 .. |Build Status on GitHub macOS| image:: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml/badge.svg?branch=unstable
    :target: https://github.com/liuliu/ccv/actions/workflows/macos-unit-tests.yaml?query=branch%3Aunstable
-.. |Build Status on Linux| image:: https://github.com/liuliu/ccv/actions/workflows/undef-unit-tests.yaml/badge.svg?branch=unstable
-   :target: https://github.com/liuliu/ccv/actions/workflows/undef-unit-tests.yaml?query=branch%3Aunstable
+.. |Build Status on Linux| image:: https://github.com/liuliu/ccv/actions/workflows/ubsan-unit-tests.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/ubsan-unit-tests.yaml?query=branch%3Aunstable
 .. |Build Status on Linux CUDA| image:: https://github.com/liuliu/ccv/actions/workflows/cuda-int-tests.yaml/badge.svg?branch=unstable
    :target: https://github.com/liuliu/ccv/actions/workflows/cuda-int-tests.yaml?query=branch%3Aunstable
 .. |Build Status on Mac ARM64| image:: https://github.com/liuliu/ccv/actions/workflows/macos-arm-unit-tests.yaml/badge.svg?branch=unstable
    :target: https://github.com/liuliu/ccv/actions/workflows/macos-arm-unit-tests.yaml?query=branch%3Aunstable
 .. |Build Status on Raspberry Pi 4| image:: https://github.com/liuliu/ccv/actions/workflows/raspberrypi-4-unit-tests.yaml/badge.svg?branch=unstable
    :target: https://github.com/liuliu/ccv/actions/workflows/raspberrypi-4-unit-tests.yaml?query=branch%3Aunstable
+.. |Analyze Run| image:: https://github.com/liuliu/ccv/actions/workflows/analyze.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/analyze.yaml?query=branch%3Aunstable
+.. |Coverage Run| image:: https://github.com/liuliu/ccv/actions/workflows/coverage.yaml/badge.svg?branch=unstable
+   :target: https://github.com/liuliu/ccv/actions/workflows/coverage.yaml?query=branch%3Aunstable
