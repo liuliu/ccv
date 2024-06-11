@@ -5,12 +5,12 @@
 static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
-	// 3 outputs (y, [softmax_lse], [qkv])
-	if (input_size == 6 && (input_bitmasks[0] & 55u) == 55u && (output_bitmasks[0] & 5u) == 5u)
+	// 3 outputs (y, softmax_lse, [qkv])
+	if (input_size == 6 && (input_bitmasks[0] & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
-	if (input_size == 5 && (input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 5u) == 5u)
+	if (input_size == 5 && (input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
-	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 5u) == 1u)
+	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
 	return 0;
 }

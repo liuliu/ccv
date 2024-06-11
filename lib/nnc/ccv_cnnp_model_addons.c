@@ -3886,7 +3886,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.info.scaled_dot_product_attention.upcast = self->upcast;
 	ccv_nnc_tensor_param_t output_params[3];
 	ccv_nnc_tensor_symbol_t output;
-	ccv_nnc_tensor_symbol_t saved_softmax;
+	ccv_nnc_tensor_symbol_t saved_softmax_lse;
 	ccv_nnc_tensor_symbol_t saved_v_proj = NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t attn_mask = NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t weights = NO_TENSOR_SYMBOL;
@@ -3913,7 +3913,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				bias_params,
 			}, 6, ccv_nnc_no_hint, output_params, 3);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
-		saved_softmax = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
 		saved_v_proj = ccv_nnc_tensor_symbol_new(graph, output_params[2], 0);
 	} else {
 		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
@@ -3922,9 +3922,9 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				v_params,
 			}, 3, ccv_nnc_no_hint, output_params, 2);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
-		saved_softmax = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
 	}
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax, saved_v_proj), "scaled_dot_product_attention");
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 	outputs[0] = output;
 }
 
