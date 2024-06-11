@@ -26,7 +26,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		assert(weights);
 	}
 
-	ccv_nnc_tensor_view_t* const saved_softmax = NULL;
 	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	assert(q_nd == 3 || q_nd == 4);
@@ -37,14 +36,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	const int o_nd = ccv_nnc_tensor_nd(o->info.dim);
 	assert(o_nd == 3 || o_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd && v_nd == o_nd);
-
-	if (saved_softmax) {
-		// MFA does not support a backward pass and cannot store the intermediate
-		// softmax. If this is required, fall back to MPSGraph (if will never occur
-		// during inference).
-		assert(false);
-		return CCV_NNC_EXEC_INVALID;
-	}
 
 	int qdim[CCV_NNC_MAX_DIM_ALLOC];
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];

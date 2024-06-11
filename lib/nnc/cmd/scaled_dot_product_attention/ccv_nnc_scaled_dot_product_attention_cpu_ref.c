@@ -26,7 +26,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
 	ccv_nnc_tensor_view_t* const c = (w) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
-	ccv_nnc_tensor_view_t* const saved_softmax = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	assert(q_nd == 3 || q_nd == 4);
 	const int k_nd = ccv_nnc_tensor_nd(k->info.dim);
@@ -41,7 +40,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
 	int vdim[CCV_NNC_MAX_DIM_ALLOC];
 	int cdim[CCV_NNC_MAX_DIM_ALLOC];
-	int ssdim[CCV_NNC_MAX_DIM_ALLOC];
 	int amdim[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_dim(q, qdim);
 	ccv_nnc_tensor_view_get_dim(k, kdim);
@@ -68,7 +66,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	int kstride[CCV_NNC_MAX_DIM_ALLOC];
 	int vstride[CCV_NNC_MAX_DIM_ALLOC];
 	int cstride[CCV_NNC_MAX_DIM_ALLOC];
-	int ssstride[CCV_NNC_MAX_DIM_ALLOC];
 	int amstride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(q, qstride);
 	ccv_nnc_tensor_view_get_stride(k, kstride);
@@ -80,15 +77,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		kstride[0] = kstride[1], kstride[1] = kstride[2], kstride[2] = kstride[3];
 		vstride[0] = vstride[1], vstride[1] = vstride[2], vstride[2] = vstride[3];
 		cstride[0] = cstride[1], cstride[1] = cstride[2], cstride[2] = cstride[3];
-	}
-	if (saved_softmax)
-	{
-		ccv_nnc_tensor_view_get_dim(saved_softmax, ssdim);
-		ccv_nnc_tensor_view_get_stride(saved_softmax, ssstride);
-		assert(ssdim[0] == qdim[0]);
-		assert(ssdim[1] == qdim[2]);
-		assert(ssdim[2] == qdim[1]);
-		assert(ssdim[3] == kdim[1]);
 	}
 	if (attn_mask)
 	{
@@ -106,7 +94,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	const float* const vp = v->data.f32;
 	const float* const amp = attn_mask ? attn_mask->data.f32 : 0;
 	float* const cp = c->data.f32;
-	float* const ssp = saved_softmax ? saved_softmax->data.f32 : 0;
 	const float scale = cmd.info.scaled_dot_product_attention.scale;
 	const int is_causal = cmd.info.scaled_dot_product_attention.is_causal;
 	const int h_h_k_ratio = qdim[2] / kdim[2];
@@ -120,7 +107,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		const float* const vp0 = vp + i[0] * vstride[0];
 		const float* const amp0 = amp && amdim[0] > 1 ? amp + i[0] * amstride[0] : amp;
 		float* const cp0 = cp + i[0] * cstride[0];
-		float* const ssp0 = ssp ? ssp + i[0] * ssstride[0] : 0;
 		for (i[1] = 0; i[1] < qdim[2]; i[1]++)
 		{
 			const float* const qp1 = qp0 + i[1] * qstride[2];
@@ -128,13 +114,11 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			const float* const vp1 = vp0 + (i[1] / h_h_k_ratio) * vstride[2];
 			const float* const amp1 = amp && amdim[1] > 1 ? amp0 + i[1] * amstride[1] : amp0;
 			float* const cp1 = cp0 + i[1] * cstride[2];
-			float* const ssp1 = ssp0 ? ssp0 + i[1] * ssstride[1] : 0;
 			// Compute Q @ K^T
 			parallel_for(x, qdim[1]) {
 				int y, k;
 				const float* const qp2 = qp1 + x * qstride[1];
 				float* const cp2 = cp1 + x * cstride[1];
-				float* const ssp2 = ssp0 ? ssp1 + x * ssstride[2] : 0;
 				float* const qk0 = qk + x * kdim[1];
 				const float* const amp2 = amp1 ? amp1 + x * amstride[2] : 0;
 				if (attn_mask)
@@ -185,9 +169,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 					for (y = 0; y < kdim[1]; y++)
 						qk0[y] *= sumval;
 				}
-				if (saved_softmax)
-					for (y = 0; y < kdim[1]; y++)
-						ssp2[y] = qk0[y];
 				for (k = 0; k < vdim[3]; k++)
 					cp2[k * cstride[3]] = 0;
 				for (y = 0; y < kdim[1]; y++)
