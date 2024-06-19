@@ -1154,7 +1154,7 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data_with_buffer(const ccv_nnc_tens
 			for (i = 0; i < nd; i++)
 				[shape addObject:@(dim[i])];
 	}
-	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:(id<MTLBuffer>)buffer shape:shape dataType:ccv_nnc_mps_datatype(tensor_view->info.datatype)];
+	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:(id<MTLBuffer>)buffer shape:shape dataType:ccv_nnc_mps_datatype(datatype)];
 	[shape release];
 	return [data autorelease];
 }
@@ -1162,6 +1162,22 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data_with_buffer(const ccv_nnc_tens
 MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
 {
 	return ccv_nnc_mps_graph_tensor_data_with_buffer(tensor_view, dim, stride, mpgetbuffer((ccv_nnc_tensor_t*)tensor_view), mpgetoffset((ccv_nnc_tensor_t*)tensor_view));
+}
+
+static MPSGraphTensorData* ccv_nnc_mps_graph_output_tensor_data(const ccv_nnc_tensor_view_t* tensor_view, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int stride[CCV_NNC_MAX_DIM_ALLOC])
+{
+	const int nd = ccv_nnc_tensor_nd(dim);
+	int i;
+	NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
+	const int datatype = CCV_GET_DATA_TYPE(tensor_view->info.datatype) == CCV_QX ? ((tensor_view->info.datatype & 0xff) << 12) : tensor_view->info.datatype;
+	assert(CCV_IS_TENSOR_CONTIGUOUS(tensor_view));
+	assert(mpgetoffset((ccv_nnc_tensor_t*)tensor_view) == 0);
+	for (i = 0; i < nd; i++)
+		[shape addObject:@(dim[i])];
+	void* buffer = mpgetbuffer((ccv_nnc_tensor_t*)tensor_view);
+	MPSGraphTensorData* data = [[MPSGraphTensorData alloc] initWithMTLBuffer:(id<MTLBuffer>)buffer shape:shape dataType:ccv_nnc_mps_datatype(datatype)];
+	[shape release];
+	return [data autorelease];
 }
 
 MPSGraphTensorData* ccv_nnc_mps_graph_constant_data(const float val, const int datatype)
@@ -1248,7 +1264,7 @@ void ccv_nnc_mps_graph_executable_result(MPSGraphExecutable* executable, MPSComm
 	{
 		NSMutableArray<MPSGraphTensorData*>* results = [NSMutableArray new];
 		for (i = 0; i < size; i++)
-			[results addObject:ccv_nnc_mps_graph_tensor_data(data[i], dim[i], stride[i])];
+			[results addObject:ccv_nnc_mps_graph_output_tensor_data(data[i], dim[i], stride[i])];
 		[executable encodeToCommandBuffer:command_buffer inputsArray:inputsArray resultsArray:results executionDescriptor:nil];
 		[results release];
 		return;
