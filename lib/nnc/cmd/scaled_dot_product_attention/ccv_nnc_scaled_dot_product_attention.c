@@ -70,14 +70,12 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 		if (output_size == 1)
 			return;
 		assert(output_size > 1);
+		// This is saved softmax_lse, which would be in 32F if exists.
 		outputs[1] = inputs[0];
-		if (q_nd == 4)
-		{
-			// Switch head v.s. sequence length.
-			outputs[1].dim[1] = outputs[1].dim[2];
-			outputs[1].dim[2] = inputs[0].dim[1];
-		}
-		outputs[1].dim[q_nd - 1] = inputs[1].dim[k_nd - 3]; // saved softmax should have sequence length of query x key.
+		outputs[1].dim[q_nd - 3] = inputs[0].dim[q_nd - 2];
+		outputs[1].dim[q_nd - 2] = inputs[0].dim[q_nd - 3];
+		outputs[1].dim[q_nd - 1] = 0;
+		outputs[1].datatype = CCV_32F;
 	}
 }
 
