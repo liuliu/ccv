@@ -89,7 +89,7 @@ ccv_cnnp_model_t* _imagenet_resnet50_v1d(void)
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 1, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0, 1, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }
@@ -116,7 +116,7 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 	output = ccv_cnnp_model_apply(_resnet_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 1, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0, 1, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }
@@ -150,7 +150,7 @@ ccv_cnnp_model_t* _imagenet_vgg13(void)
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(1000, 0, 1, 0),
+		ccv_cnnp_dense(1000, 0, 0, 1, 0),
 		ccv_cnnp_softmax(0)
 	), 1, 0);
 	return vgg13;
@@ -243,7 +243,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
 	if (dropout > 0)
 		output = ccv_cnnp_model_apply(ccv_cnnp_dropout(dropout, 0, 0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 1, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0, 1, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }

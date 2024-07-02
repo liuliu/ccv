@@ -24,9 +24,9 @@ static ccv_cnnp_model_t* simple_cifar_10(void)
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(256, 0, 1, 0),
+		ccv_cnnp_dense(256, 0, 0, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_dense(10, 0, 1, 0),
+		ccv_cnnp_dense(10, 0, 0, 1, 0),
 		ccv_cnnp_softmax(0)
 	), 1, 0);
 }
@@ -262,7 +262,7 @@ TEST_CASE("make sure reuse model enables share weights")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output0, output1));
@@ -278,7 +278,7 @@ TEST_CASE("train model with share weights and L2 loss")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t fit0 = ccv_cnnp_input();
@@ -359,9 +359,9 @@ static ccv_cnnp_model_t* simple_cifar_10_no_softmax(void)
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(256, 0, 1, 0),
+		ccv_cnnp_dense(256, 0, 0, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_dense(10, 0, 1, 0)
+		ccv_cnnp_dense(10, 0, 0, 1, 0)
 	), 1, 0);
 }
 
@@ -495,7 +495,7 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 {
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 1, 0);
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 0, 0, 1, 0);
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t fit0 = ccv_cnnp_input();
@@ -1144,9 +1144,9 @@ TEST_CASE("learn 2 * x + y = 12, first learn x, and then learn y, evaluate learn
 TEST_CASE("a compiled model absorbs a new model with slightly different configuration")
 {
 	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(1, 0, 1, 0)
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 0, 1, 0)
 	), 1, "multi_layer");
 	ccv_nnc_tensor_param_t x = CPU_TENSOR_NHWC(32F, 2, 2);
 	ccv_cnnp_model_compile(multi_layer, TENSOR_PARAM_LIST(x), CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), CMD_NOOP());
@@ -1161,9 +1161,9 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 		.requires_grad = 1,
 	}, TENSOR_LIST(x_tensor), TENSOR_LIST(y_tensor), 0, 0);
 	ccv_cnnp_model_t* const small_model = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(1, 0, 1, 0)
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 0, 1, 0)
 	), 1, "multi_layer");
 	x = CPU_TENSOR_NHWC(32F, 1, 2);
 	ccv_cnnp_model_absorb(multi_layer, small_model, TENSOR_PARAM_LIST(x));
@@ -1175,9 +1175,9 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 	}, TENSOR_LIST(small_x), TENSOR_LIST(small_y), 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(small_y->data.f32[0], y_tensor->data.f32[0], 1e-5, "the parameters retained, the value should be too");
 	ccv_cnnp_model_t* const large_model = ccv_cnnp_sequential_new(MODEL_LIST(
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(2, 0, 1, 0),
-		ccv_cnnp_dense(1, 0, 1, 0)
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(2, 0, 0, 1, 0),
+		ccv_cnnp_dense(1, 0, 0, 1, 0)
 	), 1, "multi_layer");
 	x = CPU_TENSOR_NHWC(32F, 4, 2);
 	ccv_cnnp_model_absorb(multi_layer, large_model, TENSOR_PARAM_LIST(x));
@@ -1201,13 +1201,13 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 
 TEST_CASE("use linear model's parameter as the input for more computation")
 {
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 0, 1, 0);
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 0, 0, 1, 0);
 	ccv_cnnp_model_t* const multi_layer = ccv_cnnp_sequential_new(MODEL_LIST(
 		linear,
 	), 1, "multi_layer");
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(multi_layer, MODEL_IO_LIST(input));
-	out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0), MODEL_IO_LIST(out, ccv_cnnp_model_parameters(linear, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)));
+	out = ccv_cnnp_model_apply(ccv_cnnp_matmul(NO_TRANSPOSE, NO_TRANSPOSE, 0, 0), MODEL_IO_LIST(out, ccv_cnnp_model_parameters(linear, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0)));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();
 	// Because we don't have L2 loss function available yet, manually create L2 loss.
 	ccv_cnnp_model_io_t diff = ccv_cnnp_model_apply(
@@ -1270,8 +1270,8 @@ TEST_CASE("use linear model's parameter as the input for more computation")
 
 TEST_CASE("model can have multiple outputs and some of them can be used in the computation")
 {
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, 0);
-	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 1, 0);
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 0, 1, 0);
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 0, 1, 0);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
@@ -1346,8 +1346,8 @@ TEST_CASE("embedding model can generate vector embedding")
 
 TEST_CASE("model to get the internal name for parameters")
 {
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, "linear");
-	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 1, 0);
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 0, 1, "linear");
+	ccv_cnnp_model_t* const linear2 = ccv_cnnp_dense(1, 1, 0, 1, 0);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(linear2, MODEL_IO_LIST(out1));
@@ -1485,7 +1485,7 @@ TEST_CASE("FPN-RPN use cnnp model with multiple outputs")
 TEST_CASE("extract one output each feed into different feed-forward")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
@@ -1494,9 +1494,9 @@ TEST_CASE("extract one output each feed into different feed-forward")
 	ccv_cnnp_model_io_t o0 = ccv_cnnp_model_apply(tiny, MODEL_IO_LIST(i0));
 	ccv_cnnp_model_io_t o00 = ccv_cnnp_model_apply(ccv_cnnp_extract(0, "index0"), MODEL_IO_LIST(o0));
 	ccv_cnnp_model_io_t o01 = ccv_cnnp_model_apply(ccv_cnnp_extract(1, "index1"), MODEL_IO_LIST(o0));
-	ccv_cnnp_model_t* const l0 = ccv_cnnp_dense(1, 1, 1, "l0");
+	ccv_cnnp_model_t* const l0 = ccv_cnnp_dense(1, 1, 0, 1, "l0");
 	ccv_cnnp_model_io_t o10 = ccv_cnnp_model_apply(l0, MODEL_IO_LIST(o00));
-	ccv_cnnp_model_t* const l1 = ccv_cnnp_dense(1, 1, 1, "l1");
+	ccv_cnnp_model_t* const l1 = ccv_cnnp_dense(1, 1, 0, 1, "l1");
 	ccv_cnnp_model_io_t o11 = ccv_cnnp_model_apply(l1, MODEL_IO_LIST(o01));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(i0), MODEL_IO_LIST(o10, o11), 1, "final");
 	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
@@ -1524,7 +1524,7 @@ TEST_CASE("extract one output each feed into different feed-forward")
 TEST_CASE("use parameter for values")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
@@ -1555,7 +1555,7 @@ TEST_CASE("use parameter for values")
 TEST_CASE("use scalar for values")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
@@ -1583,7 +1583,7 @@ TEST_CASE("use scalar for values")
 TEST_CASE("use scalar for values and copy types from other inputs")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const sigmoid = ccv_cnnp_sigmoid("sigmoid");
 	ccv_cnnp_model_io_t out2 = ccv_cnnp_model_apply(sigmoid, MODEL_IO_LIST(out1));
@@ -1611,9 +1611,9 @@ TEST_CASE("use scalar for values and copy types from other inputs")
 TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, -1, "linear");
-	ccv_cnnp_model_t* const down = ccv_cnnp_dense(2, 1, 1, "down");
-	ccv_cnnp_model_t* const up = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, 0, -1, "linear");
+	ccv_cnnp_model_t* const down = ccv_cnnp_dense(2, 1, 0, 1, "down");
+	ccv_cnnp_model_t* const up = ccv_cnnp_dense(10, 1, 0, 1, "up");
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_down = ccv_cnnp_model_apply(down, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_up = ccv_cnnp_model_apply(up, MODEL_IO_LIST(out_down));
@@ -1693,9 +1693,9 @@ static int _ccv_nnc_same_namer(void* context, const char* src_name, char* update
 TEST_CASE("two models share the same parameters")
 {
 	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(10, 1, -1, "linear");
-	ccv_cnnp_model_t* const down0 = ccv_cnnp_dense(2, 1, 1, "down");
-	ccv_cnnp_model_t* const up0 = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(10, 1, 0, -1, "linear");
+	ccv_cnnp_model_t* const down0 = ccv_cnnp_dense(2, 1, 0, 1, "down");
+	ccv_cnnp_model_t* const up0 = ccv_cnnp_dense(10, 1, 0, 1, "up");
 	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t out0_down = ccv_cnnp_model_apply(down0, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t out0_up = ccv_cnnp_model_apply(up0, MODEL_IO_LIST(out0_down));
@@ -1704,9 +1704,9 @@ TEST_CASE("two models share the same parameters")
 	ccv_cnnp_model_t* const final0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0), MODEL_IO_LIST(out0_final), 0, "tiny0");
 
 	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(10, 1, -1, "linear");
-	ccv_cnnp_model_t* const down1 = ccv_cnnp_dense(2, 1, 1, "down");
-	ccv_cnnp_model_t* const up1 = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(10, 1, 0, -1, "linear");
+	ccv_cnnp_model_t* const down1 = ccv_cnnp_dense(2, 1, 0, 1, "down");
+	ccv_cnnp_model_t* const up1 = ccv_cnnp_dense(10, 1, 0, 1, "up");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t out1_down = ccv_cnnp_model_apply(down1, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t out1_up = ccv_cnnp_model_apply(up1, MODEL_IO_LIST(out1_down));
@@ -1744,14 +1744,14 @@ TEST_CASE("two models share the same parameters")
 TEST_CASE("two models, one with LoRA, one with not, share the same parameters")
 {
 	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(10, 1, -1, "linear");
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(10, 1, 0, -1, "linear");
 	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_t* const final0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0), MODEL_IO_LIST(out0), 0, "tiny");
 
 	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(10, 1, -1, "linear");
-	ccv_cnnp_model_t* const down1 = ccv_cnnp_dense(2, 1, 1, "down");
-	ccv_cnnp_model_t* const up1 = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(10, 1, 0, -1, "linear");
+	ccv_cnnp_model_t* const down1 = ccv_cnnp_dense(2, 1, 0, 1, "down");
+	ccv_cnnp_model_t* const up1 = ccv_cnnp_dense(10, 1, 0, 1, "up");
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t out1_down = ccv_cnnp_model_apply(down1, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t out1_up = ccv_cnnp_model_apply(up1, MODEL_IO_LIST(out1_down));
@@ -1835,7 +1835,7 @@ TEST_CASE("pad a tensor with padding")
 TEST_CASE("use move semantics to write output to the empty space of the input tensor")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t input0 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(0), DIM_ALLOC(1), "first reshape"), MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t input1 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), "second reshape"), MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input0));
@@ -1870,7 +1870,7 @@ TEST_CASE("use variable and move semantics to co-locate input in the same tensor
 {
 	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out0 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t out1 = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(input1));
 	ccv_cnnp_model_io_t var = ccv_cnnp_model_apply(ccv_cnnp_variable(CPU_TENSOR_NHWC(32F, 2), "var"), MODEL_IO_LIST());
@@ -1878,7 +1878,7 @@ TEST_CASE("use variable and move semantics to co-locate input in the same tensor
 	ccv_cnnp_model_io_t var1 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), "second reshape"), MODEL_IO_LIST(var));
 	ccv_cnnp_model_io_t move0 = ccv_cnnp_model_apply(ccv_cnnp_move("move"), MODEL_IO_LIST(out0, var0));
 	ccv_cnnp_model_io_t move1 = ccv_cnnp_model_apply(ccv_cnnp_move("move"), MODEL_IO_LIST(out1, var1));
-	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t out1_final = ccv_cnnp_model_apply(linear1, MODEL_IO_LIST(var));
 	ccv_cnnp_model_add_dependencies(out1_final, MODEL_IO_LIST(move0, move1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(out1_final), 0, "tiny");
@@ -1911,7 +1911,7 @@ TEST_CASE("use variable and move semantics to co-locate input in the same tensor
 TEST_CASE("use contiguous to make certain tensor contiguous during model inference")
 {
 	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(4, 1, 1, "linear");
+	ccv_cnnp_model_t* const linear0 = ccv_cnnp_dense(4, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(linear0, MODEL_IO_LIST(x));
 	// Get the middle 2, and then apply GELU, which in Float32 / CPU, requires to be contiguous for now.
 	ccv_cnnp_model_io_t y0 = ccv_cnnp_model_apply(ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(2, 2), DIM_ALLOC(0, 2), DIM_ALLOC(4, 1), "reshape"), MODEL_IO_LIST(y));
@@ -2026,9 +2026,9 @@ TEST_CASE("chunk a tensor into several smaller ones, variant 2")
 TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false and with gradient checkpointing")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, -1, "linear");
-	ccv_cnnp_model_t* const down = ccv_cnnp_dense(2, 1, 1, "down");
-	ccv_cnnp_model_t* const up = ccv_cnnp_dense(10, 1, 1, "up");
+	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(10, 1, 0, -1, "linear");
+	ccv_cnnp_model_t* const down = ccv_cnnp_dense(2, 1, 0, 1, "down");
+	ccv_cnnp_model_t* const up = ccv_cnnp_dense(10, 1, 0, 1, "up");
 	ccv_cnnp_model_io_t out = ccv_cnnp_model_apply(linear, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_down = ccv_cnnp_model_apply(down, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_up = ccv_cnnp_model_apply(up, MODEL_IO_LIST(out_down));
@@ -2074,15 +2074,15 @@ TEST_CASE("LoRA fine-tuning MLP with GELU, set is_trainable to false and with gr
 {
 	ccv_nnc_stream_context_set_seed(0, 47);
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* const fc1 = ccv_cnnp_dense(10, 1, -1, "fc1");
-	ccv_cnnp_model_t* const fc2 = ccv_cnnp_dense(10, 1, -1, "fc2");
-	ccv_cnnp_model_t* const down_fc1 = ccv_cnnp_dense(2, 1, 1, "down_fc1");
-	ccv_cnnp_model_t* const up_fc1 = ccv_cnnp_dense(10, 1, 1, "up_fc1");
-	ccv_cnnp_model_t* const down_fc2 = ccv_cnnp_dense(2, 1, 1, "down_fc2");
-	ccv_cnnp_model_t* const up_fc2 = ccv_cnnp_dense(10, 1, 1, "up_fc2");
-	ccv_cnnp_model_t* const fc3 = ccv_cnnp_dense(5, 1, -1, "fc3");
-	ccv_cnnp_model_t* const down_fc3 = ccv_cnnp_dense(2, 1, 1, "down_fc3");
-	ccv_cnnp_model_t* const up_fc3 = ccv_cnnp_dense(5, 1, 1, "up_fc3");
+	ccv_cnnp_model_t* const fc1 = ccv_cnnp_dense(10, 1, 0, -1, "fc1");
+	ccv_cnnp_model_t* const fc2 = ccv_cnnp_dense(10, 1, 0, -1, "fc2");
+	ccv_cnnp_model_t* const down_fc1 = ccv_cnnp_dense(2, 1, 0, 1, "down_fc1");
+	ccv_cnnp_model_t* const up_fc1 = ccv_cnnp_dense(10, 1, 0, 1, "up_fc1");
+	ccv_cnnp_model_t* const down_fc2 = ccv_cnnp_dense(2, 1, 0, 1, "down_fc2");
+	ccv_cnnp_model_t* const up_fc2 = ccv_cnnp_dense(10, 1, 0, 1, "up_fc2");
+	ccv_cnnp_model_t* const fc3 = ccv_cnnp_dense(5, 1, 0, -1, "fc3");
+	ccv_cnnp_model_t* const down_fc3 = ccv_cnnp_dense(2, 1, 0, 1, "down_fc3");
+	ccv_cnnp_model_t* const up_fc3 = ccv_cnnp_dense(5, 1, 0, 1, "up_fc3");
 	ccv_cnnp_model_io_t out_fc1 = ccv_cnnp_model_apply(fc1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_fc2 = ccv_cnnp_model_apply(fc2, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t out_down_fc1 = ccv_cnnp_model_apply(down_fc1, MODEL_IO_LIST(input));

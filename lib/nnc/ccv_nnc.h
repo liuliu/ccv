@@ -201,6 +201,7 @@ typedef struct {
 			int transpose_a[2]; /**< [blas.transpose_a[2]] The axis we'd like to transpose for input a. */
 			int transpose_b[2]; /**< [blas.transpose_b[2]] The axis we'd like to transpose for input b. */
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */
+			int flags; /**< [blas.flags] Auxiliary flags to enable certain features for BLAS operation. */
 		} blas;
 		struct {
 			float trim0; /**< [label_smoothing.trim0] The smoothed label for 0. */
@@ -4277,11 +4278,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution_transpose(const int grou
  * A dense layer model.
  * @param count The output dimension.
  * @param no_bias Whether has a bias term or not.
+ * @param flags The flags to disable / enable certain features.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_bias, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const int no_bias, const int flags, const int is_trainable, const char* const name);
 /**
  * A batch norm layer model.
  * @param momentum The momentum in batch norm parameter.
@@ -4484,10 +4486,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_transpose(const int axis_a, const in
  * A batched matrix multiplication model.
  * @param transpose_a The axis to be transposed in the first matrix.
  * @param transpose_b The axis to be transposed in the second matrix.
+ * @param flags The flags to disable / enable certain features.
  * @param name The unique name of the model.
  * @return A batched matrix multiplication model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const int flags, const char* const name);
 /**
  * A dropout model.
  * @param p The probability to drop the current value.

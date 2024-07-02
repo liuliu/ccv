@@ -100,7 +100,7 @@ ccv_array_t* _imagenet_resnet50_v1d(void)
 	output = ccv_cnnp_model_apply(conv_4, MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 1, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, 0, 0, 1, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const resnet50_v1d = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 	ccv_array_push(backbones, &resnet50_v1d);

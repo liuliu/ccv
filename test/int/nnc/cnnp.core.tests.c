@@ -13,7 +13,7 @@ TEST_SETUP()
 
 ccv_cnnp_model_t* _math_2_x_10()
 {
-	ccv_cnnp_model_t* mul = ccv_cnnp_dense(1, 1, 1, "mul");
+	ccv_cnnp_model_t* mul = ccv_cnnp_dense(1, 1, 0, 1, "mul");
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t left_out = ccv_cnnp_model_apply(mul, MODEL_IO_LIST(input));
 	ccv_cnnp_model_io_t fit = ccv_cnnp_input();

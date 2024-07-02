@@ -1345,6 +1345,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t bias;
 	int count;
 	int no_bias;
+	int flags;
 } ccv_cnnp_model_dense_t;
 
 static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -1370,6 +1371,7 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	cmd.info.blas.a[1] = 1;
 	cmd.info.blas.transpose_b[0] = 0;
 	cmd.info.blas.transpose_b[1] = 1;
+	cmd.info.blas.flags = self->flags;
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 			params,
@@ -1416,7 +1418,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.copy = _ccv_cnnp_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const int flags, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_dense_t* const model_dense = (ccv_cnnp_model_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_dense_t));
 	model_dense->super.isa = &ccv_cnnp_dense_isa;
@@ -1431,13 +1433,14 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const int no_bias, const int i
 	model_dense->bias.graph = 0;
 	model_dense->count = count;
 	model_dense->no_bias = no_bias;
+	model_dense->flags = flags;
 	return (ccv_cnnp_model_t*)model_dense;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_dense_t* const self = (const ccv_cnnp_model_dense_t*)super;
-	return ccv_cnnp_dense(self->count, self->no_bias, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_dense(self->count, self->no_bias, self->flags, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Pool Layers
@@ -2538,6 +2541,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t output;
 	int transpose_a[2];
 	int transpose_b[2];
+	int flags;
 } ccv_cnnp_model_matmul_t;
 
 static void _ccv_cnnp_matmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -2549,7 +2553,8 @@ static void _ccv_cnnp_matmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	ccv_nnc_tensor_param_t a_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t b_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t matmul = CMD_GEMM_FORWARD(self->transpose_a, self->transpose_b);
+	ccv_nnc_cmd_t matmul = CMD_GEMM_FORWARD(self->transpose_a, self->transpose_b);
+	matmul.info.blas.flags = self->flags;
 	ccv_nnc_hint_tensor_auto(matmul, (ccv_nnc_tensor_param_t []){
 			a_params,
 			b_params,
@@ -2566,7 +2571,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_matmul_isa = {
 	.copy = _ccv_cnnp_matmul_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_b[2], const int flags, const char* const name)
 {
 	ccv_cnnp_model_matmul_t* const model_matmul = (ccv_cnnp_model_matmul_t*)cccalloc(1, sizeof(ccv_cnnp_model_matmul_t));
 	model_matmul->super.isa = &ccv_cnnp_matmul_isa;
@@ -2577,6 +2582,7 @@ ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_
 	model_matmul->transpose_a[1] = transpose_a[1];
 	model_matmul->transpose_b[0] = transpose_b[0];
 	model_matmul->transpose_b[1] = transpose_b[1];
+	model_matmul->flags = flags;
 	ccv_cnnp_model_copy_name(&model_matmul->super, name);
 	return (ccv_cnnp_model_t*)model_matmul;
 }
@@ -2584,7 +2590,7 @@ ccv_cnnp_model_t* ccv_cnnp_matmul(const int transpose_a[2], const int transpose_
 static ccv_cnnp_model_t* _ccv_cnnp_matmul_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_matmul_t* const self = (const ccv_cnnp_model_matmul_t*)super;
-	return ccv_cnnp_matmul(self->transpose_a, self->transpose_b, self->super.name);
+	return ccv_cnnp_matmul(self->transpose_a, self->transpose_b, self->flags, self->super.name);
 }
 
 // MARK - Dropout Layer

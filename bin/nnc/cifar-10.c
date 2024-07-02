@@ -69,7 +69,7 @@ ccv_cnnp_model_t* _cifar_10_resnet56(void)
 	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(0), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(10, 0, 1, 0), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(10, 0, 0, 1, 0), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_softmax(0), MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
 }
@@ -123,7 +123,7 @@ ccv_cnnp_model_t* _cifar_10_dawn(void)
 		layer3,
 		ccv_cnnp_max_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(10, 0, 1, 0)), 1, 0);
+		ccv_cnnp_dense(10, 0, 0, 1, 0)), 1, 0);
 }
 
 ccv_cnnp_model_t* _cifar_10_alexnet(void)
@@ -142,10 +142,10 @@ ccv_cnnp_model_t* _cifar_10_alexnet(void)
 		ccv_cnnp_relu(0),
 		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), HINT((2, 2), (0, 0)), 0),
 		ccv_cnnp_flatten(0),
-		ccv_cnnp_dense(256, 0, 1, 0),
+		ccv_cnnp_dense(256, 0, 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
 		ccv_cnnp_relu(0),
-		ccv_cnnp_dense(10, 0, 1, 0),
+		ccv_cnnp_dense(10, 0, 0, 1, 0),
 		ccv_cnnp_softmax(0)
 	), 1, 0);
 }

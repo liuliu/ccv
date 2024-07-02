@@ -63,7 +63,7 @@ static ccv_cnnp_model_t* _cifar_10_dawn(const int softmax)
 			layer3,
 			ccv_cnnp_max_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 			ccv_cnnp_flatten(0),
-			ccv_cnnp_dense(10, 0, 1, 0),
+			ccv_cnnp_dense(10, 0, 0, 1, 0),
 			ccv_cnnp_softmax(0)
 		), 1, 0);
 	} else {
@@ -74,7 +74,7 @@ static ccv_cnnp_model_t* _cifar_10_dawn(const int softmax)
 			layer3,
 			ccv_cnnp_max_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 			ccv_cnnp_flatten(0),
-			ccv_cnnp_dense(10, 0, 1, 0)
+			ccv_cnnp_dense(10, 0, 0, 1, 0)
 		), 1, 0);
 	}
 }

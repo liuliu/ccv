@@ -22,7 +22,7 @@ TEST_CASE("concatenate several tensors together")
 		ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS)));
 	ccv_cnnp_model_t* const concat = ccv_cnnp_concat(0, "concat");
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_t* const full = ccv_cnnp_sequential_new(MODEL_LIST(concat, dense), 1, "full");
 	ccv_nnc_tensor_param_t a_params = GPU_TENSOR_NCHW(000, 32F, 1);
 	ccv_nnc_tensor_param_t b_params = GPU_TENSOR_NCHW(000, 32F, 2);
@@ -62,10 +62,10 @@ TEST_CASE("concatenate several tensors together and make sure they are simplifie
 		ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS)));
-	ccv_cnnp_model_t* const x_dense = ccv_cnnp_dense(1, 1, 1, "linear");
-	ccv_cnnp_model_t* const y_dense = ccv_cnnp_dense(2, 1, 1, "linear");
+	ccv_cnnp_model_t* const x_dense = ccv_cnnp_dense(1, 1, 0, 1, "linear");
+	ccv_cnnp_model_t* const y_dense = ccv_cnnp_dense(2, 1, 0, 1, "linear");
 	ccv_cnnp_model_t* const concat = ccv_cnnp_concat(0, "concat");
-	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 1, 1, "linear");
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, 1, 0, 1, "linear");
 	ccv_cnnp_model_io_t const x = ccv_cnnp_input();
 	ccv_cnnp_model_io_t const y = ccv_cnnp_input();
 	ccv_cnnp_model_io_t xz = ccv_cnnp_model_apply(x_dense, MODEL_IO_LIST(x));
