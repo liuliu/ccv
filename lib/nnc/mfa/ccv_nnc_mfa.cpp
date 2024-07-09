@@ -1,19 +1,45 @@
 #include "ccv_nnc_mfa.hpp"
-#include "GEMM/CoreCount.hpp"
 #include "libmfa.inc"
 using namespace ccv::nnc;
 
 #include <iostream>
+
+// MARK: - Temporary Imports
+
+#include "GEMM/CoreCount.hpp"
+#include "GEMM/GEMMOperandPrecision.hpp"
 #include <sstream>
+#include <vector>
 
 // MARK: - C
 
 mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
 #if TARGET_OS_MAC
-  std::ostringstream output_stream;
-  output_stream << "The system's GPU has " << findCoreCount() << " cores.";
-  std::string output = output_stream.str();
-  ccv_nnc_mfa_log_message(output.c_str());
+  {
+    std::ostringstream output_stream;
+    output_stream << "The system's GPU has " << findCoreCount() << " cores.";
+    
+    std::string output = output_stream.str();
+    ccv_nnc_mfa_log_message(output.c_str());
+  }
+  
+  {
+    std::vector<GEMMOperandPrecision> precisions = {
+      GEMMOperandPrecision::FP32,
+      GEMMOperandPrecision::FP16,
+      GEMMOperandPrecision::BF16,
+    };
+    
+    std::ostringstream output_stream;
+    for (GEMMOperandPrecision precision : precisions) {
+      output_stream << "The precision is " << precision.name() << ". It consumes " << precision.size() << " bytes in memory.";
+      output_stream << "\n";
+    }
+    
+    std::string output = output_stream.str();
+    ccv_nnc_mfa_log_message(output.c_str());
+  }
+  
 #endif
   return new mfa::context(device);
 }
