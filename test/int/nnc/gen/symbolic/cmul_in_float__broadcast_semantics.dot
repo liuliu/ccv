@@ -1,0 +1,4 @@
+digraph G {
+compound=true;
+node0 [shape=record,label="{cmul|Command: CCV_NNC_CMUL_FORWARD}|{Input|{a (d0)|1x5x8x128}|{b (d0)|1x5x1x128}}|{Output|{c (d0)|1x5x8x128}}"];
+}

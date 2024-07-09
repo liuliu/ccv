@@ -1,0 +1,6 @@
+digraph G {
+compound=true;
+node0 [shape=record,label="{concat|Command: CCV_NNC_FORMAT_TRANSFORM_FORWARD}|{Input|{tensor0 (d0)|1}|{tensor1 (d0)|2}}|{Output|{tensor3 (d0)|1|as. tensor2 (d0)}|{tensor4 (d0)|2|as. tensor2 (d0)}}"];
+node1 [shape=record,label="{dense|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensor2 (d0)|3}|{weights (d0)|1x3}}|{Output|{tensor6 (d0)|1}}"];
+node0 -> node1;
+}

@@ -1,0 +1,4 @@
+digraph G {
+compound=true;
+node0 [shape=record,label="{node0|Command: CCV_NNC_CMUL_FORWARD}|{Input|{tensor0|d0|zone0|{0x52f05ce0|0x52f05fff}|20x10}|{tensor1|d0|zone0|{0x52f05e50|0x52f0616f}|20x10}}|{Output|{tensor0|d0|zone0|{0x52f05ce0|0x52f05fff}|20x10}}"];
+}
