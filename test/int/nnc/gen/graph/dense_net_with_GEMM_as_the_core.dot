@@ -1,8 +1,8 @@
 digraph G {
 compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview0|d0|zone0|{0x2ee059c0|0x2ee059cf}|1x1}|{tensor1|d0|zone1|{0x2ee05940|0x2ee05943}|1x1}|{tensor2|d0|zone2|{0x2ee058c0|0x2ee058c3}|1}}|{Output|{tensorview3|d0|zone0|{0x2ee059c4|0x2ee059d3}|1x1}}"];
-node1 [shape=record,label="{node1|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview4|d0|zone0|{0x2ee059c0|0x2ee059cf}|1x2}|{tensor5|d0|zone3|{0x2ee05840|0x2ee05847}|1x2}|{tensor6|d0|zone4|{0x2ee057c0|0x2ee057c3}|1}}|{Output|{tensorview7|d0|zone0|{0x2ee059c8|0x2ee059d7}|1x1}}"];
-node2 [shape=record,label="{node2|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview8|d0|zone0|{0x2ee059c0|0x2ee059cf}|1x3}|{tensor9|d0|zone5|{0x2ee05740|0x2ee0574b}|1x3}|{tensor10|d0|zone6|{0x2ee056c0|0x2ee056c3}|1}}|{Output|{tensorview11|d0|zone0|{0x2ee059cc|0x2ee059db}|1x1}}"];
+node0 [shape=record,label="{node0|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview0|d0|zone0|{0x436059c0|0x436059cf}|1x1}|{tensor1|d0|zone1|{0x43605940|0x43605943}|1x1}|{tensor2|d0|zone2|{0x436058c0|0x436058c3}|1}}|{Output|{tensorview3|d0|zone0|{0x436059c4|0x436059d3}|1x1}}"];
+node1 [shape=record,label="{node1|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview4|d0|zone0|{0x436059c0|0x436059cf}|1x2}|{tensor5|d0|zone3|{0x43605840|0x43605847}|1x2}|{tensor6|d0|zone4|{0x436057c0|0x436057c3}|1}}|{Output|{tensorview7|d0|zone0|{0x436059c8|0x436059d7}|1x1}}"];
+node2 [shape=record,label="{node2|Command: CCV_NNC_GEMM_FORWARD}|{Input|{tensorview8|d0|zone0|{0x436059c0|0x436059cf}|1x3}|{tensor9|d0|zone5|{0x43605740|0x4360574b}|1x3}|{tensor10|d0|zone6|{0x436056c0|0x436056c3}|1}}|{Output|{tensorview11|d0|zone0|{0x436059cc|0x436059db}|1x1}}"];
 node0 -> node1;
 node0 -> node2;
 node1 -> node2;

@@ -2,9 +2,11 @@
 #include "libmfa.inc"
 using namespace ccv::nnc;
 
-#include <iostream>
-
 // MARK: - Temporary Imports
+
+// Make sure this header doesn't accidentally depend on imports declared in
+// the other headers.
+#include "GEMM/GEMMHeaders.hpp"
 
 #include "GEMM/CoreCount.hpp"
 #include "GEMM/GEMMOperandPrecision.hpp"
@@ -12,6 +14,8 @@ using namespace ccv::nnc;
 #include <vector>
 
 // MARK: - C
+
+#include <iostream>
 
 mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
 #if TARGET_OS_MAC
@@ -35,6 +39,14 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
       output_stream << "The precision is " << precision.name() << ". It consumes " << precision.size() << " bytes in memory.";
       output_stream << "\n";
     }
+    
+    std::string output = output_stream.str();
+    ccv_nnc_mfa_log_message(output.c_str());
+  }
+  
+  {
+    std::ostringstream output_stream;
+    output_stream << createMetalSimdgroupEvent();
     
     std::string output = output_stream.str();
     ccv_nnc_mfa_log_message(output.c_str());
