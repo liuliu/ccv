@@ -6,9 +6,10 @@ using namespace ccv::nnc;
 
 // Make sure this header doesn't accidentally depend on imports declared in
 // the other headers.
-#include "GEMM/GEMMHeaders.hpp"
+#include "GEMM/GEMMKernelDescriptor.hpp"
 
 #include "GEMM/CoreCount.hpp"
+#include "GEMM/GEMMHeaders.hpp"
 #include "GEMM/GEMMOperandPrecision.hpp"
 #include <sstream>
 #include <vector>

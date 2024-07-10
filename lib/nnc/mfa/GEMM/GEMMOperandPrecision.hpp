@@ -81,6 +81,11 @@ private:
   Value value;
 };
 
+/// A way to emulate the API of the Swift tuple with labeled members.
+struct GEMMOperandPrecisions {
+  GEMMOperandPrecision A;
+  GEMMOperandPrecision B;
+  GEMMOperandPrecision C;
+};
 
 #endif /* GEMMOperandPrecision_hpp */
-
