@@ -21,5 +21,7 @@
 ///   thread must dereference a pointer within the region of threadgroup memory.
 std::string createMetalSimdgroupEvent();
 
-#endif /* GEMMHeaders_hpp */
+/// Create the source code for the 'metal\_simdgroup\_matrix\_storage' header.
+std::string createMetalSimdgroupMatrixStorage();
 
+#endif /* GEMMHeaders_hpp */

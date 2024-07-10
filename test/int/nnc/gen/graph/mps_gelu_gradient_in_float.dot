@@ -1,6 +1,6 @@
 digraph G {
 compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_GELU_FORWARD}|{Input|{tensor0|d0|zone0|{0x1ef06660|0x1ef075ff}|10x100}}|{Output|{tensor1|d0|zone1|{0x1ef0ac40|0x1ef0bbdf}|10x100}}"];
-node1 [shape=record,label="{node1|Command: CCV_NNC_GELU_BACKWARD}|{Input|{tensor2|d0|zone0|{0x1ef071b0|0x1ef0814f}|10x100}|{tensor0|d0|zone0|{0x1ef06660|0x1ef075ff}|10x100}|-}|{Output|{tensor3|d0|zone1|{0x1ef0af00|0x1ef0be9f}|10x100}}"];
+node0 [shape=record,label="{node0|Command: CCV_NNC_GELU_FORWARD}|{Input|{tensor0|d0|zone0|{0x3de08260|0x3de091ff}|10x100}}|{Output|{tensor1|d0|zone0|{0x3de079f0|0x3de0898f}|10x100}}"];
+node1 [shape=record,label="{node1|Command: CCV_NNC_GELU_BACKWARD}|{Input|{tensor2|d0|zone1|{0x3df09a40|0x3df0a9df}|10x100}|{tensor0|d0|zone0|{0x3de08260|0x3de091ff}|10x100}|-}|{Output|{tensor3|d0|zone2|{0x3de0d010|0x3de0dfaf}|10x100}}"];
 node0 -> node1;
 }

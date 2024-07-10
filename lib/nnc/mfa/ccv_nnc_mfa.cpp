@@ -46,7 +46,7 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
   
   {
     std::ostringstream output_stream;
-    output_stream << createMetalSimdgroupEvent();
+    output_stream << createMetalSimdgroupMatrixStorage();
     
     std::string output = output_stream.str();
     ccv_nnc_mfa_log_message(output.c_str());

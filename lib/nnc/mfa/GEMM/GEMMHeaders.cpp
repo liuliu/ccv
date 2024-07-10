@@ -1,5 +1,8 @@
 #include "../ccv_nnc_mfa.hpp"
 
+#include <optional>
+#include <vector>
+
 std::string createMetalSimdgroupEvent() {
   // Return the source string.
   return R"(
@@ -232,3 +235,132 @@ namespace metal
 )";
 }
 
+std::string createMetalSimdgroupMatrixStorage() {
+  // How this header spawning code was designed.
+  //
+  // Find the patterns between the load/store functions:
+  // - device has 'uint' elements_per_row
+  // - threadgroup has 'ushort' elements_per_row
+  // - both have 'ushort2' matrix_origin
+  //
+  // The origin is 'ushort2' because the 32-bit part of the address should have
+  // been applied previously during 'apply_offset'. The 16-bit part should be
+  // hard-coded into the assembly when the GEMM loop is unrolled.
+  //
+  // Transpose path:
+  // - load: reads two values; should split each one onto a separate line.
+  //   - overwrites the value of *thread_elements() with a new vec<T, 2>
+  // - store: the two instructions are on two separate lines.
+  //   - fetches from lane 0 or 1 of thread_elements()[0]
+  // - adds 0 or 1 to the hard-coded matrix_origin.x
+  //
+  // Address generation:
+  // - casts some intermediate address fragments to 'ulong' for 'device'
+  // - keeps all address fragments in 'ushort' for 'threadgroup'
+  
+  enum class AddressSpace {
+    device,
+    threadgroup,
+  };
+  
+  auto keyword =
+  [=](AddressSpace value) -> std::string {
+    switch (value) {
+      case AddressSpace::device:
+        return "device";
+      case AddressSpace::threadgroup:
+        return "threadgroup";
+    }
+  };
+  
+  auto offsetType =
+  [=](AddressSpace value) -> std::string {
+    switch (value) {
+      case AddressSpace::device:
+        return "uint";
+      case AddressSpace::threadgroup:
+        return "ushort";
+    }
+  };
+  
+  enum class Action {
+    load,
+    store,
+  };
+  
+  struct MemoryAccessDescriptor {
+    std::optional<Action> action;
+    std::optional<AddressSpace> addressSpace;
+    std::optional<Boolean> decodingBF16;
+    int64_t indentationSpaceCount = 0;
+  };
+  
+  auto createMemoryAccess =
+  [=](MemoryAccessDescriptor descriptor) -> std::string {
+    CCV_NNC_MFA_PRECONDITION(descriptor.action.has_value());
+    CCV_NNC_MFA_PRECONDITION(descriptor.addressSpace.has_value());
+    CCV_NNC_MFA_PRECONDITION(descriptor.decodingBF16.has_value());
+    auto action = descriptor.action.value();
+    auto addressSpace = descriptor.addressSpace.value();
+    auto decodingBF16 = descriptor.decodingBF16.value();
+    std::string indentation(descriptor.indentationSpaceCount, ' ');
+    
+    // Determine the arguments.
+    std::vector<std::string> arguments = {};
+    auto pointerArgument = [=](std::string dataType) {
+      if (action == Action::load) {
+        return "const " + keyword(addressSpace) + " " + dataType + " *src";
+      } else {
+        return keyword(addressSpace) + " " + dataType + " *dst";
+      }
+    };
+    if (decodingBF16) {
+      arguments.push_back(pointerArgument("bfloat"));
+    } else {
+      arguments.push_back(pointerArgument("U"));
+    }
+    arguments.push_back(offsetType(addressSpace) + " elements_per_row");
+    arguments.push_back("ushort2 matrix_origin");
+    arguments.push_back("bool transpose_matrix = false");
+    
+    // Create the warning comment.
+    std::string output = "";
+    if (decodingBF16) {
+      output += indentation + "// WARNING: 'T' must be 'float'.\n";
+    } else {
+      output += indentation + "template <typename U>\n";
+    }
+    
+    // Create the function signature.
+    output += indentation + "METAL_FUNC void";
+    if (action == Action::load) {
+      output += " load";
+    } else {
+      output += " store";
+    }
+    if (decodingBF16) {
+      output += "_bfloat";
+    }
+    
+    output += "(";
+    for (auto it = 0; it < arguments.size(); ++it) {
+      int64_t argumentID = it;
+      std::string argument = arguments[argumentID];
+      
+      output += argument;
+      if (argumentID < arguments.size() - 1) {
+        output += ", ";
+      }
+    }
+    output += ") {\n";
+    
+    return output;
+  };
+  
+  MemoryAccessDescriptor desc;
+  desc.indentationSpaceCount = 4;
+  desc.action = Action::load;
+  desc.addressSpace = AddressSpace::device;
+  desc.decodingBF16 = false;
+  return createMemoryAccess(desc);
+}
