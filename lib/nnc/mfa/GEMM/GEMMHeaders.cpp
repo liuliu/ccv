@@ -341,9 +341,8 @@ std::string createMetalSimdgroupMatrixStorage() {
     if (decodingBF16) {
       output += "_bfloat";
     }
-    
     output += "(";
-    for (auto it = 0; it < arguments.size(); ++it) {
+    for (int64_t it = 0; it < arguments.size(); ++it) {
       int64_t argumentID = it;
       std::string argument = arguments[argumentID];
       
@@ -493,13 +492,177 @@ std::string createMetalSimdgroupMatrixStorage() {
       return lines;
     };
     
+    auto insertBlockContents =
+    [=](std::vector<std::string>& body, std::vector<std::string> block) {
+      for (std::string line : block) {
+        // Check whether all characters are whitespace.
+        bool allCharactersWhitespace = true;
+        for (int8_t character : line) {
+          if (isspace(character)) {
+            
+          } else {
+            allCharactersWhitespace = false;
+          }
+        }
+        
+        // Branch on the result of this check.
+        if (allCharactersWhitespace) {
+          body.push_back("  ");
+        } else {
+          body.push_back("  " + line + ";");
+        }
+      }
+    };
+    
+    // Determine the lines of the 'if' block.
+    std::vector<std::string> body;
+    body.push_back("if (transpose_matrix) {");
+    insertBlockContents(body, createTwoPartAccess(true));
+    
+    // Determine the lines of the 'else' block.
+    if (decodingBF16) {
+      std::vector<std::string> blockContents;
+      if (action == Action::load) {
+        blockContents = createOnePartAccess();
+      } else {
+        blockContents = createTwoPartAccess(false);
+      }
+      
+      body.push_back("} else {");
+      insertBlockContents(body, blockContents);
+      body.push_back("}");
+    } else {
+      body.push_back("} else if (elements_per_row % 2 != 0) {");
+      insertBlockContents(body, createTwoPartAccess(false));
+      body.push_back("} else {");
+      insertBlockContents(body, createOnePartAccess());
+      body.push_back("}");
+    }
+    
+    // Create the function body.
+    for (std::string line : body) {
+      output += indentation + line + "\n";
+    }
+    output += indentation + "\n";
     return output;
   };
   
+  // Add the first section of the shader.
+  std::string output;
+  output += R"(
+// -*- Metal -*-
+//===-- metal_simdgroup_matrix_storage ------------------------------------===//
+// Copyright (c) 2024 Philip Turner. See MIT LICENSE
+//===----------------------------------------------------------------------===//
+
+#ifndef __METAL_SIMDGROUP_MATRIX_STORAGE
+#define __METAL_SIMDGROUP_MATRIX_STORAGE
+
+// The layout of threads within a SIMD matrix.
+//
+//  0  0  1  1  8  8  9  9
+//  2  2  3  3 10 10 11 11
+//  4  4  5  5 12 12 13 13
+//  6  6  7  7 14 14 15 15
+// 16 16 17 17 24 24 25 25
+// 18 18 19 19 26 26 27 27
+// 20 20 21 21 28 28 29 29
+// 22 22 23 23 30 30 31 31
+//
+// This is Morton order, a method for coalescing data accesses. It is used
+// in a variety of contexts, from ray tracing acceleration structures, to
+// nodal-point Laplacians, to sorting large lattices of atoms.
+//
+// Source: https://patents.google.com/patent/US11256518B2
+METAL_FUNC static ushort2 morton_order(ushort thread_index_in_simdgroup) {
+  ushort lane_id = thread_index_in_simdgroup;
+  ushort quad_id = lane_id / 4;
+  
+  constexpr ushort QUADRANT_SPAN_M = 4;
+  constexpr ushort THREADS_PER_QUADRANT = 8;
+  ushort M_floor_of_quadrant = (quad_id / 4) * QUADRANT_SPAN_M;
+  ushort M_in_quadrant = (lane_id / 2) % (THREADS_PER_QUADRANT / 2);
+  ushort M_in_simd = M_floor_of_quadrant + M_in_quadrant;
+  
+  ushort N_floor_of_quadrant = (quad_id & 2) * 2; // 0 or 4
+  ushort N_in_quadrant = (lane_id % 2) * 2; // 0 or 2
+  ushort N_in_simd = N_floor_of_quadrant + N_in_quadrant;
+  
+  return ushort2(N_in_simd, M_in_simd);
+}
+
+#pragma METAL internals : enable
+namespace metal
+{
+  template <typename T>
+  struct simdgroup_matrix_storage {
+    typedef vec<T, 64> storage_type;
+    
+    storage_type t;
+    
+    METAL_FUNC thread vec<T, 2>* thread_elements() thread {
+      return reinterpret_cast<thread vec<T, 2>*>(&t);
+    }
+    
+    METAL_FUNC simdgroup_matrix_storage() thread = default;
+    
+    METAL_FUNC simdgroup_matrix_storage(vec<T, 2> thread_elements) thread {
+      *(this->thread_elements()) = thread_elements;
+    }
+
+    METAL_FUNC static device T* apply_offset(device T *src, uint elements_per_row, uint2 matrix_origin, bool transpose_matrix = false) {
+      if (transpose_matrix) {
+        return src + ulong(matrix_origin.x * elements_per_row) + matrix_origin.y;
+      } else {
+        return src + ulong(matrix_origin.y * elements_per_row) + matrix_origin.x;
+      }
+    }
+    
+    METAL_FUNC static threadgroup T* apply_offset(threadgroup T *src, ushort elements_per_row, ushort2 matrix_origin, bool transpose_matrix = false) {
+      if (transpose_matrix) {
+        return src + matrix_origin.x * elements_per_row + matrix_origin.y;
+      } else {
+        return src + matrix_origin.y * elements_per_row + matrix_origin.x;
+      }
+    }
+
+)";
+  
   MemoryAccessDescriptor desc;
   desc.indentationSpaceCount = 4;
-  desc.action = Action::load;
-  desc.addressSpace = AddressSpace::device;
-  desc.decodingBF16 = false;
-  return createMemoryAccess(desc);
+  
+  std::vector actions = { Action::load, Action::store };
+  std::vector addressSpaces = {
+    AddressSpace::device, AddressSpace::threadgroup
+  };
+  std::vector decodingBF16s = { false, true };
+  for (auto action : actions) {
+    for (auto addressSpace : addressSpaces) {
+      for (auto decodingBF16 : decodingBF16s) {
+        desc.action = action;
+        desc.addressSpace = addressSpace;
+        
+        desc.decodingBF16 = decodingBF16;
+        output += createMemoryAccess(desc);
+        output += "\n";
+      }
+    }
+  }
+  // Add the last section of the header.
+  output += R"(
+    template <typename U, typename V>
+    METAL_FUNC void multiply(simdgroup_matrix_storage<U> a, simdgroup_matrix_storage<V> b, bool accumulate = true) {
+      if (!accumulate) {
+        *(thread_elements()) = vec<T, 2>(0);
+      }
+      t = __metal_simdgroup_matrix_8x8_multiply_accumulate(a.t, b.t, t, typename simdgroup_matrix_storage<T>::storage_type());
+    }
+  };
+} // namespace metal
+#pragma METAL internals : disable
+
+#endif // __METAL_SIMDGROUP_MATRIX_STORAGE
+
+)";
+  return output;
 }
