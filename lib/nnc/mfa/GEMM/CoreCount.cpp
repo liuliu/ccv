@@ -43,7 +43,7 @@ int64_t findCoreCount() {
   
   // Get the value of the number as Int64
   int64_t value = 0;
-  Boolean result = CFNumberGetValue(gpuCoreCountNumber, type, &value);
+  bool result = CFNumberGetValue(gpuCoreCountNumber, type, &value);
   
   // Check for errors
   CCV_NNC_MFA_PRECONDITION(result != false);

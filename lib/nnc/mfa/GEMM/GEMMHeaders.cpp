@@ -291,7 +291,7 @@ std::string createMetalSimdgroupMatrixStorage() {
   struct MemoryAccessDescriptor {
     std::optional<Action> action;
     std::optional<AddressSpace> addressSpace;
-    std::optional<Boolean> decodingBF16;
+    std::optional<bool> decodingBF16;
     int64_t indentationSpaceCount = 0;
   };
   
@@ -306,7 +306,7 @@ std::string createMetalSimdgroupMatrixStorage() {
     std::string indentation(descriptor.indentationSpaceCount, ' ');
     
     // Determine the arguments.
-    std::vector<std::string> arguments = {};
+    std::vector<std::string> arguments;
     auto pointerArgument = [=](std::string dataType) {
       if (action == Action::load) {
         return "const " + keyword(addressSpace) + " " + dataType + " *src";
@@ -353,6 +353,145 @@ std::string createMetalSimdgroupMatrixStorage() {
       }
     }
     output += ") {\n";
+    
+    auto createAddress =
+    [=](bool transposed, int64_t offset) -> std::string {
+      auto lineY = offsetType(addressSpace) + "(matrix_origin.y)";
+      auto lineX = "matrix_origin.x + " + std::to_string(offset);
+      lineX = offsetType(addressSpace) + "(" + lineX + ")";
+      
+      if (transposed) {
+        return lineX + " * elements_per_row + " + lineY;
+      } else {
+        return lineY + " * elements_per_row + " + lineX;
+      }
+    };
+    
+    auto createTwoPartAccess =
+    [=](bool transposed) -> std::vector<std::string> {
+      // Generate the addresses.
+      std::vector<std::string> lines;
+      for (int64_t laneID = 0; laneID < 2; ++laneID) {
+        lines.push_back
+        (offsetType(addressSpace) + " address" + std::to_string(laneID) +
+         " = " + createAddress(transposed, laneID));
+      }
+      
+      if (action == Action::load) {
+        if (decodingBF16) {
+          lines.push_back("bfloat memoryForm0 = src[address0]");
+          lines.push_back("bfloat memoryForm1 = src[address1]");
+        } else {
+          lines.push_back("U memoryForm0 = src[address0]");
+          lines.push_back("U memoryForm1 = src[address1]");
+        }
+      }
+      
+      if (action == Action::load) {
+        if (decodingBF16) {
+          // Separate the loading logic from the decoding logic for clarity.
+          lines.push_back
+          ("");
+          
+          // BF16 decoding logic.
+          lines.push_back
+          ("bfloat4 registerForm = *(thread bfloat4*)(thread_elements())");
+          lines.push_back
+          ("registerForm[1] = memoryForm0");
+          lines.push_back
+          ("registerForm[3] = memoryForm1");
+          lines.push_back
+          ("((thread bfloat4*)thread_elements())[0] = registerForm");
+        } else {
+          // Perform a type cast natively supported by the hardware.
+          lines.push_back
+          ("((thread T*)thread_elements())[0] = T(memoryForm0)");
+          lines.push_back
+          ("((thread T*)thread_elements())[1] = T(memoryForm1)");
+        }
+      } else {
+        if (decodingBF16) {
+          // BF16 encoding logic.
+          lines.push_back
+          ("bfloat4 registerForm = *(thread bfloat4*)(thread_elements())");
+          lines.push_back
+          ("registerForm[2] = registerForm[1]");
+        } else {
+          // Type casts supported natively by the hardware.
+          lines.push_back
+          ("T registerForm0 = ((thread T*)thread_elements())[0]");
+          lines.push_back
+          ("T registerForm1 = ((thread T*)thread_elements())[1]");
+        }
+      }
+      
+      if (action == Action::store) {
+        if (decodingBF16) {
+          lines.push_back("dst[address0] = registerForm[2]");
+          lines.push_back("dst[address1] = registerForm[3]");
+        } else {
+          lines.push_back("dst[address0] = U(registerForm0)");
+          lines.push_back("dst[address1] = U(registerForm1)");
+        }
+      }
+      return lines;
+    };
+    
+    auto createOnePartAccess =
+    [=]() -> std::vector<std::string> {
+      std::vector<std::string> lines;
+      {
+        auto address = createAddress(false, 0);
+        lines.push_back("auto combinedAddress = " + address);
+      }
+      if (action == Action::load) {
+        if (decodingBF16) {
+          lines.push_back
+          ("bfloat2 memoryForm = *(const " +
+           keyword(addressSpace) + " packed_bfloat2*)(src + combinedAddress)");
+          
+          // Separate the loading logic from the decoding logic for clarity.
+          lines.push_back
+          ("");
+          
+          // BF16 decoding logic.
+          lines.push_back
+          ("bfloat4 registerForm = *(thread bfloat4*)(thread_elements())");
+          lines.push_back
+          ("((thread float*)&registerForm)[1] = *(thread float*)(&memoryForm)");
+          lines.push_back
+          ("((thread bfloat*)&registerForm)[1] = memoryForm[0]");
+          lines.push_back
+          ("((thread bfloat4*)thread_elements())[0] = registerForm");
+        } else {
+          lines.push_back
+          ("vec<U, 2> memoryForm = *(const " +
+           keyword(addressSpace) + " vec<U, 2>*)(src + combinedAddress)");
+          lines.push_back
+          ("*(thread_elements()) = vec<T, 2>(memoryForm)");
+        }
+      } else {
+        if (decodingBF16) {
+          // BF16 encoding logic.
+          lines.push_back
+          ("bfloat4 registerForm = *(thread bfloat4*)(thread_elements())");
+          lines.push_back
+          ("registerForm[2] = registerForm[1]");
+          lines.push_back
+          ("float memoryForm = ((thread float*)&registerForm)[1]");
+          lines.push_back
+          ("*(" + keyword(addressSpace) + " float*)" +
+           "(dst + combinedAddress) = memoryForm");
+        } else {
+          lines.push_back
+          ("vec<T, 2> registerForm = *(thread_elements())");
+          lines.push_back
+          ("*(" + keyword(addressSpace) + " vec<U, 2>*)" +
+           "(dst + combinedAddress) = vec<U, 2>(registerForm)");
+        }
+      }
+      return lines;
+    };
     
     return output;
   };
