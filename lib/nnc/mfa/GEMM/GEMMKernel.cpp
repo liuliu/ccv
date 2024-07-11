@@ -1,6 +1,6 @@
 #include "GEMMKernel.hpp"
 #include "GEMMHeaders.hpp"
-#include "ccv_nnc_mfa_error.hpp"
+#include "../ccv_nnc_mfa.hpp"
 
 GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor) {
   CCV_NNC_MFA_PRECONDITION(descriptor.blockDimensions.has_value());
