@@ -541,9 +541,9 @@ std::string createMetalSimdgroupMatrixStorage() {
     
     // Create the function body.
     for (std::string line : body) {
-      output += indentation + line + "\n";
+      output += indentation + "  " + line + "\n";
     }
-    output += indentation + "\n";
+    output += indentation + "}\n";
     return output;
   };
   

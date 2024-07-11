@@ -124,7 +124,7 @@ struct GEMMKernelDescriptor {
   std::optional<GEMMOperandPrecisions> memoryPrecisions;
   
   /// The device to create the kernel on.
-  std::optional<MTL::Device*> mtlDevice;
+  std::optional<MTL::Device*> device;
   
   /// Optional. The layout of elements in threadgroup memory.
   ///
@@ -209,4 +209,3 @@ struct GEMMKernelDescriptor {
 };
 
 #endif /* GEMMKernelDescriptor_hpp */
-

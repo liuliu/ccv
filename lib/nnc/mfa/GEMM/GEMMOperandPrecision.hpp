@@ -44,9 +44,6 @@ public:
   GEMMOperandPrecision() = default;
   constexpr GEMMOperandPrecision(Value aPrecision) : value(aPrecision) { }
 
-  // Allow switch and comparisons.
-  constexpr operator Value() const { return value; }
-
   // Prevent usage: if(precision)
   explicit operator bool() const = delete;
 
@@ -77,7 +74,6 @@ public:
     }
   }
   
-private:
   Value value;
 };
 

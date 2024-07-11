@@ -6,11 +6,14 @@ using namespace ccv::nnc;
 
 // Make sure this header doesn't accidentally depend on imports declared in
 // the other headers.
-#include "GEMM/GEMMKernelDescriptor.hpp"
+#include "GEMM/GEMMKernel.hpp"
 
+#include "ccv_nnc_mfa_error.hpp"
 #include "GEMM/CoreCount.hpp"
 #include "GEMM/GEMMHeaders.hpp"
+#include "GEMM/GEMMKernelDescriptor.hpp"
 #include "GEMM/GEMMOperandPrecision.hpp"
+#include <iostream>
 #include <sstream>
 #include <vector>
 
@@ -19,41 +22,90 @@ using namespace ccv::nnc;
 #include <iostream>
 
 mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
-#if TARGET_OS_MAC
   {
-    std::ostringstream output_stream;
-    output_stream << "The system's GPU has " << findCoreCount() << " cores.";
-    
-    std::string output = output_stream.str();
-    ccv_nnc_mfa_log_message(output.c_str());
-  }
-  
-  {
-    std::vector<GEMMOperandPrecision> precisions = {
-      GEMMOperandPrecision::FP32,
-      GEMMOperandPrecision::FP16,
-      GEMMOperandPrecision::BF16,
+    // Specify the properties of the kernel.
+    GEMMKernelDescriptor descriptor;
+    descriptor.blockDimensions = simd::ushort3 { 32, 32, 32 };
+    descriptor.memoryPrecisions = {
+      .A = GEMMOperandPrecision::FP32,
+      .B = GEMMOperandPrecision::FP32,
+      .C = GEMMOperandPrecision::FP32,
     };
+    descriptor.preferAsyncStore = true;
+    descriptor.registerPrecisions = {
+      .A = GEMMOperandPrecision::FP32,
+      .B = GEMMOperandPrecision::FP32,
+      .C = GEMMOperandPrecision::FP32,
+    };
+    descriptor.splits = simd::ushort2 { 2, 2 };
+    descriptor.transposeState = simd::uchar2 { false, false };
     
-    std::ostringstream output_stream;
-    for (GEMMOperandPrecision precision : precisions) {
-      output_stream << "The precision is " << precision.name() << ". It consumes " << precision.size() << " bytes in memory.";
-      output_stream << "\n";
+    // Instantiate the device and kernel.
+    auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    descriptor.device = device.get();
+    GEMMKernel kernel(descriptor);
+    
+    // Instantiate the compute pipeline.
+    NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+    {
+      auto constants = NS::TransferPtr
+      (MTL::FunctionConstantValues::alloc()->init());
+      uint32_t M = 5;
+      uint32_t N = 5;
+      uint32_t K = 5;
+      constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+      constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
+      constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
+      
+      auto library = kernel.library;
+      auto string = NS::String::string("gemm", NS::UTF8StringEncoding);
+      NS::Error* error = nil;
+      
+      auto function = NS::TransferPtr
+      (library->newFunction(string, constants.get(), &error));
+      CCV_NNC_MFA_CHECK_ERROR(error);
+      
+      pipeline = NS::TransferPtr
+      (device->newComputePipelineState(function.get(), &error));
+      CCV_NNC_MFA_CHECK_ERROR(error);
     }
     
-    std::string output = output_stream.str();
-    ccv_nnc_mfa_log_message(output.c_str());
-  }
-  
-  {
-    std::ostringstream output_stream;
-    output_stream << createMetalSimdgroupMatrixStorage();
+    // Set up the diagonal matrix multiplication.
+    std::vector<float> A;
+    std::vector<float> C;
+    for (uint8_t rowID = 0; rowID < 5; ++rowID) {
+      for (uint8_t columnID = 0; columnID < 5; ++columnID) {
+        if (rowID == columnID) {
+          A.push_back(2);
+        } else {
+          A.push_back(0);
+        }
+        C.push_back(0);
+      }
+    }
+    std::vector<float> B = {
+      1.0, 2.0, 3.0, 4.0, 5.0,
+      1.0, 2.0, 3.0, 4.0, 5.0,
+      2.0, 3.0, 4.0, 5.0, 6.0,
+      2.0, 4.0, 6.0, 8.0, 10.0,
+      5.0, 4.0, 3.0, 2.0, 1.0,
+    };
     
-    std::string output = output_stream.str();
-    ccv_nnc_mfa_log_message(output.c_str());
+    auto bufferA = NS::TransferPtr(device->newBuffer
+    (25 * sizeof(float), MTL::ResourceStorageModeShared));
+    auto bufferB = NS::TransferPtr(device->newBuffer
+    (25 * sizeof(float), MTL::ResourceStorageModeShared));
+    auto bufferC = NS::TransferPtr(device->newBuffer
+    (25 * sizeof(float), MTL::ResourceStorageModeShared));
+    memcpy(bufferA->contents(), A.data(), 25 * sizeof(float));
+    memcpy(bufferB->contents(), B.data(), 25 * sizeof(float));
+    memcpy(bufferC->contents(), C.data(), 25 * sizeof(float));
+    
+    auto commandQueue = NS::TransferPtr(device->newCommandQueue());
+    auto commandBuffer = commandQueue->commandBuffer();
+    auto encoder = commandBuffer->computeCommandEncoder();
   }
   
-#endif
   return new mfa::context(device);
 }
 
