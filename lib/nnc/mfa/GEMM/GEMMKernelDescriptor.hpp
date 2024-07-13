@@ -6,6 +6,8 @@
 #include <optional>
 #include <simd/simd.h>
 
+struct GEMMDescriptor;
+
 /// A configuration for a GEMM kernel.
 ///
 /// The information in this data structure is enough to uniquely identify the
@@ -206,6 +208,35 @@ struct GEMMKernelDescriptor {
   /// - A -> transposeState[0]
   /// - B -> transposeState[1]
   std::optional<simd::uchar2> transposeState;
+  
+  // MARK: - Functionality from GEMMDescriptor
+  
+  GEMMKernelDescriptor() = default;
+  
+  /// Initialize the kernel descriptor using another descriptor, which just
+  /// specifies the problem size. Then, forget the information about problem
+  /// size. It will not be needed until the very far future, when the user
+  /// retrieves a `MTLLibrary` from the cache and sets some Metal function
+  /// constants.
+  ///
+  /// One might initialize a `GEMMKernelDescriptor` this way whenever an
+  /// arbitrary matrix multiplication is requested. The generated descriptor
+  /// itself could be a key in the KV cache. With this shader cache design, you
+  /// must minimize the latency of actions like `MTLDevice` materialization and
+  /// core count queries.
+  ///
+  /// Acceptable latency: no more than 1 μs per invocation.
+  GEMMKernelDescriptor(GEMMDescriptor descriptor);
+  
+  /// Implementation of the block size selection heuristic.
+  ///
+  /// This function initializes the 'blockDimensions' and
+  /// 'paddedBlockDimensions' properties.
+  void setBlockDimensions
+  (MTL::Device* mtlDevice,
+   int64_t coreCount,
+   simd::uint3 matrixDimensions,
+   int64_t batchDimension);
 };
 
 #endif /* GEMMKernelDescriptor_hpp */

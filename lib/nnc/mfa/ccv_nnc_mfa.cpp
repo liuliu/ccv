@@ -6,13 +6,10 @@ using namespace ccv::nnc;
 
 // Make sure this header doesn't accidentally depend on imports declared in
 // the other headers.
-#include "GEMM/GEMMKernel.hpp"
+#include "GEMM/GEMMDescriptor.hpp"
 
 #include "ccv_nnc_mfa_error.hpp"
-#include "GEMM/CoreCount.hpp"
-#include "GEMM/GEMMHeaders.hpp"
-#include "GEMM/GEMMKernelDescriptor.hpp"
-#include "GEMM/GEMMOperandPrecision.hpp"
+#include "GEMM/GEMMKernel.hpp"
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -26,208 +23,62 @@ void testFunction() {
   // insert code here...
   std::cout << "Hello, World!\n";
   
-  // TODO: Copy this code into NNC. Fix the issues with it compiling, then
-  // commit the progress to Git.
-  int64_t problemSize = 5;
-  
-  // Specify the properties of the kernel.
-  GEMMKernelDescriptor descriptor;
-  descriptor.blockDimensions = simd::ushort3 { 32, 32, 32 };
-  descriptor.memoryPrecisions = {
-    .A = GEMMOperandPrecision::FP32,
-    .B = GEMMOperandPrecision::FP32,
-    .C = GEMMOperandPrecision::FP32,
-  };
-  descriptor.preferAsyncStore = true;
-  descriptor.registerPrecisions = {
-    .A = GEMMOperandPrecision::FP32,
-    .B = GEMMOperandPrecision::FP32,
-    .C = GEMMOperandPrecision::FP32,
-  };
-  descriptor.splits = simd::ushort2 { 2, 2 };
-  descriptor.transposeState = simd::uchar2 { false, false };
-  
-  // Instantiate the device and kernel.
-  auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
-  descriptor.device = device.get();
-  GEMMKernel kernel(descriptor);
-  
-  // Instantiate the compute pipeline.
-  NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  // Test the in-progress code for GEMMDescriptor.
   {
-    auto constants = NS::TransferPtr
-    (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t M = uint32_t(problemSize);
-    uint32_t N = uint32_t(problemSize);
-    uint32_t K = uint32_t(problemSize);
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
-    constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
-    constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
-    
-    auto library = kernel.library;
-    auto string = NS::String::string("gemm", NS::UTF8StringEncoding);
-    NS::Error* error = nil;
-    
-    auto function = NS::TransferPtr
-    (library->newFunction(string, constants.get(), &error));
-    CCV_NNC_MFA_CHECK_ERROR(error);
-    
-    pipeline = NS::TransferPtr
-    (device->newComputePipelineState(function.get(), &error));
-    CCV_NNC_MFA_CHECK_ERROR(error);
-  }
-  
-  // Set up the diagonal matrix multiplication.
-  std::vector<float> A;
-  std::vector<float> B;
-  std::vector<float> C;
-  
-  {
-    // A 5x5 matrix defining the upper submatrix of B.
-    std::vector<float> B_contents = {
-      1.0, 2.0, 3.0, 4.0, 5.0,
-      1.0, 2.0, 3.0, 4.0, 5.0,
-      2.0, 3.0, 4.0, 5.0, 6.0,
-      2.0, 4.0, 6.0, 8.0, 10.0,
-      5.0, 4.0, 3.0, 2.0, 1.0,
+    GEMMDescriptor gemmDesc;
+    gemmDesc.matrixDimensions = simd::uint3 { 6000, 6000, 6000 };
+    gemmDesc.memoryPrecisions = {
+      .A = GEMMOperandPrecision::FP16,
+      .B = GEMMOperandPrecision::FP16,
+      .C = GEMMOperandPrecision::FP16,
     };
-    for (int64_t rowID = 0; rowID < problemSize; ++rowID) {
-      for (int64_t columnID = 0; columnID < problemSize; ++columnID) {
-        if (rowID == columnID) {
-          A.push_back(2);
-        } else {
-          A.push_back(0);
-        }
-        
-        if (rowID < 5 && columnID < 5) {
-          int64_t address = rowID * 5 + columnID;
-          float value = B_contents[address];
-          B.push_back(value);
-        } else if (rowID == columnID) {
-          B.push_back(1);
-        } else {
-          B.push_back(0);
-        }
-        
-        C.push_back(0);
-      }
-    }
-  }
-  
-  int64_t squareMatrixBytes = problemSize * problemSize * sizeof(float);
-  auto bufferA = NS::TransferPtr(device->newBuffer
-  (squareMatrixBytes, MTL::ResourceStorageModeShared));
-  auto bufferB = NS::TransferPtr(device->newBuffer
-  (squareMatrixBytes, MTL::ResourceStorageModeShared));
-  auto bufferC = NS::TransferPtr(device->newBuffer
-  (squareMatrixBytes, MTL::ResourceStorageModeShared));
-  memcpy(bufferA->contents(), A.data(), squareMatrixBytes);
-  memcpy(bufferB->contents(), B.data(), squareMatrixBytes);
-  memcpy(bufferC->contents(), C.data(), squareMatrixBytes);
-  
-  auto commandQueue = NS::TransferPtr(device->newCommandQueue());
-  auto commandBuffer = commandQueue->commandBuffer();
-  auto encoder = commandBuffer->computeCommandEncoder();
-  encoder->setComputePipelineState(pipeline.get());
-  encoder->setThreadgroupMemoryLength(kernel.threadgroupMemoryAllocation, 0);
-  encoder->setBuffer(bufferA.get(), 0, 0);
-  encoder->setBuffer(bufferB.get(), 0, 1);
-  encoder->setBuffer(bufferC.get(), 0, 2);
-  {
-    auto ceilDivide =
-    [=](int64_t target, uint16_t granularity) -> int64_t {
-      return (target + int64_t(granularity) - 1) / int64_t(granularity);
-    };
-    MTL::Size gridSize
-    (ceilDivide(problemSize, kernel.blockDimensions[1]),
-     ceilDivide(problemSize, kernel.blockDimensions[0]),
-     1);
-    MTL::Size groupSize
-    (int64_t(kernel.threadgroupSize), 1, 1);
-    encoder->dispatchThreadgroups(gridSize, groupSize);
-  }
-  encoder->endEncoding();
-  commandBuffer->commit();
-  commandBuffer->waitUntilCompleted();
-  
-  {
-    // Determine the time taken.
-    double start = commandBuffer->GPUStartTime();
-    double end = commandBuffer->GPUEndTime();
-    double latency = end - start;
+    gemmDesc.transposeState = simd::uchar2 { false, true };
+    auto gemmKernelDesc = GEMMKernelDescriptor(gemmDesc);
     
-    // Determine the amount of work done.
-    int64_t operations = 2 * problemSize * problemSize * problemSize;
-    int64_t gflops = int64_t(double(operations) / double(latency) / 1e9);
-    
-    // Report the results.
-    int64_t latencyMicroseconds = int64_t(latency * 1e6);
-    std::cout << latencyMicroseconds << " μs ";
-    std::cout << gflops << " GFLOPS ";
+    std::cout << "blockDimensions" << " | ";
+    std::cout << gemmKernelDesc.blockDimensions.value()[0] << " ";
+    std::cout << gemmKernelDesc.blockDimensions.value()[1] << " ";
+    std::cout << gemmKernelDesc.blockDimensions.value()[2] << " ";
     std::cout << std::endl;
-  }
-  
-  // Copy the results to C.
-  {
-    float* bufferPointer = (float*)bufferC->contents();
-    for (int64_t index = 0; index < C.size(); ++index) {
-      C[index] = bufferPointer[index];
-    }
-  }
-  
-  if (true) {
-    // Display the matrices.
-    auto displayMatrix =
-    [=](float* matrix) {
-      for (int64_t rowID = 0; rowID < problemSize; ++rowID) {
-        for (int64_t columnID = 0; columnID < problemSize; ++columnID) {
-          auto address = rowID * problemSize + columnID;
-          float entry = matrix[address];
-          std::cout << std::setprecision(3);
-          std::cout << entry << " ";
-        }
-        std::cout << "\n";
+    
+    std::cout << "memoryPrecisions" << " | ";
+    std::cout << gemmKernelDesc.memoryPrecisions.value().A.name() << " ";
+    std::cout << gemmKernelDesc.memoryPrecisions.value().B.name() << " ";
+    std::cout << gemmKernelDesc.memoryPrecisions.value().C.name() << " ";
+    std::cout << std::endl;
+    
+    std::cout << "device initialized: ";
+    std::cout << gemmKernelDesc.device.has_value() << std::endl;
+    
+    if (gemmKernelDesc.paddedBlockDimensions.has_value()) {
+      std::cout << "paddedBlockDimensions" << " | ";
+      for (int16_t laneID = 0; laneID < 6; ++laneID) {
+        std::cout << gemmKernelDesc.paddedBlockDimensions.value()[laneID] << " ";
       }
-    };
-    
-    std::cout << "\n";
-    std::cout << "A:\n";
-    displayMatrix(A.data());
-    
-    std::cout << "\n";
-    std::cout << "B:\n";
-    displayMatrix(B.data());
-    
-    std::cout << "\n";
-    std::cout << "C:\n";
-    displayMatrix(C.data());
-  }
-  
-  // Check the results.
-  {
-    int64_t errorCount = 0;
-    for (int64_t rowID = 0; rowID < problemSize; ++rowID) {
-      for (int64_t columnID = 0; columnID < problemSize; ++columnID) {
-        auto address = rowID * problemSize + columnID;
-        float entryB = B[address];
-        float entryC = C[address];
-        
-        float actual = entryC;
-        float expected = entryB * 2;
-        if (actual == expected) {
-          // Skip ahead to the next iteration. There is no error message to
-          // throw.
-          continue;
-        }
-        if (errorCount > 10) {
-          // Don't send too many messages to the console.
-        }
-        errorCount += 1;
-        
-        std::cout << "error: " << actual - expected;
-        std::cout << " / ~1.000" << std::endl;
-      }
+      std::cout << std::endl;
     }
+    
+    std::cout << "prefer async load: ";
+    std::cout << gemmKernelDesc.preferAsyncLoad << std::endl;
+    
+    std::cout << "prefer async store initialized: ";
+    std::cout << gemmKernelDesc.preferAsyncStore.has_value() << std::endl;
+    
+    std::cout << "registerPrecisions" << " | ";
+    std::cout << gemmKernelDesc.registerPrecisions.value().A.name() << " ";
+    std::cout << gemmKernelDesc.registerPrecisions.value().B.name() << " ";
+    std::cout << gemmKernelDesc.registerPrecisions.value().C.name() << " ";
+    std::cout << std::endl;
+    
+    std::cout << "splits" << " | ";
+    std::cout << gemmKernelDesc.splits.value()[0] << " ";
+    std::cout << gemmKernelDesc.splits.value()[1] << " ";
+    std::cout << std::endl;
+    
+    std::cout << "transposeState" << " | ";
+    std::cout << bool(gemmKernelDesc.transposeState.value()[0]) << " ";
+    std::cout << bool(gemmKernelDesc.transposeState.value()[1]) << " ";
+    std::cout << std::endl;
   }
 }
 
