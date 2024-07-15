@@ -50,12 +50,24 @@ inline uint32_t pack_32(const simd::uchar4& v) {
   return reinterpret_cast<const uint32_t&>(v);
 }
 
+inline uint32_t pack_32(const simd::ushort2& v) {
+  return reinterpret_cast<const uint32_t&>(v);
+}
+
 inline size_t combine_64(std::size_t& seed, const uint64_t& v) {
     return rotl(seed, std::numeric_limits<size_t>::digits/3) ^ distribute_64(v);
 }
 
+inline uint64_t pack_64(const simd::ushort4& v) {
+  return reinterpret_cast<const uint64_t&>(v);
+}
+
 inline uint64_t pack_64(const simd::uint2& v) {
   return reinterpret_cast<const uint64_t&>(v);
+}
+
+inline simd::ulong2 pack_128(const simd::ushort8& v) {
+  return reinterpret_cast<const simd::ulong2&>(v);
 }
 
 } // namespace hash
