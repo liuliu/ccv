@@ -2,7 +2,7 @@
 #define GEMMKernel_hpp
 
 #include "GEMMKernelDescriptor.hpp"
-#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp" // I guess this imports <string>.
+#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include <simd/simd.h>
 
 struct GEMMKernel {

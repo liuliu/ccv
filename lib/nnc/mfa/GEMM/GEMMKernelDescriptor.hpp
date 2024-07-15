@@ -239,4 +239,25 @@ struct GEMMKernelDescriptor {
    int64_t batchDimension);
 };
 
+struct GEMMKernelKey {
+  simd::ushort3 blockDimensions;
+  simd::ushort3 memoryPrecisions;
+  simd::ushort8 paddedBlockDimensions;
+  uint8_t preferAsyncLoad;
+  uint8_t preferAsyncStore;
+  simd::ushort3 registerPrecisions;
+  simd::ushort2 splits;
+  simd::uchar2 transposeState;
+  
+  GEMMKernelKey(GEMMKernelDescriptor);
+  
+  bool operator==(const GEMMKernelKey& rhs) const;
+};
+
+template<>
+struct std::hash<GEMMKernelKey>
+{
+  std::size_t operator()(const GEMMKernelKey& hash) const noexcept;
+};
+
 #endif /* GEMMKernelDescriptor_hpp */

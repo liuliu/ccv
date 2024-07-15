@@ -6,9 +6,10 @@ using namespace ccv::nnc;
 
 // Make sure this header doesn't accidentally depend on imports declared in
 // the other headers.
-#include "GEMM/GEMMDescriptor.hpp"
+#include "GEMM/GEMMShaderCache.hpp"
 
 #include "ccv_nnc_mfa_error.hpp"
+#include "GEMM/GEMMDescriptor.hpp"
 #include "GEMM/GEMMKernel.hpp"
 #include <iomanip>
 #include <iostream>
@@ -23,10 +24,13 @@ void testFunction() {
   // insert code here...
   std::cout << "Hello, World!\n";
   
+  // Smoke test that the shader cache compiles.
+  std::cout << std::to_string(GEMMShaderCache::fetchKernel(23)) << std::endl;
+  
   // Test the in-progress code for GEMMDescriptor.
   {
     GEMMDescriptor gemmDesc;
-    gemmDesc.matrixDimensions = simd::uint3 { 6000, 6000, 6000 };
+    gemmDesc.matrixDimensions = simd::uint3 { 5, 5, 5 };
     gemmDesc.memoryPrecisions = {
       .A = GEMMOperandPrecision::FP16,
       .B = GEMMOperandPrecision::FP16,

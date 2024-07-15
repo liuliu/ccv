@@ -33,5 +33,22 @@ struct GEMMDescriptor {
   std::optional<simd::uchar2> transposeState;
 };
 
+struct GEMMKey {
+  int64_t batchDimension;
+  simd::uint3 matrixDimensions;
+  simd::ushort3 memoryPrecisions;
+  simd::uchar2 transposeState;
+  
+  GEMMKey(GEMMDescriptor);
+  
+  bool operator==(const GEMMKey& rhs) const;
+};
+
+template<>
+struct std::hash<GEMMKey>
+{
+  std::size_t operator()(const GEMMKey& hash) const noexcept;
+};
+
 #endif /* GEMMDescriptor_hpp */
 
