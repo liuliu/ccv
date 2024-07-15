@@ -24,9 +24,6 @@ void testFunction() {
   // insert code here...
   std::cout << "Hello, World!\n";
   
-  // Smoke test that the shader cache compiles.
-  std::cout << std::to_string(GEMMShaderCache::fetchKernel(23)) << std::endl;
-  
   // Test the in-progress code for GEMMDescriptor.
   {
     GEMMDescriptor gemmDesc;
@@ -37,6 +34,11 @@ void testFunction() {
       .C = GEMMOperandPrecision::FP16,
     };
     gemmDesc.transposeState = simd::uchar2 { false, true };
+    
+    // Smoke test that the shader cache compiles.
+    GEMMShaderCache::fetchKernel(gemmDesc);
+    
+    // Initialize a new GEMM kernel directly, for now.
     auto gemmKernelDesc = GEMMKernelDescriptor(gemmDesc);
     
     std::cout << "blockDimensions" << " | ";
