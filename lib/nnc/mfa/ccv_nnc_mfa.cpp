@@ -36,7 +36,9 @@ void testFunction() {
     gemmDesc.transposeState = simd::uchar2 { false, true };
     
     // Smoke test that the shader cache compiles.
+    auto pool = NS::AutoreleasePool::alloc()->init();
     GEMMShaderCache::fetchKernel(gemmDesc);
+    pool->drain();
     
     // Initialize a new GEMM kernel directly, for now.
     auto gemmKernelDesc = GEMMKernelDescriptor(gemmDesc);

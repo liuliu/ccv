@@ -1,4 +1,4 @@
 digraph G {
 compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_CMUL_FORWARD}|{Input|{tensor0|d0|zone0|{0x3400ad70|0x3400fd6f}|1x5x8x128}|{tensor1|d0|zone1|{0x340097e0|0x3400a1df}|1x5x1x128}}|{Output|{tensor0|d0|zone0|{0x3400ad70|0x3400fd6f}|1x5x8x128}}"];
+node0 [shape=record,label="{node0|Command: CCV_NNC_CMUL_FORWARD}|{Input|{tensor0|d0|zone0|{0x4c70d760|0x4c71275f}|1x5x8x128}|{tensor1|d0|zone1|{0x4c706a50|0x4c70744f}|1x5x1x128}}|{Output|{tensor0|d0|zone0|{0x4c70d760|0x4c71275f}|1x5x8x128}}"];
 }

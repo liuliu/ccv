@@ -1,6 +1,6 @@
 digraph G {
 compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_SWISH_FORWARD}|{Input|{tensor0|d0|zone0|{0x32006890|0x3200705f}|10x100}}|{Output|{tensor1|d0|zone0|{0x32006a00|0x320071cf}|10x100}}"];
-node1 [shape=record,label="{node1|Command: CCV_NNC_SWISH_BACKWARD}|{Input|{tensor2|d0|zone1|{0x320041d0|0x3200499f}|10x100}|{tensor0|d0|zone0|{0x32006890|0x3200705f}|10x100}|-}|{Output|{tensor3|d0|zone0|{0x32006cc0|0x3200748f}|10x100}}"];
+node0 [shape=record,label="{node0|Command: CCV_NNC_SWISH_FORWARD}|{Input|{tensor0|d0|zone0|{0x27106660|0x27106e2f}|10x100}}|{Output|{tensor1|d0|zone1|{0x27104460|0x27104c2f}|10x100}}"];
+node1 [shape=record,label="{node1|Command: CCV_NNC_SWISH_BACKWARD}|{Input|{tensor2|d0|zone2|{0x27110120|0x271108ef}|10x100}|{tensor0|d0|zone0|{0x27106660|0x27106e2f}|10x100}|-}|{Output|{tensor3|d0|zone3|{0x2710e460|0x2710ec2f}|10x100}}"];
 node0 -> node1;
 }
