@@ -3,21 +3,7 @@
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
-// MARK: - Testing the New GEMM Kernel
-
-#include "ccv_nnc_mfa_error.hpp"
-#include "GEMM/CoreCount.hpp"
-#include "GEMM/GEMMDescriptor.hpp"
-#include "GEMM/GEMMKernel.hpp"
 #include "GEMM/GEMMShaderCache.hpp"
-#include <algorithm>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <vector>
-
-// MARK: - Imports that Existed Previously
-
 #include <string>
 
 // MARK: - C
@@ -34,8 +20,6 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
-  
-  
   
   // Count the number of GEMMs at all.
   //
@@ -66,25 +50,42 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   //
   // - num_tensors = 3
   //
-  // YES   | 17 |  44% |
-  // NO    | 22 |  56% |
-  // Total | 39 | 100% |
+  // YES    | 17 |  44% | <- works without any modification
+  // NO (1) |  0 |   0% | <- suspected unused features: alpha, beta, activation
+  // NO (2) | 17 |  13% | <- batching
+  // NO (3) |  5 |  44% | <- fused bias (D operand)
+  // Total  | 39 | 100% |
+  //
+  // Supporting the remaining variants should require little effort.
+  // NO (1) - Scan the codebase to ensure these features are never used. Then,
+  //          delete the corresponding members from 'mfa::hash'.
+  // NO (2) - Batching just requires changing the memory address of A/B/C.
+  // NO (3) - For fused bias, take note of the shift to the matrix origin (to
+  //          keep memory reads in-bounds without using async copies). Make
+  //          sure you apply this shift to the bias vector.
   bool canEncodeNewGEMM = false;
   if ((params.alpha == 1.0) &&
       (params.beta == 0.0) &&
       (params.batched == false) &&
       (params.fused_activation_function == false) &&
       (params.fused_bias == false) &&
-      (num_tensors == 3))
-  {
+      (num_tensors == 3)) {
+    canEncodeNewGEMM = true;
     ccv_nnc_mfa_log_message("\n");
     ccv_nnc_mfa_log_message("YES\n");
-    canEncodeNewGEMM = true;
-  }
-  else
-  {
-    ccv_nnc_mfa_log_message("\n");
-    ccv_nnc_mfa_log_message("NO\n");
+  } else {
+    if ((params.alpha != 1.0) ||
+        (params.beta != 0.0) ||
+        (params.fused_activation_function != false)) {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (1)\n");
+    } else if (params.batched != false) {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (2)\n");
+    } else {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (3)\n");
+    }
   }
   
   // Branch on whether to use the new kernel.
@@ -122,8 +123,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     // Instantiate the kernel.
     //
     // TODO: Remove the autoreleasepool, once you confirm the caller always
-    // makes one. Or find a different solution, like spawning a pool when a new
-    // kernel variant is compiled.
+    // makes one. Or find a different solution, like spawning a pool inside
+    // of 'fetchKernel' when a new kernel variant is compiled.
     auto pool = NS::AutoreleasePool::alloc()->init();
     GEMMShaderCache::fetchKernel(gemmDesc);
     auto pipelineValue = GEMMShaderCache::fetchKernel(gemmDesc);
