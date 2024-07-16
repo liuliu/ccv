@@ -31,6 +31,54 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
   
+  // Count the number of GEMMs at all.
+  //
+  // MFA       | 39 |  60% |
+  // MPSMatrix |  5 |   8% |
+  // MPSGraph  | 21 |  32% |
+  // Total     | 65 | 100% |
+  ccv_nnc_mfa_log_message("\n");
+  ccv_nnc_mfa_log_message("MFA\n");
+  
+  // Count the percentage of GEMMs that match a specific set of criteria.
+  // - data_type = any
+  // - M = any
+  // - N = any
+  // - K = any
+  // - A_trans = any
+  // - B_trans = any
+  // - D_trans = any
+  // - alpha = 1.0
+  // - beta = 0.0
+  // - batched = false
+  // - fused_activation_function = false
+  // - fused_bias = false
+  //
+  // - batch_dims_a = any
+  // - batch_dims_b = any
+  // - batch_dims_d = any
+  //
+  // - num_tensors = 3
+  //
+  // YES   | 17 |  44% |
+  // NO    | 22 |  56% |
+  // Total | 39 | 100% |
+  if ((params.alpha == 1.0) &&
+      (params.beta == 0.0) &&
+      (params.batched == false) &&
+      (params.fused_activation_function == false) &&
+      (params.fused_bias == false) &&
+      (num_tensors == 3))
+  {
+    ccv_nnc_mfa_log_message("\n");
+    ccv_nnc_mfa_log_message("YES\n");
+  }
+  else
+  {
+    ccv_nnc_mfa_log_message("\n");
+    ccv_nnc_mfa_log_message("NO\n");
+  }
+  
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);
   encoder->useResource(tensors[2], MTL::ResourceUsageWrite);

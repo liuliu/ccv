@@ -313,11 +313,11 @@ void testFunction() {
 #include <iostream>
 
 mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
-  {
-    ccv_nnc_mfa_log_message("test function starting");
-    testFunction();
-    ccv_nnc_mfa_log_message("test function ending");
-  }
+//  {
+//    ccv_nnc_mfa_log_message("test function starting");
+//    testFunction();
+//    ccv_nnc_mfa_log_message("test function ending");
+//  }
   
   return new mfa::context(device);
 }
