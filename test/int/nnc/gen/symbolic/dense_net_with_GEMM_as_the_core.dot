@@ -1,9 +1,0 @@
-digraph G {
-compound=true;
-node0 [shape=record,label="{e1|Command: CCV_NNC_GEMM_FORWARD}|{Input|{x1|1x1|as. x}|{w1|1x1}|{b1|1}}|{Output|{x11|1x1|as. x}}"];
-node1 [shape=record,label="{e2|Command: CCV_NNC_GEMM_FORWARD}|{Input|{x2|1x2|as. x}|{w2|1x2}|{b2|1}}|{Output|{x21|1x1|as. x}}"];
-node2 [shape=record,label="{e3|Command: CCV_NNC_GEMM_FORWARD}|{Input|{x3|1x3|as. x}|{w3|1x3}|{b3|1}}|{Output|{x31|1x1|as. x}}"];
-node0 -> node1;
-node0 -> node2;
-node1 -> node2;
-}

@@ -1,4 +1,0 @@
-digraph G {
-compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_RANDOM_NORMAL_FORWARD}|{Output|{tensor0|d0|zone0|{0x59e078c0|0x59e6933f}|100000}}"];
-}

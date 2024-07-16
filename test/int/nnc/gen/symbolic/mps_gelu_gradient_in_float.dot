@@ -1,6 +1,0 @@
-digraph G {
-compound=true;
-node0 [shape=record,label="{gelu|Command: CCV_NNC_GELU_FORWARD}|{Input|{x (d0)|10x100}}|{Output|{y (d0)|10x100}}"];
-node1 [shape=record,label="{node1|Command: CCV_NNC_GELU_BACKWARD}|{Input|{tensor2 (d0)|10x100}|{x (d0)|10x100}|-}|{Output|{tensor3 (d0)|10x100}}"];
-node0 -> node1;
-}

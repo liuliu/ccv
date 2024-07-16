@@ -1,4 +1,0 @@
-digraph G {
-compound=true;
-node0 [shape=record,label="{node0|Command: CCV_NNC_GELU_FORWARD}|{Input|{tensor0|d0|zone0|{0x2bf06570|0x2bf0688f}|20x10}}|{Output|{tensor0|d0|zone0|{0x2bf06570|0x2bf0688f}|20x10}}"];
-}
