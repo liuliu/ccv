@@ -35,15 +35,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
   
-  encoder->useResource(tensors[0], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[1], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
-  if (num_tensors >= 4) {
-    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
-  }
-  for (int i = 0; i < num_tensors; ++i) {
-    encoder->setBuffer(tensors[i], tensor_offsets[i], i);
-  }
+  
   
   // Count the number of GEMMs at all.
   //
@@ -144,6 +136,14 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->setComputePipelineState(pipeline.get());
     encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
     
+    // Bind the function arguments.
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    for (int i = 0; i < 3; ++i) {
+      encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+    }
+    
     // Calculate the grid size.
     auto ceilDivide =
     [=](int64_t target, uint16_t granularity) -> int64_t {
@@ -169,6 +169,16 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     auto encoder = command_batch->startCommand();
     encoder->setComputePipelineState(pipeline->pso.get());
     encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
+    
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    if (num_tensors >= 4) {
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    }
+    for (int i = 0; i < num_tensors; ++i) {
+      encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+    }
     
     // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
     simd::ushort4 num_batch_dims(0);
