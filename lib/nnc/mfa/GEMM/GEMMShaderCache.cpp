@@ -78,7 +78,7 @@ GEMMPipelineValue* GEMMShaderCache::fetchKernel(GEMMDescriptor gemmDesc) {
     CCV_NNC_MFA_PRECONDITION(kernelDesc.blockDimensions.has_value());
     auto blockDimensions = kernelDesc.blockDimensions.value();
     if (simd_all(blockDimensions == simd::ushort3 { 48, 48, 32 })) {
-      kernelDesc.preferAsyncStore = std::make_optional<bool>();
+      kernelDesc.preferAsyncStore.reset();
     } else {
       kernelDesc.preferAsyncStore = true;
     }
@@ -124,7 +124,7 @@ GEMMPipelineValue* GEMMShaderCache::fetchKernel(GEMMDescriptor gemmDesc) {
       newKernelDesc.blockDimensions = blockDimensions;
       newKernelDesc.preferAsyncStore = preferAsyncStore;
       
-      GEMMKernel* kernel = createKernel(kernelDesc);
+      GEMMKernel* kernel = createKernel(newKernelDesc);
       auto pipeline = NS::TransferPtr
       (createPipeline(kernel->library.get()));
       

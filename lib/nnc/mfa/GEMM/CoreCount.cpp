@@ -1,7 +1,16 @@
-#include <IOKit/IOKitLib.h>
 #include "../ccv_nnc_mfa.hpp"
 
 #if TARGET_OS_MAC
+
+// Apple requires apps to detail why they use IOKit on the Mac App Store.
+// Therefore, IOKit is not an option for certain clients. As an alternative,
+// OpenCL can be used.
+//
+// All of these issues only apply to macOS. On iOS, neither IOKit nor OpenCL
+// are available. However, the variation in core count is small enough to
+// provide accurate order-of-magnitude estimates through other means.
+#if 0
+#include <IOKit/IOKitLib.h>
 int64_t findCoreCount() {
   // Create a matching dictionary with "AGXAccelerator" class name
   auto matchingDict = IOServiceMatching("AGXAccelerator");
@@ -50,4 +59,31 @@ int64_t findCoreCount() {
   
   return value;
 }
+#else
+
+#include <OpenCL/opencl.h>
+
+// First-call latency on macOS: 44,000 microseconds
+// Amortized latency on macOS: 0 microseconds
+int64_t findCoreCount() {
+  cl_platform_id platformID;
+  uint32_t retNumPlatforms;
+  int32_t ret = clGetPlatformIDs(1, &platformID, &retNumPlatforms);
+  CCV_NNC_MFA_PRECONDITION(ret == 0);
+  CCV_NNC_MFA_PRECONDITION(retNumPlatforms == 1);
+  
+  cl_device_id deviceID;
+  uint32_t retNumDevices;
+  ret = clGetDeviceIDs
+  (platformID, uint64_t(CL_DEVICE_TYPE_DEFAULT), 1, &deviceID, &retNumDevices);
+  CCV_NNC_MFA_PRECONDITION(ret == 0);
+  CCV_NNC_MFA_PRECONDITION(retNumDevices == 1);
+  
+  uint32_t paramValue;
+  ret = clGetDeviceInfo
+  (deviceID, uint64_t(CL_DEVICE_MAX_COMPUTE_UNITS), 4, &paramValue, nil);
+  return paramValue;
+}
+#endif
+
 #endif

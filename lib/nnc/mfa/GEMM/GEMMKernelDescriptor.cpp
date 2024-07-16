@@ -288,26 +288,26 @@ void GEMMKernelDescriptor::setBlockDimensions
       blockDimensions = simd::ushort3 { 32, 32, 32 };
     } else {
       blockDimensions = simd::ushort3 { 48, 48, 24 };
-    }
-    
-    // This is verified to be optimal for:
-    // - (memA, memB, memC) = (FP32, FP32, FP32)
-    // - (memA, memB, memC) = (FP16, FP16, FP32)
-    // - (memA, memB, memC) = (FP16, FP32, FP32)
-    // - (memA, memB, memC) = (FP16, FP32, FP16)
-    if (transposeState[0] == false && transposeState[1] == false) {
-      paddedBlockDimensions = simd::ushort8 { 48, 24, 24, 48, 48, 48 };
-    } else if (transposeState[0] == false && transposeState[1] == true) {
-      if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
-        paddedBlockDimensions = simd::ushort8 { 48, 24, 28, 48, 48, 48 };
-      } else {
+      
+      // This is verified to be optimal for:
+      // - (memA, memB, memC) = (FP32, FP32, FP32)
+      // - (memA, memB, memC) = (FP16, FP16, FP32)
+      // - (memA, memB, memC) = (FP16, FP32, FP32)
+      // - (memA, memB, memC) = (FP16, FP32, FP16)
+      if (transposeState[0] == false && transposeState[1] == false) {
         paddedBlockDimensions = simd::ushort8 { 48, 24, 24, 48, 48, 48 };
-      }
-    } else {
-      if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
-        paddedBlockDimensions = simd::ushort8 { 52, 24, 24, 48, 48, 48 };
+      } else if (transposeState[0] == false && transposeState[1] == true) {
+        if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
+          paddedBlockDimensions = simd::ushort8 { 48, 24, 28, 48, 48, 48 };
+        } else {
+          paddedBlockDimensions = simd::ushort8 { 48, 24, 24, 48, 48, 48 };
+        }
       } else {
-        paddedBlockDimensions = simd::ushort8 { 56, 24, 24, 48, 48, 48 };
+        if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
+          paddedBlockDimensions = simd::ushort8 { 52, 24, 24, 48, 48, 48 };
+        } else {
+          paddedBlockDimensions = simd::ushort8 { 56, 24, 24, 48, 48, 48 };
+        }
       }
     }
   } else {
