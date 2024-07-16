@@ -2,9 +2,9 @@
 #include "libmfa.inc"
 using namespace ccv::nnc;
 
-// MARK: - C
-
 #include <iostream>
+
+// MARK: - C
 
 mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
   return new mfa::context(device);
