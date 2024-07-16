@@ -131,7 +131,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     auto kernel = pipelineValue->kernel;
     auto pipeline = pipelineValue->pipeline;
     
-    // Multiply A with B.
+    // Allocate a new command.
     auto encoder = command_batch->startCommand();
     encoder->setComputePipelineState(pipeline.get());
     encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
@@ -158,6 +158,9 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     
     // Dispatch the required number of threads.
     encoder->dispatchThreadgroups(gridSize, groupSize);
+    
+    // Finish the command.
+    command_batch->finishCommand(encoder);
   } else {
     mfa::gemm::hash hash(params);
     auto iterator = context->gemm_cache.map.find(hash);
@@ -261,9 +264,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     auto grid_size = pipeline->grid_size;
     grid_size.depth = batch_sizes[0];
     encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
+    command_batch->finishCommand(encoder);
   }
-  
-  command_batch->finishCommand(encoder);
 }
 
 // MARK: - C++
