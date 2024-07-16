@@ -150,8 +150,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
     };
     MTL::Size gridSize
-    (ceilDivide(problemSize, kernel->blockDimensions[1]),
-     ceilDivide(problemSize, kernel->blockDimensions[0]),
+    (ceilDivide(int64_t(params.N), kernel->blockDimensions[1]),
+     ceilDivide(int64_t(params.M), kernel->blockDimensions[0]),
      1);
     MTL::Size groupSize
     (int64_t(kernel->threadgroupSize), 1, 1);
