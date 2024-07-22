@@ -3998,6 +3998,12 @@ CCV_WARN_UNUSED(ccv_array_t*) ccv_cnnp_model_parameters_filter(ccv_cnnp_model_t*
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f first, void* const context);
 /**
+ * Loop over a compiled model to find a parameter that is not initialized.
+ * @param model A model that is compiled.
+ * @return a ccv_cnnp_model_io_t or 0 if not found.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first_uninit(ccv_cnnp_model_t* const model);
+/**
  * Set parameters from another model. This will override whatever values in these parameters. The
  * given parameters from another model should match the dimension of the parameter. It doesn't matter
  * whether the given tensor is on CPU or GPU. This method can only set when both models are compiled.
