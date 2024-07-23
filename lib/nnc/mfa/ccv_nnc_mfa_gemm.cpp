@@ -3,6 +3,7 @@
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
+#include "GEMM/GEMMShaderCache.hpp"
 #include <string>
 
 // MARK: - C
@@ -14,115 +15,258 @@ void ccv_nnc_mfa_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t p
 
 void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
-  mfa::gemm::hash hash(params);
-  auto iterator = context->gemm_cache.map.find(hash);
-  if (iterator == context->gemm_cache.map.end()) {
-    mfa::precondition_failure("GEMM hash not cached.", __LINE__, __FILE__, __FUNCTION__);
-  }
-  
-  auto* pipeline = iterator->second;
-  auto encoder = command_batch->startCommand();
-  encoder->setComputePipelineState(pipeline->pso.get());
-  encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
-  
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
   
-  encoder->useResource(tensors[0], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[1], MTL::ResourceUsageRead);
-  encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
-  if (num_tensors >= 4) {
-    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
-  }
-  for (int i = 0; i < num_tensors; ++i) {
-    encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+  // Count the number of GEMMs at all.
+  //
+  // MFA       | 39 |  60% |
+  // MPSMatrix |  5 |   8% |
+  // MPSGraph  | 21 |  32% |
+  // Total     | 65 | 100% |
+  ccv_nnc_mfa_log_message("\n");
+  ccv_nnc_mfa_log_message("MFA\n");
+  
+  // Count the percentage of GEMMs that match a specific set of criteria.
+  // - data_type = any
+  // - M = any
+  // - N = any
+  // - K = any
+  // - A_trans = any
+  // - B_trans = any
+  // - D_trans = any
+  // - alpha = 1.0
+  // - beta = 0.0
+  // - batched = false
+  // - fused_activation_function = false
+  // - fused_bias = false
+  //
+  // - batch_dims_a = any
+  // - batch_dims_b = any
+  // - batch_dims_d = any
+  //
+  // - num_tensors = 3
+  //
+  // YES    | 17 |  44% | <- works without any modification
+  // NO (1) |  0 |   0% | <- suspected unused features: alpha, beta, activation
+  // NO (2) | 17 |  13% | <- batching
+  // NO (3) |  5 |  44% | <- fused bias (D operand)
+  // Total  | 39 | 100% |
+  //
+  // Supporting the remaining variants should require little effort.
+  // NO (1) - Scan the codebase to ensure these features are never used. Then,
+  //          delete the corresponding members from 'mfa::hash'.
+  // NO (2) - Batching just requires changing the memory address of A/B/C.
+  // NO (3) - For fused bias, take note of the shift to the matrix origin (to
+  //          keep memory reads in-bounds without using async copies). Make
+  //          sure you apply this shift to the bias vector.
+  bool canEncodeNewGEMM = false;
+  if ((params.alpha == 1.0) &&
+      (params.beta == 0.0) &&
+      (params.batched == false) &&
+      (params.fused_activation_function == false) &&
+      (params.fused_bias == false) &&
+      (num_tensors == 3)) {
+    canEncodeNewGEMM = true;
+    ccv_nnc_mfa_log_message("\n");
+    ccv_nnc_mfa_log_message("YES\n");
+  } else {
+    if ((params.alpha != 1.0) ||
+        (params.beta != 0.0) ||
+        (params.fused_activation_function != false)) {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (1)\n");
+    } else if (params.batched != false) {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (2)\n");
+    } else {
+      ccv_nnc_mfa_log_message("\n");
+      ccv_nnc_mfa_log_message("NO (3)\n");
+    }
   }
   
-  // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
-  simd::ushort4 num_batch_dims(0);
-  simd::ulong4 batch_sizes(1);
-  if (params.batched) {
-    for (uint16_t operand = 0; operand < 4; ++operand) {
-      uint32_t* batch_dims;
-      if (operand == 0) {
-        batch_dims = params.batch_dims_a;
-      } else if (operand == 1) {
-        batch_dims = params.batch_dims_b;
-      } else if (operand == 2) {
-        // Skip the C operand.
-        continue;
-      } else if (operand == 3) {
-        // Skip the D operand if unavailable.
-        if (!(params.fused_activation_function || params.fused_bias)) {
-          continue;
-        }
-        batch_dims = params.batch_dims_d;
-      }
-
-      for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-        if (batch_dims[i] == 0) {
-          break;
-        }
-        num_batch_dims[operand] += 1;
-        batch_sizes[operand] *= batch_dims[i];
-      }
-    }
-
-    uint16_t data_type_size = 0;
+  // Branch on whether to use the new kernel.
+  if (canEncodeNewGEMM) {
+    // Instantiate the descriptor.
+    GEMMDescriptor gemmDesc;
+    gemmDesc.matrixDimensions = simd::uint3 {
+      params.M,
+      params.N,
+      params.K,
+    };
     switch (params.data_type) {
       case MTL::DataTypeHalf: {
-        data_type_size = 2;
+        gemmDesc.memoryPrecisions = {
+          .A = GEMMOperandPrecision::FP16,
+          .B = GEMMOperandPrecision::FP16,
+          .C = GEMMOperandPrecision::FP16,
+        };
         break;
       }
       case MTL::DataTypeFloat: {
-        data_type_size = 4;
+        gemmDesc.memoryPrecisions = {
+          .A = GEMMOperandPrecision::FP32,
+          .B = GEMMOperandPrecision::FP32,
+          .C = GEMMOperandPrecision::FP32,
+        };
         break;
       }
       default:
         CCV_NNC_MFA_PRECONDITION(false);
         break;
     }
-    uint64_t byte_stride_a = hash.M * hash.K * data_type_size;
-    uint64_t byte_stride_b = hash.K * hash.N * data_type_size;
-    uint64_t byte_stride_c = hash.M * hash.N * data_type_size;
-    uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * data_type_size;
-    if (batch_sizes[0] == 1) {
-      byte_stride_a = 0;
+    gemmDesc.transposeState = simd::uchar2 { params.A_trans, params.B_trans };
+    
+    // Instantiate the kernel.
+    //
+    // TODO: Remove the autoreleasepool, once you confirm the caller always
+    // makes one. Or find a different solution, like spawning a pool inside
+    // of 'fetchKernel' when a new kernel variant is compiled.
+    auto pool = NS::AutoreleasePool::alloc()->init();
+    GEMMShaderCache::fetchKernel(gemmDesc);
+    auto pipelineValue = GEMMShaderCache::fetchKernel(gemmDesc);
+    pool->drain();
+    auto kernel = pipelineValue->kernel;
+    auto pipeline = pipelineValue->pipeline;
+    
+    // Allocate a new command.
+    auto encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(pipeline.get());
+    encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
+    
+    // Bind the function arguments.
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    for (int i = 0; i < 3; ++i) {
+      encoder->setBuffer(tensors[i], tensor_offsets[i], i);
     }
-    if (batch_sizes[1] == 1) {
-      byte_stride_b = 0;
+    
+    // Calculate the grid size.
+    auto ceilDivide =
+    [=](int64_t target, uint16_t granularity) -> int64_t {
+      return (target + int64_t(granularity) - 1) / int64_t(granularity);
+    };
+    MTL::Size gridSize
+    (ceilDivide(int64_t(params.N), kernel->blockDimensions[1]),
+     ceilDivide(int64_t(params.M), kernel->blockDimensions[0]),
+     1);
+    MTL::Size groupSize
+    (int64_t(kernel->threadgroupSize), 1, 1);
+    
+    // Dispatch the required number of threads.
+    encoder->dispatchThreadgroups(gridSize, groupSize);
+    
+    // Finish the command.
+    command_batch->finishCommand(encoder);
+  } else {
+    mfa::gemm::hash hash(params);
+    auto iterator = context->gemm_cache.map.find(hash);
+    if (iterator == context->gemm_cache.map.end()) {
+      mfa::precondition_failure("GEMM hash not cached.", __LINE__, __FILE__, __FUNCTION__);
     }
-    if (batch_sizes[3] == 1) {
-      byte_stride_d = 0;
+    
+    auto* pipeline = iterator->second;
+    auto encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(pipeline->pso.get());
+    encoder->setThreadgroupMemoryLength(pipeline->threadgroup_memory_length, 0);
+    
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    if (num_tensors >= 4) {
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
     }
-
-    const unsigned long batch_size = std::max(batch_sizes[0], batch_sizes[1]);
-    simd::ulong4 matrix_offsets[batch_size];
-    for (int i = 0; i < batch_size; ++i) {
-      matrix_offsets[i] = simd::ulong4 {
-        i * byte_stride_a,
-        i * byte_stride_b,
-        i * byte_stride_c,
-        i * byte_stride_d,
-      };
+    for (int i = 0; i < num_tensors; ++i) {
+      encoder->setBuffer(tensors[i], tensor_offsets[i], i);
     }
-    if (batch_size * 32 > 4096) {
-      auto buffer = context->device->newBuffer(matrix_offsets, batch_size * 32, MTL::ResourceStorageModeShared);
-      encoder->useResource(buffer, MTL::ResourceUsageRead);
-      encoder->setBuffer(buffer, 0, 10);
-      buffer->release();
-    } else {
-      encoder->setBytes(matrix_offsets, batch_size * 32, 10);
+    
+    // Simple broadcasting rules; not yet support for NumPy broadcasting rules.
+    simd::ushort4 num_batch_dims(0);
+    simd::ulong4 batch_sizes(1);
+    if (params.batched) {
+      for (uint16_t operand = 0; operand < 4; ++operand) {
+        uint32_t* batch_dims;
+        if (operand == 0) {
+          batch_dims = params.batch_dims_a;
+        } else if (operand == 1) {
+          batch_dims = params.batch_dims_b;
+        } else if (operand == 2) {
+          // Skip the C operand.
+          continue;
+        } else if (operand == 3) {
+          // Skip the D operand if unavailable.
+          if (!(params.fused_activation_function || params.fused_bias)) {
+            continue;
+          }
+          batch_dims = params.batch_dims_d;
+        }
+        
+        for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
+          if (batch_dims[i] == 0) {
+            break;
+          }
+          num_batch_dims[operand] += 1;
+          batch_sizes[operand] *= batch_dims[i];
+        }
+      }
+      
+      uint16_t data_type_size = 0;
+      switch (params.data_type) {
+        case MTL::DataTypeHalf: {
+          data_type_size = 2;
+          break;
+        }
+        case MTL::DataTypeFloat: {
+          data_type_size = 4;
+          break;
+        }
+        default:
+          CCV_NNC_MFA_PRECONDITION(false);
+          break;
+      }
+      uint64_t byte_stride_a = hash.M * hash.K * data_type_size;
+      uint64_t byte_stride_b = hash.K * hash.N * data_type_size;
+      uint64_t byte_stride_c = hash.M * hash.N * data_type_size;
+      uint64_t byte_stride_d = (hash.D_trans ? hash.M : hash.N) * data_type_size;
+      if (batch_sizes[0] == 1) {
+        byte_stride_a = 0;
+      }
+      if (batch_sizes[1] == 1) {
+        byte_stride_b = 0;
+      }
+      if (batch_sizes[3] == 1) {
+        byte_stride_d = 0;
+      }
+      
+      const unsigned long batch_size = std::max(batch_sizes[0], batch_sizes[1]);
+      simd::ulong4 matrix_offsets[batch_size];
+      for (int i = 0; i < batch_size; ++i) {
+        matrix_offsets[i] = simd::ulong4 {
+          i * byte_stride_a,
+          i * byte_stride_b,
+          i * byte_stride_c,
+          i * byte_stride_d,
+        };
+      }
+      if (batch_size * 32 > 4096) {
+        auto buffer = context->device->newBuffer(matrix_offsets, batch_size * 32, MTL::ResourceStorageModeShared);
+        encoder->useResource(buffer, MTL::ResourceUsageRead);
+        encoder->setBuffer(buffer, 0, 10);
+        buffer->release();
+      } else {
+        encoder->setBytes(matrix_offsets, batch_size * 32, 10);
+      }
     }
+    
+    auto grid_size = pipeline->grid_size;
+    grid_size.depth = batch_sizes[0];
+    encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
+    command_batch->finishCommand(encoder);
   }
-  
-  auto grid_size = pipeline->grid_size;
-  grid_size.depth = batch_sizes[0];
-  encoder->dispatchThreadgroups(grid_size, pipeline->group_size);
-  command_batch->finishCommand(encoder);
 }
 
 // MARK: - C++
