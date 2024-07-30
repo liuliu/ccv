@@ -2268,6 +2268,25 @@ ccv_array_t* ccv_cnnp_model_parameters_filter(ccv_cnnp_model_t* const model, ccv
 
 }
 
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_parameter_first_uninit(ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	const int tensors_init = !!compiled_data->tensors_init.v;
+	if (!tensors_init) // If nothing initialized, we return parameter 0.
+		return ccv_cnnp_model_parameters(model, -1, 0);
+	const int parameter_size = compiled_data->parameters->rnum;
+	int i;
+	const uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
+	for (i = 0; i < parameter_size; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
+		if (!(init_v[d >> 5] & (1u << (d & 0x1f))))
+			return ccv_cnnp_model_parameters(model, -1, i);
+	}
+	return 0;
+}
+
 static ccv_array_t* _ccv_cnnp_model_parameter_indices(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, int* const param_ref)
 {
 	const int to_param_sel = parameters->param_sel > 0 ? parameters->param_sel - 1 : parameters->param_sel;
