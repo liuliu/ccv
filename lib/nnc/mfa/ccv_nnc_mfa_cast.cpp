@@ -79,7 +79,42 @@ mfa::cast::pipeline::pipeline(mfa::context* context, mfa::cast::hash hash) {
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
-  std::string shader = R"(
+  std::string shader;
+  // In this case, we can igore the boundary check.
+  if (hash.length % (4 * 256) == 0) {
+    shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void cast(
+  device original_real4 *src [[buffer(0)]],
+  device real4 *destination [[buffer(1)]],
+
+  uint3 tpig [[thread_position_in_grid]]
+) {
+  const uint idx = tpig.x;
+  destination[idx] = (real4)(src[idx]);
+}
+    )";
+  } else if (hash.length % 4 == 0) {
+    shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void cast(
+  device original_real4 *src [[buffer(0)]],
+  device real4 *destination [[buffer(1)]],
+
+  uint3 tpig [[thread_position_in_grid]]
+) {
+  const uint idx = tpig.x;
+  if (idx >= count)
+    return;
+  destination[idx] = (real4)(src[idx]);
+}
+    )";
+  } else {
+    shader = R"(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -95,29 +130,46 @@ kernel void cast(
   destination[idx] = (real)(src[idx]);
 }
     )";
+  }
 
   std::string defines = "";
   if (hash.data_type == MTL::DataTypeFloat) {
     defines += std::string("typedef float real;");
     defines += "\n";
+    defines += std::string("typedef float4 real4;");
+    defines += "\n";
   } else {
     defines += std::string("typedef half real;");
+    defines += "\n";
+    defines += std::string("typedef half4 real4;");
     defines += "\n";
   }
 
   if (hash.original_data_type == MTL::DataTypeFloat) {
     defines += std::string("typedef float original_real;");
     defines += "\n";
+    defines += std::string("typedef float4 original_real4;");
+    defines += "\n";
   } else {
     defines += std::string("typedef half original_real;");
     defines += "\n";
+    defines += std::string("typedef half4 original_real4;");
+    defines += "\n";
   }
 
-  defines += "constant uint count = ";
-  defines += std::to_string(hash.length) + ";";
-  defines += "\n";
+  unsigned int count;
+  if (hash.length % 4 == 0) {
+    count = hash.length / 4;
+  } else {
+    count = hash.length;
+  }
+  if (hash.length % (4 * 256) != 0) {
+    defines += "constant uint count = ";
+    defines += std::to_string(count) + ";";
+    defines += "\n";
+  }
   this->group_size = MTL::Size(256, 1, 1);
-  const int num_blocks = (hash.length + 255) / 256;
+  const int num_blocks = (count + 255) / 256;
   this->grid_size = MTL::Size(num_blocks, 1, 1);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());

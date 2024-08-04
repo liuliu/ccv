@@ -122,10 +122,6 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				use_mfa = false;
 				fallback_reason = "Broadcast semantics unsupported.";
 			}
-			if (length % 4 != 0) {
-				use_mfa = false;
-				fallback_reason = "Length cannot divide by 4.";
-			}
 		}
 		if (use_mfa) {
 			if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b) || !CCV_IS_TENSOR_CONTIGUOUS(c)) {

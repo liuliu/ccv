@@ -73,7 +73,26 @@ mfa::add::pipeline::pipeline(mfa::context* context, mfa::add::hash hash) {
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
-  std::string shader = R"(
+  std::string shader;
+  // In this case, we can igore the boundary check.
+  if (hash.length % (4 * 256) == 0) {
+    shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void add(
+  device const real4 *src0 [[buffer(0)]],
+  device const real4 *src1 [[buffer(1)]],
+  device real4 *dst [[buffer(2)]],
+
+  uint3 tpig [[thread_position_in_grid]]
+) {
+  const uint idx = tpig.x;
+  dst[idx] = src0[idx] + src1[idx];
+}
+    )";
+  } else if (hash.length % 4 == 0) {
+    shader = R"(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -90,21 +109,51 @@ kernel void add(
   dst[idx] = src0[idx] + src1[idx];
 }
     )";
+  } else {
+    shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void add(
+  device const real *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+
+  uint3 tpig [[thread_position_in_grid]]
+) {
+  const uint idx = tpig.x;
+  if (idx >= count)
+    return;
+  dst[idx] = src0[idx] + src1[idx];
+}
+    )";
+  }
 
   std::string defines = "";
   if (hash.data_type == MTL::DataTypeFloat) {
     defines += std::string("typedef float4 real4;");
     defines += "\n";
+    defines += std::string("typedef float real;");
+    defines += "\n";
   } else {
     defines += std::string("typedef half4 real4;");
     defines += "\n";
+    defines += std::string("typedef half real;");
+    defines += "\n";
   }
 
-  defines += "constant uint count = ";
-  CCV_NNC_MFA_PRECONDITION(hash.length % 4 == 0)
-  const unsigned int count = hash.length / 4;
-  defines += std::to_string(count) + ";";
-  defines += "\n";
+  unsigned int count;
+  if (hash.length % 4 == 0) {
+    count = hash.length / 4;
+  } else {
+    count = hash.length;
+  }
+  // Only boundary check needs this const in the shader.
+  if (hash.length % (4 * 256) != 0) {
+    defines += "constant uint count = ";
+    defines += std::to_string(count) + ";";
+    defines += "\n";
+  }
   this->group_size = MTL::Size(256, 1, 1);
   const int num_blocks = (count + 255) / 256;
   this->grid_size = MTL::Size(num_blocks, 1, 1);

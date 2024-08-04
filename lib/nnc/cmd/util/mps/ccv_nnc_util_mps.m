@@ -362,7 +362,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		bool use_mfa = false;
+		bool use_mfa = true;
 		const char *fallback_reason = NULL;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
