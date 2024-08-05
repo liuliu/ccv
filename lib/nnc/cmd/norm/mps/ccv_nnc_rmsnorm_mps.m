@@ -198,7 +198,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 					MPSGraphTensor* mps_epsilon_f32 = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
 					mps_saved_inv_std = [graph castTensor:mps_inv_std_f32 toType:MPSDataTypeFloat16 name:@"inv_std"];
-					mps_b = [graph castTensor:[graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_inv_std_f32 name:nil] secondaryTensor:mps_scale name:nil] toType:MPSDataTypeFloat16 name:@"b"];
+					mps_b = [graph multiplicationWithPrimaryTensor:[graph castTensor:[graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_inv_std_f32 name:nil] toType:MPSDataTypeFloat16 name:@"b"] secondaryTensor:mps_scale name:nil];
 				}
 				[resultTensors addObject:mps_b];
 				[resultTensors addObject:mps_saved_inv_std];
