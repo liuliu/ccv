@@ -10,6 +10,8 @@
 #include "ccv_nnc_mfa_adam.hpp"
 #include "ccv_nnc_mfa_cmul.hpp"
 #include "ccv_nnc_mfa_gemv.hpp"
+#include "ccv_nnc_mfa_cast.hpp"
+#include "ccv_nnc_mfa_add.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
@@ -52,6 +54,8 @@ public:
   cache<adam::hash, adam::pipeline> adam_cache;
   cache<cmul::hash, cmul::pipeline> cmul_cache;
   cache<gemv::hash, gemv::pipeline> gemv_cache;
+  cache<cast::hash, cast::pipeline> cast_cache;
+  cache<add::hash, add::pipeline> add_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

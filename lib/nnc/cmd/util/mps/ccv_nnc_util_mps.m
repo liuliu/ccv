@@ -362,30 +362,125 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		for (i = 0; i < output_size; i++)
+		bool use_mfa = true;
+		const char *fallback_reason = NULL;
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION)) {
+			use_mfa = false;
+			fallback_reason = "Disabled.";
+		}
+		for (i = 0; i < output_size && use_mfa; i++)
 		{
 			const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
 			assert(a != b); // Cannot do inplace transform.
 			assert(a->info.format == b->info.format);
 			assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
-			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			if (CCV_IS_TENSOR_VIEW(a)) // Only allocate on-demand MPSGraph if a is a tensor view.
-			{
-				MPSGraph *graph = [MPSGraph new];
-				graph.options = MPSGraphOptionsSynchronizeResults;
-				MPSGraphTensor* mps_input_a;
-				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-				if (mps_a != mps_input_a)
-					ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, b->info.dim, b->stride);
-				else
-					ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
-				[graph release];
-			} else
-				ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
+
+			if (use_mfa) {
+				if (a->info.datatype != CCV_16F && a->info.datatype != CCV_32F) {
+					use_mfa = false;
+					fallback_reason = "Unsupported data type.";
+					break;
+				}
+				if (b->info.datatype != CCV_16F && b->info.datatype != CCV_32F) {
+					use_mfa = false;
+					fallback_reason = "Unsupported data type.";
+					break;
+				}
+			}
+
+			if (use_mfa) {
+				if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b)) {
+					use_mfa = false;
+					fallback_reason = "Strided.";
+				}
+			}
 		}
-		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		if (use_mfa) {
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			for (i = 0; i < output_size; i++)
+			{
+				const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
+				ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
+				uint32_t mtl_original_data_type = UINT32_MAX;
+				uint32_t mtl_data_type = UINT32_MAX;
+				if (use_mfa) {
+					switch (a->info.datatype) {
+						case CCV_16F: {
+							mtl_original_data_type = 16;
+							break;
+						}
+						case CCV_32F: {
+							mtl_original_data_type = 3;
+							break;
+						}
+						default: {
+							use_mfa = false;
+							fallback_reason = "Unsupported data type.";
+							break;
+						}
+					}
+					switch (b->info.datatype) {
+						case CCV_16F: {
+							mtl_data_type = 16;
+							break;
+						}
+						case CCV_32F: {
+							mtl_data_type = 3;
+							break;
+						}
+						default: {
+							use_mfa = false;
+							fallback_reason = "Unsupported data type.";
+							break;
+						}
+					}
+				}
+				const size_t length = ccv_nnc_tensor_count(a->info);
+				ccv_nnc_mfa_cast_params_t params = {
+					.original_data_type = mtl_original_data_type,
+					.data_type = mtl_data_type,
+					.length = (uint32_t)length,
+				};
+				ccv_nnc_mfa_prepare_cast(context, params);
+
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer(inputs[i]), // gradient
+					mpgetbuffer(outputs[i]), // destination
+					NULL
+				};
+				size_t tensor_offsets[2] = {
+					a->dataof,
+					b->dataof
+				};
+				ccv_nnc_mfa_encode_cast(context, params, command_batch, tensors, tensor_offsets);
+			}
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else {
+			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			for (i = 0; i < output_size; i++)
+			{
+				const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
+				ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
+				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+				if (CCV_IS_TENSOR_VIEW(a)) // Only allocate on-demand MPSGraph if a is a tensor view.
+				{
+					MPSGraph *graph = [MPSGraph new];
+					graph.options = MPSGraphOptionsSynchronizeResults;
+					MPSGraphTensor* mps_input_a;
+					MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+					if (mps_a != mps_input_a)
+						ccv_nnc_mps_graph_result(graph, command_buffer, @{mps_input_a: data_a}, mps_a, b, b->info.dim, b->stride);
+					else
+						ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
+					[graph release];
+				} else
+					ccv_nnc_mps_export_data(data_a, command_buffer, b, b->info.dim, b->stride);
+			}
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
