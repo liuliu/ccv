@@ -22,6 +22,6 @@
 std::string createMetalSimdgroupEvent();
 
 /// Create the source code for the 'metal\_simdgroup\_matrix\_storage' header.
-std::string createMetalSimdgroupMatrixStorage();
+std::string createMetalSimdgroupMatrixStorage(bool BF16);
 
 #endif /* GEMMHeaders_hpp */

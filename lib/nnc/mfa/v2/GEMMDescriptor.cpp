@@ -46,6 +46,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   // WARNING: The owner must explicitly retain the compute pipeline.
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
+    std::cout << "Pipeline cache miss." << std::endl;
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
@@ -71,6 +72,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   GEMMOperandPrecision registerPrecisionA = memoryPrecisions.A;
   GEMMOperandPrecision registerPrecisionB = memoryPrecisions.B;
   GEMMOperandPrecision registerPrecisionC = GEMMOperandPrecision::FP32;
+  GEMMOperandPrecision registerPrecisionBias = memoryPrecisions.bias;
   if (memoryPrecisions.A == GEMMOperandPrecision::FP16 &&
       memoryPrecisions.B == GEMMOperandPrecision::FP16 &&
       memoryPrecisions.C == GEMMOperandPrecision::FP16) {
@@ -125,6 +127,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     .A = registerPrecisionA,
     .B = registerPrecisionB,
     .C = registerPrecisionC,
+    .bias = registerPrecisionBias,
   };
   
   // Run a combinatorial search to find the correct value for

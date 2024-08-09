@@ -66,10 +66,11 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
     // down execution speed on both M1/M2 and M3+.
     CCV_NNC_MFA_PRECONDITION(false);
   }
+  bool anyBF16 = (memoryPrecisions.A == GEMMOperandPrecision::BF16) || (memoryPrecisions.B == GEMMOperandPrecision::BF16) || (memoryPrecisions.C == GEMMOperandPrecision::BF16) || (memoryPrecisions.bias == GEMMOperandPrecision::BF16);
   
   // Inject the contents of the headers.
   source += createMetalSimdgroupEvent() + "\n";
-  source += createMetalSimdgroupMatrixStorage() + "\n";
+  source += createMetalSimdgroupMatrixStorage(anyBF16) + "\n";
   source += "using namespace metal;\n";
   source += "\n";
   
@@ -447,7 +448,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
 )";
 
   if (useBias) {
-    if (descriptor.preferAsyncStore) {
+    if (descriptor.preferAsyncLoad) {
       source += "\n";
       source += "#define USE_BIAS_ASYNC_COND false\n";
     } else {

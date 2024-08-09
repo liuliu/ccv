@@ -235,7 +235,7 @@ namespace metal
 )";
 }
 
-std::string createMetalSimdgroupMatrixStorage() {
+std::string createMetalSimdgroupMatrixStorage(bool BF16) {
   // How this header spawning code was designed.
   //
   // Find the patterns between the load/store functions:
@@ -639,6 +639,9 @@ namespace metal
   for (auto action : actions) {
     for (auto addressSpace : addressSpaces) {
       for (auto decodingBF16 : decodingBF16s) {
+        if (!BF16 && decodingBF16) { // Don't need to output BF16 related methods.
+          continue;
+        }
         desc.action = action;
         desc.addressSpace = addressSpace;
         
