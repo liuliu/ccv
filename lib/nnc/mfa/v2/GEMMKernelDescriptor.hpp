@@ -3,7 +3,6 @@
 
 #include "GEMMOperandPrecision.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
-#include <optional>
 #include <simd/simd.h>
 
 struct GEMMDescriptor;
@@ -121,12 +120,9 @@ struct GEMMKernelDescriptor {
   /// - M -> blockDimensions[0]
   /// - N -> blockDimensions[1]
   /// - K -> blockDimensions[2]
-  std::optional<simd::ushort3> blockDimensions;
+  simd::ushort3 blockDimensions;
   
-  std::optional<GEMMOperandPrecisions> memoryPrecisions;
-  
-  /// The device to create the kernel on.
-  std::optional<MTL::Device*> device;
+  GEMMOperandPrecisions memoryPrecisions;
   
   /// Optional. The layout of elements in threadgroup memory.
   ///
@@ -159,13 +155,13 @@ struct GEMMKernelDescriptor {
   /// essential for correctness when reading from the edges of unaligned
   /// matrices. Setting the value to `false` means skipping async copies when
   /// doing so will not change the final result.
-  bool preferAsyncLoad = true;
+  bool preferAsyncLoad;
   
   /// Required. Whether async copies will improve performance when storing the
   /// accumulator to main memory.
   ///
   /// There is no default value that will reliably yield consistent performance.
-  std::optional<bool> preferAsyncStore;
+  bool preferAsyncStore;
   
   /// Set the register precision based on the GPU architecture, and your choice
   /// for memory precision. The following set of logic statements should provide
@@ -185,7 +181,7 @@ struct GEMMKernelDescriptor {
   ///   If memB is BF16,
   ///     regB is FP32
   /// ```
-  std::optional<GEMMOperandPrecisions> registerPrecisions;
+  GEMMOperandPrecisions registerPrecisions;
   
   /// Required. The array of SIMDs to divide the threadgroup into.
   ///
@@ -198,7 +194,7 @@ struct GEMMKernelDescriptor {
   /// Mapping from the Swift implementation:
   /// - M -> splits[0]
   /// - N -> splits[1]
-  std::optional<simd::ushort2> splits;
+  simd::ushort2 splits;
   
   /// Required. Whether each of the inputs deviates from row-major order.
   ///
@@ -208,61 +204,31 @@ struct GEMMKernelDescriptor {
   /// - A -> transposeState[0]
   /// - B -> transposeState[1]
   /// - bias -> transposeState[3]
-  std::optional<simd::uchar3> transposeState;
+  simd::uchar3 transposeState;
 
   /// Required. Whether it contains the bias.
-  std::optional<bool> useBias;
+  bool useBias;
   
   // MARK: - Functionality from GEMMDescriptor
   
-  GEMMKernelDescriptor() = default;
+  GEMMKernelDescriptor() = delete;
   
-  /// Initialize the kernel descriptor using another descriptor, which just
-  /// specifies the problem size. Then, forget the information about problem
-  /// size. It will not be needed until the very far future, when the user
-  /// retrieves a `MTLLibrary` from the cache and sets some Metal function
-  /// constants.
-  ///
-  /// One might initialize a `GEMMKernelDescriptor` this way whenever an
-  /// arbitrary matrix multiplication is requested. The generated descriptor
-  /// itself could be a key in the KV cache. With this shader cache design, you
-  /// must minimize the latency of actions like `MTLDevice` materialization and
-  /// core count queries.
-  ///
-  /// Acceptable latency: no more than 1 μs per invocation.
-  GEMMKernelDescriptor(GEMMDescriptor descriptor);
+  /// Initialize the kernel descriptor.
+  GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort8> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept;
   
   /// Implementation of the block size selection heuristic.
   ///
   /// This function initializes the 'blockDimensions' and
   /// 'paddedBlockDimensions' properties.
-  void setBlockDimensions
-  (MTL::Device* mtlDevice,
-   int64_t coreCount,
-   simd::uint3 matrixDimensions,
-   int64_t batchDimension);
-};
+  static std::pair<simd::ushort3, std::optional<simd::ushort8>> getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept;
 
-struct GEMMKernelKey {
-  simd::ushort3 blockDimensions;
-  simd::ushort4 memoryPrecisions;
-  simd::ushort8 paddedBlockDimensions;
-  uint8_t preferAsyncLoad;
-  uint8_t preferAsyncStore;
-  simd::ushort4 registerPrecisions;
-  simd::ushort2 splits;
-  simd::uchar3 transposeState;
-  uint8_t useBias;
-  
-  GEMMKernelKey(GEMMKernelDescriptor);
-  
-  bool operator==(const GEMMKernelKey& rhs) const;
+  bool operator==(const GEMMKernelDescriptor& rhs) const;
 };
 
 template<>
-struct std::hash<GEMMKernelKey>
+struct std::hash<GEMMKernelDescriptor>
 {
-  std::size_t operator()(const GEMMKernelKey& hash) const noexcept;
+  std::size_t operator()(const GEMMKernelDescriptor& hash) const noexcept;
 };
 
 #endif /* GEMMKernelDescriptor_hpp */

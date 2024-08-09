@@ -3,7 +3,10 @@
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
-#include "GEMM/GEMMShaderCache.hpp"
+#include "v2/ShaderCache.hpp"
+#include "v2/GEMMKernel.hpp"
+#include "v2/GEMMKernelDescriptor.hpp"
+#include "v2/GEMMDescriptor.hpp"
 #include <string>
 
 // MARK: - C
@@ -127,8 +130,10 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     // makes one. Or find a different solution, like spawning a pool inside
     // of 'fetchKernel' when a new kernel variant is compiled.
     auto pool = NS::AutoreleasePool::alloc()->init();
-    GEMMShaderCache::fetchKernel(gemmDesc);
-    auto pipelineValue = GEMMShaderCache::fetchKernel(gemmDesc);
+	auto &shaderCache = context->v2_cache;
+	DeviceProperties dprops = DeviceProperties();
+	dprops.coreCount = 18;
+    auto pipelineValue = shaderCache.findKernel<GEMMKernel, GEMMDescriptor, GEMMKernelDescriptor>(gemmDesc, context->device.get(), dprops);
     pool->drain();
     auto kernel = pipelineValue->kernel;
     auto pipeline = pipelineValue->pipeline;

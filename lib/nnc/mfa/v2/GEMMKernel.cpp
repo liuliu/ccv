@@ -4,23 +4,14 @@
 
 #include <algorithm>
 
-GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor) {
-  CCV_NNC_MFA_PRECONDITION(descriptor.blockDimensions.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.device.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.memoryPrecisions.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.preferAsyncStore.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.registerPrecisions.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.splits.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.transposeState.has_value());
-  CCV_NNC_MFA_PRECONDITION(descriptor.useBias.has_value());
-  auto blockDimensions = descriptor.blockDimensions.value();
-  auto device = descriptor.device.value();
-  auto memoryPrecisions = descriptor.memoryPrecisions.value();
-  auto preferAsyncStore = descriptor.preferAsyncStore.value();
-  auto registerPrecisions = descriptor.registerPrecisions.value();
-  auto splits = descriptor.splits.value();
-  auto transposeState = descriptor.transposeState.value();
-  auto useBias = descriptor.useBias.value();
+GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const device) {
+  auto blockDimensions = descriptor.blockDimensions;
+  auto memoryPrecisions = descriptor.memoryPrecisions;
+  auto preferAsyncStore = descriptor.preferAsyncStore;
+  auto registerPrecisions = descriptor.registerPrecisions;
+  auto splits = descriptor.splits;
+  auto transposeState = descriptor.transposeState;
+  auto useBias = descriptor.useBias;
   this->blockDimensions = blockDimensions;
   this->threadgroupSize = 32 * splits[0] * splits[1];
   

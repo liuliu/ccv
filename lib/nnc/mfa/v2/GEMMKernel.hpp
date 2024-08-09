@@ -27,7 +27,7 @@ struct GEMMKernel {
   /// The number of threads per group.
   uint16_t threadgroupSize;
   
-  GEMMKernel(GEMMKernelDescriptor descriptor);
+  GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const device);
 };
 
 #endif /* GEMMKernel_hpp */

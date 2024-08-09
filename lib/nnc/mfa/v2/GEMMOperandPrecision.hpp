@@ -47,8 +47,8 @@ public:
   // Prevent usage: if(precision)
   explicit operator bool() const = delete;
 
-  constexpr bool operator==(GEMMOperandPrecision a) const { return value == a.value; }
-  constexpr bool operator!=(GEMMOperandPrecision a) const { return value != a.value; }
+  constexpr bool operator==(const GEMMOperandPrecision &rhs) const { return value == rhs.value; }
+  constexpr bool operator!=(const GEMMOperandPrecision &rhs) const { return value != rhs.value; }
 
   // The MSL keyword corresponding to the precision.
   std::string name() {
@@ -83,6 +83,7 @@ struct GEMMOperandPrecisions {
   GEMMOperandPrecision B;
   GEMMOperandPrecision C;
   GEMMOperandPrecision bias;
+  constexpr bool operator==(const GEMMOperandPrecisions& rhs) const { return A == rhs.A && B == rhs.B && C == rhs.C && bias == rhs.bias; }
 };
 
 #endif /* GEMMOperandPrecision_hpp */

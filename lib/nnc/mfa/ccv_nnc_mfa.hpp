@@ -17,6 +17,7 @@
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
+#include "v2/ShaderCache.hpp"
 #include <unordered_map>
 
 namespace ccv {
@@ -56,6 +57,8 @@ public:
   cache<gemv::hash, gemv::pipeline> gemv_cache;
   cache<cast::hash, cast::pipeline> cast_cache;
   cache<add::hash, add::pipeline> add_cache;
+
+  ShaderCache v2_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };
