@@ -305,6 +305,10 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 			}
 		}
 	}
+	ccfree(A);
+	ccfree(B);
+	ccfree(C);
+	ccfree(previousOperandC);
 	return std::make_pair(maxGFLOPS, occupancy);
 }
 
