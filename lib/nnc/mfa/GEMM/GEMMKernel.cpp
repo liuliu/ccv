@@ -12,6 +12,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor) {
   CCV_NNC_MFA_PRECONDITION(descriptor.registerPrecisions.has_value());
   CCV_NNC_MFA_PRECONDITION(descriptor.splits.has_value());
   CCV_NNC_MFA_PRECONDITION(descriptor.transposeState.has_value());
+  CCV_NNC_MFA_PRECONDITION(descriptor.useBias.has_value());
   auto blockDimensions = descriptor.blockDimensions.value();
   auto device = descriptor.device.value();
   auto memoryPrecisions = descriptor.memoryPrecisions.value();
@@ -19,6 +20,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor) {
   auto registerPrecisions = descriptor.registerPrecisions.value();
   auto splits = descriptor.splits.value();
   auto transposeState = descriptor.transposeState.value();
+  auto useBias = descriptor.useBias.value();
   this->blockDimensions = blockDimensions;
   this->threadgroupSize = 32 * splits[0] * splits[1];
   
@@ -181,6 +183,12 @@ constant uint K [[function_constant(2)]];
   source += "constant bool B_trans = ";
   source += std::to_string(bool(transposeState[1])) + ";\n";
   source += "\n";
+
+  if (useBias) {
+    source += "constant bool bias_trans = ";
+    source += std::to_string(bool(transposeState[2])) + ";\n";
+    source += "\n";
+  }
   
   // Define the memory layout of the matrix block.
   source += "constant ushort M_group = ";
@@ -221,18 +229,22 @@ constant uint K [[function_constant(2)]];
     std::string memoryNameA = memoryPrecisions.A.name();
     std::string memoryNameB = memoryPrecisions.B.name();
     std::string memoryNameC = memoryPrecisions.C.name();
+    std::string memoryNameBias = memoryPrecisions.bias.name();
     source += "#define MEMORY_NAME_A " + memoryNameA + "\n";
     source += "#define MEMORY_NAME_B " + memoryNameB + "\n";
     source += "#define MEMORY_NAME_C " + memoryNameC + "\n";
+    source += "#define MEMORY_NAME_BIAS " + memoryNameBias + "\n";
     
     // Allocate thread memory, using the 'register precision'. This memory
     // is allocated by embedding the precision into the assembly code.
     std::string registerNameA = registerPrecisions.A.name();
     std::string registerNameB = registerPrecisions.B.name();
     std::string registerNameC = registerPrecisions.C.name();
+    std::string registerNameBias = registerPrecisions.bias.name();
     source += "#define REGISTER_NAME_A " + registerNameA + "\n";
     source += "#define REGISTER_NAME_B " + registerNameB + "\n";
     source += "#define REGISTER_NAME_C " + registerNameC + "\n";
+    source += "#define REGISTER_NAME_BIAS " + registerNameBias + "\n";
   }
   
   // Add the utility functions.
@@ -392,7 +404,13 @@ METAL_FUNC void multiply_accumulate(
 kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
                  device MEMORY_NAME_B *B [[buffer(1)]],
                  device MEMORY_NAME_C *C [[buffer(2)]],
+)";
+    if (useBias) {
+      source += "\n";
+      source += "device MEMORY_NAME_BIAS *bias [[buffer(3)]],\n";
+    }
                  
+    source += R"(
                  threadgroup uchar *threadgroup_block [[threadgroup(0)]],
                  
                  uint3 gid [[threadgroup_position_in_grid]],
@@ -435,7 +453,132 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
   source += R"(
   simdgroup_matrix_storage<REGISTER_NAME_C> C_sram[
     (REGISTER_M / 8) * (REGISTER_N / 8)];
+)";
 
+  if (useBias) {
+    if (descriptor.preferAsyncStore) {
+      source += "\n";
+      source += "#define USE_BIAS_ASYNC_COND false\n";
+    } else {
+      source += "\n";
+      source += "#define USE_BIAS_ASYNC_COND (M >= M_group) && (N >= N_group)\n";
+    }
+    if (memoryPrecisions.bias == GEMMOperandPrecision::BF16 &&
+        registerPrecisions.bias == GEMMOperandPrecision::FP32) {
+      source += "\n";
+      source += "#define BIAS_LOAD load_bfloat\n";
+    } else { 
+      source += "\n";
+      source += "#define BIAS_LOAD load\n";
+    }
+    std::string declareBiasLocationDevice;
+    std::string declareBiasLocationThreadgroup;
+    if (transposeState[2]) {
+      declareBiasLocationDevice = R"(
+    uint2 bias_offset(uint(M_offset + offset_in_group.y), 0);
+    auto bias_src =
+      simdgroup_matrix_storage<MEMORY_NAME_BIAS>::apply_offset(
+        bias, 0, bias_offset);
+)";
+      declareBiasLocationThreadgroup = R"(
+    ushort2 bias_block_offset(ushort(offset_in_group.y), 0);
+    auto bias_src = (threadgroup MEMORY_NAME_BIAS*)(threadgroup_block);
+    bias_src = simdgroup_matrix_storage<MEMORY_NAME_BIAS>::apply_offset(
+      bias_src, 0, bias_block_offset);
+)";
+    } else {
+      declareBiasLocationDevice = R"(
+    uint2 bias_offset(uint(N_offset + offset_in_group.x), 0);
+    auto bias_src =
+      simdgroup_matrix_storage<MEMORY_NAME_BIAS>::apply_offset(
+        bias, 0, bias_offset);
+)";
+      declareBiasLocationThreadgroup = R"(
+    ushort2 bias_block_offset(ushort(offset_in_group.x), 0);
+    auto bias_src = (threadgroup MEMORY_NAME_BIAS*)(threadgroup_block);
+    bias_src = simdgroup_matrix_storage<MEMORY_NAME_BIAS>::apply_offset(
+      bias_src, 0, bias_block_offset);
+)";
+    }
+    std::string loadBiasLoop;
+    if (transposeState[2]) {
+      loadBiasLoop = R"(
+    #pragma clang loop unroll(full)
+    for (ushort m = 0; m < REGISTER_M; m += 8) {
+      simdgroup_matrix_storage<REGISTER_NAME_BIAS> bias;
+      bias.BIAS_LOAD(
+        bias_src, 0, ushort2(m, 0));
+      bias.thread_elements()[0][1] = bias.thread_elements()[0][0];
+     
+      #pragma clang loop unroll(full)
+      for (ushort n = 0; n < REGISTER_N; n += 8) {
+        vec<REGISTER_NAME_BIAS, 2> biasForm = *(bias.thread_elements());
+        auto accumulatorForm = vec<REGISTER_NAME_C, 2>(biasForm);
+
+        ushort2 origin(n, m);
+        auto C = get_sram(C_sram, REGISTER_N, origin);
+        *C = simdgroup_matrix_storage<REGISTER_NAME_C>(accumulatorForm);
+      }
+    }
+)";
+    } else {
+      loadBiasLoop = R"(
+    #pragma clang loop unroll(full)
+    for (ushort n = 0; n < REGISTER_N; n += 8) {
+      simdgroup_matrix_storage<REGISTER_NAME_BIAS> bias;
+      bias.BIAS_LOAD(
+        bias_src, 0, ushort2(n, 0));
+      
+      #pragma clang loop unroll(full)
+      for (ushort m = 0; m < REGISTER_M; m += 8) {
+        vec<REGISTER_NAME_BIAS, 2> biasForm = *(bias.thread_elements());
+        auto accumulatorForm = vec<REGISTER_NAME_C, 2>(biasForm);
+
+        ushort2 origin(n, m);
+        auto C = get_sram(C_sram, REGISTER_N, origin);
+        *C = simdgroup_matrix_storage<REGISTER_NAME_C>(accumulatorForm);
+      }
+    }
+)";
+    }
+    source += R"(
+  if (USE_BIAS_ASYNC_COND) {
+)";
+    source += declareBiasLocationDevice;
+    source += loadBiasLoop;
+    source += R"(
+  } else {
+    if (sidx == 0) {
+      uint2 bias_offset(bias_trans ? M_offset : N_offset, 0);
+      auto bias_dst = (threadgroup MEMORY_NAME_BIAS*)(threadgroup_block);
+      auto bias_src =
+      simdgroup_matrix_storage<MEMORY_NAME_BIAS>::apply_offset(
+        bias, 0, bias_offset);
+      
+      ushort bias_tile_dimension = bias_trans
+      ? min(uint(M_group), M - M_offset)
+      : min(uint(N_group), N - N_offset);
+    
+      // Issue an async copy.
+      simdgroup_event event;
+      event.async_copy(
+        bias_dst, 1, ushort2(bias_tile_dimension, 1),
+        bias_src, 1, ushort2(bias_tile_dimension, 1));
+      simdgroup_event::wait(1, &event);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+)";
+    source += declareBiasLocationThreadgroup;
+    source += loadBiasLoop;
+    source += R"(
+        
+    // Add a barrier, because you accessed the entries from threadgroup
+    // memory.
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+)";
+  } else {
+    source += R"(
   // Initialize the accumulator.
   #pragma clang loop unroll(full)
   for (ushort m = 0; m < REGISTER_M; m += 8) {
@@ -447,6 +590,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
     }
   }
 )";
+  }
   
   // Add the matrix multiplication iterations.
   //

@@ -207,7 +207,11 @@ struct GEMMKernelDescriptor {
   /// Mapping from the Swift implementation:
   /// - A -> transposeState[0]
   /// - B -> transposeState[1]
-  std::optional<simd::uchar2> transposeState;
+  /// - bias -> transposeState[3]
+  std::optional<simd::uchar3> transposeState;
+
+  /// Required. Whether it contains the bias.
+  std::optional<bool> useBias;
   
   // MARK: - Functionality from GEMMDescriptor
   
@@ -241,13 +245,14 @@ struct GEMMKernelDescriptor {
 
 struct GEMMKernelKey {
   simd::ushort3 blockDimensions;
-  simd::ushort3 memoryPrecisions;
+  simd::ushort4 memoryPrecisions;
   simd::ushort8 paddedBlockDimensions;
   uint8_t preferAsyncLoad;
   uint8_t preferAsyncStore;
-  simd::ushort3 registerPrecisions;
+  simd::ushort4 registerPrecisions;
   simd::ushort2 splits;
-  simd::uchar2 transposeState;
+  simd::uchar3 transposeState;
+  uint8_t useBias;
   
   GEMMKernelKey(GEMMKernelDescriptor);
   

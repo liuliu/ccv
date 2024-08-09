@@ -82,6 +82,7 @@ struct GEMMOperandPrecisions {
   GEMMOperandPrecision A;
   GEMMOperandPrecision B;
   GEMMOperandPrecision C;
+  GEMMOperandPrecision bias;
 };
 
 #endif /* GEMMOperandPrecision_hpp */

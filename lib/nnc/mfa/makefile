@@ -2,7 +2,7 @@ include ../../config.mk
 
 CFLAGS := -std=c++17 -O3 -Wall -I"../../" $(CFLAGS)
 
-SRCS := Metal.cpp ccv_nnc_mfa.cpp ccv_nnc_mfa_attention.cpp ccv_nnc_mfa_error.cpp ccv_nnc_mfa_gemm.cpp ccv_nnc_mfa_normalization.cpp ccv_nnc_mfa_depalettize.cpp ccv_nnc_mfa_adam.cpp ccv_nnc_mfa_cmul.cpp ccv_nnc_mfa_gemv.cpp ccv_nnc_mfa_cast.cpp ccv_nnc_mfa_add.cpp 3rdparty/metal-cpp/Dispatch.cpp GEMM/CoreCount.cpp GEMM/GEMMDescriptor.cpp GEMM/GEMMHeaders.cpp GEMM/GEMMKernel.cpp GEMM/GEMMKernelDescriptor.cpp GEMM/GEMMShaderCache.cpp
+SRCS := Metal.cpp ccv_nnc_mfa.cpp ccv_nnc_mfa_attention.cpp ccv_nnc_mfa_error.cpp ccv_nnc_mfa_gemm.cpp ccv_nnc_mfa_normalization.cpp ccv_nnc_mfa_depalettize.cpp ccv_nnc_mfa_adam.cpp ccv_nnc_mfa_cmul.cpp ccv_nnc_mfa_gemv.cpp ccv_nnc_mfa_cast.cpp ccv_nnc_mfa_add.cpp 3rdparty/metal-cpp/Dispatch.cpp GEMM/CoreCount.cpp GEMM/GEMMDescriptor.cpp GEMM/GEMMHeaders.cpp GEMM/GEMMKernel.cpp GEMM/GEMMKernelDescriptor.cpp GEMM/GEMMShaderCache.cpp v2/CodeWriter.cpp
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SRCS)))
 

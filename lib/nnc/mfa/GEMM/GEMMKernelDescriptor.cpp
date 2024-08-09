@@ -11,13 +11,14 @@ GEMMKernelKey::GEMMKernelKey(GEMMKernelDescriptor descriptor) {
   
   if (descriptor.memoryPrecisions.has_value()) {
     auto precisions = descriptor.memoryPrecisions.value();
-    memoryPrecisions = simd::ushort3 {
+    memoryPrecisions = simd::ushort4 {
       precisions.A.value,
       precisions.B.value,
       precisions.C.value,
+      precisions.bias.value,
     };
   } else {
-    memoryPrecisions = simd::ushort3(UINT16_MAX);
+    memoryPrecisions = simd::ushort4(UINT16_MAX);
   }
   paddedBlockDimensions = simd::ushort8(UINT16_MAX);
   if (descriptor.paddedBlockDimensions.has_value()) {
@@ -31,18 +32,20 @@ GEMMKernelKey::GEMMKernelKey(GEMMKernelDescriptor descriptor) {
   
   if (descriptor.registerPrecisions.has_value()) {
     auto precisions = descriptor.registerPrecisions.value();
-    registerPrecisions = simd::ushort3 {
+    registerPrecisions = simd::ushort4 {
       precisions.A.value,
       precisions.B.value,
       precisions.C.value,
+	  precisions.bias.value,
     };
   } else {
-    registerPrecisions = simd::ushort3(UINT16_MAX);
+    registerPrecisions = simd::ushort4(UINT16_MAX);
   }
   splits = descriptor.splits.value_or
   (simd::ushort2(UINT16_MAX));
   transposeState = descriptor.transposeState.value_or
-  (simd::uchar2(UINT8_MAX));
+  (simd::uchar3(UINT8_MAX));
+  useBias = descriptor.useBias.value_or(UINT8_MAX);
 }
 
 bool GEMMKernelKey::operator==(const GEMMKernelKey& rhs) const {
@@ -54,20 +57,21 @@ bool GEMMKernelKey::operator==(const GEMMKernelKey& rhs) const {
   (preferAsyncStore == rhs.preferAsyncStore) &&
   simd_all(registerPrecisions == rhs.registerPrecisions) &&
   simd_all(splits == rhs.splits) &&
-  simd_all(transposeState == rhs.transposeState);
+  simd_all(transposeState == rhs.transposeState) &&
+  (useBias == rhs.useBias);
 }
 
 std::size_t std::hash<GEMMKernelKey>::operator()(const GEMMKernelKey& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_64(seed, pack_64(simd_make_ushort4(hash.memoryPrecisions, 0)));
+  combine_64(seed, pack_64(hash.memoryPrecisions));
   combine_64(seed, pack_128(hash.preferAsyncStore)[0]);
   combine_64(seed, pack_128(hash.preferAsyncStore)[1]);
   combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncLoad, hash.preferAsyncStore, 0, 0 }));
-  combine_64(seed, pack_64(simd_make_ushort4(hash.registerPrecisions, 0)));
+  combine_64(seed, pack_64(hash.registerPrecisions));
   combine_32(seed, pack_32(hash.splits));
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], 0, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   return 0;
 }
 
@@ -77,9 +81,11 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(GEMMDescriptor descriptor) {
   CCV_NNC_MFA_PRECONDITION(descriptor.matrixDimensions.has_value());
   CCV_NNC_MFA_PRECONDITION(descriptor.memoryPrecisions.has_value());
   CCV_NNC_MFA_PRECONDITION(descriptor.transposeState.has_value());
+  CCV_NNC_MFA_PRECONDITION(descriptor.useBias.has_value());
   auto matrixDimensions = descriptor.matrixDimensions.value();
   auto memoryPrecisions = descriptor.memoryPrecisions.value();
   auto transposeState = descriptor.transposeState.value();
+  auto useBias = descriptor.useBias.value();
   
   // Select the only GPU on an Apple silicon system.
   //
@@ -241,6 +247,7 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(GEMMDescriptor descriptor) {
     splits = simd::ushort2 { 1, 1 };
   }
   this->transposeState = transposeState;
+  this->useBias = useBias;
   
   // Set the properties that deal with block size.
   setBlockDimensions

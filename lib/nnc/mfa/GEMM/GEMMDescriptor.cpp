@@ -19,7 +19,8 @@ GEMMKey::GEMMKey(GEMMDescriptor descriptor) {
     memoryPrecisions = simd::ushort3(UINT16_MAX);
   }
   transposeState = descriptor.transposeState.value_or
-  (simd::uchar2(UINT8_MAX));
+  (simd::uchar3(UINT8_MAX));
+  useBias = descriptor.useBias.value_or(UINT8_MAX);
 }
 
 bool GEMMKey::operator==(const GEMMKey& rhs) const {
@@ -27,7 +28,8 @@ bool GEMMKey::operator==(const GEMMKey& rhs) const {
   (batchDimension == rhs.batchDimension) &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
   simd_all(memoryPrecisions == rhs.memoryPrecisions) &&
-  simd_all(transposeState == rhs.transposeState);
+  simd_all(transposeState == rhs.transposeState) &&
+  (useBias == rhs.useBias);
 }
 
 std::size_t std::hash<GEMMKey>::operator()(const GEMMKey& hash) const noexcept {
@@ -38,6 +40,6 @@ std::size_t std::hash<GEMMKey>::operator()(const GEMMKey& hash) const noexcept {
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   combine_64(seed, pack_64(simd_make_ushort4(hash.memoryPrecisions, 0)));
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], 0, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   return seed;
 }

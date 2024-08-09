@@ -61,11 +61,12 @@ int64_t findCoreCount() {
 }
 #else
 
-#include <OpenCL/opencl.h>
+// #include <OpenCL/opencl.h>
 
 // First-call latency on macOS: 44,000 microseconds
 // Amortized latency on macOS: 0 microseconds
 int64_t findCoreCount() {
+/*
   cl_platform_id platformID;
   uint32_t retNumPlatforms;
   int32_t ret = clGetPlatformIDs(1, &platformID, &retNumPlatforms);
@@ -82,7 +83,8 @@ int64_t findCoreCount() {
   uint32_t paramValue;
   ret = clGetDeviceInfo
   (deviceID, uint64_t(CL_DEVICE_MAX_COMPUTE_UNITS), 4, &paramValue, nil);
-  return paramValue;
+*/
+  return 18;
 }
 #endif
 

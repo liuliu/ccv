@@ -30,14 +30,17 @@ struct GEMMDescriptor {
   
   std::optional<GEMMOperandPrecisions> memoryPrecisions;
   
-  std::optional<simd::uchar2> transposeState;
+  std::optional<simd::uchar3> transposeState;
+
+  std::optional<bool> useBias;
 };
 
 struct GEMMKey {
   int64_t batchDimension;
   simd::uint3 matrixDimensions;
   simd::ushort3 memoryPrecisions;
-  simd::uchar2 transposeState;
+  simd::uchar3 transposeState;
+  uint8_t useBias;
   
   GEMMKey(GEMMDescriptor);
   

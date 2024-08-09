@@ -67,9 +67,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   if ((params.alpha == 1.0) &&
       (params.beta == 0.0) &&
       (params.batched == false) &&
-      (params.fused_activation_function == false) &&
-      (params.fused_bias == false) &&
-      (num_tensors == 3)) {
+      (params.fused_activation_function == false)) {
     canEncodeNewGEMM = true;
     ccv_nnc_mfa_log_message("\n");
     ccv_nnc_mfa_log_message("YES\n");
@@ -103,6 +101,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
           .A = GEMMOperandPrecision::FP16,
           .B = GEMMOperandPrecision::FP16,
           .C = GEMMOperandPrecision::FP16,
+          .bias = GEMMOperandPrecision::FP16,
         };
         break;
       }
@@ -111,6 +110,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
           .A = GEMMOperandPrecision::FP32,
           .B = GEMMOperandPrecision::FP32,
           .C = GEMMOperandPrecision::FP32,
+          .bias = GEMMOperandPrecision::FP32,
         };
         break;
       }
@@ -118,7 +118,8 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         CCV_NNC_MFA_PRECONDITION(false);
         break;
     }
-    gemmDesc.transposeState = simd::uchar2 { params.A_trans, params.B_trans };
+    gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.A_trans };
+    gemmDesc.useBias = params.fused_bias;
     
     // Instantiate the kernel.
     //
@@ -141,7 +142,10 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->useResource(tensors[0], MTL::ResourceUsageRead);
     encoder->useResource(tensors[1], MTL::ResourceUsageRead);
     encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
-    for (int i = 0; i < 3; ++i) {
+    if (num_tensors >= 4) {
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    }
+    for (int i = 0; i < num_tensors; ++i) {
       encoder->setBuffer(tensors[i], tensor_offsets[i], i);
     }
     
