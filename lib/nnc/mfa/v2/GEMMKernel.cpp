@@ -448,7 +448,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
 )";
 
   if (useBias) {
-    if (descriptor.preferAsyncLoad) {
+    if (true) { // descriptor.preferAsyncLoad) {
       source += "\n";
       source += "#define USE_BIAS_ASYNC_COND false\n";
     } else {
@@ -500,8 +500,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
       simdgroup_matrix_storage<REGISTER_NAME_BIAS> bias;
       bias.BIAS_LOAD(
         bias_src, 0, ushort2(m, 0));
-      bias.thread_elements()[0][1] = bias.thread_elements()[0][0];
-     
+
       #pragma clang loop unroll(full)
       for (ushort n = 0; n < REGISTER_N; n += 8) {
         vec<REGISTER_NAME_BIAS, 2> biasForm = *(bias.thread_elements());
@@ -520,7 +519,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
       simdgroup_matrix_storage<REGISTER_NAME_BIAS> bias;
       bias.BIAS_LOAD(
         bias_src, 0, ushort2(n, 0));
-      
+
       #pragma clang loop unroll(full)
       for (ushort m = 0; m < REGISTER_M; m += 8) {
         vec<REGISTER_NAME_BIAS, 2> biasForm = *(bias.thread_elements());
