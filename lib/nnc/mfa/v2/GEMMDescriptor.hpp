@@ -29,6 +29,8 @@ struct GEMMDescriptor {
   simd::uint3 matrixDimensions;
   
   GEMMOperandPrecisions memoryPrecisions;
+
+  std::optional<GEMMOperandPrecision> registerPrecisionC;
   
   simd::uchar3 transposeState;
 

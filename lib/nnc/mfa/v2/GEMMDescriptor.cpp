@@ -9,6 +9,7 @@ bool GEMMDescriptor::operator==(const GEMMDescriptor& rhs) const {
   (batchDimension == rhs.batchDimension) &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
   memoryPrecisions == rhs.memoryPrecisions &&
+  registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
   (useBias == rhs.useBias);
 }
@@ -22,6 +23,9 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
   combine_32(seed, hash.matrixDimensions[2]);
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
+  if (hash.registerPrecisionC.has_value()) {
+    combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
+  }
   return seed;
 }
 
@@ -71,9 +75,10 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
 
   GEMMOperandPrecision registerPrecisionA = memoryPrecisions.A;
   GEMMOperandPrecision registerPrecisionB = memoryPrecisions.B;
-  GEMMOperandPrecision registerPrecisionC = GEMMOperandPrecision::FP32;
   GEMMOperandPrecision registerPrecisionBias = memoryPrecisions.bias;
-  if (memoryPrecisions.A == GEMMOperandPrecision::FP16 &&
+  GEMMOperandPrecision registerPrecisionC = this->registerPrecisionC.value_or(GEMMOperandPrecision::FP32);
+  if (!this->registerPrecisionC.has_value() &&
+      memoryPrecisions.A == GEMMOperandPrecision::FP16 &&
       memoryPrecisions.B == GEMMOperandPrecision::FP16 &&
       memoryPrecisions.C == GEMMOperandPrecision::FP16) {
     // If FP16 is causing accuracy issues, you can change this to FP32. Note
