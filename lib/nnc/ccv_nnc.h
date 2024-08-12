@@ -99,6 +99,12 @@ enum {
 	CCV_NNC_PAD_REPLICATE = 1, /**< Pad by replicating the edge. */
 };
 
+enum {
+	CCV_NNC_GEMM_32F = 0x1, /**< For GEMM (or similar op), whether prefer to use FP32 for accumulator. */
+	CCV_NNC_GEMM_32TF = 0x2, /**< For GEMM (or similar op), whether prefer to use TF32 for accumulator. */
+	CCV_NNC_GEMM_16F = 0x4, /**< For GEMM (or similar op), whether prefer to use FP16 for accumulator. */
+};
+
 /**
  * Parameters for command.
  */
@@ -256,7 +262,7 @@ typedef struct {
 		struct {
 			float scale; /**< [scaled_dot_product_attention.scale] The scale we multiple to the dot product of Q & K */
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
-			int upcast; /**< [scaled_dot_product_attention.upcast] Whether we want to run the attention computation at higher precision (from FP16 to FP32). */
+			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 		} scaled_dot_product_attention;
 		struct {
@@ -4691,14 +4697,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_contiguous(const char* const name);
  * @param scale The scale to be applied to the qk dot product.
  * @param is_causal Whether to apply is_causal mask to it. If both attn_mask and is_causal supplied, we will cut attn_mask to upper right triangle.
  * @param has_attn_mask Whether the input would accept a 4th parameter the attention mask.
- * @param upcast Whether the attention computation will be run at higher precision (from FP16 to FP32).
+ * @param flags Which precision is preferred for the attention computation be run at (FP16 or FP32).
  * @param fused_unify_head_weights Whether we also have unifying head weight fused into it. The output would be in shape of (N, S, H * Ev).
  * @param no_bias Whether we have bias or not for the unifying head output.
  * @param is_trainable Whether or not it is trainable (if weight / bias provided).
  * @param name The unique name of the model.
  * @return A model that can apply scaled dot product attention compute.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int upcast, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int flags, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
 
 /** @} */
 
