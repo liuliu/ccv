@@ -152,7 +152,58 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_encode_cmul(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
-			assert(0);
+			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
+			const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
+			ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+			int indices[2];
+			int nd = ccv_nnc_tensor_nd(a->info.dim);
+			assert(nd = ccv_nnc_tensor_nd(b->info.dim));
+			assert(nd = ccv_nnc_tensor_nd(c->info.dim));
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				[inputTensors addObject:mps_input_a];
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				[inputShapedTypes addObject:mps_a_shape];
+				MPSGraphTensor* mps_input_b;
+				MPSGraphTensor* mps_b = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_b);
+				[inputTensors addObject:mps_input_b];
+				MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
+				[inputShapedTypes addObject:mps_b_shape];
+				int i;
+				// Reshape to [..., n / 2, 2]
+				NSMutableArray<NSNumber*>* a_shape = [NSMutableArray new];
+				for (i = 0; i < nd - 1; i++)
+					[a_shape addObject:@(a->info.dim[i])];
+				[a_shape addObject: @(a->info.dim[nd - 1] / 2)];
+				[a_shape addObject: @2];
+				mps_a = [graph reshapeTensor:mps_a withShape:a_shape name:nil];
+				[a_shape release];
+				NSArray<MPSGraphTensor*>* mps_a_splits = [graph splitTensor:mps_a numSplits:2 axis:nd name:nil];
+				NSMutableArray<NSNumber*>* b_shape = [NSMutableArray new];
+				for (i = 0; i < nd - 1; i++)
+					[b_shape addObject:@(b->info.dim[i])];
+				[b_shape addObject: @(b->info.dim[nd - 1] / 2)];
+				[b_shape addObject: @2];
+				mps_b = [graph reshapeTensor:mps_b withShape:b_shape name:nil];
+				[b_shape release];
+				NSArray<MPSGraphTensor*>* mps_b_splits = [graph splitTensor:mps_b numSplits:2 axis:nd name:nil];
+				MPSGraphTensor* mps_c_0 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+				MPSGraphTensor* mps_c_1 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] name:nil];
+				NSMutableArray<NSNumber*>* c_shape = [NSMutableArray new];
+				for (i = 0; i < nd; i++)
+					[c_shape addObject:@(c->info.dim[i])];
+				MPSGraphTensor* mps_c = [graph reshapeTensor:[graph concatTensor:mps_c_0 withTensor:mps_c_1 dimension:nd name:nil] withShape:c_shape name:nil];
+				[resultTensors addObject:mps_c];
+				[c_shape release];
+			});
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			MPSGraphTensorData* data_b = ccv_nnc_mps_graph_tensor_data(b, b->info.dim, b->stride);
+			MPSGraphTensorData* data[] = {data_a, data_b};
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

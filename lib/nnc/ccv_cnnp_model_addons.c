@@ -3861,7 +3861,7 @@ typedef struct {
 	float scale;
 	int is_causal;
 	int has_attn_mask;
-	int upcast;
+	int flags;
 	int fused_unify_head_weights;
 	int no_bias;
 } ccv_cnnp_model_scaled_dot_product_attention_t;
@@ -3889,7 +3889,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.cmd = CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD;
 	cmd.info.scaled_dot_product_attention.scale = self->scale;
 	cmd.info.scaled_dot_product_attention.is_causal = self->is_causal;
-	cmd.info.scaled_dot_product_attention.upcast = self->upcast;
+	cmd.info.scaled_dot_product_attention.flags = self->flags;
 	ccv_nnc_tensor_param_t output_params[3];
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_tensor_symbol_t saved_softmax_lse;
@@ -3976,7 +3976,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_i
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int upcast, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int flags, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_scaled_dot_product_attention_t* const model_scaled_dot_product_attention = (ccv_cnnp_model_scaled_dot_product_attention_t*)cccalloc(1, sizeof(ccv_cnnp_model_scaled_dot_product_attention_t));
 	model_scaled_dot_product_attention->super.isa = fused_unify_head_weights ? &ccv_cnnp_scaled_dot_product_attention_fused_isa : &ccv_cnnp_scaled_dot_product_attention_isa;
@@ -3992,7 +3992,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 	model_scaled_dot_product_attention->scale = scale;
 	model_scaled_dot_product_attention->is_causal = is_causal;
 	model_scaled_dot_product_attention->has_attn_mask = has_attn_mask;
-	model_scaled_dot_product_attention->upcast = upcast;
+	model_scaled_dot_product_attention->flags = flags;
 	model_scaled_dot_product_attention->fused_unify_head_weights = fused_unify_head_weights;
 	model_scaled_dot_product_attention->no_bias = no_bias;
 	return (ccv_cnnp_model_t*)model_scaled_dot_product_attention;
@@ -4001,5 +4001,5 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_scaled_dot_product_attention_t* const self = (const ccv_cnnp_model_scaled_dot_product_attention_t*)super;
-	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->upcast, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->flags, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
 }

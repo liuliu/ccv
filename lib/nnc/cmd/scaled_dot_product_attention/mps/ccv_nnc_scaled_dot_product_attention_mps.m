@@ -166,7 +166,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.alpha = cmd.info.scaled_dot_product_attention.scale,
 			.batched = (attention_is_batched ? 1 : 0),
 			.masked = (attn_mask != NULL ? 1 : 0),
-			.upcast = cmd.info.scaled_dot_product_attention.upcast,
+			.upcast = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_32F),
 
 			.batch_dims_q = { 0 },
 			.batch_dims_mask = { 0 },
