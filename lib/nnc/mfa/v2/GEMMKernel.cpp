@@ -448,7 +448,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
 )";
 
   if (useBias) {
-    if (true) { // descriptor.preferAsyncLoad) {
+    if (descriptor.preferAsyncLoad) {
       source += "\n";
       source += "#define USE_BIAS_ASYNC_COND false\n";
     } else {
@@ -770,7 +770,7 @@ for (uint k = ASYNC_ITERATIONS_START; k < K; k += K_group) {
   
   // Add the final closing brace of the Metal function.
   source += "}\n";
-  
+
   // Compile the shader source.
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);

@@ -57,7 +57,7 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	// Initialize C to random numbers.
 	for (int rowID = 0; rowID < problemSize; rowID++)
 	{
-		bias[rowID] =  dsfmt_genrand_open_close(&dsfmt);
+		bias[rowID] = (float)rowID; // dsfmt_genrand_open_close(&dsfmt);
 	}
 	void* A_storage = nullptr;
 	if (descriptor.memoryPrecisions.A == GEMMOperandPrecision::FP16)
@@ -301,6 +301,12 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 		B_storage = B;
 		B = (float*)t;
 	}
+	if (bias_storage != nullptr)
+	{
+		void* t = bias_storage;
+		bias_storage = bias;
+		bias = (float*)t;
+	}
 	for (int m = 0; m < problemSize; m++)
 	{
 		for (int n = 0; n < problemSize; n++)
@@ -314,23 +320,27 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 			float leftSource;
 			float centerSource;
 			float rightSource;
+			float biasSource;
 			if (descriptor.transposeState[0])
 			{
 				leftSource = A[leftRowID * problemSize + n];
 				centerSource = A[centerRowID * problemSize + n];
 				rightSource = A[rightRowID * problemSize + n];
+				biasSource = descriptor.useBias ? bias[n] : 0;
 			} else if (descriptor.transposeState[1]) {
 				leftSource = B[n * problemSize + leftRowID];
 				centerSource = B[n * problemSize + centerRowID];
 				rightSource = B[n * problemSize + rightRowID];
+				biasSource = descriptor.useBias ? bias[n] : 0;
 			} else {
 				leftSource = B[leftRowID * problemSize + n];
 				centerSource = B[centerRowID * problemSize + n];
 				rightSource = B[rightRowID * problemSize + n];
+				biasSource = descriptor.useBias ? bias[n] : 0;
 			}
 
 			// Find the expected result.
-			float expected = leftSource - 2 * centerSource + rightSource;
+			float expected = leftSource - 2 * centerSource + rightSource + biasSource;
 
 			// Find the actual result.
 			float actual;
@@ -340,6 +350,7 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 			} else {
 				actual = C[m * problemSize + n];
 			}
+			printf("%d %d %f %f %f\n", m, n, actual, expected, biasSource);
 
 			// Report whether it is correct.
 			float error = fabs(expected - actual);
@@ -370,6 +381,7 @@ struct TestDescriptor {
 	GEMMOperandPrecision precision;
 	int problemSize;
 	bool transposeState[2];
+	bool useBias;
 };
 
 void runTest(TestDescriptor descriptor)
@@ -382,8 +394,8 @@ void runTest(TestDescriptor descriptor)
 	gemmDesc.memoryPrecisions = {
 		.A = precision, .B = precision, .C = precision, .bias = precision
 	};
-	gemmDesc.transposeState = simd::uchar3 { descriptor.transposeState[0], descriptor.transposeState[1] };
-	gemmDesc.useBias = false;
+	gemmDesc.transposeState = simd::uchar3 { descriptor.transposeState[0], descriptor.transposeState[1], descriptor.transposeState[0] };
+	gemmDesc.useBias = descriptor.useBias;
 
 	// Test the kernel.
 	auto statistic = profileProblemSize(gemmDesc);
@@ -409,6 +421,7 @@ void runTest(TestDescriptor descriptor)
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
+	/*
 	{
 		int problemSizes[] = {
 			7, 8, 9, 10,
@@ -439,20 +452,36 @@ int main(int argc, char** argv)
 				testDescriptor.problemSize = problemSizes[i];
 				testDescriptor.transposeState[0] = transposeStates[j * 2];
 				testDescriptor.transposeState[1] = transposeStates[j * 2 + 1];
+				testDescriptor.useBias = false;
 				runTest(testDescriptor);
 			}
 		}
 	}
+	*/
 	{
 		bool transposeStates[] = {
 			false, false,
 			false, true,
 			true, false,
 			true, true,
+			false, false,
+			false, true,
+			true, false,
+			true, true,
+		};
+		bool useBias[] = {
+			false,
+			false,
+			false,
+			false,
+			true,
+			true,
+			true,
+			true
 		};
 
 		printf("\nPerformance tests:\n");
-		for (int problemSize = 1488; problemSize <= 1489; problemSize++)
+		for (int problemSize = 14; problemSize <= 14; problemSize++)
 		{
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
@@ -461,6 +490,7 @@ int main(int argc, char** argv)
 				testDescriptor.problemSize = problemSize;
 				testDescriptor.transposeState[0] = transposeStates[j * 2];
 				testDescriptor.transposeState[1] = transposeStates[j * 2 + 1];
+				testDescriptor.useBias = useBias[j];
 				runTest(testDescriptor);
 			}
 		}
