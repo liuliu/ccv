@@ -203,7 +203,7 @@ struct GEMMKernelDescriptor {
   /// Mapping from the Swift implementation:
   /// - A -> transposeState[0]
   /// - B -> transposeState[1]
-  /// - bias -> transposeState[3]
+  /// - bias -> transposeState[2]
   simd::uchar3 transposeState;
 
   /// Required. Whether it contains the bias.

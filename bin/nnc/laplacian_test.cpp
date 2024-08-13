@@ -21,14 +21,15 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	float* A = (float*)ccmalloc(sizeof(float) * problemSize * problemSize);
 	float* B = (float*)ccmalloc(sizeof(float) * problemSize * problemSize);
 	float* C = (float*)ccmalloc(sizeof(float) * problemSize * problemSize);
-	float* previousOperandC = (float*)ccmalloc(sizeof(float) * problemSize * problemSize);
+	float* bias = (float*)ccmalloc(sizeof(float) * problemSize);
 
 	// Initialize A as the 2nd-order periodic Laplacian.
 	int i, j;
 	for (i = 0; i < problemSize; i++)
-	{
 		for (j = 0; j < problemSize; j++)
 			A[i * problemSize + j] = 0;
+	for (i = 0; i < problemSize; i++)
+	{
 		const int diagonalAddress = i * problemSize + i;
 		A[diagonalAddress] = -2;
 
@@ -56,11 +57,34 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	// Initialize C to random numbers.
 	for (int rowID = 0; rowID < problemSize; rowID++)
 	{
-		for (int columnID = 0; columnID < problemSize; columnID++)
-		{
-			const int address = rowID * problemSize + columnID;
-			previousOperandC[address] =  dsfmt_genrand_open_close(&dsfmt);
-		}
+		bias[rowID] =  dsfmt_genrand_open_close(&dsfmt);
+	}
+	void* A_storage = nullptr;
+	if (descriptor.memoryPrecisions.A == GEMMOperandPrecision::FP16)
+	{
+		A_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize * problemSize);
+		ccv_float_to_half_precision(A, (uint16_t*)A_storage, problemSize * problemSize);
+		void* t = A_storage;
+		A_storage = A;
+		A = (float*)t;
+	}
+	void* B_storage = nullptr;
+	if (descriptor.memoryPrecisions.B == GEMMOperandPrecision::FP16)
+	{
+		B_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize * problemSize);
+		ccv_float_to_half_precision(B, (uint16_t*)B_storage, problemSize * problemSize);
+		void* t = B_storage;
+		B_storage = B;
+		B = (float*)t;
+	}
+	void* bias_storage = nullptr;
+	if (descriptor.memoryPrecisions.bias == GEMMOperandPrecision::FP16)
+	{
+		bias_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize);
+		ccv_float_to_half_precision(bias, (uint16_t*)bias_storage, problemSize);
+		void* t = bias_storage;
+		bias_storage = bias;
+		bias = (float*)t;
 	}
 
 	// Since the Laplacian is symmetric, we swap roles of the matrices to test
@@ -88,9 +112,10 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 		// Generate the kernel.
 		auto pipelineValue = shaderCache.findKernel<GEMMKernel, GEMMDescriptor, GEMMKernelDescriptor>(descriptor, device.get(), dprops);
 		occupancy = pipelineValue->pipeline->maxTotalThreadsPerThreadgroup();
-		NS::SharedPtr<MTL::Buffer> bufferA = NS::TransferPtr(device->newBuffer(A, sizeof(float) * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
-		NS::SharedPtr<MTL::Buffer> bufferB = NS::TransferPtr(device->newBuffer(B, sizeof(float) * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
-		NS::SharedPtr<MTL::Buffer> bufferC = NS::TransferPtr(device->newBuffer(previousOperandC, sizeof(float) * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
+		NS::SharedPtr<MTL::Buffer> bufferA = NS::TransferPtr(device->newBuffer(A, descriptor.memoryPrecisions.A.size() * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
+		NS::SharedPtr<MTL::Buffer> bufferB = NS::TransferPtr(device->newBuffer(B, descriptor.memoryPrecisions.B.size() * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
+		NS::SharedPtr<MTL::Buffer> bufferC = NS::TransferPtr(device->newBuffer(C, descriptor.memoryPrecisions.C.size() * problemSize * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
+		NS::SharedPtr<MTL::Buffer> bufferBias = NS::TransferPtr(device->newBuffer(bias, descriptor.memoryPrecisions.bias.size() * problemSize, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
 
 		// load  = directAccessCondition,
 		// store = false
@@ -176,6 +201,14 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 			encoder->setBuffer(bufferA.get(), 0, 0);
 			encoder->setBuffer(bufferB.get(), 0, 1);
 			encoder->setBuffer(bufferC.get(), 0, 2);
+			encoder->useResource(bufferA.get(), MTL::ResourceUsageRead);
+			encoder->useResource(bufferB.get(), MTL::ResourceUsageRead);
+			encoder->useResource(bufferC.get(), MTL::ResourceUsageWrite);
+			if (descriptor.useBias)
+			{
+				encoder->setBuffer(bufferBias.get(), 0, 3);
+				encoder->useResource(bufferBias.get(), MTL::ResourceUsageRead);
+			}
 			for (int j = 0; j < duplicatedCommandCount; j++)
 			{
 				auto ceilDivide =
@@ -253,6 +286,18 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	}
 	// Check the results.
 	int errorCount = 0;
+	if (A_storage != nullptr)
+	{
+		void* t = A_storage;
+		A_storage = A;
+		A = (float*)t;
+	}
+	if (B_storage != nullptr)
+	{
+		void* t = B_storage;
+		B_storage = B;
+		B = (float*)t;
+	}
 	for (int m = 0; m < problemSize; m++)
 	{
 		for (int n = 0; n < problemSize; n++)
@@ -308,7 +353,13 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	ccfree(A);
 	ccfree(B);
 	ccfree(C);
-	ccfree(previousOperandC);
+	ccfree(bias);
+	if (A_storage != nullptr)
+		ccfree(A_storage);
+	if (B_storage != nullptr)
+		ccfree(B_storage);
+	if (bias_storage != nullptr)
+		ccfree(bias_storage);
 	return std::make_pair(maxGFLOPS, occupancy);
 }
 
@@ -326,7 +377,7 @@ void runTest(TestDescriptor descriptor)
 	unsigned int n = (unsigned int)descriptor.problemSize;
 	gemmDesc.matrixDimensions = simd::uint3 { n, n, n };
 	gemmDesc.memoryPrecisions = {
-		.A = precision, .B = precision, .C = precision
+		.A = precision, .B = precision, .C = precision, .bias = precision
 	};
 	gemmDesc.transposeState = simd::uchar3 { descriptor.transposeState[0], descriptor.transposeState[1] };
 	gemmDesc.useBias = false;
@@ -403,9 +454,9 @@ int main(int argc, char** argv)
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
 				TestDescriptor testDescriptor = TestDescriptor();
-				testDescriptor.precision = GEMMOperandPrecision::FP32;
+				testDescriptor.precision = GEMMOperandPrecision::FP16;
 				testDescriptor.problemSize = problemSize;
-				testDescriptor.transposeState[2] = transposeStates[j * 2];
+				testDescriptor.transposeState[0] = transposeStates[j * 2];
 				testDescriptor.transposeState[1] = transposeStates[j * 2 + 1];
 				runTest(testDescriptor);
 			}
