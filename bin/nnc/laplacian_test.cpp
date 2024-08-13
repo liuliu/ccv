@@ -99,6 +99,9 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 		float* t = A;
 		A = B;
 		B = t;
+		void* t_storage = A_storage;
+		A_storage = B_storage;
+		B_storage = t_storage;
 	}
 
 	// Multiply A with B.
