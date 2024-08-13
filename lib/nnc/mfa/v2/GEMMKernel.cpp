@@ -500,6 +500,7 @@ kernel void gemm(device MEMORY_NAME_A *A [[buffer(0)]],
       simdgroup_matrix_storage<REGISTER_NAME_BIAS> bias;
       bias.BIAS_LOAD(
         bias_src, 0, ushort2(m, 0));
+      bias.thread_elements()[0][1] = bias.thread_elements()[0][0];
 
       #pragma clang loop unroll(full)
       for (ushort n = 0; n < REGISTER_N; n += 8) {

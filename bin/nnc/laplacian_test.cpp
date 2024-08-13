@@ -57,7 +57,7 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 	// Initialize C to random numbers.
 	for (int rowID = 0; rowID < problemSize; rowID++)
 	{
-		bias[rowID] = (float)rowID; // dsfmt_genrand_open_close(&dsfmt);
+		bias[rowID] = dsfmt_genrand_open_close(&dsfmt);
 	}
 	void* A_storage = nullptr;
 	if (descriptor.memoryPrecisions.A == GEMMOperandPrecision::FP16)
@@ -350,7 +350,6 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 			} else {
 				actual = C[m * problemSize + n];
 			}
-			printf("%d %d %f %f %f\n", m, n, actual, expected, biasSource);
 
 			// Report whether it is correct.
 			float error = fabs(expected - actual);
@@ -481,7 +480,7 @@ int main(int argc, char** argv)
 		};
 
 		printf("\nPerformance tests:\n");
-		for (int problemSize = 14; problemSize <= 14; problemSize++)
+		for (int problemSize = 1488; problemSize <= 1489; problemSize++)
 		{
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
