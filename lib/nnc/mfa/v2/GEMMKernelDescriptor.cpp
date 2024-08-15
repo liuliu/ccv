@@ -72,45 +72,36 @@ std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::get
   
   // Branch on whether the allocation is large / target occupancy is low.
   if (useLargeAllocation) {
-    auto idealGroups = coreCount * 6;
-    if (actualGroups <= idealGroups) {
-      return std::make_pair(simd::ushort3 { 32, 32, 32 }, std::nullopt);
-    } else {
-      auto blockDimensions = simd::ushort3 { 48, 48, 24 };
+    // Remove CoreCount based block size logic, per https://github.com/philipturner/ccv/commit/e8b0682b4344410eb43cdafb9a9c721ba7fdb726
+    auto blockDimensions = simd::ushort3 { 48, 48, 24 };
       
-      // This is verified to be optimal for:
-      // - (memA, memB, memC) = (FP32, FP32, FP32)
-      // - (memA, memB, memC) = (FP16, FP16, FP32)
-      // - (memA, memB, memC) = (FP16, FP32, FP32)
-      // - (memA, memB, memC) = (FP16, FP32, FP16)
-      if (!transposeState[0] && !transposeState[1]) {
-        return std::make_pair(blockDimensions, simd::ushort3 { 24, 48, 48 });
-      } else if (!transposeState[0] && transposeState[1]) {
-        if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
-          return std::make_pair(blockDimensions, simd::ushort3 { 24, 28, 48 });
-        } else {
-          return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
-        }
-      } else if (transposeState[0] && !transposeState[1]) {
-        if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
-          return std::make_pair(blockDimensions, simd::ushort3 { 52, 48, 48 });
-        } else {
-          return std::make_pair(blockDimensions, simd::ushort3 { 56, 48, 48 });
-        }
+    // This is verified to be optimal for:
+    // - (memA, memB, memC) = (FP32, FP32, FP32)
+    // - (memA, memB, memC) = (FP16, FP16, FP32)
+    // - (memA, memB, memC) = (FP16, FP32, FP32)
+    // - (memA, memB, memC) = (FP16, FP32, FP16)
+    if (!transposeState[0] && !transposeState[1]) {
+      return std::make_pair(blockDimensions, simd::ushort3 { 24, 48, 48 });
+    } else if (!transposeState[0] && transposeState[1]) {
+      if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
+        return std::make_pair(blockDimensions, simd::ushort3 { 24, 28, 48 });
       } else {
-        if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
-          return std::make_pair(blockDimensions, simd::ushort3 { 52, 24, 48 });
-        } else {
-          return std::make_pair(blockDimensions, simd::ushort3 { 56, 24, 48 });
-        }
+        return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
+      }
+    } else if (transposeState[0] && !transposeState[1]) {
+      if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
+        return std::make_pair(blockDimensions, simd::ushort3 { 52, 48, 48 });
+      } else {
+        return std::make_pair(blockDimensions, simd::ushort3 { 56, 48, 48 });
+      }
+    } else {
+      if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
+        return std::make_pair(blockDimensions, simd::ushort3 { 52, 24, 48 });
+      } else {
+        return std::make_pair(blockDimensions, simd::ushort3 { 56, 24, 48 });
       }
     }
   } else {
-    auto idealGroups = coreCount * 9;
-    if (actualGroups <= idealGroups) {
-      return std::make_pair(simd::ushort3 { 32, 32, 32 }, std::nullopt);
-    } else {
-      return std::make_pair(simd::ushort3 { 48, 48, 32 }, std::nullopt);
-    }
+    return std::make_pair(simd::ushort3 { 48, 48, 32 }, std::nullopt);
   }
 }

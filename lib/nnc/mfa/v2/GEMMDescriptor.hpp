@@ -36,6 +36,8 @@ struct GEMMDescriptor {
   
   simd::uchar3 transposeState;
 
+  bool loadPreviousC;
+
   bool useBias;
 
   bool operator==(const GEMMDescriptor& rhs) const;

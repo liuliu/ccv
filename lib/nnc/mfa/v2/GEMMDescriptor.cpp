@@ -28,7 +28,8 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
     combine_32(seed, hash.leadingDimensions.value()[2]);
   }
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.loadPreviousC, hash.useBias, 0, 0 }));
   if (hash.registerPrecisionC.has_value()) {
     combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
   }
@@ -103,7 +104,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     constants->setConstantValue(&leadingDimensionB, MTL::DataTypeUInt, 6);
     constants->setConstantValue(&leadingDimensionC, MTL::DataTypeUInt, 7);
 
-    bool loadPreviousC = false;
+    bool loadPreviousC = this->loadPreviousC;
     constants->setConstantValue(&loadPreviousC, MTL::DataTypeBool, 10);
     
     NS::String* swiftName = NS::String::string("gemm", NS::UTF8StringEncoding);

@@ -67,6 +67,13 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 		void* t = A_storage;
 		A_storage = A;
 		A = (float*)t;
+	} else if (descriptor.memoryPrecisions.A == GEMMOperandPrecision::BF16) {
+		A_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize * problemSize);
+		for (int i = 0; i < problemSize * problemSize; i++)
+			((uint16_t*)A_storage)[i] = ((uint16_t*)A)[i * 2 + 1];
+		void* t = A_storage;
+		A_storage = A;
+		A = (float*)t;
 	}
 	void* B_storage = nullptr;
 	if (descriptor.memoryPrecisions.B == GEMMOperandPrecision::FP16)
@@ -76,12 +83,26 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 		void* t = B_storage;
 		B_storage = B;
 		B = (float*)t;
+	} else if (descriptor.memoryPrecisions.B == GEMMOperandPrecision::BF16) {
+		B_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize * problemSize);
+		for (int i = 0; i < problemSize * problemSize; i++)
+			((uint16_t*)B_storage)[i] = ((uint16_t*)B)[i * 2 + 1];
+		void* t = B_storage;
+		B_storage = B;
+		B = (float*)t;
 	}
 	void* bias_storage = nullptr;
 	if (descriptor.memoryPrecisions.bias == GEMMOperandPrecision::FP16)
 	{
 		bias_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize);
 		ccv_float_to_half_precision(bias, (uint16_t*)bias_storage, problemSize);
+		void* t = bias_storage;
+		bias_storage = bias;
+		bias = (float*)t;
+	} else if (descriptor.memoryPrecisions.bias == GEMMOperandPrecision::BF16) {
+		bias_storage = (uint16_t*)ccmalloc(sizeof(uint16_t) * problemSize);
+		for (int i = 0; i < problemSize; i++)
+			((uint16_t*)bias_storage)[i] = ((uint16_t*)bias)[i * 2 + 1];
 		void* t = bias_storage;
 		bias_storage = bias;
 		bias = (float*)t;
@@ -257,6 +278,12 @@ std::pair<int, int> profileProblemSize(GEMMDescriptor descriptor)
 							uint16_t value = ((uint16_t*)raw)[address];
 							ccv_half_precision_to_float(&value, &entry32, 1);
 							break;
+						}
+						case GEMMOperandPrecision::BF16: {
+							uint16_t value[2];
+							value[0] = 0;
+							value[1] = ((uint16_t*)raw)[address];
+							entry32 = *(float*)value;
 						}
 					}
 					C[address] = entry32;
@@ -483,7 +510,7 @@ int main(int argc, char** argv)
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
 				TestDescriptor testDescriptor = TestDescriptor();
-				testDescriptor.precision = GEMMOperandPrecision::FP16;
+				testDescriptor.precision = GEMMOperandPrecision::BF16;
 				testDescriptor.problemSize = problemSize;
 				testDescriptor.transposeState[0] = transposeStates[j * 2];
 				testDescriptor.transposeState[1] = transposeStates[j * 2 + 1];
