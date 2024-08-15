@@ -357,8 +357,7 @@ source += R"(
 }
 
 std::string GEMMKernel::createConstants() const noexcept {
-  return R"(
-
+  std::string constants = R"(
 // Dimensions of each matrix.
 // - Limitations to matrix size:
 //   - 2^32 in each dimension (M/N/K).
@@ -409,7 +408,13 @@ constant uint bias_batch_stride [[function_constant(18)]];
 // Whether each matrix is transposed.
 constant bool A_trans = {{TRANSPOSE_STATE_A}};
 constant bool B_trans = {{TRANSPOSE_STATE_B}};
+)";
+  if (useBias) {
+    constants += R"(
 constant bool bias_trans = {{TRANSPOSE_STATE_BIAS}};
+)";
+  }
+  constants += R"(
 
 // Define the memory layout of the matrix block.
 constant ushort M_group = {{BLOCK_DIMENSIONS_M}};
@@ -436,6 +441,7 @@ constant ushort M_shift = (M < M_group) ? 0 : {{REGISTER_M}} - M_remainder;
 constant ushort N_shift = (N < N_group) ? 0 : {{REGISTER_N}} - N_remainder;
 
 )";
+  return constants;
 }
 
 void GEMMKernel::createUtilities(CodeWriter *const source) const noexcept {
@@ -534,7 +540,7 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
     } else {
 )";
   if (useBias) {
-    if (preferAsyncLoad) {
+    if (true) { // TODO: figure why on M3 / M4 this is faster. preferAsyncLoad) {
       source->SetValue("DIRECT_BIAS_ACCESS_CONDITION", "false");
     } else {
       source->SetValue("DIRECT_BIAS_ACCESS_CONDITION", "(M >= M_group) && (N >= N_group)");

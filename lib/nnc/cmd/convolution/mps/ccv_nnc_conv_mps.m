@@ -256,10 +256,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.A_trans = 0,
 					.B_trans = 1,
 					.D_trans = 0,
-					.alpha = (float)1.0,
-					.beta = (float)0.0,
 					.batched = is_batched,
-					.fused_activation_function = 0,
 					.fused_bias = (bias ? 1 : 0),
 
 					.batch_dims_a = { 0 },
@@ -275,10 +272,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.A_trans = 0,
 					.B_trans = 0,
 					.D_trans = 1,
-					.alpha = (float)1.0,
-					.beta = (float)0.0,
 					.batched = is_batched,
-					.fused_activation_function = 0,
 					.fused_bias = (bias ? 1 : 0),
 
 					.batch_dims_a = { 0 },

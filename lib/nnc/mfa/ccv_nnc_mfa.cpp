@@ -91,12 +91,6 @@ void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::co
 }
 
 template <>
-void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
 void mfa::cache<mfa::normalization::hash, mfa::normalization::pipeline>::prepare(mfa::context* context, mfa::normalization::hash hash)
 {
   _mfa_cache_prepare(&map, context, hash);
