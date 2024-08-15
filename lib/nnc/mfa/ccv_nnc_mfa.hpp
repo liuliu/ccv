@@ -71,6 +71,7 @@ extern "C" {
 #endif // __cplusplus
 
 ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
+void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context);
 void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* context);
 uint8_t ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
 uint16_t ccv_nnc_mfa_context_log_level(ccv_nnc_mfa_context_t* context);

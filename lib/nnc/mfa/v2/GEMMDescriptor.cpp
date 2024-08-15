@@ -9,6 +9,7 @@ bool GEMMDescriptor::operator==(const GEMMDescriptor& rhs) const {
   (batchDimension == rhs.batchDimension) &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
   simd_all(leadingDimensions.value_or(simd::uint3(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint3(UINT32_MAX))) &&
+  simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
@@ -27,6 +28,12 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
     combine_32(seed, hash.leadingDimensions.value()[1]);
     combine_32(seed, hash.leadingDimensions.value()[2]);
   }
+  if (hash.batchStrides.has_value()) {
+    combine_32(seed, hash.batchStrides.value()[0]);
+    combine_32(seed, hash.batchStrides.value()[1]);
+    combine_32(seed, hash.batchStrides.value()[2]);
+    combine_32(seed, hash.batchStrides.value()[3]);
+  }
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
   combine_32(seed, pack_32(simd::uchar4 { hash.loadPreviousC, hash.useBias, 0, 0 }));
@@ -44,10 +51,8 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   [=](GEMMKernelDescriptor descriptor) -> GEMMKernel* {
     auto iterator = libraryCache->find(descriptor);
     if (iterator != libraryCache->end()) {
-      std::cout << "Library cache hit." << std::endl;
       return iterator->second.get();
     } else {
-      std::cout << "Library cache miss." << std::endl;
       GEMMKernel* kernel = new GEMMKernel(descriptor, device);
       (*libraryCache)[descriptor] = std::unique_ptr<GEMMKernel>(kernel);
       return kernel;
@@ -57,7 +62,6 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   // WARNING: The owner must explicitly retain the compute pipeline.
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
-    std::cout << "Pipeline cache miss." << std::endl;
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
@@ -106,7 +110,19 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
 
     bool loadPreviousC = this->loadPreviousC;
     constants->setConstantValue(&loadPreviousC, MTL::DataTypeBool, 10);
-    
+
+    bool batched = this->batchDimension > 1;
+    constants->setConstantValue(&batched, MTL::DataTypeBool, 11);
+    simd::uint4 batchStrides = this->batchStrides.value_or(simd::uint4(0));
+	auto batchStrideA = batchStrides[0];
+	auto batchStrideB = batchStrides[1];
+	auto batchStrideC = batchStrides[2];
+	auto batchStrideBias = batchStrides[3];
+    constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, 15);
+    constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, 16);
+    constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, 17);
+    constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, 18);
+
     NS::String* swiftName = NS::String::string("gemm", NS::UTF8StringEncoding);
     NS::Error* error = nil;
     

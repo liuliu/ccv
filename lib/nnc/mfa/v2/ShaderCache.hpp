@@ -70,6 +70,10 @@ public:
     pipelineCache->map[descriptor] = std::unique_ptr<PipelineValue<Kernel>>(result.second);
     return result.second;
   }
+
+  void evict() noexcept {
+    pipelineCache.clear();
+  }
 };
 
 #endif

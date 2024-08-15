@@ -305,6 +305,18 @@ source += R"(
                  ushort sidx [[simdgroup_index_in_threadgroup]],
                  ushort lane_id [[thread_index_in_simdgroup]])
 {
+  if (batched) {
+    A = A + A_batch_stride * gid.z;
+    B = B + B_batch_stride * gid.z;
+    C = C + C_batch_stride * gid.z;
+)";
+  if (useBias) {
+    source += R"(
+    bias = bias + bias_batch_stride * gid.z;
+)";
+  }
+source += R"(
+  }
   ushort2 sid(sidx % {{SPLITS_N}}, sidx / {{SPLITS_N}});
   ushort2 morton_offset = morton_order(lane_id);
   
@@ -385,6 +397,14 @@ constant uint C_leading_dimension [[function_constant(7)]];
 
 // Whether to load the previous value of C, and add it to the accumulator.
 constant bool load_previous_C [[function_constant(10)]];
+
+// Specify the batch / batch strides at PSO creation time.
+constant bool batched [[function_constant(11)]];
+
+constant uint A_batch_stride [[function_constant(15)]];
+constant uint B_batch_stride [[function_constant(16)]];
+constant uint C_batch_stride [[function_constant(17)]];
+constant uint bias_batch_stride [[function_constant(18)]];
 
 // Whether each matrix is transposed.
 constant bool A_trans = {{TRANSPOSE_STATE_A}};
