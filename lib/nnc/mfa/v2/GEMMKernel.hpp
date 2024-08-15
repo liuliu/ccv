@@ -37,6 +37,8 @@ struct GEMMKernel {
 
   bool preferAsyncStore;
 
+  bool useBias;
+
   uint16_t registerM;
 
   uint16_t registerN;

@@ -67,8 +67,8 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
 
-	auto chooseLeadingDimension =
-	[=](unsigned int specifiedLeading, bool transposeState, unsigned int untransposedRows, unsigned int untransposedColumns) -> unsigned int {
+    auto chooseLeadingDimension =
+    [=](unsigned int specifiedLeading, bool transposeState, unsigned int untransposedRows, unsigned int untransposedColumns) -> unsigned int {
       unsigned int expectedLeading;
       if (transposeState) {
         expectedLeading = untransposedRows;
@@ -191,7 +191,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     // the cache takes ownership, and the pointer doesn't become a zombie
     // object.
     PipelineValue<GEMMKernel>* output = new PipelineValue<GEMMKernel> { kernel, pipeline };
-	return std::make_pair(kernelDesc, output);
+    return std::make_pair(kernelDesc, output);
   } else {
     auto kernelDesc = GEMMKernelDescriptor(blockDimensionsAndPaddedBlockDimensions.first, this->memoryPrecisions, blockDimensionsAndPaddedBlockDimensions.second, preferAsyncLoad, preferAsyncStore.value(), registerPrecisions, splits, this->transposeState, this->useBias);
     struct Candidate {

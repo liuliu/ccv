@@ -83,15 +83,15 @@ std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::get
       // - (memA, memB, memC) = (FP16, FP16, FP32)
       // - (memA, memB, memC) = (FP16, FP32, FP32)
       // - (memA, memB, memC) = (FP16, FP32, FP16)
-      if (transposeState[0] == false && transposeState[1] == false) {
-        return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
-      } else if (transposeState[0] == false && transposeState[1] == true) {
+      if (!transposeState[0] && !transposeState[1]) {
+        return std::make_pair(blockDimensions, simd::ushort3 { 24, 48, 48 });
+      } else if (!transposeState[0] && transposeState[1]) {
         if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
           return std::make_pair(blockDimensions, simd::ushort3 { 24, 28, 48 });
         } else {
           return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
         }
-      } else if (transposeState[0] == true && transposeState[1] == false) {
+      } else if (transposeState[0] && !transposeState[1]) {
         if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
           return std::make_pair(blockDimensions, simd::ushort3 { 52, 48, 48 });
         } else {

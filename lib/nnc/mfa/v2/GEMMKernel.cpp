@@ -119,7 +119,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
   transposeState = descriptor.transposeState;
   preferAsyncLoad = descriptor.preferAsyncLoad;
   preferAsyncStore = descriptor.preferAsyncStore;
-  auto useBias = descriptor.useBias;
+  useBias = descriptor.useBias;
   threadgroupSize = 32 * splits[0] * splits[1];
   
   // Validate the correctness of register precisions.
@@ -248,6 +248,7 @@ std::string GEMMKernel::createSource() const noexcept {
   source.SetValue("MEMORY_NAME_A", memoryName('A'));
   source.SetValue("MEMORY_NAME_B", memoryName('B'));
   source.SetValue("MEMORY_NAME_C", memoryName('C'));
+  source.SetValue("MEMORY_NAME_BIAS", memoryName('S'));
   source.SetValue("REGISTER_NAME_A", registerName('A'));
   source.SetValue("REGISTER_NAME_B", registerName('B'));
   source.SetValue("REGISTER_NAME_C", registerName('C'));
@@ -283,6 +284,13 @@ std::string GEMMKernel::createSource() const noexcept {
 kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  device {{MEMORY_NAME_B}} *B [[buffer(1)]],
                  device {{MEMORY_NAME_C}} *C [[buffer(2)]],
+)";
+  if (useBias) {
+    source += R"(
+                 device {{MEMORY_NAME_BIAS}} *bias [[buffer(3)]],
+)";
+  }
+source += R"(
                  threadgroup uchar *threadgroup_block [[threadgroup(0)]],
 
                  uint3 gid [[threadgroup_position_in_grid]],
@@ -521,7 +529,7 @@ void GEMMKernel::createLoadC(CodeWriter *source) const noexcept {
     // In the vanilla GEMM kernel, the extra storing code can be optimized
     // away at compile time. The compiler may allocate less registers, and
     // occupancy may be greater.
-	std::string output = "(M >= M_group) && (N >= N_group)";
+    std::string output = "(M >= M_group) && (N >= N_group)";
 
     // When accumulate is supported, there are overlapping writes. We must
     // sanitize the matrix edge with async copy. The optimization from

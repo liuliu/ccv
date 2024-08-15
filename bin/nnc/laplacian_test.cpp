@@ -483,7 +483,7 @@ int main(int argc, char** argv)
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
 				TestDescriptor testDescriptor = TestDescriptor();
-				testDescriptor.precision = GEMMOperandPrecision::FP16;
+				testDescriptor.precision = GEMMOperandPrecision::FP32;
 				testDescriptor.problemSize = problemSize;
 				testDescriptor.transposeState[0] = transposeStates[j * 2];
 				testDescriptor.transposeState[1] = transposeStates[j * 2 + 1];
