@@ -114,10 +114,10 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     bool batched = this->batchDimension > 1;
     constants->setConstantValue(&batched, MTL::DataTypeBool, 11);
     simd::uint4 batchStrides = this->batchStrides.value_or(simd::uint4(0));
-	auto batchStrideA = batchStrides[0];
-	auto batchStrideB = batchStrides[1];
-	auto batchStrideC = batchStrides[2];
-	auto batchStrideBias = batchStrides[3];
+    auto batchStrideA = batchStrides[0];
+    auto batchStrideB = batchStrides[1];
+    auto batchStrideC = batchStrides[2];
+    auto batchStrideBias = batchStrides[3];
     constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, 15);
     constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, 16);
     constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, 17);
