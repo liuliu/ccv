@@ -4,8 +4,6 @@
 #include <map>
 #include <sstream>
 
-namespace mfa {
-
 class CodeWriter {
  public:
   CodeWriter(std::string pad = std::string())
@@ -57,7 +55,5 @@ class CodeWriter {
   // Add ident padding (tab or space) based on ident level
   void AppendIdent(std::stringstream &stream);
 };
-
-} // namepsace mfa
 
 #endif

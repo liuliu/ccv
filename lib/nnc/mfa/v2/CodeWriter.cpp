@@ -2,8 +2,6 @@
 
 #include <assert.h>
 
-namespace mfa {
-
 void CodeWriter::operator+=(std::string text) {
   if (!ignore_ident_ && !text.empty()) AppendIdent(stream_);
 
@@ -51,4 +49,3 @@ void CodeWriter::AppendIdent(std::stringstream &stream) {
   }
 }
 
-} // namespace mfa

@@ -8,6 +8,7 @@ bool GEMMDescriptor::operator==(const GEMMDescriptor& rhs) const {
   return
   (batchDimension == rhs.batchDimension) &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
+  simd_all(leadingDimensions.value_or(simd::uint3(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint3(UINT32_MAX))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
@@ -21,6 +22,11 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
+  if (hash.leadingDimensions.has_value()) {
+    combine_32(seed, hash.leadingDimensions.value()[0]);
+    combine_32(seed, hash.leadingDimensions.value()[1]);
+    combine_32(seed, hash.leadingDimensions.value()[2]);
+  }
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   if (hash.registerPrecisionC.has_value()) {
@@ -60,6 +66,45 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
+
+	auto chooseLeadingDimension =
+	[=](unsigned int specifiedLeading, bool transposeState, unsigned int untransposedRows, unsigned int untransposedColumns) -> unsigned int {
+      unsigned int expectedLeading;
+      if (transposeState) {
+        expectedLeading = untransposedRows;
+      } else {
+        expectedLeading = untransposedColumns;
+      }
+
+      unsigned int actualLeading;
+      if (specifiedLeading > 0) {
+        if (specifiedLeading < expectedLeading) {
+          CCV_NNC_MFA_PRECONDITION(false && "Leading block dimension was too small.");
+        }
+        actualLeading = specifiedLeading;
+      } else {
+        actualLeading = expectedLeading;
+      }
+
+      return actualLeading;
+    };
+
+    auto leadingDimensionA = chooseLeadingDimension(
+      leadingDimensions.value_or(simd::uint3())[0], transposeState[0],
+      matrixDimensions[0], matrixDimensions[2]);
+    auto leadingDimensionB = chooseLeadingDimension(
+      leadingDimensions.value_or(simd::uint3())[1], transposeState[1],
+      matrixDimensions[2], matrixDimensions[1]);
+    auto leadingDimensionC = chooseLeadingDimension(
+      leadingDimensions.value_or(simd::uint3())[2], false,
+      matrixDimensions[0], matrixDimensions[1]);
+
+    constants->setConstantValue(&leadingDimensionA, MTL::DataTypeUInt, 5);
+    constants->setConstantValue(&leadingDimensionB, MTL::DataTypeUInt, 6);
+    constants->setConstantValue(&leadingDimensionC, MTL::DataTypeUInt, 7);
+
+    bool loadPreviousC = false;
+    constants->setConstantValue(&loadPreviousC, MTL::DataTypeBool, 10);
     
     NS::String* swiftName = NS::String::string("gemm", NS::UTF8StringEncoding);
     NS::Error* error = nil;

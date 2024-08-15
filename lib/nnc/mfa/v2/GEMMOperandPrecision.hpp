@@ -51,7 +51,7 @@ public:
   constexpr bool operator!=(const GEMMOperandPrecision &rhs) const { return value != rhs.value; }
 
   // The MSL keyword corresponding to the precision.
-  std::string name() {
+  std::string name() const noexcept {
     switch (value) {
       case FP32:
         return "float";
@@ -63,7 +63,7 @@ public:
   }
   
   // The size of the scalar, in bytes.
-  int64_t size() {
+  int64_t size() const noexcept {
     switch (value) {
       case FP32:
         return 4;

@@ -145,7 +145,7 @@ struct GEMMKernelDescriptor {
   /// - B.N -> paddedBlockDimensions[3]
   /// - C.M -> paddedBlockDimensions[4]
   /// - C.N -> paddedBlockDimensions[5]
-  std::optional<simd::ushort8> paddedBlockDimensions;
+  std::optional<simd::ushort3> leadingBlockDimensions;
   
   /// Required. Whether async copies will improve performance during the
   /// matrix multiplication loop.
@@ -214,13 +214,13 @@ struct GEMMKernelDescriptor {
   GEMMKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort8> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept;
+  GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept;
   
   /// Implementation of the block size selection heuristic.
   ///
   /// This function initializes the 'blockDimensions' and
   /// 'paddedBlockDimensions' properties.
-  static std::pair<simd::ushort3, std::optional<simd::ushort8>> getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept;
+  static std::pair<simd::ushort3, std::optional<simd::ushort3>> getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept;
 
   bool operator==(const GEMMKernelDescriptor& rhs) const;
 };

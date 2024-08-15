@@ -8,8 +8,8 @@ bool GEMMKernelDescriptor::operator==(const GEMMKernelDescriptor& rhs) const {
   return
   simd_all(blockDimensions == rhs.blockDimensions) &&
   memoryPrecisions == rhs.memoryPrecisions &&
-  paddedBlockDimensions.has_value() == rhs.paddedBlockDimensions.has_value() &&
-  simd_all(paddedBlockDimensions.value_or(simd::ushort8(UINT16_MAX)) == rhs.paddedBlockDimensions.value_or(simd::ushort8(UINT16_MAX))) &&
+  leadingBlockDimensions.has_value() == rhs.leadingBlockDimensions.has_value() &&
+  simd_all(leadingBlockDimensions.value_or(simd::ushort3(UINT16_MAX)) == rhs.leadingBlockDimensions.value_or(simd::ushort3(UINT16_MAX))) &&
   (preferAsyncLoad == rhs.preferAsyncLoad) &&
   (preferAsyncStore == rhs.preferAsyncStore) &&
   registerPrecisions == rhs.registerPrecisions &&
@@ -23,10 +23,8 @@ std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescript
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  if (hash.paddedBlockDimensions.has_value()) {
-    auto h = pack_128(simd_make_ushort8(hash.paddedBlockDimensions.value()));
-    combine_64(seed, h[0]);
-    combine_64(seed, h[1]);
+  if (hash.leadingBlockDimensions.has_value()) {
+    combine_64(seed, pack_64(simd_make_ushort4(hash.leadingBlockDimensions.value())));
   }
   combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncLoad, hash.preferAsyncStore, 0, 0 }));
   combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
@@ -37,10 +35,10 @@ std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescript
 
 // MARK: - Initializer
 
-GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort8> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept {
+GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> leadingBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept {
   this->blockDimensions = blockDimensions;
   this->memoryPrecisions = memoryPrecisions;
-  this->paddedBlockDimensions = paddedBlockDimensions;
+  this->leadingBlockDimensions = leadingBlockDimensions;
   this->preferAsyncLoad = preferAsyncLoad;
   this->preferAsyncStore = preferAsyncStore;
   this->registerPrecisions = registerPrecisions;
@@ -49,7 +47,7 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOp
   this->useBias = useBias;
 }
 
-std::pair<simd::ushort3, std::optional<simd::ushort8>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept {
+std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept {
   if (mtlDevice->supportsFamily(MTL::GPUFamily(1009))) {
     return std::make_pair(simd::ushort3 { 32, 32, 8 }, std::nullopt);
   }
@@ -86,18 +84,24 @@ std::pair<simd::ushort3, std::optional<simd::ushort8>> GEMMKernelDescriptor::get
       // - (memA, memB, memC) = (FP16, FP32, FP32)
       // - (memA, memB, memC) = (FP16, FP32, FP16)
       if (transposeState[0] == false && transposeState[1] == false) {
-        return std::make_pair(blockDimensions, simd::ushort8 { 48, 24, 24, 48, 48, 48 });
+        return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
       } else if (transposeState[0] == false && transposeState[1] == true) {
         if (memoryPrecisions.B == GEMMOperandPrecision::FP32) {
-          return std::make_pair(blockDimensions, simd::ushort8 { 48, 24, 28, 48, 48, 48 });
+          return std::make_pair(blockDimensions, simd::ushort3 { 24, 28, 48 });
         } else {
-          return std::make_pair(blockDimensions, simd::ushort8 { 48, 24, 24, 48, 48, 48 });
+          return std::make_pair(blockDimensions, simd::ushort3 { 24, 24, 48 });
+        }
+      } else if (transposeState[0] == true && transposeState[1] == false) {
+        if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
+          return std::make_pair(blockDimensions, simd::ushort3 { 52, 48, 48 });
+        } else {
+          return std::make_pair(blockDimensions, simd::ushort3 { 56, 48, 48 });
         }
       } else {
         if (memoryPrecisions.A == GEMMOperandPrecision::FP32) {
-          return std::make_pair(blockDimensions, simd::ushort8 { 52, 24, 24, 48, 48, 48 });
+          return std::make_pair(blockDimensions, simd::ushort3 { 52, 24, 48 });
         } else {
-          return std::make_pair(blockDimensions, simd::ushort8 { 56, 24, 24, 48, 48, 48 });
+          return std::make_pair(blockDimensions, simd::ushort3 { 56, 24, 48 });
         }
       }
     }

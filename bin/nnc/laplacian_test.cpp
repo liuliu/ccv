@@ -420,7 +420,6 @@ void runTest(TestDescriptor descriptor)
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
-	/*
 	{
 		int problemSizes[] = {
 			7, 8, 9, 10,
@@ -456,31 +455,30 @@ int main(int argc, char** argv)
 			}
 		}
 	}
-	*/
 	{
 		bool transposeStates[] = {
 			false, false,
 			false, true,
 			true, false,
-			true, true,
+			true, true,/*
 			false, false,
 			false, true,
 			true, false,
-			true, true,
+			true, true,*/
 		};
 		bool useBias[] = {
 			false,
 			false,
 			false,
-			false,
+			false,/*
 			true,
 			true,
 			true,
-			true
+			true*/
 		};
 
 		printf("\nPerformance tests:\n");
-		for (int problemSize = 1488; problemSize <= 1489; problemSize++)
+		for (int problemSize = 3072; problemSize <= 3072; problemSize++)
 		{
 			for (int j = 0; j < sizeof(transposeStates) / (sizeof(bool) * 2); j++)
 			{
