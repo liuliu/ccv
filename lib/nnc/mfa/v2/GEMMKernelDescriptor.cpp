@@ -49,7 +49,7 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOp
 
 std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept {
   if (mtlDevice->supportsFamily(MTL::GPUFamily(1009))) {
-    return std::make_pair(simd::ushort3 { 32, 32, 8 }, std::nullopt);
+    return std::make_pair(simd::ushort3 { 32, 32, 8 }, simd::ushort3 { 32, 32, 32 });
   }
   
   // Find the actual number of threadgroups, with a large block size.
