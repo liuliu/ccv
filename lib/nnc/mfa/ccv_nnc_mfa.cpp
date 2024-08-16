@@ -10,6 +10,10 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
   return new mfa::context(device);
 }
 
+void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context) {
+  context->v2_cache.evict();
+}
+
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
   delete context;
 }
@@ -82,12 +86,6 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
 
 template <>
 void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
-void mfa::cache<mfa::gemm::hash, mfa::gemm::pipeline>::prepare(mfa::context* context, mfa::gemm::hash hash)
 {
   _mfa_cache_prepare(&map, context, hash);
 }

@@ -4,7 +4,7 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm laplacian_test
 
 FUZZ_TARGETS = csv_fuzz
 
@@ -36,6 +36,9 @@ libccv.a:
 
 %.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
+
+laplacian_test.o: laplacian_test.cpp
+	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
 
 .gitignore:
 	echo $(TARGETS) | tr ' ' '\n' > .gitignore

@@ -427,6 +427,7 @@ static inline void ccv_nnc_mps_graph_key_free(ccv_nnc_mps_graph_key_t key)
 
 void ccv_nnc_mps_clear_graph_executable_cache(void)
 {
+	ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_default_mfa_context());
 	if (!g_graph_executable_cache)
 		return;
 	khiter_t k;

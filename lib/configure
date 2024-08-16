@@ -4760,7 +4760,7 @@ if test "$mps_support" = yes; then
 printf "%s\n" "yes" >&6; }
 	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_MPS "
 
-	MKLDFLAGS="$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal -lc++ "
+	MKLDFLAGS="$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Foundation -framework Metal -framework OpenCL -lc++ "
 
 	CUDA_SRCS=""
 
