@@ -317,6 +317,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				.B_trans = true,
 				.D_trans = false,
 				.fused_bias = (bias ? 1 : 0),
+				.register_float = 0,
 
 				.batch_dimension = 1,
 				.batch_stride_a = 0,

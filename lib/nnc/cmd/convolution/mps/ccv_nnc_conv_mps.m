@@ -260,6 +260,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.B_trans = 1,
 					.D_trans = 0,
 					.fused_bias = (bias ? 1 : 0),
+					.register_float = 0,
 
 					.batch_dimension = b_batch_size,
 					.batch_stride_a = a_batch_size > 1 ? H * W * I_dim : 0,
@@ -277,6 +278,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.B_trans = 0,
 					.D_trans = 1,
 					.fused_bias = (bias ? 1 : 0),
+					.register_float = 0,
 
 					.batch_dimension = b_batch_size,
 					.batch_stride_a = w_batch_size > 1 ? O * I_dim : 0,
