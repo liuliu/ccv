@@ -94,15 +94,18 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int w_nd = ccv_nnc_tensor_nd(w->info.dim);
 		const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 		int is_batched = 0;
+		int a_batch_size;
+		int w_batch_size;
+		int b_batch_size;
 		if (use_mfa) {
-			int a_batch_size = a_nd < 4 ? 1 : adim[a_nd - 4];
+			a_batch_size = a_nd < 4 ? 1 : adim[a_nd - 4];
 			int i;
 			for (i = 0; i < a_nd - 4; i++)
 				a_batch_size *= adim[i];
-			int w_batch_size = w_nd < 5 ? 1 : w->info.dim[w_nd - 5];
+			w_batch_size = w_nd < 5 ? 1 : w->info.dim[w_nd - 5];
 			for (i = 0; i < w_nd - 5; i++)
 				w_batch_size *= w->info.dim[i];
-			int b_batch_size = b_nd < 4 ? 1 : b->info.dim[b_nd - 4];
+			b_batch_size = b_nd < 4 ? 1 : b->info.dim[b_nd - 4];
 			for (i = 0; i < b_nd - 4; i++)
 				b_batch_size *= b->info.dim[i];
 			assert(a_batch_size == b_batch_size || a_batch_size == 1);
@@ -256,12 +259,13 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.A_trans = 0,
 					.B_trans = 1,
 					.D_trans = 0,
-					.batched = is_batched,
 					.fused_bias = (bias ? 1 : 0),
 
-					.batch_dims_a = { 0 },
-					.batch_dims_b = { 0 },
-					.batch_dims_d = { 0 },
+					.batch_dimension = b_batch_size,
+					.batch_stride_a = a_batch_size > 1 ? H * W * I_dim : 0,
+					.batch_stride_b = w_batch_size > 1 ? O * I_dim : 0,
+					.batch_stride_c = b_batch_size > 1 ? H * W * O : 0,
+					.batch_stride_d = 0,
 				};
 			} else {
 				params = (ccv_nnc_mfa_gemm_params_t){
@@ -272,56 +276,16 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.A_trans = 0,
 					.B_trans = 0,
 					.D_trans = 1,
-					.batched = is_batched,
 					.fused_bias = (bias ? 1 : 0),
 
-					.batch_dims_a = { 0 },
-					.batch_dims_b = { 0 },
-					.batch_dims_d = { 0 },
+					.batch_dimension = b_batch_size,
+					.batch_stride_a = w_batch_size > 1 ? O * I_dim : 0,
+					.batch_stride_b = a_batch_size > 1 ? H * W * I_dim : 0,
+					.batch_stride_c = b_batch_size > 1 ? H * W * O : 0,
+					.batch_stride_d = 0,
 				};
 			}
 
-			if (is_batched) {
-				if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
-				{
-					// Create a null-terminated list of batch dimensions.
-					int A_batch_dim = a_nd - 3;
-					for (int i = 0; i < A_batch_dim; ++i) {
-						params.batch_dims_a[i] = adim[i];
-					}
-					if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-						params.batch_dims_a[A_batch_dim] = 0;
-					}
-
-					int B_batch_dim = w_nd - 4;
-					for (int i = 0; i < B_batch_dim; ++i) {
-						params.batch_dims_b[i] = w->info.dim[i];
-					}
-					if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-						params.batch_dims_b[B_batch_dim] = 0;
-					}
-				} else {
-					// Create a null-terminated list of batch dimensions.
-					int B_batch_dim = w_nd - 4;
-					for (int i = 0; i < B_batch_dim; ++i) {
-						params.batch_dims_a[i] = w->info.dim[i];
-					}
-					if (B_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-						params.batch_dims_a[B_batch_dim] = 0;
-					}
-
-					int A_batch_dim = a_nd - 3;
-					for (int i = 0; i < A_batch_dim; ++i) {
-						params.batch_dims_b[i] = adim[i];
-					}
-					if (A_batch_dim < CCV_NNC_MAX_DIM_ALLOC) {
-						params.batch_dims_b[A_batch_dim] = 0;
-					}
-				}
-
-				params.batch_dims_d[0] = 1;
-				params.batch_dims_d[1] = 0;
-			}
 			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

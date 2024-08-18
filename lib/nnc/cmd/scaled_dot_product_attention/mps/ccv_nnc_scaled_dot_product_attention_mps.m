@@ -316,12 +316,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				.A_trans = false,
 				.B_trans = true,
 				.D_trans = false,
-				.batched = 0,
 				.fused_bias = (bias ? 1 : 0),
 
-				.batch_dims_a = { 0 },
-				.batch_dims_b = { 0 },
-				.batch_dims_d = { 0 },
+				.batch_dimension = 1,
+				.batch_stride_a = 0,
+				.batch_stride_b = 0,
+				.batch_stride_c = 0,
+				.batch_stride_d = 0,
 			};
 			ccv_nnc_mfa_prepare_gemm(context, params);
 

@@ -59,59 +59,16 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   gemmDesc.leadingDimensions = std::nullopt;
   gemmDesc.loadPreviousC = false;
   gemmDesc.useBias = params.fused_bias;
-  if (params.batched) {
-    simd::ushort4 num_batch_dims(0);
-    simd::ulong4 batch_sizes(1);
-    for (uint16_t operand = 0; operand < 4; ++operand) {
-      uint32_t* batch_dims;
-      if (operand == 0) {
-        batch_dims = params.batch_dims_a;
-      } else if (operand == 1) {
-        batch_dims = params.batch_dims_b;
-      } else if (operand == 2) {
-        // Skip the C operand.
-        continue;
-      } else if (operand == 3) {
-        // Skip the D operand if unavailable.
-        if (!params.fused_bias) {
-          continue;
-        }
-        batch_dims = params.batch_dims_d;
-      }
- 
-      for (int i = 0; i < CCV_NNC_MAX_DIM_ALLOC; ++i) {
-        if (batch_dims[i] == 0) {
-          break;
-        }
-        num_batch_dims[operand] += 1;
-        batch_sizes[operand] *= batch_dims[i];
-      }
-    }
 
-    uint32_t stride_a = params.M * params.K;
-    uint32_t stride_b = params.K * params.N;
-    uint32_t stride_c = params.M * params.N;
-    uint32_t stride_d = params.D_trans ? params.M : params.N;
-    if (batch_sizes[0] == 1) {
-      stride_a = 0;
-    }
-    if (batch_sizes[1] == 1) {
-      stride_b = 0;
-    }
-    if (batch_sizes[3] == 1) {
-      stride_d = 0;
-    }
-
-    const unsigned long batch_size = std::max(batch_sizes[0], batch_sizes[1]);
-    gemmDesc.batchDimension = batch_size;
+  gemmDesc.batchDimension = params.batch_dimension;
+  if (params.batch_dimension > 1) {
 	simd::uint4 batchStrides;
-    batchStrides[0] = stride_a;
-    batchStrides[1] = stride_b;
-    batchStrides[2] = stride_c;
-    batchStrides[3] = stride_d;
+    batchStrides[0] = params.batch_stride_a;
+    batchStrides[1] = params.batch_stride_b;
+    batchStrides[2] = params.batch_stride_c;
+    batchStrides[3] = params.batch_stride_d;
 	gemmDesc.batchStrides = batchStrides;
   } else {
-    gemmDesc.batchDimension = 1;
     gemmDesc.batchStrides = std::nullopt;
   }
 
