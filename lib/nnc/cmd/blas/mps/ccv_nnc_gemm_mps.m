@@ -34,7 +34,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
 	int adim[CCV_NNC_MAX_DIM_ALLOC];
-	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	memcpy(adim, a->info.dim, sizeof(adim));
 	if (CCV_IS_TENSOR_VIEW(a))
 		memcpy(astride, a->stride, sizeof(astride));
@@ -53,6 +53,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			astride[0] = astride[1];
 		}
 	}
+	int bstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	if (CCV_IS_TENSOR_VIEW(b))
+		memcpy(bstride, b->stride, sizeof(bstride));
 	const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 	int biasdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	int biasstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
@@ -122,16 +125,21 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		w_batch_inc = 0;
 	@autoreleasepool {
 		// Fake the astride at a_nd - 3. For this one, we have flexibility to change fo v2 GEMM kernels.
-		const int astride_a_nd_3 = astride[a_nd - 3];
+		const int a_batch_stride = astride[a_nd - 3];
 		// Only fake it if it is larger than the expected compact stride.
-		if (astride_a_nd_3 > astride[a_nd - 2] * adim[a_nd - 2])
+		if (a_batch_stride > astride[a_nd - 2] * adim[a_nd - 2])
 			astride[a_nd - 3] = astride[a_nd - 2] * adim[a_nd - 2];
+		const int b_batch_stride = bstride[b_nd - 3];
+		// Only fake it if it is larger than the expected compact stride.
+		if (b_batch_stride > bstride[b_nd - 2] * b->info.dim[b_nd - 2])
+			bstride[b_nd - 3] = bstride[b_nd - 2] * b->info.dim[b_nd - 2];
 		const int is_contiguous =
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
-			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, b->stride)) &&
+			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, bstride)) &&
 			(bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
-		astride[a_nd - 3] = astride_a_nd_3;
+		astride[a_nd - 3] = a_batch_stride;
+		bstride[b_nd - 3] = b_batch_stride;
 
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
@@ -380,9 +388,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.register_float = (is_upcast ? 1 : 0),
 
 				.batch_dimension = b_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? ccv_max(astride_a_nd_3, b_rows * w_rows) : 0,
+				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
 				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
-				.batch_stride_c = b_batch_size > 1 ? b_rows * b_cols : 0,
+				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
 				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
 			};
 			ccv_nnc_mfa_prepare_gemm(context, params);

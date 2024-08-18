@@ -56,9 +56,17 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			}
 		}
 
+		const int a_batch_stride = at.stride[0];
+		// Only fake it if it is larger than the expected compact stride.
+		if (a_batch_stride > at.stride[1] * at.info.dim[1])
+			at.stride[0] = at.stride[1] * at.info.dim[1];
+		const int b_batch_stride = bt.stride[0];
+		// Only fake it if it is larger than the expected compact stride.
+		if (b_batch_stride > bt.stride[1] * bt.info.dim[1])
+			bt.stride[0] = bt.stride[1] * bt.info.dim[1];
 		if (use_mfa) {
-			if (!CCV_IS_TENSOR_CONTIGUOUS(inputs[0]) ||
-					!CCV_IS_TENSOR_CONTIGUOUS(outputs[0]) ||
+			if (!(!CCV_IS_TENSOR_VIEW(&at) || ccv_nnc_tensor_view_is_contiguous(at.info.dim, at.stride)) ||
+					!(!CCV_IS_TENSOR_VIEW(&bt) || ccv_nnc_tensor_view_is_contiguous(bt.info.dim, bt.stride)) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[1]) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(inputs[1]))
 			{
@@ -66,6 +74,8 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				fallback_reason = "Strided.";
 			}
 		}
+		at.stride[0] = a_batch_stride;
+		bt.stride[0] = b_batch_stride;
 
 		int channel_count;
 		const int channel_groups = 1;
@@ -127,6 +137,8 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 				.batch_dims_data = { 0 },
 				.batch_dims_scale_translation = { 0 },
+				.src_batch_stride = ccv_max(a_batch_stride, channel_count * sequence_count),
+				.dst_batch_stride = ccv_max(b_batch_stride, channel_count * sequence_count),
 			};
 
 			// Create a null-terminated list of batch dimensions.

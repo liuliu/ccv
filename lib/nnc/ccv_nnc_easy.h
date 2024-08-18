@@ -447,7 +447,7 @@ static inline CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_get_tensor_view(con
 {
 	if (CCV_IS_TENSOR_VIEW(tensor))
 		return (ccv_nnc_tensor_view_t)*(const ccv_nnc_tensor_view_t*)tensor;
-	ccv_nnc_tensor_view_t tv;
+	ccv_nnc_tensor_view_t tv = {0};
 	memcpy(&tv, tensor, sizeof(ccv_nnc_tensor_t));
 	return tv;
 }

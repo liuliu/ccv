@@ -164,6 +164,8 @@ mfa::normalization::hash::hash(ccv_nnc_mfa_normalization_params_t params) {
   scale_translation_batched = params.scale_translation_batched;
   normalization_type = (Type)params.normalization_type;
   reuse_saved_statistics = params.reuse_saved_statistics;
+  src_batch_stride = params.src_batch_stride;
+  dst_batch_stride = params.dst_batch_stride;
 }
 
 bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) const {
@@ -176,7 +178,9 @@ bool mfa::normalization::hash::operator==(const mfa::normalization::hash& hash) 
   (elementwise_affine == hash.elementwise_affine) &&
   (scale_translation_batched == hash.scale_translation_batched) &&
   (normalization_type == hash.normalization_type) &&
-  (reuse_saved_statistics == hash.reuse_saved_statistics);
+  (reuse_saved_statistics == hash.reuse_saved_statistics) &&
+  (src_batch_stride == hash.src_batch_stride) &&
+  (dst_batch_stride == hash.dst_batch_stride);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash) {
@@ -189,7 +193,9 @@ std::ostream& operator<<(std::ostream& os, const mfa::normalization::hash& hash)
   os << " .elementwise_affine = " << bool(hash.elementwise_affine) << ',';
   os << " .scale_translation_batched = " << bool(hash.scale_translation_batched) << ',';
   os << " .normalization_type = " << hash.normalization_type << ',';
-  os << " .reuse_saved_statistics = " << bool(hash.reuse_saved_statistics) << " ";
+  os << " .reuse_saved_statistics = " << bool(hash.reuse_saved_statistics) << ",";
+  os << " .src_batch_stride = " << hash.src_batch_stride << ',';
+  os << " .dst_batch_stride = " << hash.dst_batch_stride << ' ';
   os << "}";
   return os;
 }
@@ -207,6 +213,7 @@ std::size_t std::hash<mfa::normalization::hash>::operator()(const mfa::normaliza
   combine_64(seed, pack_64(simd::uint2 { hash.channel_count, hash.channel_groups }));
   combine_64(seed, pack_64(simd::uint2 { hash.sequence_count, *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
   combine_32(seed, pack_32(simd::uchar4 { hash.elementwise_affine, hash.scale_translation_batched, hash.normalization_type, hash.reuse_saved_statistics }));
+  combine_64(seed, pack_64(simd::uint2 { hash.src_batch_stride, hash.dst_batch_stride }));
   return seed;
 }
 
@@ -242,9 +249,9 @@ kernel void normalization(
 ) {
   uint threadgroup_index = tgid.z * sequence_count + tgid.x;
   {
-    uint io_offset = threadgroup_index * channel_count + lid;
-    source += io_offset;
-    destination += io_offset;
+    uint io_offset = tgid.x * channel_count + lid;
+    source += tgid.z * src_batch_stride + io_offset;
+    destination += tgid.z * dst_batch_stride + io_offset;
   }
 #if ELEMENTWISE_AFFINE
   channel_scales += lid;
@@ -355,9 +362,9 @@ kernel void normalization(
 ) {
   uint threadgroup_index = tgid.z * sequence_count + tgid.x;
   {
-    uint io_offset = threadgroup_index * channel_count + lid;
-    source += io_offset;
-    destination += io_offset;
+    uint io_offset = tgid.x * channel_count + lid;
+    source += tgid.z * src_batch_stride + io_offset;
+    destination += tgid.z * dst_batch_stride + io_offset;
   }
 #if ELEMENTWISE_AFFINE
   channel_scales += lid;
@@ -533,6 +540,14 @@ kernel void normalization(
     uint x_dim = (hash.sequence_count + sample_count - 1) / sample_count * sample_count;
     this->grid_size = MTL::Size(x_dim, hash.channel_groups, 1);
   }
+
+  defines += "constant uint src_batch_stride = ";
+  defines += std::to_string(hash.src_batch_stride) + ";";
+  defines += "\n";
+
+  defines += "constant uint dst_batch_stride = ";
+  defines += std::to_string(hash.dst_batch_stride) + ";";
+  defines += "\n";
   
   defines += "constant ushort threadgroup_size = ";
   defines += std::to_string(threadgroup_size) + ";";

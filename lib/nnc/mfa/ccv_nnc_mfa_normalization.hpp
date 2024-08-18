@@ -14,6 +14,8 @@ typedef struct {
   
   uint32_t batch_dims_data[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dims_scale_translation[CCV_NNC_MAX_DIM_ALLOC];
+  uint32_t src_batch_stride;
+  uint32_t dst_batch_stride;
 } ccv_nnc_mfa_normalization_params_t;
 
 #ifdef __cplusplus
@@ -43,6 +45,8 @@ public:
   uint8_t scale_translation_batched;
   Type normalization_type;
   uint8_t reuse_saved_statistics;
+  uint32_t src_batch_stride;
+  uint32_t dst_batch_stride;
   
   hash(ccv_nnc_mfa_normalization_params_t);
   
