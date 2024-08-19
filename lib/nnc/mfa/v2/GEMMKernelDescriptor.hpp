@@ -220,7 +220,7 @@ struct GEMMKernelDescriptor {
   ///
   /// This function initializes the 'blockDimensions' and
   /// 'paddedBlockDimensions' properties.
-  static std::pair<simd::ushort3, std::optional<simd::ushort3>> getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept;
+  static std::pair<simd::ushort3, std::optional<simd::ushort3>> getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const GEMMOperandPrecision registerPrecisionC, const simd::uchar3 transposeState) noexcept;
 
   bool operator==(const GEMMKernelDescriptor& rhs) const;
 };

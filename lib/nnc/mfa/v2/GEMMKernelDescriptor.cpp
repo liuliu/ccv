@@ -47,9 +47,9 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOp
   this->useBias = useBias;
 }
 
-std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const simd::uchar3 transposeState) noexcept {
+std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const GEMMOperandPrecision registerPrecisionC, const simd::uchar3 transposeState) noexcept {
   if (mtlDevice->supportsFamily(MTL::GPUFamily(1009))) {
-    if (!transposeState[0] && transposeState[1])
+    if (!transposeState[0] && transposeState[1] && registerPrecisionC == GEMMOperandPrecision::FP32)
     {
       unsigned short paddedAK = (memoryPrecisions.A == GEMMOperandPrecision::FP32) ? 8 : 32;
       unsigned short paddedBK = (memoryPrecisions.B == GEMMOperandPrecision::FP32) ? 8 : 32;

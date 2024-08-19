@@ -166,7 +166,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   }
   
   // Set the device and examine the block dimensions.
-  auto blockDimensionsAndPaddedBlockDimensions = GEMMKernelDescriptor::getBlockDimensions(device, dprops.coreCount, this->matrixDimensions, this->batchDimension, this->memoryPrecisions, this->transposeState);
+  auto blockDimensionsAndPaddedBlockDimensions = GEMMKernelDescriptor::getBlockDimensions(device, dprops.coreCount, this->matrixDimensions, this->batchDimension, this->memoryPrecisions, registerPrecisionC, this->transposeState);
   std::optional<bool> preferAsyncStore = std::nullopt;
   bool preferAsyncLoad;
   simd::ushort2 splits;

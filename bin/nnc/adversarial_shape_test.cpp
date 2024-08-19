@@ -193,6 +193,7 @@ void runTest(TestDescriptor descriptor)
 	};
 	gemmDesc.transposeState = simd::uchar3 { descriptor.transposeState[0], descriptor.transposeState[1], descriptor.transposeState[0] };
 	gemmDesc.useBias = descriptor.useBias;
+	gemmDesc.registerPrecisionC = GEMMOperandPrecision::FP32;
 
 	// Test the kernel.
 	auto statistic = profileProblemSize(gemmDesc);
