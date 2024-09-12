@@ -35,7 +35,7 @@ std::string GEMMKernel::registerName(char operand) const noexcept {
   }
 }
 
-unsigned short GEMMKernel::threadgroupMemoryAllocationValue() const noexcept {
+unsigned short GEMMKernel::createThreadgroupMemoryAllocation() const noexcept {
   unsigned short blockBytesA = blockBytes('A');
   unsigned short blockBytesB = blockBytes('B');
   unsigned short blockBytesC = blockBytes('C');
@@ -218,7 +218,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
 
   source = createSource();
 
-  threadgroupMemoryAllocation = threadgroupMemoryAllocationValue();
+  threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
 
   // Compile the shader source.
   {
@@ -298,7 +298,7 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  device {{MEMORY_NAME_BIAS}} *bias [[buffer(3)]],
 )";
   }
-source += R"(
+  source += R"(
                  threadgroup uchar *threadgroup_block [[threadgroup(0)]],
 
                  uint3 gid [[threadgroup_position_in_grid]],
@@ -315,7 +315,7 @@ source += R"(
     bias = bias + bias_batch_stride * gid.z;
 )";
   }
-source += R"(
+  source += R"(
   }
   ushort2 sid(sidx % {{SPLITS_N}}, sidx / {{SPLITS_N}});
   ushort2 morton_offset = morton_order(lane_id);

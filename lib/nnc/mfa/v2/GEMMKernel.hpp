@@ -53,7 +53,7 @@ struct GEMMKernel {
 private:
   std::string memoryName(char operand) const noexcept;
   std::string registerName(char operand) const noexcept;
-  unsigned short threadgroupMemoryAllocationValue() const noexcept;
+  unsigned short createThreadgroupMemoryAllocation() const noexcept;
   bool transposed(char operand) const noexcept;
   std::string leadingDimension(char operand) const noexcept;
   unsigned short leadingBlockDimension(char operand) const noexcept;
