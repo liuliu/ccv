@@ -79,6 +79,40 @@ public:
     }
   }
 
+  int bufferIndex() const noexcept {
+    switch (value) {
+      case AttentionOperand::Q:
+        return 0;
+      case AttentionOperand::K:
+        return 1;
+      case AttentionOperand::S:
+      case AttentionOperand::P:
+        return -1;
+      case AttentionOperand::V:
+        return 2;
+      case AttentionOperand::O:
+        return 3;
+  
+      case AttentionOperand::L:
+        return 4;
+      case AttentionOperand::D:
+        return 5;
+  
+      case AttentionOperand::dO:
+        return 6;
+      case AttentionOperand::dV:
+        return 7;
+      case AttentionOperand::dP:
+      case AttentionOperand::dS:
+        return -1;
+      case AttentionOperand::dK:
+        return 8;
+      case AttentionOperand::dQ:
+        return 9;
+    }
+    return -1;
+  }
+
   Value value;
 };
 

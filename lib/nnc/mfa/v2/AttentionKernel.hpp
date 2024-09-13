@@ -31,6 +31,9 @@ struct AttentionKernel {
 
   AttentionOperands<bool> transposeState;
 
+  /// The leading dimensions after transposed (if applied).
+  AttentionOperands<unsigned short> leadingDimensions;
+
   /// parallelization, traversal, head
   simd::ushort3 blockDimensions;
 
@@ -71,6 +74,7 @@ private:
   /// AttentionKernel+Source
   std::string createSource() const noexcept;
   std::string createConstants() const noexcept;
+  std::string createAdjustOffsets() const noexcept;
   std::string createBufferBindings() const noexcept;
   std::string loopForward() const noexcept;
   std::string loopBackwardQuery() const noexcept;

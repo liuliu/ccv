@@ -17,6 +17,7 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   blockDimensions = descriptor.blockDimensions;
   headDimension = descriptor.headDimension;
+  leadingDimensions = descriptor.leadingDimensions;
 
   scale = descriptor.scale;
 
@@ -205,6 +206,10 @@ unsigned short AttentionKernel::blockSequenceLength(AttentionOperand operand) co
 }
 
 std::string AttentionKernel::leadingDimension(AttentionOperand operand) const noexcept {
+  auto leadingDimension = leadingDimensions[operand];
+  if (leadingDimension.has_value()) { // Prefer this value.
+    return std::to_string(leadingDimension.value());
+  }
   if (transposed(operand)) {
     return sequenceLength(operand);
   } else {
@@ -409,12 +414,12 @@ std::string AttentionKernel::createSource() const noexcept {
   source += R"(
       threadgroup uchar *threadgroup_block [[threadgroup(0)]],
       
-      uint gid [[threadgroup_position_in_grid]],
+      uint3 gid [[threadgroup_position_in_grid]],
       ushort sidx [[simdgroup_index_in_threadgroup]],
       ushort lane_id [[thread_index_in_simdgroup]]
     ) {
       ushort2 morton_offset = morton_order(lane_id);
-      uint parallelization_group_offset = gid;
+      uint parallelization_group_offset = gid.x;
       parallelization_group_offset *= {{BLOCK_DIMENSIONS_PARALLELIZATION}};
       
       // Return early if the entire SIMD is out of bounds.
@@ -422,6 +427,7 @@ std::string AttentionKernel::createSource() const noexcept {
         return;
       }
 )";
+  source += createAdjustOffsets() + "\n";
   source += createSetup() + "\n";
   switch (type.value) {
   case AttentionKernelType::forward:
@@ -440,49 +446,33 @@ std::string AttentionKernel::createSource() const noexcept {
 }
 
 std::string AttentionKernel::createConstants() const noexcept {
+  std::vector<AttentionOperand> operands;
+  switch (type.value) {
+  case AttentionKernelType::forward:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O};
+    break;
+  case AttentionKernelType::backwardQuery:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dQ};
+    break;
+  case AttentionKernelType::backwardKeyValue:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    break;
+  }
+  std::string output = "";
+  for (const auto& operand : operands) {
+    output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
+    output += std::to_string(operand.bufferIndex() + 3) + ")]];\n";
+  }
   return R"(
 
     // R = row dimension (output sequence)
     // C = column dimension (input sequence)
+    // Hq = number of query heads.
     constant uint R [[function_constant(0)]];
     constant uint C [[function_constant(1)]];
+    constant uint Hq [[function_constant(2)]];
 
-)";
-}
-
-static int bufferIndex(AttentionOperand operand) noexcept {
-  switch (operand.value) {
-    case AttentionOperand::Q:
-      return 0;
-    case AttentionOperand::K:
-      return 1;
-    case AttentionOperand::S:
-    case AttentionOperand::P:
-      CCV_NNC_MFA_PRECONDITION(false);
-      return -1;
-    case AttentionOperand::V:
-      return 2;
-    case AttentionOperand::O:
-      return 3;
-
-    case AttentionOperand::L:
-      return 4;
-    case AttentionOperand::D:
-      return 5;
-
-    case AttentionOperand::dO:
-      return 6;
-    case AttentionOperand::dV:
-      return 7;
-    case AttentionOperand::dP:
-    case AttentionOperand::dS:
-      CCV_NNC_MFA_PRECONDITION(false);
-      return -1;
-    case AttentionOperand::dK:
-      return 8;
-    case AttentionOperand::dQ:
-      return 9;
-  }
+)" + output;
 }
 
 std::string AttentionKernel::createBufferBindings() const noexcept {
@@ -503,9 +493,43 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "  device ";
     output += memoryName(operand);
     output += "* " + operand.name() + " [[buffer(";
-    output += std::to_string(bufferIndex(operand)) + ")]],\n";
+    output += std::to_string(operand.bufferIndex()) + ")]],\n";
   }
   return output;
+}
+
+std::string AttentionKernel::createAdjustOffsets() const noexcept {
+  std::vector<AttentionOperand> operands;
+  switch (type.value) {
+  case AttentionKernelType::forward:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L};
+    break;
+  case AttentionKernelType::backwardQuery:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dQ};
+    break;
+  case AttentionKernelType::backwardKeyValue:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    break;
+  }
+  CodeWriter source;
+  for (const auto& operand : operands) {
+    source.SetValue("OPERAND", operand.name());
+	if (operand.value == AttentionOperand::L || operand.value == AttentionOperand::D) {
+      source += R"(
+    {{OPERAND}} = {{OPERAND}} + (gid.z * Hq + gid.y) * R;
+)";
+    } else {
+      if (!transposed(operand)) {
+        source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+      } else {
+        source.SetValue("HEAD_DIMENSION", "1");
+      }
+      source += R"(
+    {{OPERAND}} = {{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}};
+)";
+    }
+  }
+  return source.ToString();
 }
 
 // MARK: - Outer Loop

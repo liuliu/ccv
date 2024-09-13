@@ -46,6 +46,9 @@ struct AttentionKernelDescriptor {
   /// embedded into the GPU assembly code.
   AttentionOperands<bool> transposeState;
 
+  /// The leading dimensions after transposed (if applied).
+  AttentionOperands<unsigned short> leadingDimensions;
+
   AttentionKernelType type;
 
   float scale;
@@ -55,7 +58,7 @@ struct AttentionKernelDescriptor {
   AttentionKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionKernelType type, float scale) noexcept;
+  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<unsigned short> leadingDimensions, AttentionKernelType type, float scale) noexcept;
 
   bool operator==(const AttentionKernelDescriptor& rhs) const;
 };

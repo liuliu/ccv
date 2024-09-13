@@ -6,8 +6,12 @@
 
 bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   return
+  batchDimension == rhs.batchDimension &&
+  Hq == rhs.Hq &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
+  simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
+  batchStrides == rhs.batchStrides &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
   simd_all(transposeState == rhs.transposeState);
 }
@@ -15,9 +19,17 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
 std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
+  combine_32(seed, hash.batchDimension);
+  combine_32(seed, hash.Hq);
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
+  if (hash.leadingDimensions.has_value()) {
+    combine_32(seed, hash.leadingDimensions.value()[0]);
+    combine_32(seed, hash.leadingDimensions.value()[1]);
+    combine_32(seed, hash.leadingDimensions.value()[2]);
+    combine_32(seed, hash.leadingDimensions.value()[3]);
+  }
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
   combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.lowPrecisionIntermediates, 0, 0 }));
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
@@ -86,10 +98,27 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     return output;
   };
 
+  auto createLeadingDimensions =
+  [=]() -> AttentionOperands<unsigned short> {
+    AttentionOperands<unsigned short> output;
+    if (leadingDimensions.has_value()) {
+      output[AttentionOperand::Q] = leadingDimensions.value()[0];
+      output[AttentionOperand::K] = leadingDimensions.value()[1];
+      output[AttentionOperand::V] = leadingDimensions.value()[2];
+      output[AttentionOperand::O] = leadingDimensions.value()[3];
+ 
+      output[AttentionOperand::dO] = leadingDimensions.value()[3];
+      output[AttentionOperand::dV] = leadingDimensions.value()[2];
+      output[AttentionOperand::dK] = leadingDimensions.value()[1];
+      output[AttentionOperand::dQ] = leadingDimensions.value()[0];
+    }
+    return output;
+  };
+
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   }
 }
 
@@ -101,8 +130,26 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     (MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
+	uint32_t Hq = this->Hq;
     constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
     constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
+    std::vector<AttentionOperand> operands;
+    switch (type.value) {
+    case AttentionKernelType::forward:
+      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O};
+      break;
+    case AttentionKernelType::backwardQuery:
+      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dQ};
+      break;
+    case AttentionKernelType::backwardKeyValue:
+      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+      break;
+    }
+    for (const auto& operand : operands) {
+      uint32_t batchStride = batchStrides[operand].value_or(0);
+      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 3 + operand.bufferIndex());
+    }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
     NS::Error* error = nil;

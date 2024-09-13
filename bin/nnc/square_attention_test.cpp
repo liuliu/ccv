@@ -347,6 +347,9 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 		NS::SharedPtr<MTL::Buffer> bufferQ = NS::TransferPtr(device->newBuffer(network.Q.data(), sizeof(float) * sequenceDimension * headDimension, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
 		NS::SharedPtr<MTL::Buffer> bufferK = NS::TransferPtr(device->newBuffer(network.K.data(), sizeof(float) * sequenceDimension * headDimension, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
 		NS::SharedPtr<MTL::Buffer> bufferV = NS::TransferPtr(device->newBuffer(network.V.data(), sizeof(float) * sequenceDimension * headDimension, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
+		float* resultL = (float*)ccmalloc(sizeof(float) * sequenceDimension);
+		resultL[0] = NAN;
+		NS::SharedPtr<MTL::Buffer> bufferL = NS::TransferPtr(device->newBuffer(resultL, sizeof(float) * sequenceDimension, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
 		float* resultO = (float*)ccmalloc(sizeof(float) * sequenceDimension * headDimension);
 		resultO[0] = NAN;
 		NS::SharedPtr<MTL::Buffer> bufferO = NS::TransferPtr(device->newBuffer(resultO, sizeof(float) * sequenceDimension * headDimension, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeTracked));
@@ -354,14 +357,16 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 		NS::SharedPtr<MTL::ComputeCommandEncoder> encoder = NS::TransferPtr(commandBuffer->computeCommandEncoder());
 		encoder->setComputePipelineState(pipelineValue->pipeline.get());
 		encoder->setThreadgroupMemoryLength(pipelineValue->kernel->threadgroupMemoryAllocation, 0);
-		encoder->setBuffer(bufferQ.get(), 0, 0);
-		encoder->setBuffer(bufferK.get(), 0, 1);
-		encoder->setBuffer(bufferV.get(), 0, 2);
-		encoder->setBuffer(bufferO.get(), 0, 3);
+		encoder->setBuffer(bufferQ.get(), 0, AttentionOperand(AttentionOperand::Q).bufferIndex());
+		encoder->setBuffer(bufferK.get(), 0, AttentionOperand(AttentionOperand::K).bufferIndex());
+		encoder->setBuffer(bufferV.get(), 0, AttentionOperand(AttentionOperand::V).bufferIndex());
+		encoder->setBuffer(bufferO.get(), 0, AttentionOperand(AttentionOperand::O).bufferIndex());
+		encoder->setBuffer(bufferL.get(), 0, AttentionOperand(AttentionOperand::L).bufferIndex());
 		encoder->useResource(bufferQ.get(), MTL::ResourceUsageRead);
 		encoder->useResource(bufferK.get(), MTL::ResourceUsageRead);
 		encoder->useResource(bufferV.get(), MTL::ResourceUsageRead);
 		encoder->useResource(bufferO.get(), MTL::ResourceUsageWrite);
+		encoder->useResource(bufferL.get(), MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
 		auto ceilDivide =
 			[=](int64_t target, uint16_t granularity) -> int64_t {
 				return (target + int64_t(granularity) - 1) / int64_t(granularity);
@@ -412,6 +417,7 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 		} else {
 			check(O, resultO, 2e-5);
 		}
+		ccfree(resultL);
 		ccfree(resultO);
 	}
 }

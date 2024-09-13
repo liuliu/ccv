@@ -23,6 +23,12 @@ struct AttentionParameterRow {
 };
 
 struct AttentionDescriptor {
+  /// The number of equally sized attention per sequence that run in parallel.
+  uint32_t batchDimension = 1;
+
+  /// The number of query heads per sequence that run in parallel.
+  unsigned short Hq = 1;
+
   /// Q, K, V, dO
   bool lowPrecisionInputs;
 
@@ -36,6 +42,12 @@ struct AttentionDescriptor {
 
   /// Q, K, V, O
   simd::uchar4 transposeState;
+
+  /// The leading dimensions after transposed (if applied).
+  /// Q, K, V, O
+  std::optional<simd::uint4> leadingDimensions;
+
+  AttentionOperands<unsigned int> batchStrides;
 
   AttentionKernelType type;
 
