@@ -12,6 +12,16 @@
 struct AttentionKernelDescriptor;
 struct AttentionKernel;
 
+struct AttentionParameterRow {
+  unsigned short maximumHeadDimension;
+  unsigned short parallelization;
+  unsigned short traversal;
+  unsigned short head;
+  std::vector<AttentionOperand> cachedOperands;
+  AttentionParameterRow() = delete;
+  AttentionParameterRow(unsigned short maximumHeadDimension, unsigned short parallelization, unsigned short traversal, unsigned short head, std::vector<AttentionOperand> cachedOperands) noexcept : maximumHeadDimension(maximumHeadDimension), parallelization(parallelization), traversal(traversal), head(head), cachedOperands(cachedOperands) {}
+};
+
 struct AttentionDescriptor {
   /// Q, K, V, dO
   bool lowPrecisionInputs;
@@ -37,8 +47,19 @@ struct AttentionDescriptor {
 
 private:
   AttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;
+  /// AttentionDescriptor+Precisions
   AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions() const noexcept;
   AttentionOperands<GEMMOperandPrecision> createRegisterPrecisions(MTL::Device *const device) const noexcept;
+  /// AttentionDescriptor+Parameters
+  std::vector<AttentionParameterRow> parameterFile(AttentionKernelType type, MTL::Device *const device) const noexcept;
+  AttentionParameterRow row(const std::vector<AttentionParameterRow>& table) const noexcept;
+  std::vector<AttentionParameterRow> defaultParameters(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> forwardMixed(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> forward(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> backwardQueryMixed(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> backwardQuery(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> backwardKeyValueMixed(MTL::Device *const device) const noexcept;
+  std::vector<AttentionParameterRow> backwardKeyValue(MTL::Device *const device) const noexcept;
 };
 
 template<>

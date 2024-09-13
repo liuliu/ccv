@@ -1470,7 +1470,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimension(operand));
 	  source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
 	  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
-	  source.SetValue("PADED_HEAD_DIMENSION", std::to_string(paddedHeadDimensionValue()));
+	  source.SetValue("PADDED_HEAD_DIMENSION", std::to_string(paddedHeadDimensionValue()));
 	  source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
 	  source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
 	  source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());

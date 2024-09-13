@@ -412,6 +412,7 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 		} else {
 			check(O, resultO, 2e-5);
 		}
+		ccfree(resultO);
 	}
 }
 

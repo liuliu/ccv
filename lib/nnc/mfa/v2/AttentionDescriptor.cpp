@@ -29,11 +29,13 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   [=]() -> unsigned short {
     return matrixDimensions[2];
   };
+  std::vector table = parameterFile(type, device);
+  auto row = this->row(table);
   auto createBlockDimensions =
   [=]() -> simd::ushort3 {
-    unsigned short parallelization = 16;
-    unsigned short traversal = 64; // 128;
-    unsigned short originalHead = 16;
+    unsigned short parallelization = row.parallelization;
+    unsigned short traversal = row.traversal;
+    unsigned short originalHead = row.head;
     // Enforce the rule that head block dimension <= head dimension.
     unsigned short headDimension = createHeadDimension();
     unsigned short paddedHeadDimension = (headDimension + 7) / 8 * 8;
@@ -48,7 +50,7 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     switch (type.value) {
     case AttentionKernelType::forward:
       output[AttentionOperand::Q] = false;
-      output[AttentionOperand::O] = true; // false;
+      output[AttentionOperand::O] = false;
       break;
     case AttentionKernelType::backwardQuery:
       output[AttentionOperand::Q] = false;
@@ -61,6 +63,10 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
       output[AttentionOperand::dV] = false;
       output[AttentionOperand::dK] = false;
       break;
+    }
+    auto cachedOperands = row.cachedOperands;
+    for (const auto& operand : cachedOperands) {
+      output[operand] = true;
     }
     return output;
   };
@@ -134,6 +140,8 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
   PipelineValue<AttentionKernel>* output = new PipelineValue<AttentionKernel> { kernel, pipeline };
   return std::make_pair(kernelDesc, output);
 }
+
+// MARK: - AttentionDescriptor+Precisions
 
 AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createMemoryPrecisions() const noexcept {
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
@@ -339,4 +347,160 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPreci
   
   return registerPrecisions;
 
+}
+
+// MARK: - AttentionDescriptor+Parameters
+
+std::vector<AttentionParameterRow> AttentionDescriptor::parameterFile(AttentionKernelType type, MTL::Device *const device) const noexcept {
+  if (lowPrecisionInputs && lowPrecisionIntermediates) {
+    switch (type.value) {
+    case AttentionKernelType::forward: 
+      return forwardMixed(device);
+    case AttentionKernelType::backwardQuery:
+      return backwardQueryMixed(device);
+    case AttentionKernelType::backwardKeyValue:
+      return backwardKeyValueMixed(device);
+    }
+  } else {
+    switch (type.value) {
+    case AttentionKernelType::forward: 
+      return forward(device);
+    case AttentionKernelType::backwardQuery:
+      return backwardQuery(device);
+    case AttentionKernelType::backwardKeyValue:
+      return backwardKeyValue(device);
+    }
+  }
+  return defaultParameters(device);
+}
+
+AttentionParameterRow AttentionDescriptor::row(const std::vector<AttentionParameterRow>& table) const noexcept {
+  auto headDimension = matrixDimensions[2];
+  int matchedRowID = table.size() - 1;
+  for (int i = 0; i < table.size(); i++) {
+    if (headDimension <= table[i].maximumHeadDimension) {
+      matchedRowID = i;
+      break;
+    }
+  }
+  return table[matchedRowID];
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::defaultParameters(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return { AttentionParameterRow(0, 16, 128, 16, {}) };
+  } else {
+    return { AttentionParameterRow(0, 32, 80, 16, {}) };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::forwardMixed(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(32, 16, 128, 16, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(96, 16, 128, 32, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(160, 16, 128, 32, { AttentionOperand::O }),
+      AttentionParameterRow(224, 16, 128, 32, { AttentionOperand::Q }),
+      AttentionParameterRow(384, 16, 128, 32, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(96, 32, 128, 32, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(128, 32, 128, 32, { AttentionOperand::Q }),
+      AttentionParameterRow(384, 32, 128, 32, {})
+    };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::forward(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(8, 16, 128, 16, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(16, 16, 64, 16, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(48, 16, 32, 8, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(192, 16, 64, 16, { AttentionOperand::O }),
+      AttentionParameterRow(384, 16, 128, 16, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(24, 32, 64, 24, { AttentionOperand::Q, AttentionOperand::O }),
+      AttentionParameterRow(32, 32, 64, 32, { AttentionOperand::O }),
+      AttentionParameterRow(56, 32, 32, 56, { AttentionOperand::Q }),
+      AttentionParameterRow(384, 32, 80, 16, {})
+    };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::backwardQueryMixed(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(80, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dO, AttentionOperand::dQ }),
+      AttentionParameterRow(192, 16, 64, 32, { AttentionOperand::Q, AttentionOperand::dQ }),
+      AttentionParameterRow(384, 16, 128, 32, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(32, 32, 64, 32, { AttentionOperand::Q, AttentionOperand::dQ }),
+      AttentionParameterRow(96, 32, 64, 32, { AttentionOperand::dQ }),
+      AttentionParameterRow(384, 32, 64, 32, {})
+    };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::backwardQuery(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(16, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dO, AttentionOperand::dQ }),
+      AttentionParameterRow(32, 16, 64, 16, { AttentionOperand::Q, AttentionOperand::dQ }),
+      AttentionParameterRow(192, 16, 64, 32, { AttentionOperand::Q, AttentionOperand::dQ }),
+      AttentionParameterRow(384, 16, 128, 16, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(16, 32, 64, 16, { AttentionOperand::Q, AttentionOperand::dQ }),
+      AttentionParameterRow(32, 32, 64, 32, { AttentionOperand::dQ }),
+      AttentionParameterRow(56, 32, 64, 24, { AttentionOperand::dQ }),
+      AttentionParameterRow(384, 32, 80, 16, {})
+    };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValueMixed(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(56, 16, 64, 8, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(80, 16, 32, 16, { AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(144, 16, 128, 16, { AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(224, 16, 128, 16, { AttentionOperand::dV }),
+      AttentionParameterRow(384, 16, 128, 32, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(16, 32, 64, 16, { AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(32, 32, 64, 32, { AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(56, 32, 80, 32, { AttentionOperand::dV }),
+      AttentionParameterRow(96, 32, 64, 32, { AttentionOperand::dV }),
+      AttentionParameterRow(384, 32, 64, 32, {})
+    };
+  }
+}
+
+std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValue(MTL::Device *const device) const noexcept {
+  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+    return {
+      AttentionParameterRow(16, 16, 64, 8, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(32, 16, 32, 16, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(64, 16, 32, 16, { AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(128, 16, 128, 16, { AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(160, 16, 128, 16, { AttentionOperand::dV }),
+      AttentionParameterRow(384, 16, 128, 16, {})
+    };
+  } else {
+    return {
+      AttentionParameterRow(16, 32, 32, 16, { AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(24, 32, 64, 24, { AttentionOperand::dV, AttentionOperand::dK }),
+      AttentionParameterRow(56, 32, 80, 16, { AttentionOperand::dV }),
+      AttentionParameterRow(384, 32, 80, 16, {})
+    };
+  }
 }
