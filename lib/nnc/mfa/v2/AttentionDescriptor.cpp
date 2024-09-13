@@ -32,7 +32,7 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   auto createBlockDimensions =
   [=]() -> simd::ushort3 {
     unsigned short parallelization = 16;
-    unsigned short traversal = 128;
+    unsigned short traversal = 64; // 128;
     unsigned short originalHead = 16;
     // Enforce the rule that head block dimension <= head dimension.
     unsigned short headDimension = createHeadDimension();
@@ -48,7 +48,7 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     switch (type.value) {
     case AttentionKernelType::forward:
       output[AttentionOperand::Q] = false;
-      output[AttentionOperand::O] = false;
+      output[AttentionOperand::O] = true; // false;
       break;
     case AttentionKernelType::backwardQuery:
       output[AttentionOperand::Q] = false;
