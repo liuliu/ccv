@@ -6,6 +6,8 @@
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
 #include "GEMMOperandPrecision.hpp"
+#include "AttentionKernelType.hpp"
+#include "AttentionOperand.hpp"
 
 struct AttentionKernelDescriptor;
 struct AttentionKernel;
@@ -25,9 +27,16 @@ struct AttentionDescriptor {
   /// Q, K, V, O
   simd::uchar4 transposeState;
 
+  AttentionKernelType type;
+
   bool operator==(const AttentionDescriptor& rhs) const;
 
-  // std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept;
+  std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept;
+
+private:
+  AttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;
+  AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions() const noexcept;
+  AttentionOperands<GEMMOperandPrecision> createRegisterPrecisions(MTL::Device *const device) const noexcept;
 };
 
 template<>

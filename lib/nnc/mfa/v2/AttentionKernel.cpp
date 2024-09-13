@@ -16,6 +16,20 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   this->blockDimensions = descriptor.blockDimensions;
   this->headDimension = descriptor.headDimension;
+
+  source = createSource();
+
+  std::cout << source << std::endl;
+
+  threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
+
+  // Compile the shader source.
+  {
+    auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
 }
 
 // MARK: - AttentionKernel
@@ -417,7 +431,7 @@ std::string AttentionKernel::createSource() const noexcept {
     source += loopBackwardKeyValue() + "\n";
     break;
   }
-  source += createCleanup(type) + "\n";
+  source += createCleanup(type) + "\n}\n";
 
   return source.ToString();
 }
@@ -1041,7 +1055,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
           {{C}}_origin, {{TRANSPOSED_C}});
       }
 
-      \(asyncStoreAccumulator())
+      {{ASYNC_STORE_ACCUMULATOR}}
 
 )";
       break;
@@ -1553,11 +1567,12 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("OPERAND", operand.name());
 	  source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimension(operand));
 	  source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+	  source.SetValue("CLAMPED_PARALLELIZATION_THREAD_OFFSET", clampedParallelizationThreadOffsetValue());
       source += R"(
 
       uint2 {{OPERAND}}_src_offset(
         morton_offset.x + d_outer,
-        \(clampedParallelizationThreadOffset));
+        {{CLAMPED_PARALLELIZATION_THREAD_OFFSET}});
       auto {{OPERAND}}_src = simdgroup_matrix_storage<{{MEMORY_NAME_OPERAND}}>
       ::apply_offset(
         {{OPERAND}}, {{LEADING_DIMENSION_OPERAND}},
@@ -2257,7 +2272,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       ushort2 {{B}}_origin(c, d);
       simdgroup_matrix_storage<{{REGISTER_NAME_B}}> {{B}};
       {{B}}.{{LOAD_FUNCTION_B}}(
-        {{B}}_src, \(leadingDimensionRHS(descriptor)),
+        {{B}}_src, {{LEADING_DIMENSION_RHS}},
         {{B}}_origin, {{NOT_TRANSPOSED_B}});
 
       // Issue one SIMD matmul instruction.
@@ -2456,7 +2471,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     source += R"(
 
     if ({{LOOP_END_FLOOR_LESS_LOOP_END}}) {
-      ushort d_outer = {{LOOP_END_FLOOR}});
+      ushort d_outer = {{LOOP_END_FLOOR}};
       {{GATED_LOOP_ITERATION}}
     }
 

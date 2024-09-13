@@ -4,7 +4,7 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm # laplacian_test adversarial_shape_test
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm # square_attention_test # laplacian_test adversarial_shape_test
 
 FUZZ_TARGETS = csv_fuzz
 
@@ -41,6 +41,9 @@ laplacian_test.o: laplacian_test.cpp
 	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
 
 adversarial_shape_test.o: adversarial_shape_test.cpp
+	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
+
+square_attention_test.o: square_attention_test.cpp
 	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
 
 .gitignore:

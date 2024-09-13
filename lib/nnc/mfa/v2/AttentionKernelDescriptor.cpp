@@ -37,4 +37,5 @@ AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensio
   this->preferAsyncLoad = preferAsyncLoad;
   this->registerPrecisions = registerPrecisions;
   this->transposeState = transposeState;
+  this->type = type;
 }

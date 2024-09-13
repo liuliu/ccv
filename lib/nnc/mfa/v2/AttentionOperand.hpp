@@ -118,7 +118,7 @@ struct AttentionOperands {
     unsigned short& bitmap;
 
   public:
-    Reference(AttentionOperands& o, Value& v, unsigned short& b, const unsigned short& of) : operands(o), value(v), bitmap(b), offset(of) {}
+    Reference(AttentionOperands& o, Value& v, unsigned short& b, const unsigned short& of) : operands(o), value(v), offset(of), bitmap(b) {}
 
     // Implicit conversion to Value
     operator std::optional<Value>() {
