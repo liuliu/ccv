@@ -81,9 +81,9 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), type);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), type, scale);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), type);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), type, scale);
   }
 }
 
@@ -100,12 +100,14 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
     NS::Error* error = nil;
-    
-    auto function = NS::TransferPtr
-    (library->newFunction(swiftName, constants.get(), &error));
+
+    auto pipelineDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    pipelineDesc->setComputeFunction(NS::TransferPtr
+    (library->newFunction(swiftName, constants.get(), &error)).get());
+    pipelineDesc->setMaxTotalThreadsPerThreadgroup(1024);
     CCV_NNC_MFA_CHECK_ERROR(error);
     
-    auto pipeline = device->newComputePipelineState(function.get(), &error);
+    auto pipeline = device->newComputePipelineState(pipelineDesc.get(), MTL::PipelineOptionNone, NULL, &error);
     CCV_NNC_MFA_CHECK_ERROR(error);
     return pipeline;
   };

@@ -29,6 +29,8 @@ struct AttentionDescriptor {
 
   AttentionKernelType type;
 
+  float scale;
+
   bool operator==(const AttentionDescriptor& rhs) const;
 
   std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept;

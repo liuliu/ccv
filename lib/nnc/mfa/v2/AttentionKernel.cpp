@@ -4,24 +4,27 @@
 #include "../ccv_nnc_mfa.hpp"
 
 #include <algorithm>
+#include <iomanip>
 
 AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Device *const device) {
-  this->type = descriptor.type;
-  this->cacheState = descriptor.cacheState;
-  this->memoryPrecisions = descriptor.memoryPrecisions;
-  this->preferAsyncCache = descriptor.preferAsyncCache;
-  this->preferAsyncLoad = descriptor.preferAsyncLoad;
-  this->registerPrecisions = descriptor.registerPrecisions;
-  this->transposeState = descriptor.transposeState;
+  type = descriptor.type;
+  cacheState = descriptor.cacheState;
+  memoryPrecisions = descriptor.memoryPrecisions;
+  preferAsyncCache = descriptor.preferAsyncCache;
+  preferAsyncLoad = descriptor.preferAsyncLoad;
+  registerPrecisions = descriptor.registerPrecisions;
+  transposeState = descriptor.transposeState;
 
-  this->blockDimensions = descriptor.blockDimensions;
-  this->headDimension = descriptor.headDimension;
+  blockDimensions = descriptor.blockDimensions;
+  headDimension = descriptor.headDimension;
+
+  scale = descriptor.scale;
 
   source = createSource();
 
-  std::cout << source << std::endl;
-
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
+
+  threadgroupSize = 32 * (blockDimensions[0] / 8);
 
   // Compile the shader source.
   {
@@ -843,7 +846,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("MEMORY_NAME_C", memoryName(C));
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
-    source.SetValue("TRANSPOSED_C", std::to_string(transposed(C)));
+    source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
     switch (descriptor.addressSpaceLHS.value) {
     case MTLAddressSpace::device:
       source += R"(
@@ -888,7 +891,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("MEMORY_NAME_C", memoryName(C));
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
-    source.SetValue("TRANSPOSED_C", std::to_string(transposed(C)));
+    source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -931,7 +934,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("MEMORY_NAME_C", memoryName(C));
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
-    source.SetValue("TRANSPOSED_C", std::to_string(transposed(C)));
+    source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -972,7 +975,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("LOAD_FUNCTION_C", loadFunction(C));
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
-    source.SetValue("TRANSPOSED_C", std::to_string(transposed(C)));
+    source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
     switch (descriptor.addressSpaceLHS.value) {
     case MTLAddressSpace::device:
       source += R"(
@@ -1019,7 +1022,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("STORE_FUNCTION_C", storeFunction(C));
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
-    source.SetValue("TRANSPOSED_C", std::to_string(transposed(C)));
+    source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
     source.SetValue("UNSAFE_PARALLELIZATION_THREAD_OFFSET", unsafeParallelizationThreadOffsetValue());
     source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
     switch (descriptor.addressSpaceLHS.value) {
@@ -1081,7 +1084,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("MEMORY_NAME_B", memoryName(B));
     source.SetValue("LEADING_DIMENSION_B", leadingDimension(B));
     source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
-    source.SetValue("TRANSPOSED_B", std::to_string(transposed(B)));
+    source.SetValue("TRANSPOSED_B", transposed(B) ? "true" : "false");
     source.SetValue("TRAVERSAL_OFFSET", traversalOffsetValue());
     switch (descriptor.addressSpaceRHS.value) {
     case MTLAddressSpace::device:
@@ -1127,7 +1130,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
       source.SetValue("MEMORY_NAME_B", memoryName(B));
       source.SetValue("LEADING_DIMENSION_B", leadingDimension(B));
       source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
-      source.SetValue("TRANSPOSED_B", std::to_string(transposed(B)));
+      source.SetValue("TRANSPOSED_B", transposed(B) ? "true" : "false");
       source.SetValue("TRAVERSAL_OFFSET", traversalOffsetValue());
       source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
       source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
@@ -1185,7 +1188,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("B", B.name());
     source.SetValue("C", C.name());
     source.SetValue("LOAD_FUNCTION_B", loadFunction(B));
-    source.SetValue("TRANSPOSED_B", std::to_string(transposed(B)));
+    source.SetValue("TRANSPOSED_B", transposed(B) ? "true" : "false");
     source.SetValue("LEADING_DIMENSION_RHS", leadingDimensionRHS(descriptor));
     source += R"(
 
@@ -1416,7 +1419,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     
     CodeWriter source;
     source.SetValue("LOOP_END_FLOOR", std::to_string(loopEndFloor()));
-    source.SetValue("LOOP_END_FLOOR_LESS_LOOP_END", std::to_string(loopEndFloor() < loopEnd()));
+    source.SetValue("LOOP_END_FLOOR_LESS_LOOP_END", (loopEndFloor() < loopEnd()) ? "true" : "false");
     source.SetValue("GATED_LOOP_ITERATION", gatedLoopIteration(descriptor));
     
     source += R"(
@@ -1465,7 +1468,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("OPERAND", operand.name());
 	  source.SetValue("LEADING_BLOCK_DIMENSION_OPERAND", std::to_string(leadingBlockDimension(operand)));
 	  source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimension(operand));
-	  source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+	  source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
 	  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
 	  source.SetValue("PADED_HEAD_DIMENSION", std::to_string(paddedHeadDimensionValue()));
 	  source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
@@ -1511,7 +1514,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("OPERAND", operand.name());
 	  source.SetValue("LEADING_BLOCK_DIMENSION_OPERAND", std::to_string(leadingBlockDimension(operand)));
 	  source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimension(operand));
-	  source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+	  source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
 	  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
 	  source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
 	  source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
@@ -1569,7 +1572,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("MEMORY_NAME_OPERAND", memoryName(operand));
 	  source.SetValue("OPERAND", operand.name());
 	  source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimension(operand));
-	  source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+	  source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
 	  source.SetValue("CLAMPED_PARALLELIZATION_THREAD_OFFSET", clampedParallelizationThreadOffsetValue());
       source += R"(
 
@@ -1588,7 +1591,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
 	  source.SetValue("MEMORY_NAME_OPERAND", memoryName(operand));
 	  source.SetValue("OPERAND", operand.name());
 	  source.SetValue("LEADING_BLOCK_DIMENSION_OPERAND", std::to_string(leadingBlockDimension(operand)));
-	  source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+	  source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
       source += R"(
 
       ushort2 {{OPERAND}}_block_offset(
@@ -1617,7 +1620,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
     source.SetValue("HEAD_END", std::to_string(headEnd));
     source.SetValue("OPERAND", operand.name());
     source.SetValue("LEADING_DIMENSION_OPERAND", leadingDimensionOperand(descriptor));
-    source.SetValue("TRANSPOSED_OPERAND", std::to_string(transposed(operand)));
+    source.SetValue("TRANSPOSED_OPERAND", transposed(operand) ? "true" : "false");
     if (type == CachingOperationType::load) {
       source.SetValue("LOAD_FUNCTION_OPERAND", loadFunction(operand));
       source += R"(
@@ -1673,7 +1676,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
     if (descriptor.addressSpace == MTLAddressSpace::device) {
       CodeWriter source;
       source.SetValue("DECLARE_OPERAND_LOCATION", declareOperandLocation(descriptor));
-      source.SetValue("TYPE_IS_LOAD", std::to_string(type == CachingOperationType::load));
+      source.SetValue("TYPE_IS_LOAD", (type == CachingOperationType::load) ? "true" : "false");
       source.SetValue("UNSAFE_PARALLELIZATION_THREAD_OFFSET", unsafeParallelizationThreadOffsetValue());
       source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
       source.SetValue("INNER_LOOP_HEAD", innerLoopHead(0, blockDimensions[2], descriptor));
@@ -1721,7 +1724,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
     descriptorDevice.addressSpace = MTLAddressSpace::device;
     descriptorThreadgroup.addressSpace = MTLAddressSpace::threadgroup;
     CodeWriter source;
-	source.SetValue("NOT_PREFER_ASYNC_CACHE", std::to_string(!preferAsyncCache));
+	source.SetValue("NOT_PREFER_ASYNC_CACHE", !preferAsyncCache ? "true" : "false");
 	source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
 	source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
 	source.SetValue("LOOP_ITERATION_DEVICE", loopIteration(descriptorDevice));
@@ -2002,7 +2005,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 	source.SetValue("A", A.name());
 	source.SetValue("MEMORY_NAME_A", memoryName(A));
 	source.SetValue("CLAMPED_PARALLELIZATION_THREAD_OFFSET", clampedParallelizationThreadOffsetValue());
-	source.SetValue("TRANSPOSED_A", std::to_string(transposed(A)));
+	source.SetValue("TRANSPOSED_A", transposed(A) ? "true" : "false");
     switch (descriptor.addressSpaceLHS.value) {
     case MTLAddressSpace::device:
 	  source.SetValue("LEADING_DIMENSION_A", leadingDimension(A));
@@ -2043,7 +2046,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 	source.SetValue("A", A.name());
 	source.SetValue("MEMORY_NAME_A", memoryName(A));
 	source.SetValue("CLAMPED_PARALLELIZATION_THREAD_OFFSET", clampedParallelizationThreadOffsetValue());
-	source.SetValue("TRANSPOSED_A", std::to_string(transposed(A)));
+	source.SetValue("TRANSPOSED_A", transposed(A) ? "true" : "false");
     source.SetValue("LEADING_DIMENSION_A", leadingDimension(A));
 	source.SetValue("LEADING_BLOCK_DIMENSION_A", std::to_string(leadingBlockDimension(A)));
 	source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
@@ -2093,7 +2096,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     source.SetValue("A", A.name());
     source.SetValue("DESCRIPTOR_REGISTER_SIZE", std::to_string(descriptor.registerSize));
     source.SetValue("LOAD_FUNCTION_A", loadFunction(A));
-    source.SetValue("TRANSPOSED_A", std::to_string(transposed(A)));
+    source.SetValue("TRANSPOSED_A", transposed(A) ? "true" : "false");
     source.SetValue("DECLARE_LHS_LOCATION", declareLHSLocation(descriptor));
     switch (descriptor.addressSpaceLHS.value) {
     case MTLAddressSpace::device:
@@ -2154,7 +2157,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     case MTLAddressSpace::device:
 	  source.SetValue("TRAVERSAL_OFFSET", traversalOffsetValue());
 	  source.SetValue("LEADING_DIMENSION_B", leadingDimension(B));
-	  source.SetValue("TRANSPOSED_B", std::to_string(transposed(B)));
+	  source.SetValue("TRANSPOSED_B", transposed(B) ? "true" : "false");
       source += R"(
 
       uint2 {{B}}_src_offset(
@@ -2169,7 +2172,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       break;
     case MTLAddressSpace::threadgroup:
 	  source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
-	  source.SetValue("NOT_TRANSPOSED_B", std::to_string(!transposed(B)));
+	  source.SetValue("NOT_TRANSPOSED_B", !transposed(B) ? "true" : "false");
       source += R"(
 
       ushort2 {{B}}_block_offset(
@@ -2204,7 +2207,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 	  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
 	  source.SetValue("PADDED_TRAVERSAL_EDGE", paddedTraversalEdgeValue());
 	  source.SetValue("LEADING_DIMENSION_B", leadingDimension(B));
-	  source.SetValue("TRANSPOSED_B", std::to_string(transposed(B)));
+	  source.SetValue("TRANSPOSED_B", transposed(B) ? "true" : "false");
 	  source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
 	  source.SetValue("DESCRIPTOR_REGISTER_SIZE", std::to_string(descriptor.registerSize));
 	  source.SetValue("DECLARE_RHS_LOCATION", declareRHSLocation(descriptor));
@@ -2261,7 +2264,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 	source.SetValue("REGISTER_NAME_B", registerName(B));
 	source.SetValue("LOAD_FUNCTION_B", loadFunction(B));
 	source.SetValue("LEADING_DIMENSION_RHS", leadingDimensionRHS(descriptor));
-	source.SetValue("NOT_TRANSPOSED_B", std::to_string(!transposed(B)));
+	source.SetValue("NOT_TRANSPOSED_B", !transposed(B) ? "true" : "false");
 	source.SetValue("DESCRIPTOR_REGISTER_OFFSET", descriptor.registerOffset);
 	source.SetValue("DESCRIPTOR_ACCUMULATE_CONDITIONAL", descriptor.accumulateConditional);
 	source += R"(
@@ -2466,7 +2469,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     
     CodeWriter source;
 	source.SetValue("LOOP_END_FLOOR", std::to_string(loopEndFloor()));
-	source.SetValue("LOOP_END_FLOOR_LESS_LOOP_END", std::to_string(loopEndFloor() < loopEnd()));
+	source.SetValue("LOOP_END_FLOOR_LESS_LOOP_END", (loopEndFloor() < loopEnd()) ? "true" : "false");
 	source.SetValue("GATED_LOOP_ITERATION", gatedLoopIteration(descriptor));
     source += R"(
 
@@ -2485,14 +2488,19 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 
 // MARK: - AttentionKernel+Softmax
 
-static std::string dotProductScale(bool derivative, unsigned short headDimension) {
+static std::string high_precision_to_string(float value) {
+  std::ostringstream oss;
+  oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
+  return oss.str();
+}
+
+static std::string dotProductScale(float rsqrtD, bool derivative, unsigned short headDimension) {
   float logBase2E = 1.442695041;
-  float rsqrtD = 1 / sqrt((float)headDimension);
 
   if (!derivative) {
-    return std::to_string(logBase2E * rsqrtD);
+    return high_precision_to_string(logBase2E * rsqrtD);
   } else {
-    return std::to_string(rsqrtD);
+    return high_precision_to_string(rsqrtD);
   }
 }
 std::string AttentionKernel::computeD() const noexcept {
@@ -2509,7 +2517,7 @@ std::string AttentionKernel::computeD() const noexcept {
 		CodeWriter source;
 		source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
 		source.SetValue("LEADING_DIMENSION_DO", leadingDimension(AttentionOperand::dO));
-		source.SetValue("TRANSPOSED_DO", std::to_string(transposed(AttentionOperand::dO)));
+		source.SetValue("TRANSPOSED_DO", transposed(AttentionOperand::dO) ? "true" : "false");
         source += R"(
 
         // Where the dO data will be read from.
@@ -2536,7 +2544,7 @@ std::string AttentionKernel::computeD() const noexcept {
 		source.SetValue("REGISTER_NAME_DO", registerName(AttentionOperand::dO));
 		source.SetValue("LOAD_FUNCTION_DO", loadFunction(AttentionOperand::dO));
 		source.SetValue("LEADING_DIMENSION_DO", leadingDimension(AttentionOperand::dO));
-		source.SetValue("TRANSPOSED_DO", std::to_string(transposed(AttentionOperand::dO)));
+		source.SetValue("TRANSPOSED_DO", transposed(AttentionOperand::dO) ? "true" : "false");
         source += R"(
 
         simdgroup_matrix_storage<{{REGISTER_NAME_DO}}> dO;
@@ -2557,7 +2565,7 @@ std::string AttentionKernel::computeD() const noexcept {
 	source.SetValue("REGISTER_NAME_O", registerName(AttentionOperand::O));
 	source.SetValue("LOAD_FUNCTION_O", loadFunction(AttentionOperand::O));
 	source.SetValue("LEADING_DIMENSION_O", leadingDimension(AttentionOperand::O));
-	source.SetValue("TRANSPOSED_O", std::to_string(transposed(AttentionOperand::O)));
+	source.SetValue("TRANSPOSED_O", transposed(AttentionOperand::O) ? "true" : "false");
 	source.SetValue("TRUNCATED_HEAD_DIMENSION", std::to_string(truncatedHeadDimension));
     source += R"(
 
@@ -2628,13 +2636,13 @@ std::string AttentionKernel::computeD() const noexcept {
 	source.SetValue("LOAD_FUNCTION_DO", registerName(AttentionOperand::dO));
 	source.SetValue("LEADING_DIMENSION_DO", leadingDimension(AttentionOperand::dO));
 	source.SetValue("LEADING_BLOCK_DIMENSION_DO", std::to_string(leadingBlockDimension(AttentionOperand::dO)));
-	source.SetValue("TRANSPOSED_DO", std::to_string(transposed(AttentionOperand::dO)));
+	source.SetValue("TRANSPOSED_DO", transposed(AttentionOperand::dO) ? "true" : "false");
 	source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
 	source.SetValue("REGISTER_NAME_O", registerName(AttentionOperand::O));
 	source.SetValue("LOAD_FUNCTION_O", registerName(AttentionOperand::O));
 	source.SetValue("LEADING_DIMENSION_O", leadingDimension(AttentionOperand::O));
 	source.SetValue("LEADING_BLOCK_DIMENSION_O", std::to_string(leadingBlockDimension(AttentionOperand::O)));
-	source.SetValue("TRANSPOSED_O", std::to_string(transposed(AttentionOperand::O)));
+	source.SetValue("TRANSPOSED_O", transposed(AttentionOperand::O) ? "true" : "false");
 	source.SetValue("BLOCK_BYTES_DERIVATIVE_O", std::to_string(blockBytesDerivativeO()));
 	source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
 	source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
@@ -2721,7 +2729,7 @@ std::string AttentionKernel::computeD() const noexcept {
   CodeWriter source;
   source.SetValue("BULK_CONTRIBUTIONS", bulkContributions(loopEndFloor));
   source.SetValue("EDGE_CONTRIBUTIONS", edgeContributions(loopEndFloor));
-  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(true, headDimension));
+  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, true, headDimension));
   source += R"(
 
   float2 D_accumulator(0);
@@ -2788,7 +2796,7 @@ std::string AttentionKernel::onlineReduceMaximum() const noexcept {
   CodeWriter source;
   source.SetValue("REGISTER_NAME_S", registerName(AttentionOperand::S));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
-  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(false, headDimension));
+  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, false, headDimension));
   source += R"(
 
   // update 'm'
@@ -2944,8 +2952,7 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
   auto overwriteAttentionMatrixElements =
   [=]() -> std::string {
 	CodeWriter source;
-    auto scale = dotProductScale(derivative, headDimension);
-	source.SetValue("SCALE", scale);
+	source.SetValue("SCALE", dotProductScale(scale, derivative, headDimension));
  
     if (!derivative) {
       source.SetValue("REGISTER_NAME_P", registerName(AttentionOperand::P));
@@ -3042,7 +3049,7 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
   case AttentionKernelType::backwardKeyValue:
     auto blockDim = blockDimensions[1];
 	source.SetValue("BLOCK_DIM", std::to_string(blockDim));
-	source.SetValue("NOT_PREFER_ASYNC_LOAD", std::to_string(!preferAsyncLoad));
+	source.SetValue("NOT_PREFER_ASYNC_LOAD", !preferAsyncLoad ? "true" : "false");
 	source.SetValue("TRAVERSAL_DIMENSION", traversalDimensionValue());
 	source.SetValue("TRAVERSAL_OFFSET", traversalOffsetValue());
 	source.SetValue("LOAD_OPERAND", loadOperand());

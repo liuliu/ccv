@@ -28,7 +28,7 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
 
 // MARK: - Initializer
 
-AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionKernelType type) noexcept {
+AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionKernelType type, float scale) noexcept {
   this->blockDimensions = blockDimensions;
   this->cacheState = cacheState;
   this->headDimension = headDimension;
@@ -38,4 +38,5 @@ AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensio
   this->registerPrecisions = registerPrecisions;
   this->transposeState = transposeState;
   this->type = type;
+  this->scale = scale;
 }

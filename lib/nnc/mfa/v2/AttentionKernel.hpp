@@ -17,6 +17,8 @@ struct AttentionKernel {
 
   AttentionKernelType type;
 
+  float scale;
+
   AttentionOperands<bool> cacheState;
 
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
@@ -35,6 +37,9 @@ struct AttentionKernel {
   unsigned short headDimension;
 
   unsigned short threadgroupMemoryAllocation;
+
+  /// The number of threads per group.
+  uint16_t threadgroupSize;
 
   AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Device *const device);
 
