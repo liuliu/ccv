@@ -17,6 +17,8 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   blockDimensions = descriptor.blockDimensions;
   headDimension = descriptor.headDimension;
+  Hq = descriptor.Hq;
+  Hk = descriptor.Hk;
   leadingDimensions = descriptor.leadingDimensions;
 
   scale = descriptor.scale;
@@ -458,10 +460,10 @@ std::string AttentionKernel::createConstants() const noexcept {
     operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
     break;
   }
-  std::string output = "";
+  std::string output = "#define Hq (" + std::to_string(Hq) + ")\n";
   for (const auto& operand : operands) {
     output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
-    output += std::to_string(operand.bufferIndex() + 3) + ")]];\n";
+    output += std::to_string(operand.bufferIndex() + 2) + ")]];\n";
   }
   return R"(
 
@@ -470,7 +472,6 @@ std::string AttentionKernel::createConstants() const noexcept {
     // Hq = number of query heads.
     constant uint R [[function_constant(0)]];
     constant uint C [[function_constant(1)]];
-    constant uint Hq [[function_constant(2)]];
 
 )" + output;
 }

@@ -8,6 +8,7 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   return
   batchDimension == rhs.batchDimension &&
   Hq == rhs.Hq &&
+  Hk == rhs.Hk &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
   simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
@@ -21,6 +22,7 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
   using namespace ccv::nnc::mfa::hash;
   combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.Hq);
+  combine_32(seed, hash.Hk);
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
@@ -116,9 +118,9 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), Hq, Hk, createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), Hq, Hk, createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   }
 }
 
@@ -130,10 +132,8 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     (MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
-	uint32_t Hq = this->Hq;
     constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
     constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
-    constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:
@@ -148,7 +148,7 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     }
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 3 + operand.bufferIndex());
+      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
     }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
@@ -399,7 +399,7 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPreci
 // MARK: - AttentionDescriptor+Parameters
 
 std::vector<AttentionParameterRow> AttentionDescriptor::parameterFile(AttentionKernelType type, MTL::Device *const device) const noexcept {
-  if (lowPrecisionInputs && lowPrecisionIntermediates) {
+  if (lowPrecisionInputs || lowPrecisionIntermediates) {
     switch (type.value) {
     case AttentionKernelType::forward: 
       return forwardMixed(device);

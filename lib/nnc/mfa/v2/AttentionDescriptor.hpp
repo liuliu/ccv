@@ -29,6 +29,9 @@ struct AttentionDescriptor {
   /// The number of query heads per sequence that run in parallel.
   unsigned short Hq = 1;
 
+  /// The number of key / value heads per sequence that run in parallel.
+  unsigned short Hk = 1;
+
   /// Q, K, V, dO
   bool lowPrecisionInputs;
 

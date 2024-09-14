@@ -20,6 +20,10 @@ struct AttentionKernelDescriptor {
   /// Required. The problem size along the head dimension.
   unsigned short headDimension;
 
+  unsigned short Hq;
+
+  unsigned short Hk;
+
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
 
   /// Reads with a one-to-one mapping to threads (like GEMM store) and writes.
@@ -58,7 +62,7 @@ struct AttentionKernelDescriptor {
   AttentionKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<unsigned short> leadingDimensions, AttentionKernelType type, float scale) noexcept;
+  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, unsigned short Hq, unsigned short Hk, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<unsigned short> leadingDimensions, AttentionKernelType type, float scale) noexcept;
 
   bool operator==(const AttentionKernelDescriptor& rhs) const;
 };

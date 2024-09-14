@@ -9,6 +9,7 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
   simd_all(blockDimensions == rhs.blockDimensions) &&
   cacheState == rhs.cacheState &&
   headDimension == rhs.headDimension &&
+  Hq == rhs.Hq && Hk == rhs.Hk &&
   memoryPrecisions == rhs.memoryPrecisions &&
   (preferAsyncCache == rhs.preferAsyncCache) &&
   (preferAsyncLoad == rhs.preferAsyncLoad) &&
@@ -23,16 +24,19 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
   combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
+  combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
   combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncCache, hash.preferAsyncLoad, 0, 0 }));
   return 0;
 }
 
 // MARK: - Initializer
 
-AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<unsigned short> leadingDimensions, AttentionKernelType type, float scale) noexcept {
+AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, unsigned short Hq, unsigned short Hk, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<unsigned short> leadingDimensions, AttentionKernelType type, float scale) noexcept {
   this->blockDimensions = blockDimensions;
   this->cacheState = cacheState;
   this->headDimension = headDimension;
+  this->Hq = Hq;
+  this->Hk = Hk;
   this->memoryPrecisions = memoryPrecisions;
   this->preferAsyncCache = preferAsyncCache;
   this->preferAsyncLoad = preferAsyncLoad;

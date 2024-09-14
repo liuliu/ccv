@@ -88,7 +88,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     }
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type == MTL::DataTypeHalf) ? true : false;
-    attentionDesc.lowPrecisionIntermediates = false;
+    attentionDesc.lowPrecisionIntermediates = (params.data_type == MTL::DataTypeHalf && !hash.upcast) ? true : false;
     attentionDesc.matrixDimensions[0] = hash.R;
     attentionDesc.matrixDimensions[1] = hash.C;
     attentionDesc.matrixDimensions[2] = hash.D;
@@ -146,7 +146,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     encoder->setBuffer(tensors[2], tensor_offsets[2], AttentionOperand(AttentionOperand::V).bufferIndex());
     if (attentionDesc.lowPrecisionInputs) {
       encoder->setBuffer(scratch, 0, AttentionOperand(AttentionOperand::O).bufferIndex());
-      encoder->setBuffer(scratch, hash.R * hash.D * hash.Hq * attentionDesc.batchDimension, AttentionOperand(AttentionOperand::L).bufferIndex());
+      encoder->setBuffer(scratch, sizeof(float) * hash.R * hash.D * hash.Hq * attentionDesc.batchDimension, AttentionOperand(AttentionOperand::L).bufferIndex());
     } else {
       encoder->setBuffer(tensors[3], tensor_offsets[3], AttentionOperand(AttentionOperand::O).bufferIndex());
       encoder->setBuffer(scratch, 0, AttentionOperand(AttentionOperand::L).bufferIndex());

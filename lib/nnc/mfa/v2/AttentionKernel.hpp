@@ -39,6 +39,10 @@ struct AttentionKernel {
 
   unsigned short headDimension;
 
+  unsigned short Hq;
+
+  unsigned short Hk;
+
   unsigned short threadgroupMemoryAllocation;
 
   /// The number of threads per group.
