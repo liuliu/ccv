@@ -152,7 +152,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			return CCV_NNC_EXEC_INVALID;
 		}
 
-		int is_upcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_32F) && q->info.datatype == CCV_16F); // See the TODO: comment.
+		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && q->info.datatype == CCV_16F);
 		int attention_is_batched = (batch_size > 1);
 		ccv_nnc_mfa_attention_params_t params = {
 			.data_type = mtl_data_type,
@@ -168,7 +168,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.alpha = cmd.info.scaled_dot_product_attention.scale,
 			.batched = (attention_is_batched ? 1 : 0),
 			.masked = (attn_mask != NULL ? 1 : 0),
-			.upcast = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_32F), // TODO: This default to FP32 after v2 introduction.
+			.upcast = !is_downcast,
 
 			.batch_dims_q = { 0 },
 			.batch_dims_mask = { 0 },
@@ -321,7 +321,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				.B_trans = true,
 				.D_trans = false,
 				.fused_bias = (bias ? 1 : 0),
-				.register_float = (is_upcast ? 1 : 0),
+				.register_float = (is_downcast ? 0 : 1),
 
 				.batch_dimension = 1,
 				.batch_stride_a = 0,
