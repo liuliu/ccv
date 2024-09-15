@@ -74,6 +74,8 @@ private:
   unsigned short paddedHeadEdgeValue() const noexcept;
   unsigned short threadgroupSizeValue() const noexcept;
   unsigned short createThreadgroupMemoryAllocation() const noexcept;
+  std::string operandLocationValue(AttentionOperand operand) const noexcept;
+  std::string operandLocationWithHeadOffsetValue(AttentionOperand operand) const noexcept;
 
   /// AttentionKernel+Source
   std::string createSource() const noexcept;
