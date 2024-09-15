@@ -399,7 +399,7 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPreci
 // MARK: - AttentionDescriptor+Parameters
 
 std::vector<AttentionParameterRow> AttentionDescriptor::parameterFile(AttentionKernelType type, MTL::Device *const device) const noexcept {
-  if (lowPrecisionInputs || lowPrecisionIntermediates) {
+  if (lowPrecisionInputs && lowPrecisionIntermediates) {
     switch (type.value) {
     case AttentionKernelType::forward: 
       return forwardMixed(device);
