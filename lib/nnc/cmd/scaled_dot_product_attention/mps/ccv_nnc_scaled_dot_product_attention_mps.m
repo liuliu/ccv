@@ -36,6 +36,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	const int o_nd = ccv_nnc_tensor_nd(o->info.dim);
 	assert(o_nd == 3 || o_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd && v_nd == o_nd);
+	ccv_nnc_tensor_view_t* const lse = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
 
 	int qdim[CCV_NNC_MAX_DIM_ALLOC];
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -185,20 +186,22 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		if (params.masked) {
 			mask_buffer = mpgetbuffer((ccv_nnc_tensor_t*)attn_mask);
 		}
-		mtl_buffer_t* tensors[6] = {
+		mtl_buffer_t* tensors[7] = {
 			mpgetbuffer((ccv_nnc_tensor_t*)q),
 			mpgetbuffer((ccv_nnc_tensor_t*)k),
 			mpgetbuffer((ccv_nnc_tensor_t*)v),
 			mpgetbuffer((ccv_nnc_tensor_t*)o),
 			mask_buffer,
+			lse ? mpgetbuffer((ccv_nnc_tensor_t*)lse) : 0,
 			NULL,
 		};
-		size_t tensor_offsets[5] = {
+		size_t tensor_offsets[6] = {
 			q->dataof,
 			k->dataof,
 			v->dataof,
 			o->dataof,
 			attn_mask ? attn_mask->dataof : 0,
+			lse ? lse->dataof : 0,
 		};
 		ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
 
