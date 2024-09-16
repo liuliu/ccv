@@ -138,10 +138,52 @@ struct AttentionOperands {
   constexpr AttentionOperands() : bitmap(0) {}
 
   constexpr bool operator==(const AttentionOperands<Value>& rhs) const {
-    return Q == rhs.Q && K == rhs.K && S == rhs.S && P == rhs.P && V == rhs.V && O == rhs.O &&
-      L == rhs.L && D == rhs.D &&
-      dO == rhs.dO && dV == rhs.dV && dP == rhs.dP && dS == rhs.dS && dK == rhs.dK && dQ == rhs.dQ &&
-      bitmap == bitmap;
+    if (bitmap != rhs.bitmap) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::Q)) && Q != rhs.Q) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::K)) && K != rhs.K) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::S)) && S != rhs.S) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::P)) && P != rhs.P) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::V)) && V != rhs.V) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::O)) && O != rhs.O) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::L)) && L != rhs.L) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::D)) && D != rhs.D) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dO)) && dO != rhs.dO) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dV)) && dV != rhs.dV) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dP)) && dP != rhs.dP) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dS)) && dS != rhs.dS) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dK)) && dK != rhs.dK) {
+      return false;
+    }
+    if (bitmap & (1 << (AttentionOperand::dQ)) && dQ != rhs.dQ) {
+      return false;
+    }
+    return true;
   }
 
   class Reference {

@@ -9,6 +9,8 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   batchDimension == rhs.batchDimension &&
   Hq == rhs.Hq &&
   Hk == rhs.Hk &&
+  scale == rhs.scale &&
+  type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
   simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&

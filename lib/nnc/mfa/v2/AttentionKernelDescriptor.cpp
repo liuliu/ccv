@@ -16,7 +16,8 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
   registerPrecisions == rhs.registerPrecisions &&
   transposeState == rhs.transposeState &&
   leadingDimensions == rhs.leadingDimensions &&
-  type == rhs.type;
+  type == rhs.type &&;
+  scale == rhs.scale;
 }
 
 std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKernelDescriptor& hash) const noexcept {
