@@ -152,7 +152,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			return CCV_NNC_EXEC_INVALID;
 		}
 
-		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && q->info.datatype == CCV_16F);
+		const int is_downcast = ((cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_16F) && q->info.datatype == CCV_16F);
 		int attention_is_batched = (batch_size > 1);
 		ccv_nnc_mfa_attention_params_t params = {
 			.data_type = mtl_data_type,
