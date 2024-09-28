@@ -4705,6 +4705,34 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_contiguous(const char* const name);
  * @return A model that can apply scaled dot product attention compute.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int flags, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
+/**
+ * The function prototype to call during the model execution at this position.
+ */
+typedef void (*ccv_cnnp_model_debug_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_stream_context_t* const stream_context, void* const context);
+/**
+ * The function prototype to destruct the context.
+ */
+typedef void (*ccv_cnnp_model_debug_context_deinit_f)(void* const context);
+/**
+ * The function prototype to copy the context.
+ */
+typedef void* (*ccv_cnnp_model_debug_context_copy_f)(void* const context);
+/**
+ * A special model that takes n inputs and output the first values. This is a special model because it
+ * generates a graph violates single-static assignment rule by having the outputs the same symbol
+ * as the input. It also inserts a custom op allows you to intercept the model execution and possibly
+ * output useful information from it (i.e. debug print tensors, generate stats like max / min / nan
+ * etc.). This is safe to insert anywhere because it doesn't impact the graph execution process but
+ * you are also advised to not use this method to modify the tensors during the execution. There will
+ * be another method for you to insert custom op in the model.
+ * @param func The func to call during the model execution.
+ * @param context The context object to be passed along the callback.
+ * @param deinit The deinit method to be used to free up the context.
+ * @param copy The copy method to make a duplicate of the context.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and copies first input to the second.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_debug(ccv_cnnp_model_debug_f func, void* const context, ccv_cnnp_model_debug_context_deinit_f deinit, ccv_cnnp_model_debug_context_copy_f copy, const char* const name);
 
 /** @} */
 

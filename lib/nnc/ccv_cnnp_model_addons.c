@@ -4003,3 +4003,94 @@ static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_c
 	const ccv_cnnp_model_scaled_dot_product_attention_t* const self = (const ccv_cnnp_model_scaled_dot_product_attention_t*)super;
 	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->flags, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
 }
+
+// MARK - Debug Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_cnnp_model_debug_f debugger;
+	ccv_cnnp_model_debug_context_deinit_f debug_deinit;
+	ccv_cnnp_model_debug_context_copy_f debug_copy;
+	void* debug_context;
+} ccv_cnnp_model_debug_t;
+
+static int _ccv_cnnp_debug_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	if (cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+	{
+		assert(0 && "don't support debug backward pass yet");
+	}
+	ccv_cnnp_model_debug_t* const self = (ccv_cnnp_model_debug_t*)cmd.data;
+	self->debugger(inputs, input_size, stream_context, self->debug_context);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static ccv_nnc_cmd_vtab_t ccv_cnnp_debug_exec_isa = {
+	.exec = _ccv_cnnp_debug_exec
+};
+
+static void _ccv_cnnp_debug_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_debug_build] -\n");
+	assert(input_size >= 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If we are not reshape an alias, it is straightforward.
+	{
+		int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+		int stride[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_get_stride(output_params.dim, stride);
+		outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, stride, output_params, 0);
+	} else {
+		int old_ofs[CCV_NNC_MAX_DIM_ALLOC];
+		int old_stride[CCV_NNC_MAX_DIM_ALLOC];
+		ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], old_ofs, old_stride);
+		outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, to, old_ofs, old_stride, output_params, 0);
+	}
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, (ccv_nnc_cmd_vtab_t*)&ccv_cnnp_debug_exec_isa, (ccv_nnc_cmd_param_t){}, 0);
+	cmd.data = self;
+	ccv_nnc_graph_exec_symbol_t make_debug = ccv_nnc_graph_exec_symbol_new(graph, cmd, inputs, input_size, outputs, 1, "debug");
+	// Disable any optimizations.
+	ccv_nnc_graph_exec_symbol_set_flags(graph, make_debug, CCV_NNC_GRAPH_EXEC_DISABLE_OPT);
+}
+
+static void _ccv_cnnp_debug_deinit(ccv_cnnp_model_t* const super)
+{
+	const ccv_cnnp_model_debug_t* const self = (const ccv_cnnp_model_debug_t*)super;
+	if (self->debug_deinit && self->debug_context)
+		self->debug_deinit(self->debug_context);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_debug_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_debug_isa = {
+	.build = _ccv_cnnp_debug_build,
+	.deinit = _ccv_cnnp_debug_deinit,
+	.copy = _ccv_cnnp_debug_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_debug(ccv_cnnp_model_debug_f func, void* const context, ccv_cnnp_model_debug_context_deinit_f deinit, ccv_cnnp_model_debug_context_copy_f copy, const char* const name)
+{
+	ccv_cnnp_model_debug_t* const model_debug = (ccv_cnnp_model_debug_t*)cccalloc(1, sizeof(ccv_cnnp_model_debug_t));
+	model_debug->super.isa = &ccv_cnnp_debug_isa;
+	model_debug->super.input_size = 0;
+	model_debug->super.outputs = &model_debug->output;
+	model_debug->super.output_size = 1;
+	model_debug->debugger = func;
+	model_debug->debug_context = context;
+	model_debug->debug_deinit = deinit;
+	model_debug->debug_copy = copy;
+	ccv_cnnp_model_copy_name(&model_debug->super, name);
+	return (ccv_cnnp_model_t*)model_debug;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_debug_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_debug_t* const self = (const ccv_cnnp_model_debug_t*)super;
+	void* debug_context = self->debug_context;
+	if (self->debug_copy && self->debug_context)
+		debug_context = self->debug_copy(self->debug_context);
+	return ccv_cnnp_debug(self->debugger, debug_context, self->debug_deinit, self->debug_copy, self->super.name);
+}

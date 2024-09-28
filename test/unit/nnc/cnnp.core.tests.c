@@ -2023,6 +2023,53 @@ TEST_CASE("chunk a tensor into several smaller ones, variant 2")
 	ccv_cnnp_model_free(final);
 }
 
+static float _debug_value = 0;
+
+static void _debug_test(ccv_nnc_tensor_t* const *const inputs, const int input_size, ccv_nnc_stream_context_t* const stream_context, void* const context)
+{
+	_debug_value = inputs[0]->data.f32[0];
+}
+
+TEST_CASE("debug can intercept model execution")
+{
+	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input2 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input3 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(input0, input1));
+	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(ccv_cnnp_debug(_debug_test, 0, 0, 0, 0), MODEL_IO_LIST(output0));
+	ccv_cnnp_model_io_t output2 = ccv_cnnp_model_apply(ccv_cnnp_mul(1, 0), MODEL_IO_LIST(output1, input2));
+	output2 = ccv_cnnp_model_apply(ccv_cnnp_sum(0), MODEL_IO_LIST(output2, input3));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2, input3), MODEL_IO_LIST(output2), 1, 0);
+	const ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t a2 = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t a3 = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, a2, a3), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	ccv_nnc_tensor_t* const a1_tensor = ccv_nnc_tensor_new(0, a1, 0);
+	ccv_nnc_tensor_t* const a2_tensor = ccv_nnc_tensor_new(0, a2, 0);
+	ccv_nnc_tensor_t* const a3_tensor = ccv_nnc_tensor_new(0, a3, 0);
+	ccv_nnc_tensor_t* const b2_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	a0_tensor->data.f32[0] = 0.5;
+	a1_tensor->data.f32[0] = 0.75;
+	a2_tensor->data.f32[0] = 1.75;
+	a3_tensor->data.f32[0] = 2.5;
+	_debug_value = 0;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor, a1_tensor, a2_tensor, a3_tensor), TENSOR_LIST(b2_tensor), 0, 0);
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_EQ_WITH_TOLERANCE(b2_tensor->data.f32[0], (0.5 + 0.75) * 1.75 + 2.5, 1e-5, "should match the final result");
+	REQUIRE_EQ_WITH_TOLERANCE(_debug_value, 0.5 + 0.75, 1e-5, "should match the intermediate result");
+	ccv_cnnp_model_free(final);
+	ccv_nnc_tensor_free(a0_tensor);
+	ccv_nnc_tensor_free(a1_tensor);
+	ccv_nnc_tensor_free(a2_tensor);
+	ccv_nnc_tensor_free(a3_tensor);
+	ccv_nnc_tensor_free(b2_tensor);
+}
+
 TEST_CASE("LoRA fine-tuning GEMM set is_trainable to false and with gradient checkpointing")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();

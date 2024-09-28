@@ -699,6 +699,8 @@ static void _ccv_nnc_symbolic_graph_ops_fusion(ccv_nnc_symbolic_graph_simplify_t
 		// If already marked as dead, skip.
 		if (exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
 			continue;
+		if (node->flags & CCV_NNC_GRAPH_EXEC_DISABLE_OPT) // If optimization pass disabled, skip.
+			continue;
 		// Run through rudimentary pattern matching for ops_seq. There are better ways to do this (immediately come to mind, Boyer-Moore). However, this is simpler to code.
 		// If I am running into performance issues with this, I would be very happy.
 		for (i = 0; i < sizeof(ccv_nnc_ops_fusions) / sizeof(ccv_nnc_ops_fusion_t); i++)
@@ -891,6 +893,8 @@ static void _ccv_nnc_symbolic_graph_pruning(ccv_nnc_symbolic_graph_simplify_t* c
 	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
 	// Mark everything visited as dead.
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		if (node->flags & CCV_NNC_GRAPH_EXEC_DISABLE_OPT) // If optimization pass disabled, skip.
+			continue;
 		exec_dead[idx >> 5] |= (1u << (idx & 0x1f));
 		for (i = 0; i < node->input_size; i++)
 		{
