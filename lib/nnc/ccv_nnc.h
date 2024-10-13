@@ -1346,6 +1346,14 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_n
  * @return CCV_NNC_EXEC_SUCCESS if succeed.
  */
 int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_static_schedule_t* const schedule, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Cancel execution of a graph. You need to handle synchronization yourself when calling this method to make
+ * sure the graph is currently executing when cancelling. This method will set a flag internally and the
+ * graph execution will check that flag when push compute on the computation device and abort if it is cancelled.
+ * When you call ccv_nnc_graph_run again, this cancellation won't in effect and you need to call cancel again.
+ * @param graph The concrete graph.
+ */
+void ccv_nnc_graph_cancel(ccv_nnc_graph_t* const graph);
 
 /** @} */
 
@@ -3804,6 +3812,15 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
  * @param stream_context The stream where the gradient computation can be executed upon.
  */
 void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Cancel execution of a model, whether it is forward / backward or gradient application pass. You need to make
+ * sure the model is currently executing when cancelling. This method will set a flag internally and the
+ * execution will check that flag when push compute on the computation device and abort if it is cancelled.
+ * When you call other model execution method again, this cancellation won't in effect and you need to call
+ * cancel again.
+ * @param model The composed model.
+ */
+void ccv_cnnp_model_cancel(ccv_cnnp_model_t* const model);
 enum {
 	/**
 	 * This is the default flag, if the model is not initialized, will attempt to read from the disk.

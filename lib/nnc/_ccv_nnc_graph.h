@@ -110,6 +110,12 @@ typedef struct {
 	ccv_nnc_graph_t* graph;
 } ccv_nnc_graph_tensor_wraps_ref_t;
 
+enum {
+	CCV_NNC_GRAPH_STATE_IDLE = 0,
+	CCV_NNC_GRAPH_STATE_RUNNING = 1,
+	CCV_NNC_GRAPH_STATE_CANCEL = 2,
+};
+
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
@@ -119,6 +125,7 @@ struct ccv_nnc_graph_s {
 	int stream_size;
 	int signal_size;
 	int buffer_size;
+	int run_state;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	// These are int types.

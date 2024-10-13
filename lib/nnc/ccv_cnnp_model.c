@@ -3013,3 +3013,14 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 		ccfree(model->name);
 	ccfree(model);
 }
+
+void ccv_cnnp_model_cancel(ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (!compiled_data)
+		return;
+	if (compiled_data->graph)
+		ccv_nnc_graph_cancel(compiled_data->graph);
+	if (compiled_data->apply_gradients.graph)
+		ccv_nnc_graph_cancel(compiled_data->apply_gradients.graph);
+}
