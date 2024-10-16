@@ -381,9 +381,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			biasstride = biasstride_from_dim;
 		}
 		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, b_rows, b->info.datatype);
-		_ccv_nnc_gbmm_and_bias(cublas, device_ones, a_data, a->info.datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w->info.datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+		_ccv_nnc_gbmm_and_bias(cublas, device_ones, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
 	} else {
-		_ccv_nnc_gbmm(cublas, a_data, a->info.datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w->info.datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+		_ccv_nnc_gbmm(cublas, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -654,23 +654,25 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		_ccv_nnc_gbmm_dbias(cublas, flags, device_ones, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, g_batch_size, bias_batch_size, g_batch_inc, bias_batch_inc, bias_rows, bias_cols, g_rows, g_rows_inc, bias_rows_inc);
 	}
 	size_t a_data_size = 0;
+	int a_datatype = inputs[1] ? inputs[1]->info.datatype : 0;
 	if (dw && CCV_GET_DATA_TYPE(inputs[1]->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t a_params = inputs[1]->info;
-		const int palette_datatype = (a_params.datatype & 0xff) << 12;
+		a_datatype = (a_params.datatype & 0xff) << 12;
 		ccv_nnc_tensor_param_t depalettize_a_params = a_params;
-		depalettize_a_params.datatype = palette_datatype;
+		depalettize_a_params.datatype = a_datatype;
 		depalettize_a_params.reserved = 0;
 		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
 	}
 	size_t w_data_size = 0;
+	int w_datatype = inputs[2] ? inputs[2]->info.datatype : 0;
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h && CCV_GET_DATA_TYPE(inputs[2]->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t w_params = inputs[2]->info;
-		const int palette_datatype = (w_params.datatype & 0xff) << 12;
+		w_datatype = (w_params.datatype & 0xff) << 12;
 		ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-		depalettize_w_params.datatype = palette_datatype;
+		depalettize_w_params.datatype = w_datatype;
 		depalettize_w_params.reserved = 0;
 		w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
 	}
@@ -685,11 +687,10 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			ccv_nnc_tensor_param_t a_params = a->info;
 			const size_t count = ccv_nnc_tensor_count(a_params);
-			const int palette_datatype = (a_params.datatype & 0xff) << 12;
 			const int qbits = (a_params.datatype & 0xf00) >> 8;
 			const int number_in_blocks = a_params.reserved;
 			a_data = (unsigned char*)workspace;
-			ccv_nnc_compat_depalettize(a->data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
+			ccv_nnc_compat_depalettize(a->data.u8, a_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
 		}
 		const int transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
 		const int transpose_w = ccv_nnc_is_matrix_transpose(dw->info, cmd.info.blas.transpose_b);
@@ -730,7 +731,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_get_stride(dw->info.dim, dwstride_from_dim);
 			dwstride = dwstride_from_dim;
 		}
-		_ccv_nnc_gbmm_dw(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, a_data, a->info.datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, dw->data.u8, dw->info.datatype, ccv_nnc_tensor_nd(dw->info.dim), dw->info.dim, dwstride, g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc);
+		_ccv_nnc_gbmm_dw(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, dw->data.u8, dw->info.datatype, ccv_nnc_tensor_nd(dw->info.dim), dw->info.dim, dwstride, g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc);
 	}
 	if (h)
 	{
@@ -741,11 +742,10 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			ccv_nnc_tensor_param_t w_params = w->info;
 			const size_t count = ccv_nnc_tensor_count(w_params);
-			const int palette_datatype = (w_params.datatype & 0xff) << 12;
 			const int qbits = (w_params.datatype & 0xf00) >> 8;
 			const int number_in_blocks = w_params.reserved;
 			w_data = (unsigned char*)workspace + a_data_size;
-			ccv_nnc_compat_depalettize(w->data.u8, palette_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
+			ccv_nnc_compat_depalettize(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
 		}
 		const int transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 		int h_batch_size, h_rows, h_cols, h_batch_inc, h_rows_inc, h_cols_inc;
@@ -785,7 +785,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_get_stride(h->info.dim, hstride_from_dim);
 			hstride = hstride_from_dim;
 		}
-		_ccv_nnc_gbmm_h(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, w_data, w->info.datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, h->data.u8, h->info.datatype, ccv_nnc_tensor_nd(h->info.dim), h->info.dim, hstride, g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc);
+		_ccv_nnc_gbmm_h(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, h->data.u8, h->info.datatype, ccv_nnc_tensor_nd(h->info.dim), h->info.dim, hstride, g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
