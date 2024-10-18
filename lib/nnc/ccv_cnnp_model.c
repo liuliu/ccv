@@ -342,6 +342,7 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	compiled_data->internals = internals;
 	compiled_data->ids.parameters = parameter_ids;
 	compiled_data->ids.internals = internal_ids;
+	ccv_cnnp_model_gradient_checkpoints_cleanup_after_build(compiled_data, model->graph);
 }
 
 static void _ccv_cnnp_graph_push_graph_exec_symbol(void* context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
