@@ -12,7 +12,7 @@ jobs:
           fetch-depth: 0
       - name: configure
         run: |
-          cd lib && ./configure --enable-sm80 --disable-openmp && cd ..
+          cd lib && ./configure --disable-openmp && cd ..
       - name: analyze
         run: |
           cd lib && scan-build -o ../_analyze --use-cc clang make -j 64
