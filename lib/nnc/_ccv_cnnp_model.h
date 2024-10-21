@@ -291,6 +291,7 @@ static inline ccv_nnc_tensor_symbol_t ccv_cnnp_parameter_from_indice(ccv_cnnp_mo
 }
 
 typedef struct {
+	int record;
 	ccv_array_t* tensor_symbols;
 	void* old_tensor_symbol_new_hook_context;
 	ccv_nnc_tensor_symbol_new_hook_f old_tensor_symbol_new_hook;
@@ -301,7 +302,8 @@ typedef struct {
 static void _ccv_cnnp_model_gradient_checkpoint_tensor_symbol_new_hook(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	ccv_cnnp_model_gradient_checkpoint_build_context_t* const build_context = (ccv_cnnp_model_gradient_checkpoint_build_context_t*)context;
-	ccv_array_push(build_context->tensor_symbols, &symbol);
+	if (build_context->record)
+		ccv_array_push(build_context->tensor_symbols, &symbol);
 	if (build_context->old_tensor_symbol_new_hook)
 		build_context->old_tensor_symbol_new_hook(build_context->old_tensor_symbol_new_hook_context, symbol, info, name);
 }
@@ -309,7 +311,8 @@ static void _ccv_cnnp_model_gradient_checkpoint_tensor_symbol_new_hook(void* con
 static void _ccv_cnnp_model_gradient_checkpoint_tensor_symbol_alias_new_hook(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	ccv_cnnp_model_gradient_checkpoint_build_context_t* const build_context = (ccv_cnnp_model_gradient_checkpoint_build_context_t*)context;
-	ccv_array_push(build_context->tensor_symbols, &symbol);
+	if (build_context->record)
+		ccv_array_push(build_context->tensor_symbols, &symbol);
 	if (build_context->old_tensor_symbol_alias_new_hook)
 		build_context->old_tensor_symbol_alias_new_hook(build_context->old_tensor_symbol_alias_new_hook_context, symbol, from_symbol, ofs, inc, info, name);
 }
@@ -323,13 +326,14 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		build_data->is_trainable = self->is_trainable;
 	if (self->name && self->name[0] != '\0')
 		ccv_cnnp_model_push(self, build_data->model_sequence);
-	if (self->gradient_checkpointing && !build_data->is_gradient_checkpointing)
+	if (self->gradient_checkpointing == 1 && !build_data->is_gradient_checkpointing)
 	{
 		build_data->is_gradient_checkpointing = 1;
 		// Prepare to record gradient checkpoint. We will log the build function, inputs, what are the tensors / graph execs we created.
 		if (!build_data->gradient_checkpoints)
 			build_data->gradient_checkpoints = ccv_array_new(sizeof(ccv_cnnp_model_gradient_checkpoint_t), 0, 0);
 		ccv_cnnp_model_gradient_checkpoint_build_context_t build_context = {
+			.record = 1,
 			.tensor_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0),
 		};
 		build_context.old_tensor_symbol_new_hook_context = ccv_nnc_tensor_symbol_new_hook(graph, _ccv_cnnp_model_gradient_checkpoint_tensor_symbol_new_hook, &build_context, &build_context.old_tensor_symbol_new_hook);
@@ -362,6 +366,28 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		ccv_array_push(build_data->gradient_checkpoints, &checkpoint);
 		build_data->is_gradient_checkpointing = 0;
 	} else {
+		// If we want to disable gradient checkpointing for this model, we simply not log any new tensors created here so there is no mapping for these.
+		int old_record;
+		ccv_cnnp_model_gradient_checkpoint_build_context_t* build_context = 0;
+		if (build_data->is_gradient_checkpointing)
+		{
+			if (self->gradient_checkpointing == -1)
+			{
+				ccv_nnc_tensor_symbol_new_hook_f old_tensor_symbol_new_hook;
+				build_context = ccv_nnc_tensor_symbol_new_hook(graph, 0, 0, &old_tensor_symbol_new_hook);
+				// Set back the build_context.
+				ccv_nnc_tensor_symbol_new_hook(graph, old_tensor_symbol_new_hook, build_context, 0);
+				old_record = build_context->record;
+				build_context->record = 0;
+			} else if (self->gradient_checkpointing == 1) { // Force to turn on gradient checkpointing if it is inside a gradient checkpointing = -1.
+				ccv_nnc_tensor_symbol_new_hook_f old_tensor_symbol_new_hook;
+				build_context = ccv_nnc_tensor_symbol_new_hook(graph, 0, 0, &old_tensor_symbol_new_hook);
+				// Set back the build_context.
+				ccv_nnc_tensor_symbol_new_hook(graph, old_tensor_symbol_new_hook, build_context, 0);
+				old_record = build_context->record;
+				build_context->record = 1;
+			}
+		}
 		// No push checkpoint, easy.
 		if (outputs && output_size)
 		{
@@ -370,6 +396,8 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 			memcpy(self->outputs, outputs, sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 		} else
 			self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
+		if (build_context) // Restore previous state even if our gradient checkpointing controlled whether to turn on recording or not.
+			build_context->record = old_record;
 	}
 	// Skip if there is none. This helps to load parameters to a different model when only changes non-parameterized settings (add reshapes, permutations etc).
 	// If it is named, we have to push too.
