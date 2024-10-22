@@ -7,7 +7,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: configure & build
         run: |
-          cd lib && ./configure --enable-neon --with-arch=armv7 && cd ..
+          cd lib && ./configure --enable-neon && cd ..
           make -j 4 -C lib
           make -j 4 -C bin
           make -j 4 -C test

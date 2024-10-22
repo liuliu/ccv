@@ -178,13 +178,41 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
 		assert(tensor_symbol_info[autograd->d].alias_ref);
 		const int* stride = tensor_symbol_info[autograd->d].stride;
+		const int* dim = tensor_symbol_info[autograd->d].info.dim;
 		// If this is just reshaped (i.e., dimension is the same, and inc covers the whole). We have fully assigned.
-		if (ccv_nnc_is_tensor_stride_packed(stride, tensor_symbol_info[autograd->d].info.dim) && ccv_nnc_dimension_count(tensor_symbol_info[autograd->d].info.dim) == tensor_count)
+		if (ccv_nnc_is_tensor_stride_packed(stride, dim) && ccv_nnc_dimension_count(dim) == tensor_count)
 			return 1;
+	}
+	int tensor_nd_reshaped = 0;
+	int tensor_dim_reshaped[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
+	{
+		const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, i);
+		assert(d < autograd_tensor_symbols->rnum);
+		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
+		assert(tensor_symbol_info[autograd->d].alias_ref);
+		const int* stride = tensor_symbol_info[autograd->d].stride;
+		const int nd = ccv_nnc_tensor_nd(stride);
+		if (i == 0) // Derive a tensor dim from the first one, by doing divisions on strides.
+		{
+			if (nd > 0)
+			{
+				tensor_dim_reshaped[0] = tensor_count / stride[0];
+				for (j = 1; j < nd; j++)
+					tensor_dim_reshaped[j] = stride[j - 1] / stride[j];
+				tensor_nd_reshaped = nd;
+			}
+			continue;
+		}
+		// If reshaped differently, we cannot run out fill algorithm, do this conservatively.
+		if (nd != tensor_nd_reshaped)
+			return 0;
 		// Otherwise if inc doesn't match original dim, it is not covered.
-		if (!ccv_nnc_is_tensor_stride_packed(stride, tensor_dim))
+		if (!ccv_nnc_is_tensor_stride_packed(stride, tensor_dim_reshaped))
 			return 0;
 	}
+	if (tensor_nd_reshaped > 0)
+		tensor_dim = tensor_dim_reshaped;
 	/* We need a solid cube (potentially hyper dimensional) to compute if there are overlaps.
 	 * To make this cube as small as possible, we need to map the actual tensor dimension
 	 * (therefore, we don't actually allocate the whole tensor to compute overlaps) to a smaller
