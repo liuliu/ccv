@@ -520,7 +520,11 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
   CodeWriter source;
   source.SetValue("OPERAND", operand.name());
   if (operand.value == AttentionOperand::L || operand.value == AttentionOperand::D) {
-    source += "{{OPERAND}} + (gid.z * Hq + gid.y) * R\\";
+    if (Hq > 1) {
+      source += "{{OPERAND}} + (gid.z * Hq + gid.y) * R\\";
+    } else {
+      source += "{{OPERAND}} + gid.z * R\\";
+    }
   } else if (Hq > 1) {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
     if (!transposed(operand)) {
