@@ -16,6 +16,7 @@ static double get_current_time(void)
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
 	// Bypass error: variable-sized object may not be initialized
 #define num_trials 18
 	int B_candidates[num_trials] = {  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
