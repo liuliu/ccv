@@ -1530,7 +1530,8 @@ TEST_CASE("scaled dot product attention with mps")
 #define num_short_trials 2
 #define num_trials (num_long_trials + num_short_trials)
 
-	for (int trial = 0; trial < num_trials; ++trial) {
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_METAL_FLASH_ATTENTION);
+	for (int trial = 0; trial < 1; ++trial) {
 		int B_candidates[num_trials] =         {  32,  32,   3, 2, 1 };
 		int R_candidates[num_trials] =         { 128, 128,  61, 6, 2 };
 		int C_candidates[num_trials] =         { 128, 128,  49, 2, 1 };

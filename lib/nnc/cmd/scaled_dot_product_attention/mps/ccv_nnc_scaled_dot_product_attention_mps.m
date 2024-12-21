@@ -188,14 +188,14 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				mps_k = [graph transposeTensor:mps_k dimension:-3 withDimension:-2 name:nil];
 				mps_v = [graph transposeTensor:mps_v dimension:-3 withDimension:-2 name:nil];
 				MPSGraphTensor* mps_o = [graph scaledDotProductAttentionWithQueryTensor:mps_q keyTensor:mps_k valueTensor:mps_v scale:scale name:nil];
+				mps_o = [graph transposeTensor:mps_o dimension:-3 withDimension:-2 name:nil];
 				[resultTensors addObject:mps_o];
-				[graph dump];
 			});
 			MPSGraphTensorData* data_q = ccv_nnc_mps_graph_tensor_data(q, qdim, qstride);
 			MPSGraphTensorData* data_k = ccv_nnc_mps_graph_tensor_data(k, kdim, kstride);
 			MPSGraphTensorData* data_v = ccv_nnc_mps_graph_tensor_data(v, vdim, vstride);
 			MPSGraphTensorData* data[] = {data_q, data_k, data_v};
-			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &o, (int*[]){ o->info.dim }, (int*[]){ o->stride }, 1, 0);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]], data[indices[2]]], &o, (int*[]){ o->info.dim }, (int*[]){ o->stride }, 1, 0);
 			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 			return CCV_NNC_EXEC_SUCCESS;
 			/*
