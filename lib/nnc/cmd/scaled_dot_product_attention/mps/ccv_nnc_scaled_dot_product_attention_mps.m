@@ -184,11 +184,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				[inputShapedTypes addObject:mps_k_shape];
 				[inputTensors addObject:mps_input_v];
 				[inputShapedTypes addObject:mps_v_shape];
-				mps_q = [graph transposeTensor:mps_q dimension:-3 withDimension:-2 name:nil];
-				mps_k = [graph transposeTensor:mps_k dimension:-3 withDimension:-2 name:nil];
-				mps_v = [graph transposeTensor:mps_v dimension:-3 withDimension:-2 name:nil];
 				MPSGraphTensor* mps_o = [graph scaledDotProductAttentionWithQueryTensor:mps_q keyTensor:mps_k valueTensor:mps_v scale:scale name:nil];
-				mps_o = [graph transposeTensor:mps_o dimension:-3 withDimension:-2 name:nil];
 				[resultTensors addObject:mps_o];
 			});
 			MPSGraphTensorData* data_q = ccv_nnc_mps_graph_tensor_data(q, qdim, qstride);

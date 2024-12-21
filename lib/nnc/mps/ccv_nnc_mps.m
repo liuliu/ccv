@@ -459,8 +459,8 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		assert(inputTensors.count == inputShapedTypes.count);
 		MPSGraphCompilationDescriptor* compilationDescriptor = [MPSGraphCompilationDescriptor new];
 		// Need more investigation into what this does.
-		compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
-		compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
+		// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
+		// compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
 		MPSGraphExecutable* executable = [[graph compileWithDevice:ccv_nnc_default_mps_device() feeds:[NSDictionary dictionaryWithObjects:inputShapedTypes forKeys:inputTensors] targetTensors:targetTensors targetOperations:nil compilationDescriptor:compilationDescriptor] retain];
 		executable.options = MPSGraphOptionsSynchronizeResults;
 		[compilationDescriptor release];
@@ -1238,8 +1238,8 @@ void ccv_nnc_mps_graph_result(MPSGraph* graph, MPSCommandBuffer* command_buffer,
 	off_t offset = mpgetoffset((ccv_nnc_tensor_t*)data);
 	MPSGraphCompilationDescriptor* compilationDescriptor = [MPSGraphCompilationDescriptor new];
 	// Need more investigation into what this does.
-	compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
-	compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
+	// compilationDescriptor.optimizationLevel = MPSGraphOptimizationLevel0;
+	// compilationDescriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
 	MPSGraphExecutionDescriptor* executionDescriptor = [MPSGraphExecutionDescriptor new];
 	executionDescriptor.compilationDescriptor = compilationDescriptor;
 	if (CCV_IS_TENSOR_CONTIGUOUS(data) && offset == 0)
