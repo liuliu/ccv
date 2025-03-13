@@ -4728,6 +4728,17 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_move(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_contiguous(const char* const name);
 /**
+ * If the input is a reshape, this model will make it a copy. Normally, such graph operation
+ * will be optimized away when calling ccv_nnc_symbolic_graph_simplify. In this case, we will disable
+ * such optimization on the generated node. This is useful mainly for memory conservation. In case you
+ * are working with a reshape of part of the tensor, make a explicit copy would make sure the original
+ * tensor is not retained therefore you can now give the compiler more optimization opportunities on
+ * memory conservation.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and making a copy of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_copy(const char* const name);
+/**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
  * or (q, k, v, attn_mask) if has_attn_mask is 1.
  * @param scale The scale to be applied to the qk dot product.

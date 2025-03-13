@@ -398,27 +398,30 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 						break;
 					}
 				}
-				const int x_min_hop = x_buf[0].hop;
-				for (y = 0; y < y_size; y++)
+				if (x_size > 0)
 				{
-					const int y_hop_p_v = y_buf[y].hop;
-					if (y_hop_p_v + x_min_hop >= min_hop)
-						break;
-					ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(alloc, y_buf[y].idx);
-					if (y_vector)
+					const int x_min_hop = x_buf[0].hop;
+					for (y = 0; y < y_size; y++)
 					{
-						for (x = 0; x < x_size; x++)
+						const int y_hop_p_v = y_buf[y].hop;
+						if (y_hop_p_v + x_min_hop >= min_hop)
+							break;
+						ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(alloc, y_buf[y].idx);
+						if (y_vector)
 						{
-							const int q_hop_x_v = x_buf[x].hop;
-							const int hop = y_hop_p_v + q_hop_x_v;
-							if (hop >= min_hop)
-								break;
-							const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell_from_vector(alloc, y_vector, x_buf[x].idx);
-							if (val.u64 && val.u64[0] >= a.size)
+							for (x = 0; x < x_size; x++)
 							{
-								min_y = y_buf[y].idx, min_x = x_buf[x].idx, min_hop = hop,
-									min_val[0] = val.u64[0], min_val[1] = val.u64[1];
-								break;
+								const int q_hop_x_v = x_buf[x].hop;
+								const int hop = y_hop_p_v + q_hop_x_v;
+								if (hop >= min_hop)
+									break;
+								const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell_from_vector(alloc, y_vector, x_buf[x].idx);
+								if (val.u64 && val.u64[0] >= a.size)
+								{
+									min_y = y_buf[y].idx, min_x = x_buf[x].idx, min_hop = hop,
+										min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+									break;
+								}
 							}
 						}
 					}

@@ -3876,6 +3876,54 @@ static ccv_cnnp_model_t* _ccv_cnnp_contiguous_copy(const ccv_cnnp_model_t* const
 	return ccv_cnnp_contiguous(self->super.name);
 }
 
+// MARK - "Making" Copy Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_copy_t;
+
+static void _ccv_cnnp_copy_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_copy_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
+	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If we are not reshape an alias, it is straightforward.
+	{
+		outputs[0] = inputs[0];
+		return;
+	}
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_t make_contiguous = ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), inputs, 1, outputs, 1, "contiguous");
+	ccv_nnc_graph_exec_symbol_set_flags(graph, make_contiguous, CCV_NNC_GRAPH_EXEC_DISABLE_OPT);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_copy_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_copy_isa = {
+	.build = _ccv_cnnp_copy_build,
+	.copy = _ccv_cnnp_copy_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_copy(const char* const name)
+{
+	ccv_cnnp_model_copy_t* const model_copy = (ccv_cnnp_model_copy_t*)cccalloc(1, sizeof(ccv_cnnp_model_copy_t));
+	model_copy->super.isa = &ccv_cnnp_copy_isa;
+	model_copy->super.input_size = 1;
+	model_copy->super.outputs = &model_copy->output;
+	model_copy->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_copy->super, name);
+	return (ccv_cnnp_model_t*)model_copy;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_copy_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_copy_t* const self = (const ccv_cnnp_model_copy_t*)super;
+	return ccv_cnnp_copy(self->super.name);
+}
+
 // MARK - Scaled-Dot Product Attention Layer
 
 typedef struct {
