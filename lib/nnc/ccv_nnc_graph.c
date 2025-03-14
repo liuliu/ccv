@@ -1919,6 +1919,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 
 void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
+	ccv_nnc_drain_autotune_cache();
 	// exec current node, for synchronous CPU execution, no stream unit.
 	int i;
 #define visitor(node, idx, ...) \
@@ -1960,6 +1961,7 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
 	const int graph_destination_size = destination_size ? destination_size : (graph->destinations ? graph->destinations->rnum : 0);
 	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0, visitor);
 #undef visitor
+	ccv_nnc_drain_autotune_cache();
 }
 
 void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)

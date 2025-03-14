@@ -14,6 +14,8 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
 
+void ccv_nnc_drain_autotune_cache(void);
+
 // Define some internal constraints
 
 #define CCV_NNC_STACK_BITMASK_ALLOC (2)
