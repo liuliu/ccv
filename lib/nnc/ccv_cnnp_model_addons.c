@@ -585,8 +585,6 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 			PRINT(CCV_CLI_VERBOSE, ", %d", params.dim[i]);
 		PRINT(CCV_CLI_VERBOSE, ")\n");
 	}
-	if (self->format > 0)
-		params.format = self->format;
 	assert(ccv_nnc_dimension_count(self->dim) <= ccv_nnc_tensor_count(params));
 	ccv_nnc_tensor_symbol_t to = ccv_nnc_tensor_symbol_alias_to(graph, inputs[0]);
 	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -600,6 +598,8 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 			stride = stride_from_dim;
 		} else
 			stride = self->stride;
+		if (self->format > 0)
+			params.format = self->format;
 		outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
 	} else {
 		// Otherwise, we need to check if it is permute. For permute, we cannot do alias directly.
@@ -612,7 +612,7 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		const int new_nd = ccv_nnc_tensor_nd(self->dim);
 		int i, no_permute = 1;
 		// If the new dim has different nd, or we actually have a stride, we need to check if it is no permute or not.
-		if (new_nd != nd || (self->stride[0] != 0 && memcmp(self->stride, old_stride, sizeof(self->stride)) != 0))
+		if (new_nd != nd || (self->stride[0] != 0 && memcmp(self->stride, old_stride, sizeof(self->stride))))
 			for (i = 1; no_permute && i < nd; i++)
 				if (old_stride[i - 1] < old_stride[i])
 					no_permute = 0;
@@ -630,6 +630,8 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 					stride = old_stride;
 			} else
 				stride = self->stride;
+			if (self->format > 0)
+				params.format = self->format;
 			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
 		} else {
 			// Otherwise, we first do format transform to plain tensor and then do reshape.
@@ -643,6 +645,8 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 				stride = stride_from_dim;
 			} else
 				stride = self->stride;
+			if (self->format > 0)
+				params.format = self->format;
 			// And then we create alias against the permuted one.
 			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, permuted, self->ofs, stride, params, 0);
 		}

@@ -918,7 +918,7 @@ MPSGraphTensor* ccv_nnc_mps_graph_tensor_input(MPSGraph* graph, const ccv_nnc_te
 		{
 			int idx = i;
 			for (j = i + 1; j < nd; j++)
-				if (sorted_stride[idx] < sorted_stride[j])
+				if ((sorted_stride[idx] < sorted_stride[j]) || (sorted_stride[idx] == sorted_stride[j] && sorted_dim[idx] < sorted_dim[j]))
 					idx = j;
 			if (idx == i)
 				continue;
@@ -1049,7 +1049,7 @@ CCV_WARN_UNUSED(MPSGraphShapedType*) ccv_nnc_mps_graph_tensor_input_shape(const 
 		{
 			int idx = i;
 			for (j = i + 1; j < nd; j++)
-				if (sorted_stride[idx] < sorted_stride[j])
+				if ((sorted_stride[idx] < sorted_stride[j]) || (sorted_stride[idx] == sorted_stride[j] && sorted_dim[idx] < sorted_dim[j]))
 					idx = j;
 			if (idx == i)
 				continue;
@@ -1123,7 +1123,7 @@ MPSGraphTensorData* ccv_nnc_mps_graph_tensor_data_with_buffer(const ccv_nnc_tens
 		{
 			int idx = i;
 			for (j = i + 1; j < nd; j++)
-				if (sorted_stride[idx] < sorted_stride[j])
+				if ((sorted_stride[idx] < sorted_stride[j]) || (sorted_stride[idx] == sorted_stride[j] && sorted_dim[idx] < sorted_dim[j]))
 					idx = j;
 			if (idx == i)
 				continue;
