@@ -4132,7 +4132,7 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				++tensor_arena->vt_alias_r_refs_p[alias_ref]; // Count how many alias there are.
 			}
 		int refp = 0;
-		for (i = 1; i < tensor_arena->vt_tensor_size; i++) // Allocate each with aliases position on vt_alias_r_refs. It points to the end.
+		for (i = 0; i < tensor_arena->vt_tensor_size; i++) // Allocate each with aliases position on vt_alias_r_refs. It points to the end.
 			if (tensor_arena->vt_alias_r_refs_p[i])
 				refp = (tensor_arena->vt_alias_r_refs_p[i] += refp);
 			else
