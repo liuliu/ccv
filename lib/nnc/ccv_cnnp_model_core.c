@@ -711,11 +711,7 @@ static void _ccv_cnnp_dynamic_model_dealloc(ccv_cnnp_model_t* const super)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
 	if (self->model)
-	{
-		if (self->model->isa->dealloc)
-			self->model->isa->dealloc(self->model);
 		ccv_cnnp_model_free(self->model);
-	}
 }
 
 static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
