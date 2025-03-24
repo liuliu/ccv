@@ -3053,8 +3053,9 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 {
-	if (model->isa->deinit)
-		model->isa->deinit(model);
+	ccv_cnnp_model_deinit(model);
+	if (model->isa->dealloc)
+		model->isa->dealloc(model);
 	if (model->io)
 	{
 		int i;

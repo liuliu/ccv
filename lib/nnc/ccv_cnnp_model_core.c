@@ -22,17 +22,24 @@ typedef struct {
 static void _ccv_cnnp_sequential_model_deinit(ccv_cnnp_model_t* const super)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
-	int i, j;
+	int i, j = 0;
 	for (i = 0; i < self->sequence_size; i++)
 	{
 		ccv_cnnp_model_t* const model = self->sequence[i];
-		if (!model)
+		if (model->deinit_state)
 			continue;
-		ccv_cnnp_model_free(model);
-		for (j = i + 1; j < self->sequence_size; j++)
-			if (self->sequence[j] == model)
-				self->sequence[j] = 0;
+		ccv_cnnp_model_deinit(model);
+		self->sequence[j++] = model;
 	}
+	self->sequence_size = j;
+}
+
+static void _ccv_cnnp_sequential_model_dealloc(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
+		ccv_cnnp_model_free(self->sequence[i]);
 }
 
 static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -96,6 +103,7 @@ static void _ccv_cnnp_sequential_model_notify(const ccv_cnnp_model_t* const supe
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
+	.dealloc = _ccv_cnnp_sequential_model_dealloc,
 	.build = _ccv_cnnp_sequential_model_build,
 	.init_states = _ccv_cnnp_sequential_model_init_states,
 	.copy = _ccv_cnnp_sequential_model_copy,
@@ -167,7 +175,7 @@ static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 	for (i = 0; i < self->sequence_size; i++)
 	{
 		ccv_cnnp_model_t* const model = self->sequence[i]->model;
-		if (!model)
+		if (!model || model->deinit_state)
 			continue;
 		self->sequence[j++] = (ccv_cnnp_model_io_t)model;
 		// Go through all their IO to remove itself as model.
@@ -179,6 +187,15 @@ static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 		}
 	}
 	for (i = 0; i < j; i++)
+		ccv_cnnp_model_deinit((ccv_cnnp_model_t*)self->sequence[i]);
+	self->sequence_size = j;
+}
+
+static void _ccv_cnnp_functional_model_dealloc(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
 		ccv_cnnp_model_free((ccv_cnnp_model_t*)self->sequence[i]);
 }
 
@@ -345,6 +362,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_functional_model_copy(const ccv_cnnp_model_t*
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.deinit = _ccv_cnnp_functional_model_deinit,
+	.dealloc = _ccv_cnnp_functional_model_dealloc,
 	.build = _ccv_cnnp_functional_model_build,
 	.init_states = _ccv_cnnp_functional_model_init_states,
 	.copy = _ccv_cnnp_functional_model_copy,
@@ -686,7 +704,18 @@ static void _ccv_cnnp_dynamic_model_deinit(ccv_cnnp_model_t* const super)
 {
 	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
 	if (self->model)
+		ccv_cnnp_model_deinit(self->model);
+}
+
+static void _ccv_cnnp_dynamic_model_dealloc(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_dynamic_model_t* const self = (ccv_cnnp_dynamic_model_t*)super;
+	if (self->model)
+	{
+		if (self->model->isa->dealloc)
+			self->model->isa->dealloc(self->model);
 		ccv_cnnp_model_free(self->model);
+	}
 }
 
 static void _ccv_cnnp_dynamic_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -743,6 +772,7 @@ static void _ccv_cnnp_dynamic_model_notify(const ccv_cnnp_model_t* const super, 
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dynamic_model_isa = {
 	.deinit = _ccv_cnnp_dynamic_model_deinit,
+	.dealloc = _ccv_cnnp_dynamic_model_dealloc,
 	.build = _ccv_cnnp_dynamic_model_build,
 	.init_states = _ccv_cnnp_dynamic_model_init_states,
 	.copy = _ccv_cnnp_dynamic_model_copy,

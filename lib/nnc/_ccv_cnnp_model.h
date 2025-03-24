@@ -22,6 +22,7 @@ typedef void(*ccv_cnnp_add_to_array_f)(void* const context, const ccv_nnc_tensor
  */
 typedef struct {
 	void (*deinit)(ccv_cnnp_model_t* const self); /**< It can be nil. */
+	void (*dealloc)(ccv_cnnp_model_t* const self); /**< It can be nil. This is different from deinit because you should only free other models in this method. */
 	void (*build)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size); /**< Call this graph to build computation. No need to specify input size or output size, as it is defined along in the model already. */
 	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); /**< This is called to init ccv_nnc_tensor_symbol_t with a exec. */
 	void (*add_to_parameter)(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable); /**< This is called to add ccv_nnc_tensor_symbol_t to as list of parameters. */
@@ -151,6 +152,7 @@ struct ccv_cnnp_model_s {
 	int input_size; // This is the best effort number, mostly just for subclass to use.
 	int output_size;
 	int max_stream_count;
+	int deinit_state; // If it is 1, it is already deinit.
 	ccv_array_t* io; // The opaque io that can be nil.
 	ccv_array_t* parameter_indices; // The indexes for parameters in the final model.
 	ccv_nnc_symbolic_graph_t* graph;
@@ -257,6 +259,15 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, co
 {
 	if (self->isa->add_to_output)
 		self->isa->add_to_output(self, add_to_array, outputs);
+}
+
+static inline void ccv_cnnp_model_deinit(ccv_cnnp_model_t* const self)
+{
+	if (self->deinit_state)
+		return;
+	if (self->isa->deinit)
+		self->isa->deinit(self);
+	self->deinit_state = 1;
 }
 
 typedef struct {
