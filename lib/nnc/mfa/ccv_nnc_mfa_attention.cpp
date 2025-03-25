@@ -107,7 +107,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->useResource(tensors[0], MTL::ResourceUsageRead);
       encoder->useResource(tensors[1], MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-      auto scratch_size = 0;
+      uint64_t scratch_size = 0;
       if (attentionDesc.lowPrecisionInputs) {
         // Need scratch space for FP16 output.
         scratch_size += sizeof(float) * hash.R * hash.D * hash.Hq * attentionDesc.batchDimension;
@@ -196,7 +196,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       auto backwardKeyValueKernel = backwardKeyValuePipelineValue->kernel;
       auto backwardKeyValuePipeline = backwardKeyValuePipelineValue->pipeline;
 
-      auto scratch_size = 0;
+      uint64_t scratch_size = 0;
       if (attentionDesc.lowPrecisionInputs) {
         // Need scratch space for FP16 output.
         scratch_size += sizeof(float) * (hash.R + hash.C * 2) * hash.D * hash.Hq * attentionDesc.batchDimension;
