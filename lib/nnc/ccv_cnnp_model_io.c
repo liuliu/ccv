@@ -37,6 +37,7 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 	const int parameter_size = compiled_data->parameters->rnum;
 	const int internal_size = compiled_data->internals->rnum;
 	char internal_name[2048 + 16];
+	int result = CCV_IO_FINAL;
 	for (i = 0; i < parameter_size; i++)
 	{
 		const char* const id = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
@@ -44,7 +45,8 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 			snprintf(internal_name, 2048 + 16, "__%s__[%s]", name, id);
 		else
 			snprintf(internal_name, 2048 + 16, "%s", id);
-		_model_tensor_write(model, CCV_NNC_TENSOR(compiled_data->tensors.parameters[i]), 0, handle, internal_name, options);
+		if (CCV_IO_FINAL != _model_tensor_write(model, CCV_NNC_TENSOR(compiled_data->tensors.parameters[i]), 0, handle, internal_name, options))
+			result = CCV_IO_ERROR;
 	}
 	for (i = 0; i < parallel_count; i++)
 		for (j = 0; j < internal_size; j++)
@@ -54,10 +56,11 @@ int ccv_cnnp_model_write(const ccv_cnnp_model_t* const model, void* const handle
 				snprintf(internal_name, 2048 + 16, "__%s__[%s(%d)]", name, id, i);
 			else
 				snprintf(internal_name, 2048 + 16, "%s(%d)", id, i);
-			_model_tensor_write(model, compiled_data->tensors.internals[i * internal_size + j], 0, handle, internal_name, options);
+			if (CCV_IO_FINAL != _model_tensor_write(model, compiled_data->tensors.internals[i * internal_size + j], 0, handle, internal_name, options))
+				result = CCV_IO_ERROR;
 		}
 	_model_tensor_write(model, 0, "COMMIT", handle, 0, options);
-	return CCV_IO_FINAL;
+	return result;
 }
 
 static inline int _model_tensor_read(const ccv_cnnp_model_t* const self, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const ccv_nnc_tensor_param_t info, ccv_nnc_tensor_t** const tensor_out)
