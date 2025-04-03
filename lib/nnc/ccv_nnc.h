@@ -709,6 +709,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 
 enum {
 	CCV_NNC_TENSOR_READ_METADATA_ONLY = CCV_NO_DATA_ALLOC, /**< Read tensor that data is nil, with only metadata. */
+	CCV_NNC_TENSOR_READ_CPU_MEMORY = CCV_TENSOR_CPU_MEMORY, /**< Read tensor to CPU allocated buffer. */
 };
 /**
  * Read a tensor from a SQLite database with a given name.

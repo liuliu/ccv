@@ -163,6 +163,8 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			const void* const dim = sqlite3_column_blob(tensor_select_stmt, 4);
 			memcpy(tensor_params.dim, dim, ccv_min(sizeof(tensor_params.dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
 		}
+		if (flags & CCV_NNC_TENSOR_READ_CPU_MEMORY) // Reset type to CPU memory.
+			tensor_params.type = (tensor_params.type & 0xfff00000) | CCV_TENSOR_CPU_MEMORY;
 		if (!options || !options->decode)
 		{
 			if (flags & CCV_NNC_TENSOR_READ_METADATA_ONLY)
