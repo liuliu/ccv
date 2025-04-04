@@ -194,10 +194,13 @@ mfa::context::context(MTL::Device* device)
 
 MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
   if (size > scratch->length()) {
-    uint64_t padded_size = std::max(int64_t(0), int64_t(size) - 1);
-    uint64_t leading_zeroes = __builtin_clzll(padded_size);
-    uint64_t rounded_size = (uint64_t)1 << uint64_t(64 - leading_zeroes);
-    
+    uint64_t rounded_size = size;
+    if (size < 0x20000000) { // If it is less than 512MiB, we pad it, otherwise we don't pad, just release & allocate. In this way, even we allocate a bit more, we allocate precisely what we need.
+      uint64_t padded_size = std::max(int64_t(0), int64_t(size) - 1);
+      uint64_t leading_zeroes = __builtin_clzll(padded_size);
+      rounded_size = (uint64_t)1 << uint64_t(64 - leading_zeroes);
+    }
+    this->scratch.reset();
     auto buffer = device->newBuffer(rounded_size, MTL::ResourceStorageModePrivate | MTL::ResourceHazardTrackingModeTracked);
     CCV_NNC_MFA_PRECONDITION(buffer != nullptr);
     this->scratch = NS::TransferPtr(buffer);
