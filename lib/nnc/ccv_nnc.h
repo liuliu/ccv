@@ -4026,7 +4026,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const mode
  * @param model A model that is compiled.
  * @return The total byte size of parameters.
  */
-CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_parameter_size(ccv_cnnp_model_t* const model);
+CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_parameters_size(ccv_cnnp_model_t* const model);
 /**
  * Use this to loop over and if the parameter matches, return 1.
  */

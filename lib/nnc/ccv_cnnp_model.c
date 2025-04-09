@@ -2303,7 +2303,7 @@ int ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model)
 	return compiled_data->parameters->rnum;
 }
 
-uint64_t ccv_cnnp_model_parameter_size(ccv_cnnp_model_t* const model)
+uint64_t ccv_cnnp_model_parameters_size(ccv_cnnp_model_t* const model)
 {
 	assert(model->compiled_data);
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
