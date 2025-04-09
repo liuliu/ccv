@@ -4021,6 +4021,13 @@ CCV_WARN_UNUSED(const char*) ccv_cnnp_model_parameter_name(ccv_cnnp_model_t* con
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model);
 /**
+ * This method returns the total byte size of parameters for this particular model. Note that this is only available after
+ * model is compiled.
+ * @param model A model that is compiled.
+ * @return The total byte size of parameters.
+ */
+CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_parameter_size(ccv_cnnp_model_t* const model);
+/**
  * Use this to loop over and if the parameter matches, return 1.
  */
 typedef int (*ccv_cnnp_model_parameters_filter_f)(const ccv_cnnp_model_t* const model, const char* const name, void* const context);

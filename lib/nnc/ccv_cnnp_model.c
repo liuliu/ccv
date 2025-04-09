@@ -2303,6 +2303,26 @@ int ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const model)
 	return compiled_data->parameters->rnum;
 }
 
+uint64_t ccv_cnnp_model_parameter_size(ccv_cnnp_model_t* const model)
+{
+	assert(model->compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	const int parameter_size = compiled_data->parameters->rnum;
+	int i;
+	const ccv_nnc_symbolic_graph_t* const graph = model->graph;
+	uint64_t size = 0;
+	for (i = 0; i < parameter_size; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
+		ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, (ccv_nnc_tensor_symbol_t){
+			.graph = graph,
+			.d = d
+		});
+		size += ccv_nnc_tensor_data_size(params);
+	}
+	return size;
+}
+
 ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f first, void* const context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
