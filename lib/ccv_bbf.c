@@ -97,7 +97,7 @@ static unsigned int _ccv_bbf_time_measure()
 }
 
 #define less_than(a, b, aux) ((a) < (b))
-CCV_IMPLEMENT_QSORT(_ccv_sort_32f, float, less_than)
+static CCV_IMPLEMENT_QSORT(_ccv_sort_32f, float, less_than)
 #undef less_than
 
 static void _ccv_bbf_eval_data(ccv_bbf_stage_classifier_t* classifier, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, float* peval, float* neval)
@@ -578,7 +578,7 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 }
 
 #define less_than(fit1, fit2, aux) ((fit1).error < (fit2).error)
-static CCV_IMPLEMENT_QSORT(_ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
+static CCV_IMPLEMENT_QSORT(static _ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
 #undef less_than
 
 static ccv_bbf_gene_t _ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)

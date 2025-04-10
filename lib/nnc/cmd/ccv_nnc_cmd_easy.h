@@ -6,6 +6,10 @@
 #define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 // CCV_NNC_ADAMW_FORWARD
 #define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
+// CCV_NNC_ARGSORT_FORWARD
+#define CMD_ARGSORT_FORWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_ARGSORT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.argsort={.along_axis=_along_axis,.descending=_descending}}), 0)
+// CCV_NNC_ARGSORT_BACKWARD
+#define CMD_ARGSORT_BACKWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_ARGSORT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.argsort={.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD
@@ -186,6 +190,10 @@
 #define CMD_PAD_FORWARD(_type, _begin, _end) ccv_nnc_cmd(CCV_NNC_PAD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={ESCAPE_X _begin}},.pad={.type=_type,.end={ESCAPE_X _end}}}), 0)
 // CCV_NNC_PAD_BACKWARD
 #define CMD_PAD_BACKWARD(_type, _begin, _end) ccv_nnc_cmd(CCV_NNC_PAD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={ESCAPE_X _begin}},.pad={.type=_type,.end={ESCAPE_X _end}}}), 0)
+// CCV_NNC_PARTITION_FORWARD
+#define CMD_PARTITION_FORWARD(_kth, _along_axis, _descending) ccv_nnc_cmd(CCV_NNC_PARTITION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.partition={.kth=_kth,.along_axis=_along_axis,.descending=_descending}}), 0)
+// CCV_NNC_PARTITION_BACKWARD
+#define CMD_PARTITION_BACKWARD(_kth, _along_axis, _descending) ccv_nnc_cmd(CCV_NNC_PARTITION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.partition={.kth=_kth,.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_MAX_POOL_FORWARD
 #define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_MAX_POOL_BACKWARD

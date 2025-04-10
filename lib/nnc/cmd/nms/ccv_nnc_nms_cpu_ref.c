@@ -22,7 +22,7 @@ typedef struct {
 	aux[&(a) - array] = aux[&(b) - array]; \
 	aux[&(b) - array] = _t; \
 } while (0)
-CCV_IMPLEMENT_QSORT_EX(_ccv_nnc_nms_sortby_f5_32f, float5, less_than, swap_func, int*)
+static CCV_IMPLEMENT_QSORT_EX(_ccv_nnc_nms_sortby_f5_32f, float5, less_than, swap_func, int*)
 #undef less_than
 #undef swap_func
 

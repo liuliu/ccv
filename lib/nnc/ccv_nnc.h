@@ -269,6 +269,15 @@ typedef struct {
 			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
 			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
 		} pad;
+		struct {
+			int along_axis; /**< [argsort.along_axis] Which axis to sort along with. */
+			int descending; /**< [argsort.descending] Whether sorting by descending order. */
+		} argsort;
+		struct {
+			int kth; /**< [partition.kth] How many items to retain after partition. */
+			int along_axis; /**< [partition.along_axis] Which axis to partition along with. */
+			int descending; /**< [partition.descending] Whether partitioning by descending order. */
+		} partition;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
