@@ -320,7 +320,7 @@ void cufileread(const int fd, const off_t file_offset, void* const buf, const si
 	const CUfileError_t status = cuFileHandleRegister(&file_handle, &file_descr);
 	if (status.err != CU_FILE_SUCCESS)
 	{
-		// PRINT(CCV_CLI_ERROR, "[%s:%d]:CUFILE - Error: %s\n", __FILE__, __LINE__, CUFILE_ERRSTR(status.err));
+		PRINT(CCV_CLI_ERROR, "[%s:%d]:CUFILE - Error: %s\n", __FILE__, __LINE__, CUFILE_ERRSTR(status.err));
 		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, file_offset);
 		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
 		cumemcpy(buf, CCV_TENSOR_GPU_MEMORY, bufptr, CCV_TENSOR_CPU_MEMORY, size);

@@ -29,14 +29,14 @@ static void _ccv_nnc_unique_consecutive_tensor_auto_forw(const ccv_nnc_cmd_param
 }
 
 REGISTER_COMMAND(CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_unique_consecutive_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_unique_consecutive_cpu_ref.c, gpu/ccv_nnc_unique_consecutive_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_unique_consecutive_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_unique_consecutive_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_UNIQUE_CONSECUTIVE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_unique_consecutive_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_unique_consecutive_cpu_ref.c, gpu/ccv_nnc_unique_consecutive_gpu_ref.cu)
 {
 	registry->bitmask = _ccv_nnc_unique_consecutive_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient; // This is just best guess.

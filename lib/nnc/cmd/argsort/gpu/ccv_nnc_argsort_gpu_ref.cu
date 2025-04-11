@@ -11,8 +11,6 @@ extern "C" {
 
 #include <cub/util_type.cuh>
 #include <cub/device/device_radix_sort.cuh>
-#include <cub/thread/thread_load.cuh>
-#include <cub/thread/thread_store.cuh>
 
 __global__ void _ccv_nnc_arange(const int n, int* const indices)
 {
