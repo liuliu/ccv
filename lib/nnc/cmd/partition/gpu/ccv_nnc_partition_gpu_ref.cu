@@ -216,7 +216,7 @@ static int _ccv_nnc_partition_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const int kth = cmd.info.partition.kth;
 	assert(kth <= 2); // We can only do top 2 or top 1.
 	// Currently, this is only optimized for small dimensions.
-	int i, j, k, f;
+	int i;
 	int sort_runs = 1;
 	int sort_stride = 1;
 	for (i = 0; i < a_nd; i++)

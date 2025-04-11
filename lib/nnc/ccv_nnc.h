@@ -278,6 +278,9 @@ typedef struct {
 			int along_axis; /**< [partition.along_axis] Which axis to partition along with. */
 			int descending; /**< [partition.descending] Whether partitioning by descending order. */
 		} partition;
+		struct {
+			int bincount; /**< [unique_consecutive.bincount] Potentially how many unique items there will be, 0 if unknown. */
+		} unique_consecutive;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
