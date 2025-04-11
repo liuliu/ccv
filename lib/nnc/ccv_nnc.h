@@ -281,6 +281,9 @@ typedef struct {
 		struct {
 			int bincount; /**< [unique_consecutive.bincount] Potentially how many unique items there will be, 0 if unknown. */
 		} unique_consecutive;
+		struct {
+			int bincount; /**< [scatter_add.bincount] Potentially how many unique items there will be, 0 if unknown. */
+		} scatter_add;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
