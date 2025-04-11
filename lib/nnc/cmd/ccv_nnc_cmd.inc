@@ -598,6 +598,8 @@ void _register_command_CCV_NNC_ROI_ALIGN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF
 void _register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SGD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SGD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1108,6 +1110,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[55].backends[5]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[66].backends[5]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[67].backends[5]));
+	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[88].backends[5]));
+	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[89].backends[5]));
 	_register_command_CCV_NNC_SGD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[144].backends[5]));
 	_register_command_CCV_NNC_SGD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[145].backends[5]));
 	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[40].backends[3]));
