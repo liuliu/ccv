@@ -9,17 +9,10 @@ extern "C" {
 
 #ifdef HAVE_CUDA
 
-#ifdef USE_SYSTEM_CUB
 #include <cub/util_type.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/thread/thread_load.cuh>
 #include <cub/thread/thread_store.cuh>
-#else
-#include "3rdparty/cub/util_type.cuh.h"
-#include "3rdparty/cub/device/device_radix_sort.cuh.h"
-#include "3rdparty/cub/thread/thread_load.cuh.h"
-#include "3rdparty/cub/thread/thread_store.cuh.h"
-#endif
 
 __global__ void _ccv_nnc_arange(const int n, int* const indices)
 {

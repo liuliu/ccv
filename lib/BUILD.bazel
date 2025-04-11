@@ -429,31 +429,6 @@ objc_library(
 )
 
 cuda_library(
-	name = "thrust_headers",
-	hdrs = glob(["nnc/gpu/3rdparty/thrust/**/*.h", "nnc/gpu/3rdparty/thrust/**/*.inl"]),
-	includes = [
-		"nnc/gpu"
-	],
-	copts = ccv_default_copts(),
-	deps = [
-		"@local_config_ccv//config:cuda_deps"
-	]
-)
-
-cuda_library(
-	name = "cub_headers",
-	hdrs = glob(["nnc/gpu/3rdparty/cub/**/*.h", "nnc/gpu/3rdparty/cub/**/*.inl"]),
-	includes = [
-		"nnc/gpu"
-	],
-	copts = ccv_default_copts(),
-	deps = [
-		"@local_config_ccv//config:cuda_deps",
-		":thrust_headers"
-	]
-)
-
-cuda_library(
 	name = "cmd_cuda",
 	srcs = glob(["nnc/cmd/**/*.h"]) + glob(["nnc/cmd/**/*.cu"]),
 	includes = [
@@ -470,8 +445,7 @@ cuda_library(
 	copts = ccv_default_copts(),
 	deps = [
 		":nnc_headers",
-		":nnc_cuda_compat",
-		":cub_headers"
+		":nnc_cuda_compat"
 	] + select({
 		"//config:have_cuda_sm80": [
 			":nnc_cuda_compat_sm80"

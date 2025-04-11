@@ -152,3 +152,73 @@ cc_binary(
 		"//lib:nnc"
 	]
 )
+
+cc_binary(
+	name = "leaky_relu.tests",
+	srcs = ["leaky_relu.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "datatype.tests",
+	srcs = ["datatype.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "tensor.tests",
+	srcs = ["tensor.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "palettize.tests",
+	srcs = ["palettize.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "pad.tests",
+	srcs = ["pad.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "argsort.tests",
+	srcs = ["argsort.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "partition.tests",
+	srcs = ["partition.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
