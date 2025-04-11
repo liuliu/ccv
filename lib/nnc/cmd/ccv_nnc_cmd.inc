@@ -558,6 +558,8 @@ void _register_command_CCV_NNC_RMSNORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN
 void _register_command_CCV_NNC_RMSNORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_PAD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_PAD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_PARTITION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_PARTITION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MAX_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1056,6 +1058,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_RMSNORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[125].backends[3]));
 	_register_command_CCV_NNC_PAD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[122].backends[5]));
 	_register_command_CCV_NNC_PAD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[123].backends[5]));
+	_register_command_CCV_NNC_PARTITION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[30].backends[5]));
+	_register_command_CCV_NNC_PARTITION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[31].backends[5]));
 	_register_command_CCV_NNC_MAX_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[32].backends[3]));
 	_register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[33].backends[3]));
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[4].backends[3]));
