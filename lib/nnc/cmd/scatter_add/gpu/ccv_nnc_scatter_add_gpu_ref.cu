@@ -100,7 +100,6 @@ static int _ccv_nnc_scatter_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	}
 	const int g_cols = g_nd < 2 ? 1 : g->info.dim[1];
 	const int g_cols_inc = CCV_IS_TENSOR_VIEW(g) ? (g_nd < 2 ? 1 : g->stride[0]) : g_cols;
-	const int g_rows = g->info.dim[0];
 	const int h_cols = h_nd < 2 ? 1 : h->info.dim[1];
 	const int h_cols_inc = CCV_IS_TENSOR_VIEW(h) ? (h_nd < 2 ? 1 : h->stride[0]) : h_cols;
 	const int h_rows = h->info.dim[0];

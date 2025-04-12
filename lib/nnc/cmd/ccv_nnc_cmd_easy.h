@@ -6,10 +6,6 @@
 #define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 // CCV_NNC_ADAMW_FORWARD
 #define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
-// CCV_NNC_ARGSORT_FORWARD
-#define CMD_ARGSORT_FORWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_ARGSORT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.argsort={.along_axis=_along_axis,.descending=_descending}}), 0)
-// CCV_NNC_ARGSORT_BACKWARD
-#define CMD_ARGSORT_BACKWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_ARGSORT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.argsort={.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD
@@ -294,6 +290,10 @@
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_2(_trim0, _trim1) ccv_nnc_cmd(CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.label_smoothing={.trim0=_trim0,.trim1=_trim1}}), 0)
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD(...) CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_SEL(CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_2, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_F, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
+// CCV_NNC_SORT_FORWARD
+#define CMD_SORT_FORWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_SORT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sort={.along_axis=_along_axis,.descending=_descending}}), 0)
+// CCV_NNC_SORT_BACKWARD
+#define CMD_SORT_BACKWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_SORT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sort={.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_SWISH_FORWARD
 #define CMD_SWISH_FORWARD() ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SWISH_BACKWARD

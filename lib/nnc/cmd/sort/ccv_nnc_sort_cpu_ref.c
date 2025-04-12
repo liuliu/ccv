@@ -54,72 +54,76 @@ static CCV_IMPLEMENT_QSORT_EX(_ccv_nnc_sort_with_stride_greater_than_i32, int, g
 #undef less_than
 #undef swap_func
 
-static int _ccv_nnc_argsort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_sort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 1);
-	assert(output_size == 1);
+	assert(output_size == 2);
 	const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)outputs[0];
+	const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	assert(ccv_nnc_tensor_nd(b->info.dim) == a_nd);
+	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == a_nd);
 	assert(indices->info.datatype == CCV_32S);
 	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(indices));
 	const int count = ccv_nnc_tensor_count(a->info);
-	void* workmem = ccv_nnc_stream_context_get_workspace(stream_context, ((a->info.datatype == CCV_32F) ? sizeof(float) : sizeof(int)) * count, CCV_TENSOR_CPU_MEMORY);
 	int i;
 	if (a_nd == 1)
 	{
 		// This is the fast path, we just do a regular sort and extract the index.
+		assert(ccv_nnc_tensor_count(b->info) == count);
 		assert(ccv_nnc_tensor_count(indices->info) == count);
 		for (i = 0; i < count; i++)
 			indices->data.i32[i] = i;
 		if (a->info.datatype == CCV_32F)
 		{
-			memcpy(workmem, a->data.f32, sizeof(float) * count);
-			if (cmd.info.argsort.descending)
-				_ccv_nnc_sort_greater_than_f32((float*)workmem, count, indices->data.i32);
+			memcpy(b->data.f32, a->data.f32, sizeof(float) * count);
+			if (cmd.info.sort.descending)
+				_ccv_nnc_sort_greater_than_f32(b->data.f32, count, indices->data.i32);
 			else
-				_ccv_nnc_sort_less_than_f32((float*)workmem, count, indices->data.i32);
+				_ccv_nnc_sort_less_than_f32(b->data.f32, count, indices->data.i32);
 		} else {
 			assert(a->info.datatype == CCV_32S);
-			memcpy(workmem, a->data.i32, sizeof(int) * count);
-			if (cmd.info.argsort.descending)
-				_ccv_nnc_sort_greater_than_i32((int*)workmem, count, indices->data.i32);
+			memcpy(b->data.i32, a->data.i32, sizeof(int) * count);
+			if (cmd.info.sort.descending)
+				_ccv_nnc_sort_greater_than_i32(b->data.i32, count, indices->data.i32);
 			else
-				_ccv_nnc_sort_less_than_i32((int*)workmem, count, indices->data.i32);
+				_ccv_nnc_sort_less_than_i32(b->data.i32, count, indices->data.i32);
 		}
 	} else {
 		const int count = ccv_nnc_tensor_count(a->info);
+		assert(ccv_nnc_tensor_count(b->info) == count);
 		assert(ccv_nnc_tensor_count(indices->info) == count);
 		if (a->info.datatype == CCV_32F)
-			memcpy((float*)workmem, a->data.f32, sizeof(float) * count);
+			memcpy(b->data.f32, a->data.f32, sizeof(float) * count);
 		else
-			memcpy((int*)workmem, a->data.i32, sizeof(float) * count);
+			memcpy(b->data.i32, a->data.i32, sizeof(float) * count);
 		int sort_runs = 1;
 		int sort_stride = 1;
 		for (i = 0; i < a_nd; i++)
 		{
-			if (i < cmd.info.argsort.along_axis) // Skip this.
+			if (i < cmd.info.sort.along_axis) // Skip this.
 				sort_runs *= a->info.dim[i];
-			else if (i > cmd.info.argsort.along_axis)
+			else if (i > cmd.info.sort.along_axis)
 				sort_stride *= a->info.dim[i];
 		}
-		const int skip_stride = sort_stride * a->info.dim[cmd.info.argsort.along_axis];
+		const int skip_stride = sort_stride * a->info.dim[cmd.info.sort.along_axis];
 		int j, k;
-		const int dim = a->info.dim[cmd.info.argsort.along_axis];
+		const int dim = a->info.dim[cmd.info.sort.along_axis];
 		if (a->info.datatype == CCV_32F)
 		{
 			ccv_nnc_sort_aux_f32_t aux = {
-				.array = (float*)workmem,
+				.array = b->data.f32,
 				.stride = sort_stride,
 				.idx = indices->data.i32,
 			};
-			if (cmd.info.argsort.descending)
+			if (cmd.info.sort.descending)
 				for (i = 0; i < sort_runs; i++)
 					for (j = 0; j < sort_stride; j++)
 					{
-						aux.array = (float*)workmem + skip_stride * i + j;
+						aux.array = b->data.f32 + skip_stride * i + j;
 						aux.idx = indices->data.i32 + skip_stride * i + j;
 						for (k = 0; k < dim; k++)
 							indices->data.i32[i * skip_stride + k * sort_stride + j] = k;
@@ -129,7 +133,7 @@ static int _ccv_nnc_argsort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				for (i = 0; i < sort_runs; i++)
 					for (j = 0; j < sort_stride; j++)
 					{
-						aux.array = (float*)workmem + skip_stride * i + j;
+						aux.array = b->data.f32 + skip_stride * i + j;
 						aux.idx = indices->data.i32 + skip_stride * i + j;
 						for (k = 0; k < dim; k++)
 							indices->data.i32[i * skip_stride + k * sort_stride + j] = k;
@@ -138,15 +142,15 @@ static int _ccv_nnc_argsort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		} else {
 			assert(a->info.datatype == CCV_32S);
 			ccv_nnc_sort_aux_i32_t aux = {
-				.array = (int*)workmem,
+				.array = b->data.i32,
 				.stride = sort_stride,
 				.idx = indices->data.i32,
 			};
-			if (cmd.info.argsort.descending)
+			if (cmd.info.sort.descending)
 				for (i = 0; i < sort_runs; i++)
 					for (j = 0; j < sort_stride; j++)
 					{
-						aux.array = (int*)workmem + skip_stride * i + j;
+						aux.array = b->data.i32 + skip_stride * i + j;
 						aux.idx = indices->data.i32 + skip_stride * i + j;
 						for (k = 0; k < dim; k++)
 							indices->data.i32[i * skip_stride + k * sort_stride + j] = k;
@@ -156,7 +160,7 @@ static int _ccv_nnc_argsort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				for (i = 0; i < sort_runs; i++)
 					for (j = 0; j < sort_stride; j++)
 					{
-						aux.array = (int*)workmem + skip_stride * i + j;
+						aux.array = b->data.i32 + skip_stride * i + j;
 						aux.idx = indices->data.i32 + skip_stride * i + j;
 						for (k = 0; k < dim; k++)
 							indices->data.i32[i * skip_stride + k * sort_stride + j] = k;
@@ -167,25 +171,25 @@ static int _ccv_nnc_argsort_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_argsort_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_sort_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	return CCV_NNC_EXEC_INVALID;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_ARGSORT_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_SORT_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
 	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_argsort_forw;
+	registry->exec = _ccv_nnc_sort_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_ARGSORT_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_SORT_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
 	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_argsort_back;
+	registry->exec = _ccv_nnc_sort_back;
 }

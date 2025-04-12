@@ -270,9 +270,9 @@ typedef struct {
 			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
 		} pad;
 		struct {
-			int along_axis; /**< [argsort.along_axis] Which axis to sort along with. */
-			int descending; /**< [argsort.descending] Whether sorting by descending order. */
-		} argsort;
+			int along_axis; /**< [sort.along_axis] Which axis to sort along with. */
+			int descending; /**< [sort.descending] Whether sorting by descending order. */
+		} sort;
 		struct {
 			int kth; /**< [partition.kth] How many items to retain after partition. */
 			int along_axis; /**< [partition.along_axis] Which axis to partition along with. */
