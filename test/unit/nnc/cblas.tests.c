@@ -1439,4 +1439,134 @@ TEST_CASE("generalized batched gemm with batch (2, 4) with bias and broadcast co
 
 #endif
 
+TEST_CASE("segmented gemm compare batched gemm")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = 2;
+	indices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	counts->data.i32[0] = 20;
+	counts->data.i32[1] = 25;
+	counts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+
+	ccv_nnc_tensor_t* bt0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 64), 0);
+	ccv_nnc_tensor_t* bt1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 25, 64), 0);
+	ccv_nnc_tensor_t* bt2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 35, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 80 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
+	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
+	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* w0 = ccv_nnc_tensor_new(w->data.f32, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at0, w0), TENSOR_LIST(bt0), 0);
+	ccv_nnc_tensor_t* w1 = ccv_nnc_tensor_new(w->data.f32 + 64 * 128, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* w2 = ccv_nnc_tensor_new(w->data.f32 + 2 * 64 * 128, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at1, w2), TENSOR_LIST(bt1), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at2, w1), TENSOR_LIST(bt2), 0);
+	ccv_nnc_tensor_t* b0 = ccv_nnc_tensor_new(b->data.f32, CPU_TENSOR_NHWC(32F, 20, 64), 0);
+	ccv_nnc_tensor_t* b1 = ccv_nnc_tensor_new(b->data.f32 + 20 * 64, CPU_TENSOR_NHWC(32F, 25, 64), 0);
+	ccv_nnc_tensor_t* b2 = ccv_nnc_tensor_new(b->data.f32 + 45 * 64, CPU_TENSOR_NHWC(32F, 35, 64), 0);
+	REQUIRE_TENSOR_EQ(b0, bt0, "permute computed output should be the same as non-permute computed ones");
+	REQUIRE_TENSOR_EQ(b1, bt1, "permute computed output should be the same as non-permute computed ones");
+	REQUIRE_TENSOR_EQ(b2, bt2, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(at0);
+	ccv_nnc_tensor_free(bt0);
+	ccv_nnc_tensor_free(at1);
+	ccv_nnc_tensor_free(bt1);
+	ccv_nnc_tensor_free(at2);
+	ccv_nnc_tensor_free(bt2);
+	ccv_nnc_tensor_free(w0);
+	ccv_nnc_tensor_free(w1);
+	ccv_nnc_tensor_free(w2);
+	ccv_nnc_tensor_free(b0);
+	ccv_nnc_tensor_free(b1);
+	ccv_nnc_tensor_free(b2);
+}
+
+TEST_CASE("segmented gemm with bias compare batched gemm")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = 1;
+	indices->data.i32[2] = 2;
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	counts->data.i32[0] = 20;
+	counts->data.i32[1] = 25;
+	counts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+
+	ccv_nnc_tensor_t* bt0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 20, 64), 0);
+	ccv_nnc_tensor_t* bt1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 25, 64), 0);
+	ccv_nnc_tensor_t* bt2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 35, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 3 * 64; i++)
+		bias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 80 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
+	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
+	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* w0 = ccv_nnc_tensor_new(w->data.f32, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias0 = ccv_nnc_tensor_new(bias->data.f32, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at0, w0, bias0), TENSOR_LIST(bt0), 0);
+	ccv_nnc_tensor_t* w1 = ccv_nnc_tensor_new(w->data.f32 + 64 * 128, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias1 = ccv_nnc_tensor_new(bias->data.f32 + 64, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at1, w1, bias1), TENSOR_LIST(bt1), 0);
+	ccv_nnc_tensor_t* w2 = ccv_nnc_tensor_new(w->data.f32 + 2 * 64 * 128, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias2 = ccv_nnc_tensor_new(bias->data.f32 + 2 * 64, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(at2, w2, bias2), TENSOR_LIST(bt2), 0);
+	ccv_nnc_tensor_t* b0 = ccv_nnc_tensor_new(b->data.f32, CPU_TENSOR_NHWC(32F, 20, 64), 0);
+	ccv_nnc_tensor_t* b1 = ccv_nnc_tensor_new(b->data.f32 + 20 * 64, CPU_TENSOR_NHWC(32F, 25, 64), 0);
+	ccv_nnc_tensor_t* b2 = ccv_nnc_tensor_new(b->data.f32 + 45 * 64, CPU_TENSOR_NHWC(32F, 35, 64), 0);
+	REQUIRE_TENSOR_EQ(b0, bt0, "permute computed output should be the same as non-permute computed ones");
+	REQUIRE_TENSOR_EQ(b1, bt1, "permute computed output should be the same as non-permute computed ones");
+	REQUIRE_TENSOR_EQ(b2, bt2, "permute computed output should be the same as non-permute computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(at0);
+	ccv_nnc_tensor_free(bt0);
+	ccv_nnc_tensor_free(at1);
+	ccv_nnc_tensor_free(bt1);
+	ccv_nnc_tensor_free(at2);
+	ccv_nnc_tensor_free(bt2);
+	ccv_nnc_tensor_free(w0);
+	ccv_nnc_tensor_free(w1);
+	ccv_nnc_tensor_free(w2);
+	ccv_nnc_tensor_free(bias0);
+	ccv_nnc_tensor_free(bias1);
+	ccv_nnc_tensor_free(bias2);
+	ccv_nnc_tensor_free(b0);
+	ccv_nnc_tensor_free(b1);
+	ccv_nnc_tensor_free(b2);
+}
+
 #include "case_main.h"
