@@ -346,4 +346,39 @@ TEST_CASE("sort a 1d tensor in int, descending")
 	ccv_nnc_tensor_free(indices);
 }
 
+TEST_CASE("sort a tensor by last axis in int, descending with model")
+{
+	int ap[] = {
+		1, 3,
+		2, 1,
+		3, 4,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32S, 3, 2), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3, 2), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3, 2), 0);
+	ccv_cnnp_model_t* const sort = ccv_cnnp_sort(1, 1, "sort");
+	ccv_cnnp_model_compile(sort, TENSOR_PARAM_LIST(a->info), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(sort, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a), TENSOR_LIST(b, indices), 0, 0);
+	int btp[] = {
+		3, 1,
+		2, 1,
+		4, 3,
+	};
+	ccv_nnc_tensor_t const bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 3, 2), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "should be equal");
+	int indicestp[] = {
+		1, 0,
+		0, 1,
+		1, 0,
+	};
+	ccv_nnc_tensor_t const indicest = ccv_nnc_tensor(indicestp, CPU_TENSOR_NHWC(32S, 3, 2), 0);
+	REQUIRE_TENSOR_EQ(indices, &indicest, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(indices);
+	ccv_cnnp_model_free(sort);
+}
+
 #include "case_main.h"

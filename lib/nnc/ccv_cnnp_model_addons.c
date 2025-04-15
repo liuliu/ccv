@@ -3537,7 +3537,7 @@ static void _ccv_cnnp_datatype_conversion_build(ccv_cnnp_model_t* const super, c
 		params.datatype = self->datatype;
 	assert(output_size == 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_DATATYPE_CONVERSION_FORWARD(), inputs, output_size, outputs, output_size, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_DATATYPE_CONVERSION_FORWARD(), inputs, output_size /* intentional */, outputs, output_size, 0);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_datatype_conversion_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -3582,7 +3582,7 @@ static void _ccv_cnnp_clamp_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(output_size == 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_CLAMP_FORWARD(self->min, self->max), inputs, output_size, outputs, output_size, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_CLAMP_FORWARD(self->min, self->max), inputs, output_size /* intentional */, outputs, output_size, 0);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_clamp_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -4190,7 +4190,7 @@ static void _ccv_cnnp_sort_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
 	params.datatype = CCV_32S;
 	outputs[1] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SORT_FORWARD(self->along_axis, self->descending), inputs, output_size, outputs, output_size, "sort");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SORT_FORWARD(self->along_axis, self->descending), inputs, input_size, outputs, output_size, "sort");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_sort_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -4240,7 +4240,7 @@ static void _ccv_cnnp_partition_build(ccv_cnnp_model_t* const super, ccv_nnc_sym
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
 	params.datatype = CCV_32S;
 	outputs[1] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_PARTITION_FORWARD(self->kth, self->along_axis, self->descending), inputs, output_size, outputs, output_size, "partition");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_PARTITION_FORWARD(self->kth, self->along_axis, self->descending), inputs, input_size, outputs, output_size, "partition");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_partition_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -4289,7 +4289,7 @@ static void _ccv_cnnp_unique_consecutive_build(ccv_cnnp_model_t* const super, cc
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
 	params.datatype = CCV_32S;
 	outputs[1] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_UNIQUE_CONSECUTIVE_FORWARD(self->bincount), inputs, output_size, outputs, output_size, "unique_consecutive");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_UNIQUE_CONSECUTIVE_FORWARD(self->bincount), inputs, input_size, outputs, output_size, "unique_consecutive");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_unique_consecutive_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -4332,9 +4332,9 @@ static void _ccv_cnnp_scatter_add_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(output_size == 1);
 	assert(self->bincount > 0);
-	params.dim[0] = ccv_min(params.dim[0], self->bincount);
+	params.dim[0] = self->bincount;
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SCATTER_ADD_FORWARD(self->bincount), inputs, output_size, outputs, output_size, "scatter_add");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SCATTER_ADD_FORWARD(self->bincount), inputs, input_size, outputs, output_size, "scatter_add");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_scatter_add_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -4380,7 +4380,7 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_dense_build] -\n");
-	assert(input_size == 1);
+	assert(input_size == 3);
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t indices_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
@@ -4401,8 +4401,8 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 	cmd.cmd = CCV_NNC_SEGMENTED_GEMM_FORWARD;
 	cmd.info.blas.a[0] = 1;
 	cmd.info.blas.a[1] = 1;
-	cmd.info.blas.transpose_b[0] = 0;
-	cmd.info.blas.transpose_b[1] = 1;
+	cmd.info.blas.transpose_b[0] = 1;
+	cmd.info.blas.transpose_b[1] = 2;
 	cmd.info.blas.flags = self->flags;
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){

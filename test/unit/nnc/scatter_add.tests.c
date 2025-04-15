@@ -154,4 +154,32 @@ TEST_CASE("backward scatter add a tensor view")
 	ccv_nnc_tensor_view_free(bv);
 }
 
+TEST_CASE("scatter add a tensor with model")
+{
+	float bp[] = {
+		1, 2,
+		2, 3,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2), 0);
+	int ip[] = {1, 1};
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, 2), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 2), 0);
+	ccv_cnnp_model_t* const scatter_add = ccv_cnnp_scatter_add(3, "scatter_add");
+	ccv_cnnp_model_compile(scatter_add, TENSOR_PARAM_LIST(b->info, indices->info), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(scatter_add, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(b, indices), TENSOR_LIST(a), 0, 0);
+	float atp[] = {
+		0, 0,
+		3, 5,
+		0, 0,
+	};
+	ccv_nnc_tensor_t const at = ccv_nnc_tensor(atp, CPU_TENSOR_NHWC(32F, 3, 2), 0);
+	REQUIRE_TENSOR_EQ(a, &at, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(b);
+	ccv_cnnp_model_free(scatter_add);
+}
+
 #include "case_main.h"

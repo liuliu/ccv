@@ -106,4 +106,33 @@ TEST_CASE("unique consecutive a 1d tensor, int, smaller container")
 	ccv_nnc_tensor_free(indices);
 }
 
+TEST_CASE("unique consecutive a 1d tensor with model")
+{
+	float ap[] = {
+		2, 2, 2, 0, 0, 2, 2, 1, 1, 2, 3
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 11), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 7), 0);
+	ccv_cnnp_model_t* const unique_consecutive = ccv_cnnp_unique_consecutive(7, "unique_consecutive");
+	ccv_cnnp_model_compile(unique_consecutive, TENSOR_PARAM_LIST(a->info), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(unique_consecutive, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a), TENSOR_LIST(b, indices), 0, 0);
+	float btp[] = {
+		2, 0, 2, 1, 2, 3, -1
+	};
+	ccv_nnc_tensor_t const bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 7), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "should be equal");
+	int indicestp[] = {
+		3, 2, 2, 2, 1, 1, 0
+	};
+	ccv_nnc_tensor_t const indicest = ccv_nnc_tensor(indicestp, CPU_TENSOR_NHWC(32S, 7), 0);
+	REQUIRE_TENSOR_EQ(indices, &indicest, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(indices);
+	ccv_cnnp_model_free(unique_consecutive);
+}
+
 #include "case_main.h"
