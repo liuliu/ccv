@@ -3478,4 +3478,214 @@ TEST_CASE("cmul gradient in half precision")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+TEST_CASE("segmented gemm")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hindices->data.i32[0] = 0;
+	hindices->data.i32[1] = 2;
+	hindices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hcounts->data.i32[0] = 20;
+	hcounts->data.i32[1] = 25;
+	hcounts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 80 * 128; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 80, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(a, indices, counts, w), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "should match from CPU");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("segmented gemm with bias")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hindices->data.i32[0] = 0;
+	hindices->data.i32[1] = 1;
+	hindices->data.i32[2] = 2;
+	ccv_nnc_tensor_t* hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hcounts->data.i32[0] = 20;
+	hcounts->data.i32[1] = 25;
+	hcounts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 3 * 64; i++)
+		hbias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 80 * 128; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 80, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw, hbias), TENSOR_LIST(a, indices, counts, w, bias), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw, hbias), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "should match from CPU");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("segmented gemm in half precision")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hindices->data.i32[0] = 0;
+	hindices->data.i32[1] = 2;
+	hindices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hcounts->data.i32[0] = 20;
+	hcounts->data.i32[1] = 25;
+	hcounts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	ccv_nnc_tensor_t* hb16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 80, 64), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 80 * 128; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 80, 128), 0);
+	ccv_nnc_tensor_t* hw16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 3, 64, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(ha16, hw16), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 80, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hindices, hcounts, hw16), TENSOR_LIST(a, indices, counts, w), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb16), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(bt), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, 80 * 64, 1e-3, "should match from CPU");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hw16);
+	ccv_nnc_tensor_free(hb16);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("segmented gemm with bias in half precision")
+{
+	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 128), 0);
+	ccv_nnc_tensor_t* hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hindices->data.i32[0] = 0;
+	hindices->data.i32[1] = 1;
+	hindices->data.i32[2] = 2;
+	ccv_nnc_tensor_t* hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hcounts->data.i32[0] = 20;
+	hcounts->data.i32[1] = 25;
+	hcounts->data.i32[2] = 35;
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	ccv_nnc_tensor_t* hb16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 80, 64), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 80, 64), 0);
+	int i;
+	for (i = 0; i < 3 * 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 3 * 64; i++)
+		hbias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 64;
+	for (i = 0; i < 80 * 128; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 80, 128), 0);
+	ccv_nnc_tensor_t* hw16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* hbias16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 3, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ha16, hw16, hbias16), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 80, 128), 0);
+	ccv_nnc_tensor_t* indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 3, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 80, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hindices, hcounts, hw16, hbias16), TENSOR_LIST(a, indices, counts, w, bias), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb16), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw, hbias), TENSOR_LIST(bt), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, 80 * 64, 1e-3, "should match from CPU");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hw16);
+	ccv_nnc_tensor_free(hbias16);
+	ccv_nnc_tensor_free(hb16);
+	ccv_nnc_tensor_free(bt);
+}
+
 #include "case_main.h"

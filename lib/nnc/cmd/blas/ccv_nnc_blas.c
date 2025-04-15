@@ -347,14 +347,14 @@ static void _ccv_nnc_segmented_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t c
 }
 
 REGISTER_COMMAND(CCV_NNC_SEGMENTED_GEMM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_segmented_gemm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_segmented_gemm_cpu_ref.c, gpu/ccv_nnc_segmented_gemm_gpu_cublas.cu)
 {
 	registry->bitmask = _ccv_nnc_segmented_gemm_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_segmented_gemm_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_SEGMENTED_GEMM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_segmented_gemm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_segmented_gemm_cpu_ref.c, gpu/ccv_nnc_segmented_gemm_gpu_cublas.cu)
 {
 	registry->bitmask = _ccv_nnc_segmented_gemm_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;

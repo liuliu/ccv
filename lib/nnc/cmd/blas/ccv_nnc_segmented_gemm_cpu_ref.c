@@ -119,7 +119,7 @@ static inline void _ccv_nnc_segmented_gbmm(const float* const a, const int a_nd,
 
 static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size >= 2);
+	assert(input_size >= 4);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* indices = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* counts = (const ccv_nnc_tensor_view_t*)inputs[2];
@@ -179,7 +179,6 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			bias_batch_size = bias_rows;
 			bias_rows = 1;
 			bias_batch_inc = bias_rows_inc;
-			bias_rows_inc = 0;
 		}
 		assert(bias_batch_size == w_batch_size);
 		assert(bias_cols == b_cols);
