@@ -414,8 +414,76 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_
 	registry->exec = _ccv_nnc_mul_back;
 }
 
+static void _ccv_nnc_scalar_mul_forw_cpu_ref_i32(const float p, ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const c)
+{
+	// Assuming this is int.
+	int dim[CCV_NNC_MAX_DIM_ALLOC];
+	int astride[CCV_NNC_MAX_DIM_ALLOC];
+	int cstride[CCV_NNC_MAX_DIM_ALLOC];
+	assert(ccv_nnc_tensor_nd(a->info.dim) <= CCV_NNC_MAX_DIM + 2);
+	assert(ccv_nnc_tensor_nd(c->info.dim) <= CCV_NNC_MAX_DIM + 2);
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	assert(ccv_nnc_tensor_view_check_dim(c, dim));
+	int x;
+	if (CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(c))
+	{
+		// Super optimal case, just do one for-loop for sum.
+		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		for (x = 0; x < tensor_count; x++)
+			c->data.i32[x] = (int)(p * (float)a->data.i32[x]);
+		return;
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	ccv_nnc_tensor_view_get_stride(a, astride);
+	ccv_nnc_tensor_view_get_stride(c, cstride);
+	int i[CCV_NNC_MAX_DIM + 2];
+	int* const ap = a->data.i32;
+	int* const cp = c->data.i32;
+	const int count = dim[2] * dim[3];
+	if (astride[2] == dim[3] && cstride[2] == dim[3])
+	{
+		// Special casing if the ainc[3] is the same as dim[3]
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			int* ap0 = ap + i[0] * astride[0];
+			int* cp0 = cp + i[0] * cstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				for (x = 0; x < count; x++)
+					cp0[x] = (int)(p * (float)ap0[x]);
+				ap0 += astride[1];
+				cp0 += cstride[1];
+			}
+		}
+		return;
+	}
+	// Non-optimal case, need to do skip copy.
+	for (i[0] = 0; i[0] < dim[0]; i[0]++)
+	{
+		int* const ap0 = ap + i[0] * astride[0];
+		int* const cp0 = cp + i[0] * cstride[0];
+		for (i[1] = 0; i[1] < dim[1]; i[1]++)
+		{
+			int* ap1 = ap0 + i[1] * astride[1];
+			int* cp1 = cp0 + i[1] * cstride[1];
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			{
+				for (x = 0; x < dim[3]; x++)
+					cp1[x] = (int)(p * (float)ap1[x]);
+				ap1 += astride[2];
+				cp1 += cstride[2];
+			}
+		}
+	}
+}
+
 static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	if (inputs[0]->info.datatype == CCV_32S)
+	{
+		_ccv_nnc_scalar_mul_forw_cpu_ref_i32(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[0]);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], 0, (ccv_nnc_tensor_view_t*)outputs[0]);
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -431,7 +499,7 @@ static int _ccv_nnc_scalar_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scalar_mul_forw;

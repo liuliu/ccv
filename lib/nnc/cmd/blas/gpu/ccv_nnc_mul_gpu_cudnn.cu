@@ -315,12 +315,32 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+__global__ void _ccv_nnc_scalar_mul_i32(const size_t count, const float p, const int* const a, int* const b)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		b[i] = (int)(p * (float)a[i]);
+	}
+}
+
 static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 1);
-	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const float p = cmd.info.blas.a[0];
+	assert(inputs[0]->info.datatype == outputs[0]->info.datatype);
+	if (inputs[0]->info.datatype == CCV_32S) // If it is 32S.
+	{
+		const ccv_nnc_tensor_t* const a = inputs[0];
+		ccv_nnc_tensor_t* const c = outputs[0];
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+		const size_t count = ccv_nnc_tensor_count(a->info);
+		assert(ccv_nnc_tensor_count(c->info) == count);
+		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+		_ccv_nnc_scalar_mul_i32<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, p, a->data.i32, c->data.i32);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	static const float zero = 0;
+	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &p, a.descriptor, a.data.u8,  &zero, c.descriptor, c.data.u8));
@@ -378,7 +398,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scalar_mul_forw;
