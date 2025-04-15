@@ -40,13 +40,13 @@ static int _ccv_nnc_unique_consecutive_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 		for (i = 1; i < count; i++)
 			if (a->data.f32[i] != last_val)
 			{
+				if (j >= bincount)
+					break;
 				indices->data.i32[j - 1] = len;
 				b->data.f32[j] = a->data.f32[i];
 				last_val = b->data.f32[j];
 				++j;
 				len = 1;
-				if (j >= bincount)
-					break;
 			} else
 				++len;
 		if (j <= count)
@@ -62,13 +62,13 @@ static int _ccv_nnc_unique_consecutive_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 		for (i = 1; i < count; i++)
 			if (a->data.i32[i] != last_val)
 			{
+				if (j >= bincount)
+					break;
 				indices->data.i32[j - 1] = len;
 				b->data.i32[j] = a->data.i32[i];
 				last_val = b->data.i32[j];
 				++j;
 				len = 1;
-				if (j >= bincount)
-					break;
 			} else
 				++len;
 		if (j <= count)
