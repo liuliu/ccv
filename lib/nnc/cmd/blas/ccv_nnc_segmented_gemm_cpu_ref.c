@@ -17,6 +17,8 @@ static inline void _ccv_nnc_segmented_bmm_and_bias(const float* const a, const f
 	int off = 0;
 	for (n = 0; n < bincount; n++)
 	{
+		if (indices[n] < 0)
+			continue;
 		const float* const ap = a + off * a_rows_inc;
 		const float* const wp = w + indices[n] * w_batch_inc;
 		const float* const biasp = bias + indices[n] * bias_batch_inc;
@@ -73,6 +75,8 @@ static inline void _ccv_nnc_segmented_bmm(const float* const a, const float* con
 	int off = 0;
 	for (n = 0; n < bincount; n++)
 	{
+		if (indices[n] < 0)
+			continue;
 		const float* const ap = a + off * a_rows_inc;
 		const float* const wp = w + indices[n] * w_batch_inc;
 		float* const bp = b + off * b_rows_inc;

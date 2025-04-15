@@ -4803,6 +4803,41 @@ typedef void* (*ccv_cnnp_model_debug_context_copy_f)(void* const context);
  * @return A model that can be applied and copies first input to the second.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_debug(ccv_cnnp_model_debug_f func, void* const context, ccv_cnnp_model_debug_context_deinit_f deinit, ccv_cnnp_model_debug_context_copy_f copy, const char* const name);
+/**
+ * A sort model. The result are two tensors: values and indices.
+ * @param along_axis Sort along which axis.
+ * @param descending Whether sort by descending order.
+ * @param name The unique name of the model.
+ * @return A sort model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sort(const int along_axis, const int descending, const char* const name);
+/**
+ * A partition model. The result are two tensors: values and indices.
+ * @param kth Took kth elements.
+ * @param along_axis Partition along which axis.
+ * @param descending Whether partition by descending order.
+ * @param name The unique name of the model.
+ * @return A partition model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_partition(const int along_axis, const int descending, const char* const name);
+/**
+ * A unique consecutive model. Otherwise known as run-length encode.
+ * @param bincount How many unique consecutive elements there are, 0 to match the original.
+ * @param name The unique name of the model.
+ * @return A unique consecutive model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_unique_consecutive(const int bincount, const char* const name);
+/**
+ * A segmented dense layer model. Note that the input would be activation, indices and count.
+ * @param segments / experts How many segments in this layer.
+ * @param count The output dimension.
+ * @param no_bias Whether has a bias term or not.
+ * @param flags The flags to disable / enable certain features.
+ * @param is_trainable Whether the parameters of this model can be trained.
+ * @param name The unique name of the model.
+ * @return A segmented dense layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const char* const name);
 
 /** @} */
 

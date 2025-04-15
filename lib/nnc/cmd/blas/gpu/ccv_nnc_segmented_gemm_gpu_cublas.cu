@@ -39,12 +39,16 @@ static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const
 		int off = 0;
 		for (i = 0; i < bincount; i++)
 		{
+			if (indices[n] < 0)
+				continue;
 			const unsigned char* const ap = a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * off * ldb_inc;
 			const unsigned char* const wp = w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * host_indices[i] * w_batch_inc;
 			const unsigned char* const biasp = bias + CCV_GET_DATA_TYPE_SIZE(bias_datatype) * host_indices[i] * bias_batch_inc;
 			unsigned char* const bp = b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * off * b_rows_inc;
 			const int rowcount = host_counts[i];
 			off += rowcount;
+			if (rowcount <= 0)
+				continue;
 			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, rowcount, 1, one, biasp, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
@@ -99,11 +103,15 @@ static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned
 		int off = 0;
 		for (i = 0; i < bincount; i++)
 		{
+			if (indices[n] < 0)
+				continue;
 			const unsigned char* const ap = a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * off * ldb_inc;
 			const unsigned char* const wp = w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * host_indices[i] * w_batch_inc;
 			unsigned char* const bp = b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * off * b_rows_inc;
 			const int rowcount = host_counts[i];
 			off += rowcount;
+			if (rowcount <= 0)
+				continue;
 			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
