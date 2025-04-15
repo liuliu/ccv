@@ -4819,7 +4819,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sort(const int along_axis, const int
  * @param name The unique name of the model.
  * @return A partition model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_partition(const int along_axis, const int descending, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_partition(const int kth, const int along_axis, const int descending, const char* const name);
 /**
  * A unique consecutive model. Otherwise known as run-length encode.
  * @param bincount How many unique consecutive elements there are, 0 to match the original.
@@ -4827,6 +4827,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_partition(const int along_axis, cons
  * @return A unique consecutive model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_unique_consecutive(const int bincount, const char* const name);
+/**
+ * A scatter add model.
+ * @param name The unique name of the model.
+ * @param bincount How many original elements will be, it needs to be non-zero.
+ * @return A scatter add model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, const char* const name);
 /**
  * A segmented dense layer model. Note that the input would be activation, indices and count.
  * @param segments / experts How many segments in this layer.

@@ -39,7 +39,7 @@ static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const
 		int off = 0;
 		for (i = 0; i < bincount; i++)
 		{
-			if (indices[n] < 0)
+			if (host_indices[i] < 0)
 				continue;
 			const unsigned char* const ap = a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * off * ldb_inc;
 			const unsigned char* const wp = w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * host_indices[i] * w_batch_inc;
@@ -103,7 +103,7 @@ static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned
 		int off = 0;
 		for (i = 0; i < bincount; i++)
 		{
-			if (indices[n] < 0)
+			if (host_indices[i] < 0)
 				continue;
 			const unsigned char* const ap = a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * off * ldb_inc;
 			const unsigned char* const wp = w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * host_indices[i] * w_batch_inc;

@@ -316,9 +316,9 @@ static void _ccv_nnc_segmented_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t c
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
 	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
-	const int w_nd = ccv_nnc_tensor_nd(inputs[1].dim);
+	const int w_nd = ccv_nnc_tensor_nd(inputs[3].dim);
 	ccv_nnc_tensor_get_matrix_params(inputs[0], 0, inputs[0].dim, cmd.blas.transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
-	ccv_nnc_tensor_get_matrix_params(inputs[1], 0, inputs[1].dim, cmd.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(inputs[3], 0, inputs[3].dim, cmd.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
@@ -334,14 +334,14 @@ static void _ccv_nnc_segmented_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t c
 		}
 	} else {
 		assert(a_nd >= 3);
-		outputs[0].dim[a_nd - 3] = ccv_max(a_batch_size, w_batch_size);
+		outputs[0].dim[a_nd - 3] = a_batch_size;
 		outputs[0].dim[a_nd - 2] = b_rows;
 		outputs[0].dim[a_nd - 1] = b_cols;
 		int i;
 		for (i = 0; i < a_nd - 3; i++)
 		{
 			const int w_idx = w_nd - a_nd + i;
-			outputs[0].dim[i] = ccv_max(inputs[0].dim[i], w_idx >= 0 ? inputs[1].dim[w_idx] : 1);
+			outputs[0].dim[i] = ccv_max(inputs[0].dim[i], w_idx >= 0 ? inputs[3].dim[w_idx] : 1);
 		}
 	}
 }
