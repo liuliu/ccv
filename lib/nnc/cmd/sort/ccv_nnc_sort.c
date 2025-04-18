@@ -27,14 +27,14 @@ static void _ccv_nnc_sort_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_SORT_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_sort_cpu_ref.c, gpu/ccv_nnc_sort_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_sort_cpu_ref.c, gpu/ccv_nnc_sort_gpu_ref.cu, mps/ccv_nnc_sort_mps.m)
 {
 	registry->bitmask = _ccv_nnc_sort_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_sort_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_SORT_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_sort_cpu_ref.c, gpu/ccv_nnc_sort_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_sort_cpu_ref.c, gpu/ccv_nnc_sort_gpu_ref.cu, mps/ccv_nnc_sort_mps.m)
 {
 	registry->bitmask = _ccv_nnc_sort_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient; // This is just best guess.
