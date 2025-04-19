@@ -22,14 +22,12 @@ static int _ccv_nnc_scatter_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(a_nd <= 2);
 	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)inputs[1];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == 1);
-	const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd <= 2);
 	const int a_cols = a_nd < 2 ? 1 : a->info.dim[1];
-	const int a_cols_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd < 2 ? 1 : a->stride[0]) : a_cols;
 	const int a_rows = a->info.dim[0];
 	const int b_cols = b_nd < 2 ? 1 : b->info.dim[1];
-	const int b_cols_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd < 2 ? 1 : b->stride[0]) : b_cols;
 	const int b_rows = b->info.dim[0];
 	assert(a_rows == indices->info.dim[0]);
 	assert(indices->info.datatype == CCV_32S);
@@ -41,7 +39,6 @@ static int _ccv_nnc_scatter_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		int idx[2];
 		int indices_dim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 		int indices_stride[CCV_NNC_MAX_DIM_ALLOC] = {0};
-		const int nd = ccv_nnc_tensor_nd(b->info.dim);
 		if (a_nd == 2)
 		{
 			indices_dim[0] = indices->info.dim[0];

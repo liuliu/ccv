@@ -81,6 +81,7 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   compute_command cmd = compute_command(args->icb, gid);
   const int idx = indices[gid];
   const int count = counts[gid];
+  cmd.reset();
   cmd.set_compute_pipeline_state(args->pipeline);
   cmd.set_threadgroup_memory_length(threadgroup_memory_allocation, 0);
   cmd.set_kernel_buffer(A + offset * K, 0);

@@ -38,7 +38,7 @@ static int _ccv_nnc_scatter_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(a_nd <= 2);
 	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)inputs[1];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == 1);
-	const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(b_nd <= 2);
 	const int a_cols = a_nd < 2 ? 1 : a->info.dim[1];
@@ -84,13 +84,13 @@ static int _ccv_nnc_scatter_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(g_nd <= 2);
 	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)inputs[2];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == 1);
-	const ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
 	assert(h_nd <= 2);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (output_size >= 2 && outputs[1])
 	{
-		const ccv_nnc_tensor_view_t* const output = (ccv_nnc_tensor_view_t*)outputs[1];
+		ccv_nnc_tensor_view_t* const output = (ccv_nnc_tensor_view_t*)outputs[1];
 		const int output_nd = ccv_nnc_tensor_nd(output->info.dim);
 		const int output_cols = output_nd < 2 ? 1 : output->info.dim[1];
 		const int output_cols_inc = CCV_IS_TENSOR_VIEW(output) ? (output_nd < 2 ? 1 : output->stride[0]) : output_cols;

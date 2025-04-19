@@ -10,8 +10,6 @@ class CodeWriter;
 struct SegmentedGEMMPrologueKernel {
   NS::SharedPtr<MTL::Library> library;
 
-  NS::SharedPtr<MTL::Function> function;
-  
   std::string source;
 
   GEMMOperandPrecisions memoryPrecisions;

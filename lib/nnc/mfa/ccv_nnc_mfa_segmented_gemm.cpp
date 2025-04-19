@@ -79,13 +79,6 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
   auto gemmKernel = gemmPipelineValue->kernel;
   auto gemmPipeline = gemmPipelineValue->pipeline;
 
-  // Allocate indirect command buffer.
-  auto icbDesc = NS::TransferPtr(MTL::IndirectCommandBufferDescriptor::alloc()->init());
-  icbDesc->setCommandTypes(MTL::IndirectCommandTypeConcurrentDispatch);
-  icbDesc->setInheritPipelineState(false);
-  icbDesc->setInheritBuffers(false);
-  icbDesc->setMaxKernelBufferBindCount(5);
-  auto indirectCommandBuffer = NS::TransferPtr(context->device->newIndirectCommandBuffer(icbDesc.get(), params.segments, MTL::ResourceStorageModePrivate));
 
   prologueDesc.threadgroupSize = gemmKernel->threadgroupSize;
   prologueDesc.threadgroupMemoryAllocation = gemmKernel->threadgroupMemoryAllocation;
@@ -93,6 +86,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
   auto pipelineValue = shaderCache.findKernel<SegmentedGEMMPrologueKernel, SegmentedGEMMPrologueDescriptor, SegmentedGEMMPrologueKernelDescriptor>(prologueDesc, context->device.get(), dprops);
   auto kernel = pipelineValue->kernel;
   auto pipeline = pipelineValue->pipeline;
+  auto indirectCommandBuffer = pipelineValue->indirect;
 
   // Allocate a new command.
   auto encoder = command_batch->startCommand();
@@ -112,7 +106,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     encoder->setBuffer(tensors[i], tensor_offsets[i], i);
   }
   encoder->useResource(indirectCommandBuffer.get(), MTL::ResourceUsageWrite);
-  auto argumentEncoder = NS::TransferPtr(kernel->function->newArgumentEncoder(num_tensors));
+  auto argumentEncoder = NS::TransferPtr(pipelineValue->function->newArgumentEncoder(num_tensors));
   auto argumentBuffer = NS::TransferPtr(context->device->newBuffer(argumentEncoder->encodedLength(), MTL::ResourceStorageModeShared));
   argumentEncoder->setArgumentBuffer(argumentBuffer.get(), 0);
   argumentEncoder->setIndirectCommandBuffer(indirectCommandBuffer.get(), 0);

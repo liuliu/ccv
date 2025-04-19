@@ -7,6 +7,8 @@ template<typename T>
 struct PipelineValue {
   T* kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  NS::SharedPtr<MTL::IndirectCommandBuffer> indirect; // This is optional.
+  NS::SharedPtr<MTL::Function> function; // This is optional.
 };
 
 #endif

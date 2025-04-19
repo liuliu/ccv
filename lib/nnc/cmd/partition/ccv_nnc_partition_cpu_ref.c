@@ -16,9 +16,9 @@ static int _ccv_nnc_partition_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	assert(output_size == 2);
 	const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(ccv_nnc_tensor_nd(b->info.dim) == a_nd);
-	const ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t* const indices = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == a_nd);
 	assert(indices->info.datatype == CCV_32S);
 	assert(CCV_IS_TENSOR_CONTIGUOUS(a));

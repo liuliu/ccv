@@ -209,7 +209,6 @@ MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
 }
 
 MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
-  commandQueue = commandQueue;
   commandBuffer = commandQueue->commandBuffer();
   commandEncoder = commandBuffer->computeCommandEncoder();
 }
