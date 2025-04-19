@@ -59,15 +59,17 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   gemmDesc.leadingDimensions = std::nullopt;
   gemmDesc.loadPreviousC = false;
   gemmDesc.useBias = params.fused_bias;
+  gemmDesc.loadM = false;
+  gemmDesc.supportIndirectCommandBuffers = false;
 
   gemmDesc.batchDimension = params.batch_dimension;
   if (params.batch_dimension > 1) {
-	simd::uint4 batchStrides;
+    simd::uint4 batchStrides;
     batchStrides[0] = params.batch_stride_a;
     batchStrides[1] = params.batch_stride_b;
     batchStrides[2] = params.batch_stride_c;
     batchStrides[3] = params.batch_stride_d;
-	gemmDesc.batchStrides = batchStrides;
+    gemmDesc.batchStrides = batchStrides;
   } else {
     gemmDesc.batchStrides = std::nullopt;
   }

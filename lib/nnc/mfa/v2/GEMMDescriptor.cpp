@@ -13,7 +13,9 @@ bool GEMMDescriptor::operator==(const GEMMDescriptor& rhs) const {
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
-  (useBias == rhs.useBias);
+  (useBias == rhs.useBias) &&
+  (loadM == rhs.loadM) &&
+  (supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers);
 }
 
 std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) const noexcept {
@@ -36,7 +38,7 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
   }
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.loadPreviousC, hash.useBias, 0, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.loadPreviousC, hash.useBias, hash.loadM, hash.supportIndirectCommandBuffers }));
   if (hash.registerPrecisionC.has_value()) {
     combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
   }
@@ -129,10 +131,18 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     auto function = NS::TransferPtr
     (library->newFunction(swiftName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
-    
-    auto pipeline = device->newComputePipelineState(function.get(), &error);
-    CCV_NNC_MFA_CHECK_ERROR(error);
-    return pipeline;
+
+    if (this->supportIndirectCommandBuffers) {
+      auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+      descriptor->setComputeFunction(function.get());
+      descriptor->setSupportIndirectCommandBuffers(true);
+      auto pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+      return pipeline;
+    } else {
+      auto pipeline = device->newComputePipelineState(function.get(), &error);
+      CCV_NNC_MFA_CHECK_ERROR(error);
+      return pipeline;
+    }
   };
 
   GEMMOperandPrecision registerPrecisionA = memoryPrecisions.A;
@@ -200,7 +210,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
   // Run a combinatorial search to find the correct value for
   // 'preferAsyncStore'.
   if (preferAsyncStore.has_value()) {
-    auto kernelDesc = GEMMKernelDescriptor(blockDimensionsAndPaddedBlockDimensions.first, this->memoryPrecisions, blockDimensionsAndPaddedBlockDimensions.second, preferAsyncLoad, preferAsyncStore.value(), registerPrecisions, splits, this->transposeState, this->useBias);
+    auto kernelDesc = GEMMKernelDescriptor(blockDimensionsAndPaddedBlockDimensions.first, this->memoryPrecisions, blockDimensionsAndPaddedBlockDimensions.second, preferAsyncLoad, preferAsyncStore.value(), registerPrecisions, splits, this->transposeState, this->useBias, this->loadM);
     GEMMKernel* kernel = createKernel(kernelDesc);
     auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
     
@@ -210,7 +220,7 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     PipelineValue<GEMMKernel>* output = new PipelineValue<GEMMKernel> { kernel, pipeline };
     return std::make_pair(kernelDesc, output);
   } else {
-    auto kernelDesc = GEMMKernelDescriptor(blockDimensionsAndPaddedBlockDimensions.first, this->memoryPrecisions, blockDimensionsAndPaddedBlockDimensions.second, preferAsyncLoad, false, registerPrecisions, splits, this->transposeState, this->useBias);
+    auto kernelDesc = GEMMKernelDescriptor(blockDimensionsAndPaddedBlockDimensions.first, this->memoryPrecisions, blockDimensionsAndPaddedBlockDimensions.second, preferAsyncLoad, false, registerPrecisions, splits, this->transposeState, this->useBias, this->loadM);
     struct Candidate {
       GEMMKernelDescriptor kernelDesc;
       GEMMKernel* kernel;

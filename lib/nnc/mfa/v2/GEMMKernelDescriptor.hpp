@@ -208,13 +208,16 @@ struct GEMMKernelDescriptor {
 
   /// Required. Whether it contains the bias.
   bool useBias;
+
+  /// Whether M is loaded from a buffer or not.
+  bool loadM;
   
   // MARK: - Functionality from GEMMDescriptor
   
   GEMMKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept;
+  GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> paddedBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias, bool loadM) noexcept;
   
   /// Implementation of the block size selection heuristic.
   ///

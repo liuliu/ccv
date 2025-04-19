@@ -124,6 +124,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
   preferAsyncLoad = descriptor.preferAsyncLoad;
   preferAsyncStore = descriptor.preferAsyncStore;
   useBias = descriptor.useBias;
+  loadM = descriptor.loadM;
   threadgroupSize = 32 * splits[0] * splits[1];
   
   // Validate the correctness of register precisions.
@@ -297,6 +298,17 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
     source += R"(
                  device {{MEMORY_NAME_BIAS}} *bias [[buffer(3)]],
 )";
+    if (loadM) {
+      source += R"(
+                   device uint *loadM [[buffer(4)]],
+)";
+    }
+  } else {
+    if (loadM) {
+      source += R"(
+                   device uint *loadM [[buffer(3)]],
+)";
+    }
   }
   source += R"(
                  threadgroup uchar *threadgroup_block [[threadgroup(0)]],
@@ -317,6 +329,22 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   }
   source += R"(
   }
+)";
+  if (loadM) {
+    source += R"(
+  const uint M = loadM[0];
+  // Thresholds that mark the matrix edge.
+  const uint M_edge = M - (M % M_group);
+  // Find the number of elements in the final block. If the matrix
+  // dimensions are perfectly divisibly by block dimensions, we don't want
+  // this value to be zero. The final block is a full block.
+  const ushort M_remainder = (M % {{REGISTER_M}} == 0)
+    ? {{REGISTER_M}} : M % {{REGISTER_M}};
+  // Shift the final block, so it doesn't access out-of-bounds memory.
+  const ushort M_shift = (M < M_group) ? 0 : {{REGISTER_M}} - M_remainder;
+)";
+  }
+  source += R"(
   ushort2 sid(sidx % {{SPLITS_N}}, sidx / {{SPLITS_N}});
   ushort2 morton_offset = morton_order(lane_id);
   
@@ -385,7 +413,6 @@ std::string GEMMKernel::createConstants() const noexcept {
 // - The rows of the matrix must be contiguous in memory. Supporting strides
 //   that differ from the actual matrix dimensions should not be difficult, but
 //   it is out of scope for this reference kernel.
-constant uint M [[function_constant(0)]];
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 
@@ -422,14 +449,11 @@ constant ushort N_group = {{BLOCK_DIMENSIONS_N}};
 constant ushort K_group = {{BLOCK_DIMENSIONS_K}};
 
 // Thresholds that mark the matrix edge.
-constant uint M_edge = M - (M % M_group);
 constant uint N_edge = N - (N % N_group);
 
 // Find the number of elements in the final block. If the matrix
 // dimensions are perfectly divisibly by block dimensions, we don't want
 // this value to be zero. The final block is a full block.
-constant ushort M_remainder = (M % {{REGISTER_M}} == 0)
-  ? {{REGISTER_M}} : M % {{REGISTER_M}};
 constant ushort N_remainder = (N % {{REGISTER_N}} == 0)
   ? {{REGISTER_N}} : N % {{REGISTER_N}};
 constant ushort K_remainder = (K % K_group == 0)
@@ -437,10 +461,23 @@ constant ushort K_remainder = (K % K_group == 0)
 constant ushort K_remainder_padded = (K_remainder + 7) / 8 * 8;
 
 // Shift the final block, so it doesn't access out-of-bounds memory.
-constant ushort M_shift = (M < M_group) ? 0 : {{REGISTER_M}} - M_remainder;
 constant ushort N_shift = (N < N_group) ? 0 : {{REGISTER_N}} - N_remainder;
 
 )";
+  if (!loadM) {
+    constants += R"(
+constant uint M [[function_constant(0)]];
+// Thresholds that mark the matrix edge.
+constant uint M_edge = M - (M % M_group);
+// Find the number of elements in the final block. If the matrix
+// dimensions are perfectly divisibly by block dimensions, we don't want
+// this value to be zero. The final block is a full block.
+constant ushort M_remainder = (M % {{REGISTER_M}} == 0)
+  ? {{REGISTER_M}} : M % {{REGISTER_M}};
+// Shift the final block, so it doesn't access out-of-bounds memory.
+constant ushort M_shift = (M < M_group) ? 0 : {{REGISTER_M}} - M_remainder;
+)";
+  }
   return constants;
 }
 

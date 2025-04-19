@@ -209,6 +209,7 @@ MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
 }
 
 MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
+  commandQueue = commandQueue;
   commandBuffer = commandQueue->commandBuffer();
   commandEncoder = commandBuffer->computeCommandEncoder();
 }
@@ -227,7 +228,9 @@ void MTL::CommandBatch::finishCommand(MTL::ComputeCommandEncoder* commandEncoder
 
 MTL::CommandBatch::~CommandBatch() {
   CCV_NNC_MFA_PRECONDITION(commandActive == 0)
-  commandEncoder->endEncoding();
+  if (commandEncoder) {
+    commandEncoder->endEncoding();
+  }
   if (commandBuffer) {
     commandBuffer->commit();
   }

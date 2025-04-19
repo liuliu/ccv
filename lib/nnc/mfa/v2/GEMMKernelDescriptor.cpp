@@ -15,7 +15,8 @@ bool GEMMKernelDescriptor::operator==(const GEMMKernelDescriptor& rhs) const {
   registerPrecisions == rhs.registerPrecisions &&
   simd_all(splits == rhs.splits) &&
   simd_all(transposeState == rhs.transposeState) &&
-  (useBias == rhs.useBias);
+  (useBias == rhs.useBias) &&
+  (loadM == rhs.loadM);
 }
 
 std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescriptor& hash) const noexcept {
@@ -30,12 +31,13 @@ std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescript
   combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
   combine_32(seed, pack_32(hash.splits));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
   return 0;
 }
 
 // MARK: - Initializer
 
-GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> leadingBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias) noexcept {
+GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, std::optional<simd::ushort3> leadingBlockDimensions, bool preferAsyncLoad, bool preferAsyncStore, GEMMOperandPrecisions registerPrecisions, simd::ushort2 splits, simd::uchar3 transposeState, bool useBias, bool loadM) noexcept {
   this->blockDimensions = blockDimensions;
   this->memoryPrecisions = memoryPrecisions;
   this->leadingBlockDimensions = leadingBlockDimensions;
@@ -45,6 +47,7 @@ GEMMKernelDescriptor::GEMMKernelDescriptor(simd::ushort3 blockDimensions, GEMMOp
   this->splits = splits;
   this->transposeState = transposeState;
   this->useBias = useBias;
+  this->loadM = loadM;
 }
 
 std::pair<simd::ushort3, std::optional<simd::ushort3>> GEMMKernelDescriptor::getBlockDimensions(MTL::Device* const mtlDevice, const uint32_t coreCount, const simd::uint3 matrixDimensions, const int64_t batchDimension, const GEMMOperandPrecisions memoryPrecisions, const GEMMOperandPrecision registerPrecisionC, const simd::uchar3 transposeState) noexcept {

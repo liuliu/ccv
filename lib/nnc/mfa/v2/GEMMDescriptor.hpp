@@ -42,6 +42,12 @@ struct GEMMDescriptor {
 
   bool useBias;
 
+  /// Whether load M from a buffer.
+  bool loadM;
+
+  /// Whether the compiled pipeline will support indirect command buffers.
+  bool supportIndirectCommandBuffers;
+
   bool operator==(const GEMMDescriptor& rhs) const;
 
   std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<GEMMKernelDescriptor, std::unique_ptr<GEMMKernel>> *const libraryCache) const noexcept;

@@ -39,6 +39,8 @@ struct GEMMKernel {
 
   bool useBias;
 
+  bool loadM;
+
   uint16_t registerM;
 
   uint16_t registerN;

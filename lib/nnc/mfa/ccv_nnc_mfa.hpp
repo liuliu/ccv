@@ -13,6 +13,7 @@
 #include "ccv_nnc_mfa_gemv.hpp"
 #include "ccv_nnc_mfa_cast.hpp"
 #include "ccv_nnc_mfa_add.hpp"
+#include "ccv_nnc_mfa_segmented_gemm.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"

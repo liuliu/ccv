@@ -32,6 +32,7 @@ typedef void mtl_device_t;
 namespace MTL {
 class CommandBatch {
 public:
+  MTL::CommandQueue* commandQueue;
   MTL::CommandBuffer* commandBuffer;
   
   // Although labeled `MTL::ComputeCommandEncoder`, this should be used for
