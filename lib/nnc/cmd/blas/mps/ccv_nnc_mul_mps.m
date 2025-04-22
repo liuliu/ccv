@@ -329,9 +329,18 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-				MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
-				[resultTensors addObject:mps_c];
+				if (a->info.datatype == CCV_32S)
+				{
+					mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:nil];
+					MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+					mps_c = [graph castTensor:mps_c toType:MPSDataTypeInt32 name:nil];
+					[resultTensors addObject:mps_c];
+				} else {
+					MPSGraphTensor* mps_p = [graph constantWithScalar:p dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+					[resultTensors addObject:mps_c];
+				}
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
@@ -346,16 +355,24 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_p = [graph placeholderWithShape:@[@1] dataType:ccv_nnc_mps_datatype(a->info.datatype) name:nil];
+				MPSGraphTensor* mps_p = [graph placeholderWithShape:@[@1] dataType:(a->info.datatype == CCV_32S ? MPSDataTypeFloat32 : ccv_nnc_mps_datatype(a->info.datatype)) name:nil];
 				[inputTensors addObject:mps_p];
 				MPSGraphShapedType* mps_p_shape = [[MPSGraphShapedType alloc] initWithShape:@[@1] dataType:ccv_nnc_mps_datatype(a->info.datatype)];
 				[inputShapedTypes addObject:mps_p_shape];
 				[mps_p_shape release];
-				MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
-				[resultTensors addObject:mps_c];
+				if (a->info.datatype == CCV_32S)
+				{
+					mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:nil];
+					MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+					mps_c = [graph castTensor:mps_c toType:MPSDataTypeInt32 name:nil];
+					[resultTensors addObject:mps_c];
+				} else {
+					MPSGraphTensor* mps_c = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_p name:nil];
+					[resultTensors addObject:mps_c];
+				}
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-			MPSGraphTensorData* data_p = ccv_nnc_mps_graph_constant_data(p, a->info.datatype);
+			MPSGraphTensorData* data_p = ccv_nnc_mps_graph_constant_data(p, a->info.datatype == CCV_32S ? CCV_32F : a->info.datatype);
 			MPSGraphTensorData* data[] = {data_a, data_p};
 			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data[indices[0]], data[indices[1]]], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
 		}
@@ -426,7 +443,7 @@ static int _ccv_nnc_scalar_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_32S | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scalar_mul_forw;

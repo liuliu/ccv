@@ -1850,6 +1850,32 @@ TEST_CASE("scalar mul [[1, 2, 3], [4, 5, 6]] * 0.3")
 	ccv_nnc_tensor_free(gc);
 }
 
+TEST_CASE("scalar mul [[1, 2, 3], [4, 5, 6]] * 0.5, int")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 3), 0);
+	ccv_nnc_tensor_t* const ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 3), 0);
+	a->data.i32[0] = 1;
+	a->data.i32[1] = 2;
+	a->data.i32[2] = 3;
+	a->data.i32[3] = 4;
+	a->data.i32[4] = 5;
+	a->data.i32[5] = 6;
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2, 3), 0);
+	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(ga), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(ga), TENSOR_LIST(gc), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(CMD_SCALAR_MUL_FORWARD(0.5), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(ct), 0);
+	REQUIRE_TENSOR_EQ(c, ct, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ct);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gc);
+}
+
 TEST_CASE("compare average pooling with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_AVERAGE_POOL_FORWARD, CCV_NNC_BACKEND_MPS));
