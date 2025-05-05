@@ -4043,6 +4043,29 @@ CCV_WARN_UNUSED(int) ccv_cnnp_model_parameter_count(ccv_cnnp_model_t* const mode
  */
 CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_parameters_size(ccv_cnnp_model_t* const model);
 /**
+ * This method moved parameters of this particular model to designated device. It invalidates the parameters
+ * on a given model and requires to move back if the model needs to be used later.
+ * You can consider this as a counterpart for ccv_cnnp_model_parameter_copy, but operates on the whole model.
+ * @param model A model that is compiled.
+ * @param names The name associated with the tensor parameter.
+ * @param tensors The tensor associated with this parameter.
+ * @param count The size of the array provided for names and tensors, this should match ccv_cnnp_model_parameter_count call.
+ * @param type Either CCV_TENSOR_GPU_MEMORY or CCV_TENSOR_CPU_MEMORY.
+ * @return 1 for success.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_model_parameters_move(ccv_cnnp_model_t* const model, char** const names, ccv_nnc_tensor_t** const tensors, const int count, const int type);
+/**
+ * This method moves or copies parameters from the array to this particular model to designated device.
+ * If it is a move, it invalidates the parameters in the array and leaves a "skeleton" tensor.
+ * You can consider this as a counterpart for ccv_cnnp_model_set_parameter, but operates on the whole model.
+ * @param model A model that is compiled.
+ * @param names The name associated with the tensor parameter.
+ * @param tensors The tensor associated with this parameter.
+ * @param count The size of the array provided for names and tensors, this should match ccv_cnnp_model_parameter_count call.
+ * @param invalidates Whether to invalidate the original tensor (1 - to invalidate, use move semantics if possible).
+ */
+void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, const char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates);
+/**
  * Use this to loop over and if the parameter matches, return 1.
  */
 typedef int (*ccv_cnnp_model_parameters_filter_f)(const ccv_cnnp_model_t* const model, const char* const name, void* const context);

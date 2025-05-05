@@ -2323,6 +2323,149 @@ uint64_t ccv_cnnp_model_parameters_size(ccv_cnnp_model_t* const model)
 	return size;
 }
 
+int ccv_cnnp_model_parameters_move(ccv_cnnp_model_t* const model, char** const names, ccv_nnc_tensor_t** const tensors, const int count, int type)
+{
+	assert(model->compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (count != compiled_data->parameters->rnum)
+		return 0;
+	if (CCV_TENSOR_GET_DEVICE(type) == CCV_COMPUTE_DEVICE_ANY)
+		CCV_TENSOR_SET_DEVICE_ID(type, 0);
+	int i;
+	// We don't need to consider parallel_count, every parameter on each device is identical.
+	for (i = 0; i < count; i++)
+	{
+		ccv_nnc_tensor_t* tensor = compiled_data->tensors.parameters[i];
+		if ((uintptr_t)tensor & (uintptr_t)1) // If it is not owned. We don't do anything.
+		{
+			tensors[i] = 0;
+			continue;
+		}
+		tensor = CCV_NNC_TENSOR(tensor);
+		if (tensor->info.type == type)
+			tensors[i] = tensor;
+		else {
+			ccv_nnc_tensor_param_t info = tensor->info;
+			info.type = type;
+			tensors[i] = ccv_nnc_tensor_new(0, info, 0); // Create this tensor, don't initiate copy yet.
+		}
+	}
+	for (i = 0; i < count; i++)
+	{
+		ccv_nnc_tensor_t* tensor = compiled_data->tensors.parameters[i];
+		if ((uintptr_t)tensor & (uintptr_t)1) // If it is not owned. We don't do anything.
+			continue;
+		tensor = CCV_NNC_TENSOR(tensor);
+		// Now initiate transfer. We should do this one on a stream.
+		if (tensor->info.type != type)
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(tensors[i]), 0);
+	}
+	// Copy names and remove parameters.
+	for (i = 0; i < count; i++)
+	{
+		ccv_nnc_tensor_t* const tensor = compiled_data->tensors.parameters[i];
+		if ((uintptr_t)tensor & (uintptr_t)1) // If it is not owned. We don't do anything.
+		{
+			names[i] = 0;
+			continue;
+		}
+		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
+		const size_t name_len = ccv_min(strnlen(name, 1023), 1023);
+		names[i] = ccmalloc(name_len + 1);
+		names[i][name_len] = 0;
+		memcpy(names[i], name, name_len);
+		compiled_data->tensors.parameters[i] = 0;
+	}
+	return 1;
+}
+
+KHASH_MAP_INIT_STR(ccv_cnnp_parameter_id, int)
+
+void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, const char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates)
+{
+	assert(model->compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	int i;
+	khash_t(ccv_cnnp_parameter_id)* id_map = 0;
+	if (count != compiled_data->parameters->rnum)
+	{
+		id_map = kh_init(ccv_cnnp_parameter_id);
+		// Build the map between name and the index.
+		for (i = 0; i < count; i++)
+		{
+			int ret;
+			const khiter_t k = kh_put(ccv_cnnp_parameter_id, id_map, names[i], &ret);
+			assert(ret != 0);
+			kh_val(id_map, k) = i;
+		}
+	}
+	const int parameter_size = compiled_data->parameters->rnum;
+	int* copy_back = 0;
+	for (i = 0; i < parameter_size; i++)
+	{
+		int j = i;
+		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, ccv_min(count - 1, i));
+		if (strncmp(name, names[i], 1023) != 0)
+		{
+			// Build the map.
+			if (id_map == 0)
+			{
+				id_map = kh_init(ccv_cnnp_parameter_id);
+				for (j = 0; j < count; j++)
+				{
+					int ret;
+					const khiter_t k = kh_put(ccv_cnnp_parameter_id, id_map, names[j], &ret);
+					assert(ret != 0);
+					kh_val(id_map, k) = j;
+				}
+			}
+			const khiter_t k = kh_get(ccv_cnnp_parameter_id, id_map, name);
+			if (k == kh_end(id_map)) // Cannot find the name, skip.
+				continue;
+			j = kh_val(id_map, k);
+		}
+		if (compiled_data->tensors.parameters[i]) // Cannot be a shared parameter to read.
+			{ assert(!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1)); }
+		const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i);
+		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
+		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+		if (info.type == tensors[j]->info.type) // Can move.
+		{
+			// Deallocate it if needed.
+			if (!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1))
+				if (compiled_data->tensors.parameters[i])
+					ccv_nnc_tensor_free(compiled_data->tensors.parameters[i]);
+			compiled_data->tensors.parameters[i] = tensors[j];
+			tensors[j] = 0;
+		} else if (!compiled_data->tensors.parameters[i]) { // Not allocated, to allocate first.
+			// Create new one, make sure we create this by having the right parameters.
+			const int type = info.type;
+			info = tensors[j]->info;
+			info.type = type; // Revert back the type.
+			compiled_data->tensors.parameters[i] = ccv_nnc_tensor_new(0, info, 0);
+			if (!copy_back)
+				copy_back = (int*)cccalloc(parameter_size, sizeof(int));
+			copy_back[i] = j + 1;
+		}
+	}
+	if (id_map)
+		kh_destroy(ccv_cnnp_parameter_id, id_map);
+	// Now do the transfer.
+	if (copy_back)
+	{
+		for (i = 0; i < parameter_size; i++)
+		{
+			ccv_nnc_tensor_t* const tensor = CCV_NNC_TENSOR(compiled_data->tensors.parameters[i]);
+			if (copy_back[i] == 0)
+				continue;
+			const int j = copy_back[i] - 1;
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensors[j]), TENSOR_LIST(tensor), 0);
+		}
+		ccfree(copy_back);
+	}
+}
+
 ccv_cnnp_model_io_t ccv_cnnp_model_parameter_first(ccv_cnnp_model_t* const model, ccv_cnnp_model_parameters_filter_f first, void* const context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
@@ -2484,8 +2627,6 @@ void ccv_cnnp_model_set_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp
 	ccv_array_free(to_parameter_indices);
 	ccv_array_free(from_parameter_indices);
 }
-
-KHASH_MAP_INIT_STR(ccv_cnnp_parameter_id, int)
 
 void ccv_cnnp_model_share_parameters(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_cnnp_model_t* const from_model, const ccv_cnnp_model_io_t from_parameters, ccv_cnnp_model_parameters_renamer_f renamer, void* const context)
 {
