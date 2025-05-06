@@ -2196,4 +2196,140 @@ TEST_CASE("LoRA fine-tuning MLP with GELU, set is_trainable to false and with gr
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4 and move parameter out")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* ingrad = ccv_nnc_tensor_new(0, o, 0);
+	ingrad->data.f32[0] = 1;
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 10;
+	int i;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	char* names[1];
+	ccv_nnc_tensor_t* tensors[1];
+	const int result = ccv_cnnp_model_parameters_move(final, names, tensors, 1, CCV_TENSOR_CPU_MEMORY);
+	REQUIRE_EQ(result, 1, "should succeed");
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(ingrad);
+	ccv_cnnp_model_free(final);
+	ccv_nnc_tensor_free(tensors[0]);
+	ccfree(names[0]);
+}
+
+TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4, move parameter out and move it to a new model")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* ingrad = ccv_nnc_tensor_new(0, o, 0);
+	ingrad->data.f32[0] = 1;
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 10;
+	int i;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	const float o_final = o_tensor->data.f32[0];
+	char* names[1];
+	ccv_nnc_tensor_t* tensors[1];
+	const int result = ccv_cnnp_model_parameters_move(final, names, tensors, 1, CCV_TENSOR_CPU_MEMORY);
+	REQUIRE_EQ(result, 1, "should succeed");
+	ccv_cnnp_model_t* const final2 = _math_2_x_1_1_10(b);
+	ccv_cnnp_model_compile(final2, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_set_parameters_from_key_values(final2, names, tensors, 1, 1);
+	ccv_cnnp_model_evaluate(final2, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], o_final, 1e-5, "should match the previous output");
+	ccv_cnnp_model_parameters_map(final2, ccv_cnnp_model_parameters(final2, ALL_PARAMETERS, ALL_PARAMETERS), CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, 0, 0, 0);
+	ccv_cnnp_model_evaluate(final2, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], 64, 1e-5, "should match the output when x is 0");
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(ingrad);
+	ccv_cnnp_model_free(final);
+	ccv_cnnp_model_free(final2);
+	ccfree(names[0]);
+}
+
+TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4, move parameter out and move it back in")
+{
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = 1;
+	ccv_cnnp_model_t* const final = _math_2_x_1_1_10(b);
+	const ccv_nnc_tensor_param_t a = CPU_TENSOR_NCHW(32F, 1);
+	const ccv_nnc_tensor_param_t f = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a, f), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_param_t o = {};
+	ccv_cnnp_model_tensor_auto(final, &o, 1);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, a, 0);
+	ccv_nnc_tensor_t* f_tensor = ccv_nnc_tensor_new(0, f, 0);
+	ccv_nnc_tensor_t* o_tensor = ccv_nnc_tensor_new(0, o, 0);
+	ccv_nnc_tensor_t* ingrad = ccv_nnc_tensor_new(0, o, 0);
+	ingrad->data.f32[0] = 1;
+	a_tensor->data.f32[0] = 2;
+	f_tensor->data.f32[0] = 10;
+	int i;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0, 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	const float o_final = o_tensor->data.f32[0];
+	char* names[1];
+	ccv_nnc_tensor_t* tensors[1];
+	const int result = ccv_cnnp_model_parameters_move(final, names, tensors, 1, CCV_TENSOR_CPU_MEMORY);
+	REQUIRE_EQ(result, 1, "should succeed");
+	ccv_cnnp_model_set_parameters_from_key_values(final, names, tensors, 1, 0);
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], o_final, 1e-5, "should match the previous output");
+	ccv_nnc_tensor_free(a_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(f_tensor);
+	ccv_nnc_tensor_free(o_tensor);
+	ccv_nnc_tensor_free(ingrad);
+	ccv_cnnp_model_free(final);
+	ccv_nnc_tensor_free(tensors[0]);
+	ccfree(names[0]);
+}
+
 #include "case_main.h"

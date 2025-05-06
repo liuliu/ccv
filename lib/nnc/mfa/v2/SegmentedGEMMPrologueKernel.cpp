@@ -76,7 +76,7 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   if (counts[gid] <= 0)
     return;
   int offset = 0;
-  for (int i = 0; i < gid; i++)
+  for (uint i = 0; i < gid; i++)
     offset += counts[i];
   compute_command cmd = compute_command(args->icb, gid);
   const int idx = indices[gid];

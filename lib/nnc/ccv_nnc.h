@@ -4064,7 +4064,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_model_parameters_move(ccv_cnnp_model_t* const mode
  * @param count The size of the array provided for names and tensors, this should match ccv_cnnp_model_parameter_count call.
  * @param invalidates Whether to invalidate the original tensor (1 - to invalidate, use move semantics if possible).
  */
-void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, const char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates);
+void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates);
 /**
  * Use this to loop over and if the parameter matches, return 1.
  */

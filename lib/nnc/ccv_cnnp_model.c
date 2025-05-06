@@ -2381,7 +2381,7 @@ int ccv_cnnp_model_parameters_move(ccv_cnnp_model_t* const model, char** const n
 
 KHASH_MAP_INIT_STR(ccv_cnnp_parameter_id, int)
 
-void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, const char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates)
+void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model, char* const* const names, ccv_nnc_tensor_t** const tensors, const int count, const int invalidates)
 {
 	assert(model->compiled_data);
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
@@ -2401,6 +2401,11 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 	}
 	const int parameter_size = compiled_data->parameters->rnum;
 	int* copy_back = 0;
+	const int tensors_init = !!compiled_data->tensors_init.v;
+	if (!tensors_init)
+		ccv_cnnp_model_tensors_init_0(model, compiled_data);
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
 	for (i = 0; i < parameter_size; i++)
 	{
 		int j = i;
@@ -2430,7 +2435,8 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
 		if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
 			CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
-		if (info.type == tensors[j]->info.type) // Can move.
+		const int d = parameter.d;
+		if (info.type == tensors[j]->info.type && invalidates) // Can move.
 		{
 			// Deallocate it if needed.
 			if (!((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1))
@@ -2438,16 +2444,33 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 					ccv_nnc_tensor_free(compiled_data->tensors.parameters[i]);
 			compiled_data->tensors.parameters[i] = tensors[j];
 			tensors[j] = 0;
-		} else if (!compiled_data->tensors.parameters[i]) { // Not allocated, to allocate first.
-			// Create new one, make sure we create this by having the right parameters.
-			const int type = info.type;
-			info = tensors[j]->info;
-			info.type = type; // Revert back the type.
-			compiled_data->tensors.parameters[i] = ccv_nnc_tensor_new(0, info, 0);
+		} else {
+			if (!compiled_data->tensors.parameters[i])
+			{ // Not allocated, to allocate first.
+				// Create new one, make sure we create this by having the right parameters.
+				const int type = info.type;
+				info = tensors[j]->info;
+				info.type = type; // Revert back the type.
+				compiled_data->tensors.parameters[i] = ccv_nnc_tensor_new(0, info, 0);
+			}
 			if (!copy_back)
 				copy_back = (int*)cccalloc(parameter_size, sizeof(int));
 			copy_back[i] = j + 1;
 		}
+		init_v[d >> 5] |= (1u << (d & 0x1f));
+		// Create this tensor for other data parallel allocations.
+		info = compiled_data->tensors.parameters[i]->info; // In case we loaded a different info.
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
+		for (j = 1; j < parallel_count; j++)
+			if (!compiled_data->tensors.parameters[i + j * parameter_size])
+			{
+				if (j != device_id)
+					CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+				else
+					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+				compiled_data->tensors.parameters[i + j * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
+			}
+			// No need to copy over, this is done in ccv_cnnp_model.c's copy_tensors method.
 	}
 	if (id_map)
 		kh_destroy(ccv_cnnp_parameter_id, id_map);
@@ -2462,6 +2485,14 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 			const int j = copy_back[i] - 1;
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensors[j]), TENSOR_LIST(tensor), 0);
 		}
+		if (invalidates)
+			for (i = 0; i < parameter_size; i++)
+			{
+				if (copy_back[i] == 0)
+					continue;
+				const int j = copy_back[i] - 1;
+				ccv_nnc_tensor_free(tensors[j]);
+			}
 		ccfree(copy_back);
 	}
 }
