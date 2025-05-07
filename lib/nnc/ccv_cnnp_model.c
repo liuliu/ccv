@@ -2311,9 +2311,17 @@ uint64_t ccv_cnnp_model_parameters_size(ccv_cnnp_model_t* const model)
 	int i;
 	const ccv_nnc_symbolic_graph_t* const graph = model->graph;
 	uint64_t size = 0;
+	const int tensors_init = !!compiled_data->tensors_init.v;
+	uint32_t* const init_v = tensors_init ? CCV_NNC_INIT_V(compiled_data->tensors_init.v) : 0;
 	for (i = 0; i < parameter_size; i++)
 	{
 		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
+		if (tensors_init && compiled_data->tensors.parameters && (init_v[d >> 5] | (1u << (d & 0x1f))) && compiled_data->tensors.parameters[i])
+		{
+			ccv_nnc_tensor_param_t params = compiled_data->tensors.parameters[i]->info;
+			size += ccv_nnc_tensor_data_size(params);
+			continue;
+		}
 		ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, (ccv_nnc_tensor_symbol_t){
 			.graph = graph,
 			.d = d
