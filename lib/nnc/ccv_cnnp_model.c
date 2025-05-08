@@ -2417,7 +2417,7 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 	for (i = 0; i < parameter_size; i++)
 	{
 		int j = i;
-		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, ccv_min(count - 1, i));
+		const char* const name = *(char**)ccv_array_get(compiled_data->ids.parameters, i);
 		if (i >= 0 || strncmp(name, names[i], 1023) != 0)
 		{
 			// Build the map.
