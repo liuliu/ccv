@@ -248,6 +248,30 @@ void* cumalloc(int device, size_t size)
 	return ptr;
 }
 
+void* cumallocmanaged(int device, size_t size)
+{
+	void* ptr = 0;
+	CUDA_ENFORCE(cudaSetDevice(cudevicemap(device)));
+	cudaError_t error = cudaMallocManaged(&ptr, size);
+	if (error == cudaErrorNotSupported) // If doesn't support this, return 0.
+		return 0;
+	if (ptr == 0)
+	{
+		cutrigmp(); // Trigger memory pressure. And then do it again.
+		cudaMallocManaged(&ptr, size);
+	}
+	return ptr;
+}
+
+void cumemadvisereadmostly(int device, void* ptr, size_t size)
+{
+	device = cudevicemap(device);
+	CUDA_ENFORCE(cudaSetDevice(device));
+	cudaMemAdvise(ptr, size, cudaMemAdviseSetReadMostly, device);
+	// Also prefer a particular device.
+	cudaMemAdvise(ptr, size, cudaMemAdviseSetPreferredLocation, device);
+}
+
 void cufree(int device, void* ptr)
 {
 	CUDA_ENFORCE(cudaSetDevice(cudevicemap(device)));
@@ -765,6 +789,15 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	CUBLAS_ENFORCE(cublasSetStream(default_device_local->cublas, device_local->stream));
 	return default_device_local->cublas;
+}
+
+void ccv_nnc_tensor_prefetch_async(ccv_nnc_tensor_t* const tensor, const ccv_nnc_stream_context_t* const stream_context)
+{
+	// No prefetch if it is not "mapped" memory (allocated by cudaMallocManaged).
+	if (CCV_IS_TENSOR_VIEW(tensor) || !(tensor->type & CCV_MAPPED_MEM))
+		return;
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	cudaMemPrefetchAsync(tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info), cudevicemap(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type)), stream);
 }
 
 void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size)

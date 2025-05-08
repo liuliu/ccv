@@ -79,6 +79,10 @@ static int _ccv_nnc_conv_transpose_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	}
 	size_t workspace_size = 0;
 	CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataWorkspaceSize(cudnn, w.descriptor, a.descriptor, conv.descriptor, b.descriptor, data_algo, &workspace_size));
+	ccv_nnc_tensor_prefetch_async(inputs[0], stream_context);
+	ccv_nnc_tensor_prefetch_async(inputs[1], stream_context);
+	if (input_size > 2 && inputs[2])
+		ccv_nnc_tensor_prefetch_async(inputs[2], stream_context);
 	void* workspace = 0;
 	void* weight_data = w.data.u8;
 	if (!is_w_nhwc && inputs[0]->info.format == CCV_TENSOR_FORMAT_NHWC) // If W is not in NHWC format while the activation is in NHWC, we first need to transform w into the said format.

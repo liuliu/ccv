@@ -282,6 +282,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_tensor_get_stride(b->info.dim, bstride_from_dim);
 		bstride = bstride_from_dim;
 	}
+	ccv_nnc_tensor_prefetch_async((ccv_nnc_tensor_t*)a, stream_context);
+	ccv_nnc_tensor_prefetch_async((ccv_nnc_tensor_t*)w, stream_context);
+	if (bias)
+		ccv_nnc_tensor_prefetch_async((ccv_nnc_tensor_t*)bias, stream_context);
 	const cublasOperation_t transa = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 	const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 	const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;

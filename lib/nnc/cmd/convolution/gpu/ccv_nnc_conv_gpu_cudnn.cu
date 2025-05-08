@@ -71,6 +71,10 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CUDNN_ENFORCE(cudnnGetConvolutionForwardAlgorithm(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, 0, &algo));
 #endif
 	}
+	ccv_nnc_tensor_prefetch_async(inputs[0], stream_context);
+	ccv_nnc_tensor_prefetch_async(inputs[1], stream_context);
+	if (input_size > 2 && inputs[2])
+		ccv_nnc_tensor_prefetch_async(inputs[2], stream_context);
 
 	size_t workspace_size = 0;
 	CUDNN_ENFORCE(cudnnGetConvolutionForwardWorkspaceSize(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, algo, &workspace_size));

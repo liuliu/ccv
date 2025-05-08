@@ -35,6 +35,8 @@ void cuunregmp(const int id); // un-register memory pressure handler.
 void cusetprofiler(int state);
 void cusetdevicemap(const int* const device_map, const int size);
 void cufileread(const int fd, const off_t file_offset, void* const buf, const size_t size);
+void* cumallocmanaged(int device, size_t size);
+void cumemadvisereadmostly(int device, void* ptr, size_t size);
 
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);
@@ -59,6 +61,7 @@ typedef struct {
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 CCV_WARN_UNUSED(ccv_nnc_cuda_device_prop_t) ccv_nnc_gpu_device_props(void);
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_tensor_prefetch_async(ccv_nnc_tensor_t* const tensor, const ccv_nnc_stream_context_t* const stream_context);
 #ifdef __cplusplus
 }
 #endif

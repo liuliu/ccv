@@ -53,7 +53,7 @@ enum {
 
 enum {
 	CCV_TENSOR_VIEW       = 0x01000000,
-	CCV_TENSOR_MULTIVIEW  = 0x02000000,
+	CCV_TENSOR_MULTIVIEW  = 0x00800000, // This conflicts with CCV_MATRIX_CSC, but it should be OK.
 	CCV_TENSOR_PINNED_MEM = 0x04000000, // tensor is pinned in CUDA. This matches CCV_PINNED_MEM.
 };
 
