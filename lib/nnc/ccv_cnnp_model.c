@@ -2382,7 +2382,8 @@ int ccv_cnnp_model_parameters_move(ccv_cnnp_model_t* const model, char** const n
 		names[i] = ccmalloc(name_len + 1);
 		names[i][name_len] = 0;
 		memcpy(names[i], name, name_len);
-		compiled_data->tensors.parameters[i] = 0;
+		if (tensor->info.type == type)
+			compiled_data->tensors.parameters[i] = 0; // Only move when it is moved.
 	}
 	return 1;
 }
