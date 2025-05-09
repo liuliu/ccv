@@ -239,12 +239,15 @@ void* cumalloc(int device, size_t size)
 {
 	void* ptr = 0;
 	CUDA_ENFORCE(cudaSetDevice(cudevicemap(device)));
-	cudaMalloc(&ptr, size);
-	if (ptr == 0)
+	cudaError_t error = cudaMalloc(&ptr, size);
+	if (error == cudaErrorMemoryAllocation)
 	{
 		cutrigmp(); // Trigger memory pressure. And then do it again.
-		cudaMalloc(&ptr, size);
-	}
+		cudaError_t error = cudaMalloc(&ptr, size);
+		if (error != cudaSuccess)
+			return 0;
+	} else if (error != cudaSuccess)
+		return 0;
 	return ptr;
 }
 
@@ -253,13 +256,14 @@ void* cumallocmanaged(int device, size_t size)
 	void* ptr = 0;
 	CUDA_ENFORCE(cudaSetDevice(cudevicemap(device)));
 	cudaError_t error = cudaMallocManaged(&ptr, size);
-	if (error == cudaErrorNotSupported) // If doesn't support this, return 0.
-		return 0;
-	if (ptr == 0)
+	if (error == cudaErrorMemoryAllocation)
 	{
 		cutrigmp(); // Trigger memory pressure. And then do it again.
-		cudaMallocManaged(&ptr, size);
-	}
+		cudaError_t error = cudaMallocManaged(&ptr, size);
+		if (error != cudaSuccess)
+			return 0;
+	} else if (error != cudaSuccess) // If doesn't support this, return 0.
+		return 0;
 	return ptr;
 }
 
