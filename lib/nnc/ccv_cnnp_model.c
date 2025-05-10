@@ -2494,15 +2494,6 @@ void ccv_cnnp_model_set_parameters_from_key_values(ccv_cnnp_model_t* const model
 			const int j = copy_back[i] - 1;
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensors[j]), TENSOR_LIST(tensor), 0);
 		}
-		if (invalidates)
-			for (i = 0; i < parameter_size; i++)
-			{
-				if (copy_back[i] == 0)
-					continue;
-				const int j = copy_back[i] - 1;
-				ccv_nnc_tensor_free(tensors[j]);
-				tensors[j] = 0;
-			}
 		ccfree(copy_back);
 	}
 }
