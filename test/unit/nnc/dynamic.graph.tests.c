@@ -1159,4 +1159,27 @@ TEST_CASE("compute f(x) = exp(0.5 * log(x)), detach log(x) won't free exp(_)")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("cnnp reshape supports -1 dimension")
+{
+	ccv_cnnp_model_t* const reshape = ccv_cnnp_reshape(0, DIM_ALLOC(-1, 4), DIM_ALLOC(), DIM_ALLOC(), 0);
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 3, 4));
+	int i;
+	for (i = 0; i < 2 * 3 * 4; i++)
+		ccv_nnc_tensor_from_variable(graph, x)->data.f32[i] = i;
+	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 2, 3, 4);
+	ccv_cnnp_model_compile(reshape, &input, 1, CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_evaluate(graph, reshape, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, 0);
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, y)->info.dim[0], 6, "dim inference");
+	REQUIRE_EQ(ccv_nnc_tensor_from_variable(graph, y)->info.dim[1], 4, "dim inference");
+	float btp[24];
+	for (i = 0; i < 24; i++)
+		btp[i] = i;
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 6, 4), 0);
+	REQUIRE_TENSOR_EQ(ccv_nnc_tensor_from_variable(graph, y), &bt, "reshape correctness");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_cnnp_model_free(reshape);
+}
+
 #include "case_main.h"
