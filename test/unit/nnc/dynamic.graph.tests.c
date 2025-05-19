@@ -1156,7 +1156,7 @@ TEST_CASE("compute f(x) = exp(0.5 * log(x)), detach log(x) won't free exp(_)")
 	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 1, "y should be freed");
 	ccv_nnc_tensor_variable_free(graph, x);
 	REQUIRE_EQ(ccv_nnc_dynamic_graph_bookkeeping_count(graph, CCV_NNC_SYMBOL_TENSOR), 0, "x should be freed");
-        ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_dynamic_graph_free(graph);
 }
 
 TEST_CASE("cnnp reshape supports -1 dimension")

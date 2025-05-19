@@ -605,17 +605,17 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	int stride_from_dim[CCV_NNC_MAX_DIM_ALLOC];
 	if (to.d == CCV_NNC_NO_TENSOR_SYMBOL) // If we are not reshape an alias, it is straightforward.
 	{
-                memcpy(params.dim, dim, sizeof(params.dim));
+		memcpy(params.dim, dim, sizeof(params.dim));
 		int* stride;
 		if (self->stride[0] == 0)
 		{
-                        ccv_nnc_tensor_get_stride(dim, stride_from_dim);
+			ccv_nnc_tensor_get_stride(dim, stride_from_dim);
 			stride = stride_from_dim;
 		} else
 			stride = self->stride;
 		if (self->format > 0)
 			params.format = self->format;
-                outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
+		outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
 	} else {
 		// Otherwise, we need to check if it is permute. For permute, we cannot do alias directly.
 		// We need to first materialize the permute and then run reshape on top of it, otherwise it will be wrong.
@@ -624,7 +624,7 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		// We identify permute by checking if the stride is not in descending order.
 		// This also covered "permute" through reshape, rather than using ccv_cnnp_permute directly.
 		const int nd = ccv_nnc_tensor_nd(params.dim);
-                const int new_nd = ccv_nnc_tensor_nd(dim);
+		const int new_nd = ccv_nnc_tensor_nd(dim);
 		int i, no_permute = 1;
 		// If the new dim has different nd, or we actually have a stride, we need to check if it is no permute or not.
 		if (new_nd != nd || (self->stride[0] != 0 && memcmp(self->stride, old_stride, sizeof(self->stride))))
@@ -633,13 +633,13 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 					no_permute = 0;
 		if (no_permute)
 		{ // Just straightforward reshape if there is no no permute.
-                        memcpy(params.dim, dim, sizeof(params.dim));
+			memcpy(params.dim, dim, sizeof(params.dim));
 			int* stride;
 			if (self->stride[0] == 0)
 			{
 				if (new_nd != nd) // Cannot use old stride.
 				{
-                                        ccv_nnc_tensor_get_stride(dim, stride_from_dim);
+					ccv_nnc_tensor_get_stride(dim, stride_from_dim);
 					stride = stride_from_dim;
 				} else
 					stride = old_stride;
@@ -652,11 +652,11 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 			// Otherwise, we first do format transform to plain tensor and then do reshape.
 			ccv_nnc_tensor_symbol_t permuted = ccv_nnc_tensor_symbol_new(graph, params, 0);
 			ccv_nnc_graph_exec_symbol_new(graph, CMD_FORMAT_TRANSFORM_FORWARD(), TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(permuted), "reshape");
-                        memcpy(params.dim, dim, sizeof(params.dim));
+			memcpy(params.dim, dim, sizeof(params.dim));
 			int* stride;
 			if (self->stride[0] == 0)
 			{
-                                ccv_nnc_tensor_get_stride(dim, stride_from_dim);
+				ccv_nnc_tensor_get_stride(dim, stride_from_dim);
 				stride = stride_from_dim;
 			} else
 				stride = self->stride;
