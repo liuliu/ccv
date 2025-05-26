@@ -128,7 +128,7 @@ static __global__ void dequantize_mul_mat_vec_add_bias(const half* __restrict__ 
 	}
 }
 
-static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* const ones, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const bias, const int bias_datatype, const int bias_nd, const int* const biasdim, const int* const biasstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc)
+static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* const ones, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const bias, const int bias_datatype, const int bias_nd, const int* const biasdim, const int* const biasstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -136,7 +136,7 @@ static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* con
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(b_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -155,11 +155,11 @@ static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* con
 	{
 		if (b_batch_size == 1)
 		{
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, one, bias, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, one, bias, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		} else {
-			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, one, bias, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, bias_batch_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, 0, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, one, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, one, bias, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, bias_batch_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, 0, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, one, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
 	}
@@ -177,11 +177,11 @@ static inline void _ccv_nnc_gbmm_and_bias(cublasHandle_t cublas, const void* con
 			(a_nd > 3 && adim[0] > 1) ? a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * astride[0] : a, a_datatype, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
 			(w_nd > 3 && wdim[0] > 1) ? w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * wstride[0] : w, w_datatype, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
 			bias_nd > 3 ? bias + CCV_GET_DATA_TYPE_SIZE(bias_datatype) * i * biasstride[0] : bias, bias_datatype, bias_nd > 3 ? bias_nd - 1 : bias_nd, bias_nd > 3 ? biasdim + 1 : biasdim, bias_nd > 3 ? biasstride + 1 : biasstride,
-			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc, reduced_precision);
 	}
 }
 
-static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int b_rows_inc)
+static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int b_rows_inc, int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -189,7 +189,7 @@ static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* con
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(b_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -208,9 +208,9 @@ static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* con
 	{
 		if (b_batch_size == 1)
 		{
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		} else {
-			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, zero, b, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
 	}
@@ -225,7 +225,7 @@ static inline void _ccv_nnc_gbmm(cublasHandle_t cublas, const unsigned char* con
 		_ccv_nnc_gbmm(cublas,
 			(a_nd > 3 && adim[0] > 1) ? a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * astride[0] : a, a_datatype, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
 			(w_nd > 3 && wdim[0] > 1) ? w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * wstride[0] : w, w_datatype, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
-			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc, reduced_precision);
 	}
 }
 
@@ -301,6 +301,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		depalettize_a_params.reserved = 0;
 		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
 	}
+	const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
 	size_t w_data_size = 0;
 	int w_datatype = w->info.datatype;
 	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
@@ -386,14 +387,14 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			biasstride = biasstride_from_dim;
 		}
 		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, b_rows, b->info.datatype);
-		_ccv_nnc_gbmm_and_bias(cublas, device_ones, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+		_ccv_nnc_gbmm_and_bias(cublas, device_ones, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc, is_downcast);
 	} else {
-		_ccv_nnc_gbmm(cublas, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+		_ccv_nnc_gbmm(cublas, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc, is_downcast);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, const void* const device_ones, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, unsigned char* const dbias, const int dbias_datatype, const int dbias_nd, const int* const dbiasdim, const int* const dbiasstride, const int g_batch_size, const int dbias_batch_size, const int g_batch_inc, const int dbias_batch_inc, const int dbias_rows, const int dbias_cols, const int g_rows, const int g_rows_inc, const int dbias_rows_inc)
+static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, const void* const device_ones, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, unsigned char* const dbias, const int dbias_datatype, const int dbias_nd, const int* const dbiasdim, const int* const dbiasstride, const int g_batch_size, const int dbias_batch_size, const int g_batch_inc, const int dbias_batch_inc, const int dbias_rows, const int dbias_cols, const int g_rows, const int g_rows_inc, const int dbias_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -401,7 +402,7 @@ static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, c
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(dbias_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -422,17 +423,17 @@ static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, c
 		if (g_batch_size > 1 && dbias_batch_size == g_batch_size)
 		{
 			if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, 0, zero, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, dbias_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dbias_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, 0, zero, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, dbias_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			else
-				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, 0, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, dbias_batch_inc, dbias_batch_size, ccv_nnc_cuda_compute_datatype(dbias_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, 0, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, dbias_batch_inc, dbias_batch_size, ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		} else {
 			if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, zero, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, zero, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			else
-				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			// We cannot use strided batched alternative because on write, the data could race to the same position
 			for (i = 1; i < g_batch_size; i++)
-				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, dbias_cols, dbias_rows, g_rows, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(dbias_datatype), g_rows, one, dbias, ccv_nnc_cuda_datatype(dbias_datatype), dbias_rows_inc, ccv_nnc_cuda_compute_datatype(dbias_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
 	}
@@ -445,11 +446,11 @@ static inline void _ccv_nnc_gbmm_dbias(cublasHandle_t cublas, const int flags, c
 		_ccv_nnc_gbmm_dbias(cublas, flags_override, device_ones,
 			g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * gstride[0], g_datatype, g_nd - 1, gdim + 1, gstride + 1,
 			dbias_nd > 3 ? dbias + CCV_GET_DATA_TYPE_SIZE(dbias_datatype) * i * dbiasstride[0] : dbias, dbias_datatype, dbias_nd > 3 ? dbias_nd - 1 : dbias_nd, dbias_nd > 3 ? dbiasdim + 1 : dbiasdim, dbias_nd > 3 ? dbiasstride + 1 : dbiasstride,
-			g_batch_size, dbias_batch_size, g_batch_inc, dbias_batch_inc, dbias_rows, dbias_cols, g_rows, g_rows_inc, dbias_rows_inc);
+			g_batch_size, dbias_batch_size, g_batch_inc, dbias_batch_inc, dbias_rows, dbias_cols, g_rows, g_rows_inc, dbias_rows_inc, reduced_precision);
 	}
 }
 
-static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, unsigned char* const dw, const int dw_datatype, const int dw_nd, const int* const dwdim, const int* const dwstride, const int g_batch_size, const int dw_batch_size, const int transpose_a, const int transpose_w, const int g_batch_inc, const int a_batch_inc, const int dw_batch_inc, const int dw_rows, const int dw_cols, const int a_rows, const int g_rows_inc, const int a_cols_inc, const int a_rows_inc, const int dw_cols_inc, const int dw_rows_inc)
+static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, unsigned char* const dw, const int dw_datatype, const int dw_nd, const int* const dwdim, const int* const dwstride, const int g_batch_size, const int dw_batch_size, const int transpose_a, const int transpose_w, const int g_batch_inc, const int a_batch_inc, const int dw_batch_inc, const int dw_rows, const int dw_cols, const int a_rows, const int g_rows_inc, const int a_cols_inc, const int a_rows_inc, const int dw_cols_inc, const int dw_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -457,7 +458,7 @@ static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, cons
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(dw_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -482,16 +483,16 @@ static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, cons
 				const cublasOperation_t transa = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int lda_inc = transpose_a ? a_cols_inc : a_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, a_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, a_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, a_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, a_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
 				const cublasOperation_t transb = transpose_a ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, a_batch_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			}
 		} else {
 			if (transpose_w)
@@ -499,20 +500,20 @@ static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, cons
 				const cublasOperation_t transa = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int lda_inc = transpose_a ? a_cols_inc : a_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				for (i = 1; i < g_batch_size; i++)
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, one, a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a_datatype), lda_inc, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
 				const cublasOperation_t transb = transpose_a ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				for (i = 1; i < g_batch_size; i++)
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, dw, ccv_nnc_cuda_datatype(dw_datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			}
 		}
 		return;
@@ -529,11 +530,11 @@ static inline void _ccv_nnc_gbmm_dw(cublasHandle_t cublas, const int flags, cons
 			g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * gstride[0], g_datatype, g_nd - 1, gdim + 1, gstride + 1,
 			a_nd > 3 ? a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * astride[0] : a, a_datatype, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
 			dw_nd > 3 ? dw + CCV_GET_DATA_TYPE_SIZE(dw_datatype) * i * dwstride[0] : dw, dw_datatype, dw_nd > 3 ? dw_nd - 1 : dw_nd, dw_nd > 3 ? dwdim + 1 : dwdim, dw_nd > 3 ? dwstride + 1 : dwstride,
-			g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc);
+			g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc, reduced_precision);
 	}
 }
 
-static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const h, const int h_datatype, const int h_nd, const int* const hdim, const int* const hstride, const int g_batch_size, const int h_batch_size, const int transpose_h, const int transpose_w, const int g_batch_inc, const int w_batch_inc, const int h_batch_inc, const int h_rows, const int h_cols, const int g_cols, const int g_rows_inc, const int w_cols_inc, const int w_rows_inc, const int h_cols_inc, const int h_rows_inc)
+static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const unsigned char* const g, const int g_datatype, const int g_nd, const int* const gdim, const int* const gstride, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const h, const int h_datatype, const int h_nd, const int* const hdim, const int* const hstride, const int g_batch_size, const int h_batch_size, const int transpose_h, const int transpose_w, const int g_batch_inc, const int w_batch_inc, const int h_batch_inc, const int h_rows, const int h_cols, const int g_cols, const int g_rows_inc, const int w_cols_inc, const int w_rows_inc, const int h_cols_inc, const int h_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -541,7 +542,7 @@ static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(h_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -566,16 +567,16 @@ static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const
 				const cublasOperation_t transb = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int ldb_inc = transpose_w ? w_cols_inc : w_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, w_batch_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, w_batch_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, w_batch_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, w_batch_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
 				const cublasOperation_t transa = transpose_w ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, w_batch_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, g_batch_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			}
 		} else {
 			if (transpose_h)
@@ -583,20 +584,20 @@ static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const
 				const cublasOperation_t transb = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int ldb_inc = transpose_w ? w_cols_inc : w_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				for (i = 1; i < g_batch_size; i++)
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, one, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w_datatype), ldb_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
 				const cublasOperation_t transa = transpose_w ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, zero, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				for (i = 1; i < g_batch_size; i++)
-					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, one, w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w_datatype), lda_inc, g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g_datatype), g_rows_inc, one, h, ccv_nnc_cuda_datatype(h_datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			}
 		}
 		return;
@@ -613,7 +614,7 @@ static inline void _ccv_nnc_gbmm_h(cublasHandle_t cublas, const int flags, const
 			g + CCV_GET_DATA_TYPE_SIZE(g_datatype) * i * gstride[0], g_datatype, g_nd - 1, gdim + 1, gstride + 1,
 			w_nd > 3 ? w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * wstride[0] : w, w_datatype, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
 			h_nd > 3 ? h + CCV_GET_DATA_TYPE_SIZE(h_datatype) * i * hstride[0] : h, h_datatype, h_nd > 3 ? h_nd - 1 : h_nd, h_nd > 3 ? hdim + 1 : hdim, h_nd > 3 ? hstride + 1 : hstride,
-			g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc);
+			g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc, reduced_precision);
 	}
 }
 
@@ -632,6 +633,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int g_batch_size, g_rows, g_cols, g_batch_inc, g_rows_inc, g_cols_inc;
 	const static int no_transpose[2] = {};
 	ccv_nnc_tensor_get_matrix_params(g->info, CCV_IS_TENSOR_VIEW(g) ? g->stride : 0, g->info.dim, no_transpose, &g_batch_size, &g_rows, &g_cols, &g_batch_inc, &g_rows_inc, &g_cols_inc);
+	const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && g->info.datatype == CCV_16F);
 	if (bias)
 	{
 		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
@@ -657,7 +659,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			biasstride = biasstride_from_dim;
 		}
 		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, g_rows, bias->info.datatype);
-		_ccv_nnc_gbmm_dbias(cublas, flags, device_ones, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, g_batch_size, bias_batch_size, g_batch_inc, bias_batch_inc, bias_rows, bias_cols, g_rows, g_rows_inc, bias_rows_inc);
+		_ccv_nnc_gbmm_dbias(cublas, flags, device_ones, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, g_batch_size, bias_batch_size, g_batch_inc, bias_batch_inc, bias_rows, bias_cols, g_rows, g_rows_inc, bias_rows_inc, is_downcast);
 	}
 	size_t a_data_size = 0;
 	int a_datatype = inputs[1] ? inputs[1]->info.datatype : 0;
@@ -737,7 +739,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_get_stride(dw->info.dim, dwstride_from_dim);
 			dwstride = dwstride_from_dim;
 		}
-		_ccv_nnc_gbmm_dw(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, dw->data.u8, dw->info.datatype, ccv_nnc_tensor_nd(dw->info.dim), dw->info.dim, dwstride, g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc);
+		_ccv_nnc_gbmm_dw(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, dw->data.u8, dw->info.datatype, ccv_nnc_tensor_nd(dw->info.dim), dw->info.dim, dwstride, g_batch_size, dw_batch_size, transpose_a, transpose_w, g_batch_inc, a_batch_inc, dw_batch_inc, dw_rows, dw_cols, a_rows, g_rows_inc, a_cols_inc, a_rows_inc, dw_cols_inc, dw_rows_inc, is_downcast);
 	}
 	if (h)
 	{
@@ -791,7 +793,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_get_stride(h->info.dim, hstride_from_dim);
 			hstride = hstride_from_dim;
 		}
-		_ccv_nnc_gbmm_h(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, h->data.u8, h->info.datatype, ccv_nnc_tensor_nd(h->info.dim), h->info.dim, hstride, g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc);
+		_ccv_nnc_gbmm_h(cublas, flags, g->data.u8, g->info.datatype, ccv_nnc_tensor_nd(g->info.dim), g->info.dim, gstride, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, h->data.u8, h->info.datatype, ccv_nnc_tensor_nd(h->info.dim), h->info.dim, hstride, g_batch_size, h_batch_size, transpose_h, transpose_w, g_batch_inc, w_batch_inc, h_batch_inc, h_rows, h_cols, g_cols, g_rows_inc, w_cols_inc, w_rows_inc, h_cols_inc, h_rows_inc, is_downcast);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

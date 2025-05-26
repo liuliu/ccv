@@ -9,7 +9,7 @@ extern "C" {
 
 #ifdef HAVE_CUDA
 
-static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const void* const ones, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const int* const host_indices, const int* const host_counts, const int bincount, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const bias, const int bias_datatype, const int bias_nd, const int* const biasdim, const int* const biasstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc)
+static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const void* const ones, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const int* const host_indices, const int* const host_counts, const int bincount, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const bias, const int bias_datatype, const int bias_nd, const int* const biasdim, const int* const biasstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int bias_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int bias_rows_inc, const int b_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -17,7 +17,7 @@ static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(b_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -49,8 +49,8 @@ static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const
 			off += rowcount;
 			if (rowcount <= 0)
 				continue;
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, rowcount, 1, one, biasp, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, rowcount, 1, one, biasp, ccv_nnc_cuda_datatype(bias_datatype), bias_rows_inc, ones, ccv_nnc_cuda_datatype(b_datatype), 1, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, one, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
 	}
@@ -69,11 +69,11 @@ static inline void _ccv_nnc_segmented_gbmm_and_bias(cublasHandle_t cublas, const
 			host_indices, host_counts, bincount,
 			(w_nd > 3 && wdim[0] > 1) ? w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * wstride[0] : w, w_datatype, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
 			bias_nd > 3 ? bias + CCV_GET_DATA_TYPE_SIZE(bias_datatype) * i * biasstride[0] : bias, bias_datatype, bias_nd > 3 ? bias_nd - 1 : bias_nd, bias_nd > 3 ? biasdim + 1 : biasdim, bias_nd > 3 ? biasstride + 1 : biasstride,
-			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc, reduced_precision);
 	}
 }
 
-static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const int* const host_indices, const int* const host_counts, const int bincount, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int b_rows_inc)
+static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned char* const a, const int a_datatype, const int a_nd, const int* const adim, const int* const astride, const int* const host_indices, const int* const host_counts, const int bincount, const unsigned char* const w, const int w_datatype, const int w_nd, const int* const wdim, const int* const wstride, unsigned char* const b, const int b_datatype, const int b_nd, const int* const bdim, const int* const bstride, const int b_batch_size, const cublasOperation_t transa, const cublasOperation_t transb, const int lda_inc, const int ldb_inc, const int a_batch_inc, const int w_batch_inc, const int b_batch_inc, const int b_rows, const int b_cols, const int a_cols, const int b_rows_inc, const int reduced_precision)
 {
 	static const half one_f16 = 1;
 	static const float one_f32 = 1;
@@ -81,7 +81,7 @@ static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned
 	static const double zero_f64 = 0;
 	const void* zero = &zero_f64;
 	const void* one;
-	switch (ccv_nnc_cuda_compute_datatype(b_datatype))
+	switch (ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision))
 	{
 		case CUBLAS_COMPUTE_16F:
 			one = &one_f16;
@@ -112,7 +112,7 @@ static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned
 			off += rowcount;
 			if (rowcount <= 0)
 				continue;
-			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, rowcount, a_cols, one, wp, ccv_nnc_cuda_datatype(w_datatype), lda_inc, ap, ccv_nnc_cuda_datatype(a_datatype), ldb_inc, zero, bp, ccv_nnc_cuda_datatype(b_datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b_datatype, reduced_precision), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		}
 		return;
 	}
@@ -128,7 +128,7 @@ static inline void _ccv_nnc_segmented_gbmm(cublasHandle_t cublas, const unsigned
 			(a_nd > 3 && adim[0] > 1) ? a + CCV_GET_DATA_TYPE_SIZE(a_datatype) * i * astride[0] : a, a_datatype, a_nd > 3 ? a_nd - 1 : a_nd, a_nd > 3 ? adim + 1 : adim, a_nd > 3 ? astride + 1 : astride,
 			host_indices, host_counts, bincount,
 			(w_nd > 3 && wdim[0] > 1) ? w + CCV_GET_DATA_TYPE_SIZE(w_datatype) * i * wstride[0] : w, w_datatype, w_nd > 3 ? w_nd - 1 : w_nd, w_nd > 3 ? wdim + 1 : wdim, w_nd > 3 ? wstride + 1 : wstride,
-			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+			b + CCV_GET_DATA_TYPE_SIZE(b_datatype) * i * bstride[0], b_datatype, b_nd - 1, bdim + 1, bstride + 1, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc, reduced_precision);
 	}
 }
 
@@ -197,6 +197,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		depalettize_a_params.reserved = 0;
 		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
 	}
+	const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
 	size_t w_data_size = 0;
 	int w_datatype = w->info.datatype;
 	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
@@ -268,9 +269,9 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, b_rows, b->info.datatype);
 		// Explicit sync to make sure the data now is on the host.
-		_ccv_nnc_segmented_gbmm_and_bias(cublas, device_ones, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, host_indices, host_counts, bincount, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc);
+		_ccv_nnc_segmented_gbmm_and_bias(cublas, device_ones, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, host_indices, host_counts, bincount, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, bias->data.u8, bias->info.datatype, ccv_nnc_tensor_nd(bias->info.dim), bias->info.dim, biasstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, bias_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, bias_rows_inc, b_rows_inc, is_downcast);
 	} else {
-		_ccv_nnc_segmented_gbmm(cublas, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, host_indices, host_counts, bincount, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc);
+		_ccv_nnc_segmented_gbmm(cublas, a_data, a_datatype, ccv_nnc_tensor_nd(a->info.dim), a->info.dim, astride, host_indices, host_counts, bincount, w_data, w_datatype, ccv_nnc_tensor_nd(w->info.dim), w->info.dim, wstride, b->data.u8, b->info.datatype, ccv_nnc_tensor_nd(b->info.dim), b->info.dim, bstride, b_batch_size, transa, transb, lda_inc, ldb_inc, a_batch_inc, w_batch_inc, b_batch_inc, b_rows, b_cols, a_cols, b_rows_inc, is_downcast);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
