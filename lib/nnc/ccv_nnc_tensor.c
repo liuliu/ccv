@@ -201,6 +201,54 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t para
 	return tensor;
 }
 
+ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_raw(const ccv_nnc_tensor_param_t params, const void* const bufptr, const int flags)
+{
+	ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_new(0, params, flags);
+	const size_t size = ccv_nnc_tensor_data_size(params);
+#ifdef HAVE_CUDA
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		// Remove this flag so it can be deallocated as usual.
+		tensor->type &= ~CCV_NO_DATA_ALLOC;
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		if (size > 0)
+			cumemcpy(tensor->data.u8, tensor->info.type, bufptr, CCV_TENSOR_CPU_MEMORY, size);
+		else
+			tensor->data.u8 = 0;
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		if (size > 0)
+			memcpy(tensor->data.u8, bufptr, size);
+		else
+			tensor->data.u8 = 0;
+	}
+#elif defined(HAVE_MPS)
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+	{
+		// Remove this flag so it can be deallocated as usual.
+		tensor->type &= ~CCV_NO_DATA_ALLOC;
+		assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+		if (size > 0)
+			mpmemcpy(tensor->data.u8, tensor->dataof, tensor->info.type, bufptr, 0, CCV_TENSOR_CPU_MEMORY, size);
+		else
+			tensor->data.u8 = 0;
+	} else {
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+		if (size > 0)
+			memcpy(tensor->data.u8, bufptr, size);
+		else
+			tensor->data.u8 = 0;
+	}
+#else
+	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
+	if (size > 0)
+		memcpy(tensor->data.u8, bufptr, size);
+	else
+		tensor->data.u8 = 0;
+#endif
+	return tensor;
+}
+
 ccv_nnc_tensor_t* ccv_nnc_tensor_resize(ccv_nnc_tensor_t* const tensor, const ccv_nnc_tensor_param_t params)
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
