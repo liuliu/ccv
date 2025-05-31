@@ -201,10 +201,10 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_file(const ccv_nnc_tensor_param_t para
 	return tensor;
 }
 
-ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_raw(const ccv_nnc_tensor_param_t params, const void* const bufptr, const int flags)
+ccv_nnc_tensor_t* ccv_nnc_tensor_new_from_raw(const ccv_nnc_tensor_param_t params, const void* const bufptr, const size_t buf_size, const int flags)
 {
 	ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_new(0, params, flags);
-	const size_t size = ccv_nnc_tensor_data_size(params);
+	const size_t size = ccv_min(ccv_nnc_tensor_data_size_without_padding(params), buf_size);
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{

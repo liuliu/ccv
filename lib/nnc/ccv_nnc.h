@@ -607,7 +607,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_file(const ccv_nnc_te
  * @param flags Reserved flags for this loading.
  * @return The newly created tensor.
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_raw(const ccv_nnc_tensor_param_t params, const void* const bufptr, const int flags);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new_from_raw(const ccv_nnc_tensor_param_t params, const void* const bufptr, const size_t buf_size, const int flags);
 /**
  * Create a new tensor on stack.
  * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
