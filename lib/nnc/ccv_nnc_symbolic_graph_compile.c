@@ -1246,7 +1246,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->vt_alias_r_refs = 0;
 	tensor_arena->vt_sizes = 0;
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
-	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
+	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, (sizeof(ccv_nnc_tensor_t) * tensor_symbol_info_size + 15) / 16, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
 	tensor_arena->allocator.context.free = allocator.context.free;
 	tensor_arena->allocator.isa = allocator.isa;
