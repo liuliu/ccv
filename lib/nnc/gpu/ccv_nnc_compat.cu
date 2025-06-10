@@ -309,7 +309,7 @@ void cumemcpy(void* dest, const int dest_type, const void* src, const int src_ty
 		if (device_a == device_b)
 			CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyDeviceToDevice));
 		else
-			CUDA_ENFORCE(cudaMemcpyPeer(dest, device_b, src, device_a, n));
+			CUDA_ENFORCE(cudaMemcpyPeer(dest, cudevicemap(device_b), src, cudevicemap(device_a), n));
 	}
 }
 
