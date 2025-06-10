@@ -785,12 +785,14 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	ccv_nnc_stream_context_compat_t* const default_stream_compat = _ccv_nnc_default_stream_compat();
-	ccv_nnc_stream_context_device_local_t* const default_device_local = _ccv_nnc_stream_compat_device_local(default_stream_compat);
 	if (!stream_compat)
 		stream_compat = default_stream_compat;
+	// In this way, if stream_compat is available, we switched the device to that device.
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	// And then fetch default device local for device specific cublas context.
+	ccv_nnc_stream_context_device_local_t* const default_device_local = _ccv_nnc_stream_compat_device_local(default_stream_compat);
 	if (!default_device_local->cublas)
 		default_device_local->cublas = cublas_get(default_stream_compat->super.type);
-	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	CUBLAS_ENFORCE(cublasSetStream(default_device_local->cublas, device_local->stream));
 	return default_device_local->cublas;
 }
