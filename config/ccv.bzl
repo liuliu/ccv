@@ -104,7 +104,7 @@ def ccv_deps():
     _maybe(
         http_archive,
         name = "sqlite3",
-        sha256 = "9da21e6b14ef6a943cdc30f973df259fb390bb4483f77e7f171b9b6e977e5458",
-        urls = ["https://www.sqlite.org/2024/sqlite-amalgamation-3470100.zip"],
+        sha256 = "9ad6d16cbc1df7cd55c8b55127c82a9bca5e9f287818de6dc87e04e73599d754",
+        urls = ["https://www.sqlite.org/2025/sqlite-amalgamation-3500300.zip"],
         build_file = "@ccv//:external/sqlite3.BUILD"
     )
