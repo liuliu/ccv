@@ -676,9 +676,9 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy<1>(
-        bias_dst, ushort2(bias_tile_dimension, 1),
-        bias_src, 1, ushort2(bias_tile_dimension, 1));
+      event.async_copy(
+        bias_dst, bias_tile_dimension,
+        bias_src, bias_tile_dimension);
       simdgroup_event::wait(1, &event);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -948,7 +948,6 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
       B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src, B_trans);
     simdgroup_event::wait(2, events);
   }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
   
   ushort2 A_block_offset(morton_offset.x, offset_in_group.y);
   ushort2 B_block_offset(offset_in_group.x, morton_offset.y);
@@ -958,6 +957,8 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     A_block_src, {{LEADING_BLOCK_DIMENSIONS_A}}, A_block_offset, A_trans);
   B_block_src = simdgroup_matrix_storage<{{MEMORY_NAME_B}}>::apply_offset(
     B_block_src, {{LEADING_BLOCK_DIMENSIONS_B}}, B_block_offset, B_trans);
+
+  threadgroup_barrier(mem_flags::mem_threadgroup);
   
   simdgroup_matrix_storage<{{REGISTER_NAME_A}}> A_sram[
     {{REGISTER_M_8}} * (K_group / 8)];

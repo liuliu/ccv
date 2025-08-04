@@ -173,6 +173,32 @@ namespace metal
         long2(0),
         0);
     }
+
+    template <typename T>
+    METAL_FUNC void async_copy(
+      // Description of the destination.
+      threadgroup T *dst,
+      ushort dst_tile_dimensions,
+
+      // Description of the source.
+      const device T *src,
+      ushort src_tile_dimensions
+    ) thread {
+        async_copy<1>(dst, ushort2(dst_tile_dimensions, 1), src, 1, ushort2(src_tile_dimensions, 1));
+	}
+
+    template <typename T>
+    METAL_FUNC void async_copy(
+      // Description of the destination.
+      device T *dst,
+      ushort dst_tile_dimensions,
+
+      // Description of the source.
+      const threadgroup T *src,
+      ushort src_tile_dimensions
+    ) thread {
+        async_copy<1>(dst, 1, ushort2(dst_tile_dimensions, 1), src, ushort2(src_tile_dimensions, 1));
+	}
     
     METAL_FUNC static void wait(int count, thread simdgroup_event *events) {
       __metal_wait_simdgroup_events(
