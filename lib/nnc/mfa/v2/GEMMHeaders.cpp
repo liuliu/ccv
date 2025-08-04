@@ -98,7 +98,7 @@ namespace metal
   struct simdgroup_event {
     METAL_FUNC simdgroup_event() thread {}
 
-    template <ushort dst_elements_per_row, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
+    template <ushort dst_elements_per_row, ushort threadgroupSize, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       threadgroup T *dst,
@@ -136,7 +136,7 @@ namespace metal
         static_cast<int>(clamp_mode));
     }
     
-    template <ushort src_elements_per_row, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
+    template <ushort src_elements_per_row, ushort threadgroupSize, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       device T *dst,
@@ -174,7 +174,7 @@ namespace metal
         0);
     }
 
-    template <typename T>
+    template <ushort threadgroupSize, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       threadgroup T *dst,
@@ -184,10 +184,10 @@ namespace metal
       const device T *src,
       ushort src_tile_dimensions
     ) thread {
-        async_copy<1>(dst, ushort2(dst_tile_dimensions, 1), src, 1, ushort2(src_tile_dimensions, 1));
+        async_copy<1, threadgroupSize>(dst, ushort2(dst_tile_dimensions, 1), src, 1, ushort2(src_tile_dimensions, 1));
 	}
 
-    template <typename T>
+    template <ushort threadgroupSize, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       device T *dst,
@@ -197,7 +197,7 @@ namespace metal
       const threadgroup T *src,
       ushort src_tile_dimensions
     ) thread {
-        async_copy<1>(dst, 1, ushort2(dst_tile_dimensions, 1), src, ushort2(src_tile_dimensions, 1));
+        async_copy<1, threadgroupSize>(dst, 1, ushort2(dst_tile_dimensions, 1), src, ushort2(src_tile_dimensions, 1));
 	}
     
     METAL_FUNC static void wait(int count, thread simdgroup_event *events) {

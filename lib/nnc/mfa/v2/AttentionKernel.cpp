@@ -23,11 +23,11 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   scale = descriptor.scale;
 
+  threadgroupSize = 32 * (blockDimensions[0] / 8);
+
   source = createSource();
 
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
-
-  threadgroupSize = 32 * (blockDimensions[0] / 8);
 
   // Compile the shader source.
   {
@@ -961,6 +961,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
     source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
+	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -981,7 +982,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}>(
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, {{THREADGROUP_SIZE}}>(
          dst, tile,
          src, {{LEADING_DIMENSION_C}}, tile, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
@@ -1005,6 +1006,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
     source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
+	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -1025,7 +1027,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}>(
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, {{THREADGROUP_SIZE}}>(
          dst, {{LEADING_DIMENSION_C}}, tile,
          src, tile, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
@@ -1210,6 +1212,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
       source.SetValue("TRAVERSAL_DIMENSION", traversalDimensionValue());
       source.SetValue("PADDED_TRAVERSAL_EDGE", paddedTraversalEdgeValue());
       source.SetValue("DECLARE_RHS_LOCATION", declareRHSLocation(descriptor));
+	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       source += R"(
       
       threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -1234,7 +1237,7 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
         ushort2 tile_dst(D_dimension, C_dst_dimension);
         
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, {{THREADGROUP_SIZE}}>(
           dst, tile_dst,
           src, {{LEADING_DIMENSION_B}}, tile_src, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
@@ -1548,6 +1551,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
       source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
       source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
       source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -1572,7 +1576,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile_dst(D_dst_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, {{THREADGROUP_SIZE}}>(
           dst, tile_dst,
           src, {{LEADING_DIMENSION_OPERAND}}, tile_src,
           {{TRANSPOSED_OPERAND}});
@@ -1594,6 +1598,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
       source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
       source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
       source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -1614,7 +1619,7 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile(D_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, {{THREADGROUP_SIZE}}>(
           dst, {{LEADING_DIMENSION_OPERAND}}, tile,
           src, tile,
           {{TRANSPOSED_OPERAND}});
@@ -2134,6 +2139,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
     source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
     source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
+	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -2156,7 +2162,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       ushort2 tile_dst(D_dst_dimension, R_dimension);
 
       simdgroup_event event;
-      event.async_copy<{{LEADING_BLOCK_DIMENSION_A}}>(
+      event.async_copy<{{LEADING_BLOCK_DIMENSION_A}}, {{THREADGROUP_SIZE}}>(
         dst, tile_dst,
         src, {{LEADING_DIMENSION_A}}, tile_src, {{TRANSPOSED_A}});
       simdgroup_event::wait(1, &event);
@@ -2292,6 +2298,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
       source.SetValue("DESCRIPTOR_REGISTER_SIZE", std::to_string(descriptor.registerSize));
       source.SetValue("DECLARE_RHS_LOCATION", declareRHSLocation(descriptor));
+	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -2317,7 +2324,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
         ushort2 tile_dst(D_dst_dimension, C_dst_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, {{THREADGROUP_SIZE}}>(
           dst, tile_dst,
           src, {{LEADING_DIMENSION_B}}, tile_src, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
@@ -2733,6 +2740,7 @@ std::string AttentionKernel::computeD() const noexcept {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
     source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
     source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
+	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -2764,10 +2772,10 @@ std::string AttentionKernel::computeD() const noexcept {
 
       // Issue two async copies.
       simdgroup_event events[2];
-      events[0].async_copy<{{LEADING_BLOCK_DIMENSION_DO}}>(
+      events[0].async_copy<{{LEADING_BLOCK_DIMENSION_DO}}, {{THREADGROUP_SIZE}}>(
         dO_dst, tile_dst,
         dO_src, {{LEADING_DIMENSION_DO}}, tile_src, {{TRANSPOSED_DO}});
-      events[1].async_copy<{{LEADING_BLOCK_DIMENSION_O}}>(
+      events[1].async_copy<{{LEADING_BLOCK_DIMENSION_O}}, {{THREADGROUP_SIZE}}>(
         O_dst, tile_dst,
         O_src, {{LEADING_DIMENSION_O}}, tile_src, {{TRANSPOSED_O}});
       simdgroup_event::wait(2, events);
@@ -2978,6 +2986,7 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
     source.SetValue("TRAVERSAL_DIMENSION", traversalDimensionValue());
     source.SetValue("PADDED_TRAVERSAL_EDGE", paddedTraversalEdgeValue());
+	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -2995,9 +3004,9 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy<1>(
-        {{OPERAND}}_dst, ushort2(R_dst_dimension, 1),
-        {{OPERAND}}_src, 1, ushort2(R_src_dimension, 1));
+      event.async_copy<{{THREADGROUP_SIZE}}>(
+        {{OPERAND}}_dst, R_dst_dimension,
+        {{OPERAND}}_src, R_src_dimension);
       simdgroup_event::wait(1, &event);
     }
 

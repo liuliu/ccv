@@ -262,6 +262,7 @@ std::string GEMMKernel::createSource() const noexcept {
   source.SetValue("REGISTER_NAME_C", registerName('C'));
   source.SetValue("REGISTER_NAME_BIAS", registerName('S'));
   source.SetValue("SPLITS_N", std::to_string(splits[1]));
+  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
 
   createUtilities(&source);
 
@@ -676,7 +677,7 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy(
+      event.async_copy<{{THREADGROUP_SIZE}}>(
         bias_dst, bias_tile_dimension,
         bias_src, bias_tile_dimension);
       simdgroup_event::wait(1, &event);
@@ -776,7 +777,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
       C, {{LEADING_DIMENSION_C}}, C_offset);
     
     simdgroup_event event;
-    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}>(
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
       C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile);
     simdgroup_event::wait(1, &event);
   }
@@ -869,7 +870,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     }
     
     simdgroup_event event;
-    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}>(
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
       C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile);
   }
 }
@@ -942,9 +943,9 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     ushort2 B_tile_dst(N_tile_dimension, K_tile_padded);
 
     simdgroup_event events[2];
-    events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}>(
+    events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}, {{THREADGROUP_SIZE}}>(
       A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src, A_trans);
-    events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}>(
+    events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}, {{THREADGROUP_SIZE}}>(
       B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src, B_trans);
     simdgroup_event::wait(2, events);
   }
