@@ -43,6 +43,8 @@ struct AttentionKernel {
 
   unsigned short Hk;
 
+  bool disableAsyncCopy;
+
   unsigned short threadgroupMemoryAllocation;
 
   /// The number of threads per group.

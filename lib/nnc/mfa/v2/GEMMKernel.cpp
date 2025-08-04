@@ -126,6 +126,7 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
   threadgroupSize = 32 * splits[0] * splits[1];
+  disableAsyncCopy = false;
   
   // Validate the correctness of register precisions.
   auto checkOperandPair =
@@ -217,9 +218,9 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
     descriptor.leadingBlockDimensions.value_or(simd::ushort3())[2], false,
     blockDimensions[0], blockDimensions[1]);
 
-  source = createSource();
-
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
+
+  source = createSource();
 
   // Compile the shader source.
   {
@@ -238,7 +239,7 @@ std::string GEMMKernel::createSource() const noexcept {
   bool injectBF16Methods = (memoryPrecisions.A == GEMMOperandPrecision::BF16) || (memoryPrecisions.B == GEMMOperandPrecision::BF16) || (memoryPrecisions.C == GEMMOperandPrecision::BF16) || (memoryPrecisions.bias == GEMMOperandPrecision::BF16);
 
   // Inject the contents of the headers.
-  source += createMetalSimdgroupEvent() + "\n";
+  source += createMetalSimdgroupEvent(disableAsyncCopy) + "\n";
   source += createMetalSimdgroupMatrixStorage(injectBF16Methods) + "\n";
   source += "using namespace metal;\n\n";
 
@@ -263,6 +264,13 @@ std::string GEMMKernel::createSource() const noexcept {
   source.SetValue("REGISTER_NAME_BIAS", registerName('S'));
   source.SetValue("SPLITS_N", std::to_string(splits[1]));
   source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
+  if (disableAsyncCopy) {
+    source.SetValue("ASYNC_COPY_CONDITION", "1");
+    source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+  } else {
+    source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
+    source.SetValue("ASYNC_THREAD_ID", "");
+  }
 
   createUtilities(&source);
 
@@ -664,7 +672,7 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
     *source += loadBiasLoop;
     *source += R"(
   } else {
-    if (sidx == 0) {
+    if ({{ASYNC_COPY_CONDITION}}) {
       uint2 bias_offset(bias_trans ? M_offset : N_offset, 0);
       auto bias_dst = (threadgroup {{MEMORY_NAME_BIAS}}*)(threadgroup_block);
       auto bias_src =
@@ -679,7 +687,7 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
       simdgroup_event event;
       event.async_copy<{{THREADGROUP_SIZE}}>(
         bias_dst, bias_tile_dimension,
-        bias_src, bias_tile_dimension);
+        bias_src, bias_tile_dimension{{ASYNC_THREAD_ID}});
       simdgroup_event::wait(1, &event);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -769,7 +777,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     C_block, {{LEADING_BLOCK_DIMENSIONS_C}}, offset_in_group);
   
   // Launch the async copy from threadgroup to device memory.
-  if (sidx == 0) {
+  if ({{ASYNC_COPY_CONDITION}}) {
     uint2 C_offset(N_offset, M_offset);
     ushort2 C_tile(min(uint(N_group), N - C_offset.x),
                    min(uint(M_group), M - C_offset.y));
@@ -778,7 +786,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     
     simdgroup_event event;
     event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
-      C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile);
+      C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile{{ASYNC_THREAD_ID}});
     simdgroup_event::wait(1, &event);
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -848,7 +856,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
   threadgroup_barrier(mem_flags::mem_threadgroup);
   
   // Launch the async copy from threadgroup to device memory.
-  if (sidx == 0) {
+  if ({{ASYNC_COPY_CONDITION}}) {
     uint2 C_offset(gid.x * N_group, gid.y * M_group);
     ushort2 C_tile(min(uint(N_group), N - C_offset.x),
                    min(uint(M_group), M - C_offset.y));
@@ -871,7 +879,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     
     simdgroup_event event;
     event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
-      C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile);
+      C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile{{ASYNC_THREAD_ID}});
   }
 }
 )";
@@ -924,7 +932,7 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     threadgroup_block + {{BLOCK_BYTES_A}});
   
   // Launch an async copy from device to threadgroup memory.
-  if (sidx == 0) {
+  if ({{ASYNC_COPY_CONDITION}}) {
     uint2 A_offset(k, M_offset);
     uint2 B_offset(N_offset, k);
     auto A_src = simdgroup_matrix_storage<{{MEMORY_NAME_A}}>::apply_offset(
@@ -944,9 +952,9 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
 
     simdgroup_event events[2];
     events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}, {{THREADGROUP_SIZE}}>(
-      A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src, A_trans);
+      A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src{{ASYNC_THREAD_ID}}, A_trans);
     events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}, {{THREADGROUP_SIZE}}>(
-      B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src, B_trans);
+      B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src{{ASYNC_THREAD_ID}}, B_trans);
     simdgroup_event::wait(2, events);
   }
   

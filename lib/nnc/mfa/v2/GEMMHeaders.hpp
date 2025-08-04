@@ -19,7 +19,7 @@
 ///   the kernel.
 /// - The results of the async copy will be read from. This means at least one
 ///   thread must dereference a pointer within the region of threadgroup memory.
-std::string createMetalSimdgroupEvent();
+std::string createMetalSimdgroupEvent(bool disableAsyncCopy);
 
 /// Create the source code for the 'metal\_simdgroup\_matrix\_storage' header.
 std::string createMetalSimdgroupMatrixStorage(bool BF16);
