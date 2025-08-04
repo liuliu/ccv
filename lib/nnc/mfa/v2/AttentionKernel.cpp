@@ -981,8 +981,8 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy(
-         dst, {{LEADING_BLOCK_DIMENSION_C}}, tile,
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}>(
+         dst, tile,
          src, {{LEADING_DIMENSION_C}}, tile, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
      }
@@ -1025,9 +1025,9 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy(
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}>(
          dst, {{LEADING_DIMENSION_C}}, tile,
-         src, {{LEADING_BLOCK_DIMENSION_C}}, tile, {{TRANSPOSED_C}});
+         src, tile, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
      }
      
@@ -1234,8 +1234,8 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
         ushort2 tile_dst(D_dimension, C_dst_dimension);
         
         simdgroup_event event;
-        event.async_copy(
-          dst, {{LEADING_BLOCK_DIMENSION_B}}, tile_dst,
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}>(
+          dst, tile_dst,
           src, {{LEADING_DIMENSION_B}}, tile_src, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
       }
@@ -1572,8 +1572,8 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile_dst(D_dst_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy(
-          dst, {{LEADING_BLOCK_DIMENSION_OPERAND}}, tile_dst,
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}>(
+          dst, tile_dst,
           src, {{LEADING_DIMENSION_OPERAND}}, tile_src,
           {{TRANSPOSED_OPERAND}});
         simdgroup_event::wait(1, &event);
@@ -1614,9 +1614,9 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile(D_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}>(
           dst, {{LEADING_DIMENSION_OPERAND}}, tile,
-          src, {{LEADING_BLOCK_DIMENSION_OPERAND}}, tile,
+          src, tile,
           {{TRANSPOSED_OPERAND}});
         simdgroup_event::wait(1, &event);
       }
@@ -2156,8 +2156,8 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       ushort2 tile_dst(D_dst_dimension, R_dimension);
 
       simdgroup_event event;
-      event.async_copy(
-        dst, {{LEADING_BLOCK_DIMENSION_A}}, tile_dst,
+      event.async_copy<{{LEADING_BLOCK_DIMENSION_A}}>(
+        dst, tile_dst,
         src, {{LEADING_DIMENSION_A}}, tile_src, {{TRANSPOSED_A}});
       simdgroup_event::wait(1, &event);
     }
@@ -2317,8 +2317,8 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
         ushort2 tile_dst(D_dst_dimension, C_dst_dimension);
 
         simdgroup_event event;
-        event.async_copy(
-          dst, {{LEADING_BLOCK_DIMENSION_B}}, tile_dst,
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}>(
+          dst, tile_dst,
           src, {{LEADING_DIMENSION_B}}, tile_src, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
       }
@@ -2764,11 +2764,11 @@ std::string AttentionKernel::computeD() const noexcept {
 
       // Issue two async copies.
       simdgroup_event events[2];
-      events[0].async_copy(
-        dO_dst, {{LEADING_BLOCK_DIMENSION_DO}}, tile_dst,
+      events[0].async_copy<{{LEADING_BLOCK_DIMENSION_DO}}>(
+        dO_dst, tile_dst,
         dO_src, {{LEADING_DIMENSION_DO}}, tile_src, {{TRANSPOSED_DO}});
-      events[1].async_copy(
-        O_dst, {{LEADING_BLOCK_DIMENSION_O}}, tile_dst,
+      events[1].async_copy<{{LEADING_BLOCK_DIMENSION_O}}>(
+        O_dst, tile_dst,
         O_src, {{LEADING_DIMENSION_O}}, tile_src, {{TRANSPOSED_O}});
       simdgroup_event::wait(2, events);
     }
@@ -2995,8 +2995,8 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy(
-        {{OPERAND}}_dst, 1, ushort2(R_dst_dimension, 1),
+      event.async_copy<1>(
+        {{OPERAND}}_dst, ushort2(R_dst_dimension, 1),
         {{OPERAND}}_src, 1, ushort2(R_src_dimension, 1));
       simdgroup_event::wait(1, &event);
     }

@@ -94,60 +94,21 @@ namespace metal
     clamp_to_zero = 0,
     clamp_to_edge = 1
   };
-  
+
   struct simdgroup_event {
     METAL_FUNC simdgroup_event() thread {}
 
-    template <typename T>
-    METAL_FUNC void async_copy(
-      threadgroup T *dst,
-      const device T *src,
-      ulong n_elements
-    ) thread {
-      event = __metal_simdgroup_async_copy_1d(
-        // Description of the data type.
-        sizeof(T),
-        alignof(T),
-        
-        // Description of the arguments.
-        reinterpret_cast<threadgroup void *>(dst),
-        reinterpret_cast<const device void *>(src),
-        n_elements);
-    }
-    
-    template <typename T>
-    METAL_FUNC void async_copy(
-      device T *dst,
-      const threadgroup T *src,
-      ulong n_elements
-    ) thread {
-      event = __metal_simdgroup_async_copy_1d(
-        // Description of the data type.
-        sizeof(T),
-        alignof(T),
-        
-        // Description of the arguments.
-        reinterpret_cast<device void *>(dst),
-        reinterpret_cast<const threadgroup void *>(src),
-        n_elements);
-    }
-    
-    template <typename T>
+    template <ushort dst_elements_per_row, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       threadgroup T *dst,
-      ushort dst_elements_per_row,
       ushort2 dst_tile_dimensions,
 
       // Description of the source.
       const device T *src,
       uint src_elements_per_row,
       ushort2 src_tile_dimensions,
-
-      // Other arguments.
-      bool transpose_matrix = false,
-      simdgroup_async_copy_clamp_mode clamp_mode =
-        simdgroup_async_copy_clamp_mode::clamp_to_zero
+      bool transpose_matrix = false
     ) thread {
       if (transpose_matrix) {
         src_tile_dimensions = src_tile_dimensions.yx;
@@ -175,7 +136,7 @@ namespace metal
         static_cast<int>(clamp_mode));
     }
     
-    template <typename T>
+    template <ushort src_elements_per_row, simdgroup_async_copy_clamp_mode clamp_mode = simdgroup_async_copy_clamp_mode::clamp_to_zero, typename T>
     METAL_FUNC void async_copy(
       // Description of the destination.
       device T *dst,
@@ -184,10 +145,7 @@ namespace metal
 
       // Description of the source.
       const threadgroup T *src,
-      ushort src_elements_per_row,
       ushort2 src_tile_dimensions,
-
-      // Other arguments.
       bool transpose_matrix = false
     ) thread {
       if (transpose_matrix) {

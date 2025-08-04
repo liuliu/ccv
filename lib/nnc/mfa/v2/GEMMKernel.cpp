@@ -676,8 +676,8 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy(
-        bias_dst, 1, ushort2(bias_tile_dimension, 1),
+      event.async_copy<1>(
+        bias_dst, ushort2(bias_tile_dimension, 1),
         bias_src, 1, ushort2(bias_tile_dimension, 1));
       simdgroup_event::wait(1, &event);
     }
@@ -776,9 +776,8 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
       C, {{LEADING_DIMENSION_C}}, C_offset);
     
     simdgroup_event event;
-    event.async_copy(
-      C_block, {{LEADING_BLOCK_DIMENSIONS_C}}, C_tile,
-      C_dst, {{LEADING_DIMENSION_C}}, C_tile);
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}>(
+      C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile);
     simdgroup_event::wait(1, &event);
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -870,9 +869,8 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     }
     
     simdgroup_event event;
-    event.async_copy(
-      C_dst, {{LEADING_DIMENSION_C}}, C_tile,
-      C_block, {{LEADING_BLOCK_DIMENSIONS_C}}, C_tile);
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}>(
+      C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile);
   }
 }
 )";
@@ -944,12 +942,10 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     ushort2 B_tile_dst(N_tile_dimension, K_tile_padded);
 
     simdgroup_event events[2];
-    events[0].async_copy(
-      A_block, {{LEADING_BLOCK_DIMENSIONS_A}}, A_tile_dst,
-      A_src, {{LEADING_DIMENSION_A}}, A_tile_src, A_trans);
-    events[1].async_copy(
-      B_block, {{LEADING_BLOCK_DIMENSIONS_B}}, B_tile_dst,
-      B_src, {{LEADING_DIMENSION_B}}, B_tile_src, B_trans);
+    events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}>(
+      A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src, A_trans);
+    events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}>(
+      B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src, B_trans);
     simdgroup_event::wait(2, events);
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
