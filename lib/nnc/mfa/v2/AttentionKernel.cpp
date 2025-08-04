@@ -34,6 +34,15 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    if (error) {
+      preferAsyncCache = false;
+      preferAsyncLoad = false;
+      disableAsyncCopy = true;
+      source = createSource();
+      string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+      error = nil;
+      library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    }
     CCV_NNC_MFA_CHECK_ERROR(error);
   }
 }
