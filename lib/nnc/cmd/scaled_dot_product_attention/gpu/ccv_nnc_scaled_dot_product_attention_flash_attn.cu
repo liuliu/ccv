@@ -133,7 +133,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 
 	Flash_fwd_params params;
 	memset(&params, 0, sizeof(params));
-	params.is_bf16 = false;
+	params.is_bf16 = q->info.datatype == CCV_16BF;
 	params.q_ptr = q->data.u8;
 	params.k_ptr = k->data.u8;
 	params.v_ptr = v->data.u8;
@@ -452,7 +452,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 
 	Flash_bwd_params params;
 	memset(&params, 0, sizeof(params));
-	params.is_bf16 = false;
+	params.is_bf16 = q->info.datatype == CCV_16BF;
 	params.q_ptr = q->data.u8;
 	params.k_ptr = k->data.u8;
 	params.v_ptr = v->data.u8;
@@ -556,7 +556,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_B
 {
 #ifdef HAVE_CUDA_SM80
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw;
@@ -567,7 +567,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_
 {
 #ifdef HAVE_CUDA_SM80
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_back;

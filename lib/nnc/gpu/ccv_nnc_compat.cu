@@ -368,6 +368,10 @@ typedef struct {
 	} ones_16;
 	struct {
 		int n;
+		__nv_bfloat16* data;
+	} ones_bf16;
+	struct {
+		int n;
 		float* data;
 	} ones_32;
 	struct {
@@ -707,6 +711,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 				assert(!stream_compat->_heap_gpus[i].cublas);
 				if (stream_compat->_heap_gpus[i].ones_16.data)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_16.data));
+				if (stream_compat->_heap_gpus[i].ones_bf16.data)
+					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_bf16.data));
 				if (stream_compat->_heap_gpus[i].ones_32.data)
 					CUDA_ENFORCE(cudaFree(stream_compat->_heap_gpus[i].ones_32.data));
 				if (stream_compat->_heap_gpus[i].ones_64.data)
@@ -730,6 +736,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 		assert(!stream_compat->_inline_gpu.cublas);
 		if (stream_compat->_inline_gpu.ones_16.data)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_16.data));
+		if (stream_compat->_inline_gpu.ones_bf16.data)
+			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_bf16.data));
 		if (stream_compat->_inline_gpu.ones_32.data)
 			CUDA_ENFORCE(cudaFree(stream_compat->_inline_gpu.ones_32.data));
 		if (stream_compat->_inline_gpu.ones_64.data)
@@ -875,6 +883,8 @@ void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stre
 	{
 		case CCV_16F:
 			return _ccv_nnc_stream_context_get_ones(device_local->ones_16, n, device_local->stream);
+		case CCV_16BF:
+			return _ccv_nnc_stream_context_get_ones(device_local->ones_bf16, n, device_local->stream);
 		case CCV_64F:
 			return _ccv_nnc_stream_context_get_ones(device_local->ones_64, n, device_local->stream);
 		case CCV_32F:
