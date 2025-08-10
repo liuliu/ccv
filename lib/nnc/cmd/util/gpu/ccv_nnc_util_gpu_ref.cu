@@ -87,6 +87,14 @@ __global__ void _ccv_nnc_data_conversion_kernel(const size_t count, const NUM1* 
 	}
 }
 
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_data_conversion_kernel_float(const size_t count, const NUM1* const a, NUM2* const b)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		b[i] = float(a[i]);
+	}
+}
+
 static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size <= input_size);
@@ -104,22 +112,52 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			// If it is the same, just do a normal data transfer.
 			const size_t size = tensor_count * CCV_GET_DATA_TYPE_SIZE(a->type);
 			cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice, stream);
-		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
-			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f32, (__half*)b->data.f16);
+			_ccv_nnc_data_conversion_kernel_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16);
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, b->data.f32);
-		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_32F) {
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_64F) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, b->data.f64);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel_float<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__nv_bfloat16*)a->data.f16, b->data.f32);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_64F) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__nv_bfloat16*)a->data.f16, b->data.f64);
+		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
-			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, b->data.f32);
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f32, (__half*)b->data.f16);
+		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f32, (__nv_bfloat16*)b->data.f16);
 		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_64F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
@@ -131,12 +169,16 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, (__half*)b->data.f16);
-		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_64F) {
+		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_16BF) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
-			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)a->data.f16, b->data.f64);
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, (__nv_bfloat16*)b->data.f16);
+		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_32F) {
+			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, a->data.f64, b->data.f32);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;

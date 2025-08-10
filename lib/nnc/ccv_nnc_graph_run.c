@@ -257,6 +257,15 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
 				break;
 			}
+			case CCV_16BF: {
+				uint16_t data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.f16, tensor->info.type, len * sizeof(uint16_t));
+				float fp32[len];
+				ccv_bfloat_to_float(data, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
 			case CCV_32F: {
 				float data[len];
 				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.f32, tensor->info.type, len * sizeof(float));
@@ -307,6 +316,15 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
 				break;
 			}
+			case CCV_16BF: {
+				uint16_t data[len];
+				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.f16, tensor->dataof, tensor->info.type, len * sizeof(uint16_t));
+				float fp32[len];
+				ccv_bfloat_to_float(data, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
 			case CCV_32F: {
 				float data[len];
 				mpmemcpy(data, 0, CCV_TENSOR_CPU_MEMORY, tensor->data.f32, tensor->dataof, tensor->info.type, len * sizeof(float));
@@ -352,6 +370,13 @@ void ccv_nnc_print_tensor_info(const ccv_nnc_tensor_t* const tensor)
 			case CCV_16F: {
 				float fp32[len];
 				ccv_half_precision_to_float((uint16_t*)tensor->data.f16, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
+			case CCV_16BF: {
+				float fp32[len];
+				ccv_bfloat_to_float((uint16_t*)tensor->data.f16, fp32, len);
 				for (i = 0; i < len; i++)
 					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
 				break;
