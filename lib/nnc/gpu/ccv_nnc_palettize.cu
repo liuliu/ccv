@@ -323,7 +323,7 @@ __global__ void _ccv_nnc_q8_fast_s4(const int number_in_blocks, const uint8_t* c
 
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(qbits == 4 || qbits == 5 || qbits == 6 || qbits == 7 || qbits == 8);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	if (datatype == CCV_16F)
@@ -372,6 +372,52 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 				_ccv_nnc_q8_fast_s4<2, __half><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks, (uint8_t*)input, (__half*)output);
 			} else
 				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (__half*)output);
+		}
+	} else if (datatype == CCV_16BF) {
+		if (qbits == 4)
+		{
+			const int number_in_blocks_2 = number_in_blocks / 2;
+			const size_t count = (output_length + 1) / 2;
+			if (output_length % 2 == 0)
+				_ccv_nnc_q4_fast<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, number_in_blocks, number_in_blocks_2, (uint8_t*)input, (__nv_bfloat16*)output);
+			else
+				_ccv_nnc_q4_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_2, (uint8_t*)input, (__nv_bfloat16*)output);
+		} else if (qbits == 5) {
+			const int number_in_blocks_8 = number_in_blocks / 8;
+			const size_t count = (output_length + 7) / 8;
+			if (output_length % 8 == 0)
+				_ccv_nnc_q5_fast<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (__nv_bfloat16*)output);
+			else
+				_ccv_nnc_q5_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (__nv_bfloat16*)output);
+		} else if (qbits == 6) {
+			const int number_in_blocks_4 = number_in_blocks / 4;
+			const size_t count = (output_length + 3) / 4;
+			if (output_length % 4 == 0)
+			{
+				if (number_in_blocks % (1024 * 4) == 0 && output_length % number_in_blocks == 0)
+				{
+					const int num_blocks = output_length / number_in_blocks;
+					const int repeat_4 = number_in_blocks / (1024 * 4);
+					_ccv_nnc_q6_fast_s4<1, __nv_bfloat16><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks_4, (uint8_t*)input, (__nv_bfloat16*)output);
+				} else
+					_ccv_nnc_q6_fast<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, number_in_blocks, number_in_blocks_4, (uint8_t*)input, (__nv_bfloat16*)output);
+			} else
+				_ccv_nnc_q6_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_4, (uint8_t*)input, (__nv_bfloat16*)output);
+		} else if (qbits == 7) {
+			const int number_in_blocks_8 = number_in_blocks / 8;
+			const size_t count = (output_length + 7) / 8;
+			if (output_length % 8 == 0)
+				_ccv_nnc_q7_fast<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (__nv_bfloat16*)output);
+			else
+				_ccv_nnc_q7_slow<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, output_length, number_in_blocks, number_in_blocks_8, (uint8_t*)input, (__nv_bfloat16*)output);
+		} else {
+			if ((number_in_blocks % (1024 * 4 * 2)) == 0 && (output_length % number_in_blocks) == 0)
+			{
+				const int num_blocks = output_length / number_in_blocks;
+				const int repeat_4 = number_in_blocks / (1024 * 4 * 2);
+				_ccv_nnc_q8_fast_s4<2, __nv_bfloat16><<<dim3(repeat_4, num_blocks, 1), 1024, 0, stream>>>(number_in_blocks, (uint8_t*)input, (__nv_bfloat16*)output);
+			} else
+				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (__nv_bfloat16*)output);
 		}
 	} else if (datatype == CCV_32F) {
 		if (qbits == 4)

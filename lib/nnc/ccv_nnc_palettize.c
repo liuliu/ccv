@@ -8,7 +8,7 @@
 
 size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
 {
-	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 	const int num_blocks = (input_length + number_in_blocks - 1) / number_in_blocks;
 	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
@@ -31,6 +31,11 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 16; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 16);
+			} else if (datatype == CCV_16BF) {
+				float* f32 = (float*)centroids;
+				for (j = 0; j < 16; j++)
+					f32[j] = (float)centroids[j];
+				ccv_float_to_bfloat(f32, (uint16_t*)u80, 16);
 			} else if (datatype == CCV_32F) {
 				float* f32 = (float*)u80;
 				for (j = 0; j < 16; j++)
@@ -64,6 +69,11 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 32; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 32);
+			} if (datatype == CCV_16BF) {
+				float* f32 = (float*)centroids;
+				for (j = 0; j < 32; j++)
+					f32[j] = (float)centroids[j];
+				ccv_float_to_bfloat(f32, (uint16_t*)u80, 32);
 			} else if (datatype == CCV_32F) {
 				float* f32 = (float*)u80;
 				for (j = 0; j < 32; j++)
@@ -107,6 +117,11 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 64; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 64);
+			} if (datatype == CCV_16BF) {
+				float* f32 = (float*)centroids;
+				for (j = 0; j < 64; j++)
+					f32[j] = (float)centroids[j];
+				ccv_float_to_bfloat(f32, (uint16_t*)u80, 64);
 			} else if (datatype == CCV_32F) {
 				float* f32 = (float*)u80;
 				for (j = 0; j < 64; j++)
@@ -144,6 +159,11 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 128; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 128);
+			} if (datatype == CCV_16BF) {
+				float* f32 = (float*)centroids;
+				for (j = 0; j < 128; j++)
+					f32[j] = (float)centroids[j];
+				ccv_float_to_bfloat(f32, (uint16_t*)u80, 128);
 			} else if (datatype == CCV_32F) {
 				float* f32 = (float*)u80;
 				for (j = 0; j < 128; j++)
@@ -189,6 +209,11 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 256; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 256);
+			} if (datatype == CCV_16BF) {
+				float* f32 = (float*)centroids;
+				for (j = 0; j < 256; j++)
+					f32[j] = (float)centroids[j];
+				ccv_float_to_bfloat(f32, (uint16_t*)u80, 256);
 			} else if (datatype == CCV_32F) {
 				float* f32 = (float*)u80;
 				for (j = 0; j < 256; j++)
@@ -210,13 +235,13 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 
 static void _ccv_nnc_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length)
 {
-	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_64F);
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	const int num_blocks = (output_length + number_in_blocks - 1) / number_in_blocks;
 	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
 	uint8_t* const u8 = (uint8_t*)output;
 	const uint8_t* const ui = (const uint8_t*)input;
 	assert(qbits == 4 || qbits == 5 || qbits == 6 || qbits == 7 || qbits == 8);
-	if (datatype == CCV_16F)
+	if (datatype == CCV_16F || datatype == CCV_16BF)
 	{
 		if (qbits == 4)
 		{
