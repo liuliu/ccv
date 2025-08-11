@@ -69,7 +69,7 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 32; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 32);
-			} if (datatype == CCV_16BF) {
+			} else if (datatype == CCV_16BF) {
 				float* f32 = (float*)centroids;
 				for (j = 0; j < 32; j++)
 					f32[j] = (float)centroids[j];
@@ -117,7 +117,7 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 64; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 64);
-			} if (datatype == CCV_16BF) {
+			} else if (datatype == CCV_16BF) {
 				float* f32 = (float*)centroids;
 				for (j = 0; j < 64; j++)
 					f32[j] = (float)centroids[j];
@@ -159,7 +159,7 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 128; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 128);
-			} if (datatype == CCV_16BF) {
+			} else if (datatype == CCV_16BF) {
 				float* f32 = (float*)centroids;
 				for (j = 0; j < 128; j++)
 					f32[j] = (float)centroids[j];
@@ -209,7 +209,7 @@ size_t ccv_nnc_palettize(const void* input, const int datatype, const int memory
 				for (j = 0; j < 256; j++)
 					f32[j] = (float)centroids[j];
 				ccv_float_to_half_precision(f32, (uint16_t*)u80, 256);
-			} if (datatype == CCV_16BF) {
+			} else if (datatype == CCV_16BF) {
 				float* f32 = (float*)centroids;
 				for (j = 0; j < 256; j++)
 					f32[j] = (float)centroids[j];
