@@ -12,6 +12,7 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   scale == rhs.scale &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
+  (isBF16 == rhs.isBF16) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
   simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
   batchStrides == rhs.batchStrides &&
@@ -35,7 +36,7 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
     combine_32(seed, hash.leadingDimensions.value()[3]);
   }
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.lowPrecisionIntermediates, 0, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, 0 }));
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
