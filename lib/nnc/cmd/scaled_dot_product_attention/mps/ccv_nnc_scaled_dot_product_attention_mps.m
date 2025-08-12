@@ -135,6 +135,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			mtl_data_type = 16;
 			break;
 		}
+		case CCV_16BF: {
+			mtl_data_type = 121;
+			break;
+		}
 		case CCV_32F: {
 			mtl_data_type = 3;
 			break;
@@ -465,11 +469,15 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 			(dq->info.datatype == dk->info.datatype) &&
 			(dk->info.datatype == dv->info.datatype) &&
 			(o ? (g->info.datatype == o->info.datatype) : 1);
-		const int is_supported_dtype = q->info.datatype == CCV_16F || q->info.datatype == CCV_32F;
+		const int is_supported_dtype = q->info.datatype == CCV_16F || q->info.datatype == CCV_32F || q->info.datatype == CCV_16BF;
 		uint32_t mtl_data_type = UINT32_MAX;
 		switch (q->info.datatype) {
 			case CCV_16F: {
 				mtl_data_type = 16;
+				break;
+			}
+			case CCV_16BF: {
+				mtl_data_type = 121;
 				break;
 			}
 			case CCV_32F: {
@@ -654,7 +662,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw;
@@ -663,7 +671,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_B
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_back;

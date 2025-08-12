@@ -97,15 +97,15 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		}
 
 		if (use_mfa) {
-			if (a->info.datatype != CCV_16F && a->info.datatype != CCV_32F) {
+			if (a->info.datatype != CCV_16F && a->info.datatype != CCV_32F && a->info.datatype != CCV_16BF) {
 				use_mfa = false;
 				fallback_reason = "Unsupported data type.";
 			}
-			if (b->info.datatype != CCV_16F && b->info.datatype != CCV_32F) {
+			if (b->info.datatype != CCV_16F && b->info.datatype != CCV_32F && b->info.datatype != CCV_16BF) {
 				use_mfa = false;
 				fallback_reason = "Unsupported data type.";
 			}
-			if (c->info.datatype != CCV_16F && c->info.datatype != CCV_32F) {
+			if (c->info.datatype != CCV_16F && c->info.datatype != CCV_32F && c->info.datatype != CCV_16BF) {
 				use_mfa = false;
 				fallback_reason = "Unsupported data type.";
 			}
@@ -134,6 +134,10 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			switch (a->info.datatype) {
 				case CCV_16F: {
 					mtl_data_type = 16;
+					break;
+				}
+				case CCV_16BF: {
+					mtl_data_type = 121;
 					break;
 				}
 				case CCV_32F: {
@@ -428,7 +432,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 REGISTER_COMMAND_BACKEND(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_add_forw;
@@ -437,7 +441,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_b
 REGISTER_COMMAND_BACKEND(CCV_NNC_ADD_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_add_back;

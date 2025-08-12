@@ -871,6 +871,8 @@ MPSDataType ccv_nnc_mps_datatype(int datatype)
 			return MPSDataTypeInt64;
 		case CCV_16F:
 			return MPSDataTypeFloat16;
+		case CCV_16BF:
+			return MPSDataTypeBFloat16;
 		case CCV_32F:
 			return MPSDataTypeFloat32;
 		case CCV_QX:

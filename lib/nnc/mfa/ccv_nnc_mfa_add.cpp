@@ -27,7 +27,13 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
 
   AddDescriptor descriptor;
   descriptor.args = params.args;
-  descriptor.memoryPrecision = (params.data_type == MTL::DataTypeFloat) ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16;
+  if (params.data_type == MTL::DataTypeFloat) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
+  } else if (params.data_type == MTL::DataTypeBFloat) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::BF16;
+  } else {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+  }
   descriptor.length = params.length;
 
   if (params.length % (4 * 256) == 0) {

@@ -26,8 +26,20 @@ void ccv_nnc_mfa_encode_cast(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cast_pa
   CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
 
   CastDescriptor descriptor;
-  descriptor.fromMemoryPrecision = (params.original_data_type == MTL::DataTypeFloat) ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16;
-  descriptor.memoryPrecision = (params.data_type == MTL::DataTypeFloat) ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16;
+  if (params.original_data_type == MTL::DataTypeFloat) {
+    descriptor.fromMemoryPrecision = GEMMOperandPrecision::FP32;
+  } else if (params.original_data_type == MTL::DataTypeBFloat) {
+    descriptor.fromMemoryPrecision = GEMMOperandPrecision::BF16;
+  } else {
+    descriptor.fromMemoryPrecision = GEMMOperandPrecision::FP16;
+  }
+  if (params.data_type == MTL::DataTypeFloat) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
+  } else if (params.data_type == MTL::DataTypeBFloat) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::BF16;
+  } else {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+  }
   descriptor.length = params.length;
 
   if (params.length % (4 * 256) == 0) {

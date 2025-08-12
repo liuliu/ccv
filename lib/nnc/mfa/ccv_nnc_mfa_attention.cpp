@@ -60,8 +60,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       }
     }
     AttentionDescriptor attentionDesc;
-    attentionDesc.lowPrecisionInputs = (params.data_type == MTL::DataTypeHalf) ? true : false;
-    attentionDesc.lowPrecisionIntermediates = (params.data_type == MTL::DataTypeHalf && !hash.upcast) ? true : false;
+    attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
+    attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
+    attentionDesc.lowPrecisionIntermediates = (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
     attentionDesc.matrixDimensions[0] = hash.R;
     attentionDesc.matrixDimensions[1] = hash.C;
     attentionDesc.matrixDimensions[2] = hash.D;
@@ -161,7 +162,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         // Need to dispatch to cast.
         ccv_nnc_mfa_cast_params_t cast_params = {
           .original_data_type = MTL::DataTypeFloat,
-          .data_type = MTL::DataTypeHalf,
+          .data_type = attentionDesc.isBF16 ? MTL::DataTypeBFloat : MTL::DataTypeHalf,
           .length = hash.R * hash.D * hash.Hq * attentionDesc.batchDimension
         };
         ccv_nnc_mfa_prepare_cast(context, cast_params);
@@ -296,7 +297,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         // Need to dispatch to cast.
         ccv_nnc_mfa_cast_params_t cast_params = {
           .original_data_type = MTL::DataTypeFloat,
-          .data_type = MTL::DataTypeHalf,
+          .data_type = attentionDesc.isBF16 ? MTL::DataTypeBFloat : MTL::DataTypeHalf,
           .length = hash.R * hash.D * hash.Hq * attentionDesc.batchDimension
         };
         ccv_nnc_mfa_prepare_cast(context, cast_params);

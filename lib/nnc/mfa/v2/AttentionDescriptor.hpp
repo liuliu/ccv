@@ -35,6 +35,9 @@ struct AttentionDescriptor {
   /// Q, K, V, dO
   bool lowPrecisionInputs;
 
+  /// Similar to flash_attn.
+  bool isBF16;
+
   /// S, P, L, D, dP, dS
   bool lowPrecisionIntermediates;
   

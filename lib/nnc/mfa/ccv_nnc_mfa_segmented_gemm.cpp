@@ -37,6 +37,15 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       };
       break;
     }
+    case MTL::DataTypeBFloat: {
+      prologueDesc.memoryPrecisions = {
+        .A = GEMMOperandPrecision::BF16,
+        .B = GEMMOperandPrecision::BF16,
+        .C = GEMMOperandPrecision::BF16,
+        .bias = GEMMOperandPrecision::BF16,
+      };
+      break;
+    }
     case MTL::DataTypeFloat: {
       prologueDesc.memoryPrecisions = {
         .A = GEMMOperandPrecision::FP32,
