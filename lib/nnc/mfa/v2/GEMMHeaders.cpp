@@ -258,9 +258,9 @@ namespace metal
         dst_tile_dimensions = dst_tile_dimensions.yx;
       }
       #pragma clang loop unroll(full)
-      for (ushort i = 0; i < dst_tile_dimensions.y * dst_tile_dimensions.x; i += threadgroup_size) {
-        const ushort x = (i + tid) % dst_tile_dimensions.x;
-        const ushort y = (i + tid) / dst_tile_dimensions.x;
+      for (ushort i = tid; i < dst_tile_dimensions.y * dst_tile_dimensions.x; i += threadgroup_size) {
+        const ushort x = i % dst_tile_dimensions.x;
+        const ushort y = i / dst_tile_dimensions.x;
         dst[y * dst_elements_per_row + x] = y < src_tile_dimensions.y && x < src_tile_dimensions.x ? src[y * src_elements_per_row + x] : 0;
       }
     }
@@ -283,11 +283,10 @@ namespace metal
         dst_tile_dimensions = dst_tile_dimensions.yx;
       }
       #pragma clang loop unroll(full)
-      for (ushort i = 0; i < src_tile_dimensions.y * src_tile_dimensions.x; i += threadgroup_size) {
-        const ushort x = (i + tid) % src_tile_dimensions.x;
-        const ushort y = (i + tid) / src_tile_dimensions.x;
-        if (y < dst_tile_dimensions.y && x < dst_tile_dimensions.x)
-          dst[y * dst_elements_per_row + x] = src[y * src_elements_per_row + x];
+      for (ushort i = tid; i < dst_tile_dimensions.y * dst_tile_dimensions.x; i += threadgroup_size) {
+        const ushort x = i % dst_tile_dimensions.x;
+        const ushort y = i / dst_tile_dimensions.x;
+        dst[y * dst_elements_per_row + x] = src[y * src_elements_per_row + x];
       }
     }
 
@@ -303,9 +302,8 @@ namespace metal
       ushort tid
     ) thread {
       #pragma clang loop unroll(full)
-      for (ushort i = 0; i < dst_tile_dimensions; i += threadgroup_size) {
-        const ushort x = i + tid;
-        dst[x] = x < src_tile_dimensions ? src[x] : 0;
+      for (ushort i = tid; i < dst_tile_dimensions; i += threadgroup_size) {
+        dst[i] = i < src_tile_dimensions ? src[i] : 0;
       }
     }
 
@@ -321,10 +319,8 @@ namespace metal
       ushort tid
     ) thread {
       #pragma clang loop unroll(full)
-      for (ushort i = 0; i < src_tile_dimensions; i += threadgroup_size) {
-        const ushort x = i + tid;
-        if (x < dst_tile_dimensions)
-          dst[x] = src[x];
+      for (ushort i = tid; i < dst_tile_dimensions; i += threadgroup_size) {
+        dst[i] = src[i];
       }
     }
 

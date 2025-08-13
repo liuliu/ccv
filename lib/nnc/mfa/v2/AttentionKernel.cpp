@@ -970,18 +970,15 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
     source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
-	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     if (disableAsyncCopy) {
-      source.SetValue("ASYNC_COPY_CONDITION", "1");
-      source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+      source.SetValue("ASYNC_LANE_ID", ", lane_id");
     } else {
-      source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-      source.SetValue("ASYNC_THREAD_ID", "");
+      source.SetValue("ASYNC_LANE_ID", "");
     }
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
-     if ({{ASYNC_COPY_CONDITION}}) {
+     if (sidx == 0) {
        uint2 {{C}}_offset(d_outer, {{PARALLELIZATION_GROUP_OFFSET}});
        auto src = simdgroup_matrix_storage<{{MEMORY_NAME_C}}>
        ::apply_offset(
@@ -998,9 +995,9 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, {{THREADGROUP_SIZE}}>(
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, 32>(
          dst, tile,
-         src, {{LEADING_DIMENSION_C}}, tile{{ASYNC_THREAD_ID}}, {{TRANSPOSED_C}});
+         src, {{LEADING_DIMENSION_C}}, tile{{ASYNC_LANE_ID}}, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
      }
 
@@ -1022,18 +1019,15 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
     source.SetValue("LEADING_DIMENSION_C", leadingDimension(C));
     source.SetValue("LEADING_BLOCK_DIMENSION_C", std::to_string(leadingBlockDimension(C)));
     source.SetValue("TRANSPOSED_C", transposed(C) ? "true" : "false");
-	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     if (disableAsyncCopy) {
-      source.SetValue("ASYNC_COPY_CONDITION", "1");
-      source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+      source.SetValue("ASYNC_LANE_ID", ", lane_id");
     } else {
-      source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-      source.SetValue("ASYNC_THREAD_ID", "");
+      source.SetValue("ASYNC_LANE_ID", "");
     }
     source += R"(
 
      threadgroup_barrier(mem_flags::mem_threadgroup);
-     if ({{ASYNC_COPY_CONDITION}}) {
+     if (sidx == 0) {
        uint2 {{C}}_offset(d_outer, {{PARALLELIZATION_GROUP_OFFSET}});
        auto src = (threadgroup {{MEMORY_NAME_C}}*)(threadgroup_block);
        auto dst = simdgroup_matrix_storage<{{MEMORY_NAME_C}}>
@@ -1050,9 +1044,9 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
        ushort2 tile(D_dimension, R_dimension);
        
        simdgroup_event event;
-       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, {{THREADGROUP_SIZE}}>(
+       event.async_copy<{{LEADING_BLOCK_DIMENSION_C}}, 32>(
          dst, {{LEADING_DIMENSION_C}}, tile,
-         src, tile{{ASYNC_THREAD_ID}}, {{TRANSPOSED_C}});
+         src, tile{{ASYNC_LANE_ID}}, {{TRANSPOSED_C}});
        simdgroup_event::wait(1, &event);
      }
      
@@ -1235,18 +1229,15 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
       source.SetValue("TRAVERSAL_DIMENSION", traversalDimensionValue());
       source.SetValue("PADDED_TRAVERSAL_EDGE", paddedTraversalEdgeValue());
       source.SetValue("DECLARE_RHS_LOCATION", declareRHSLocation(descriptor));
-	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       if (disableAsyncCopy) {
-        source.SetValue("ASYNC_COPY_CONDITION", "1");
-        source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+        source.SetValue("ASYNC_LANE_ID", ", lane_id");
       } else {
-        source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-        source.SetValue("ASYNC_THREAD_ID", "");
+        source.SetValue("ASYNC_LANE_ID", "");
       }
       source += R"(
       
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      if ({{ASYNC_COPY_CONDITION}}) {
+      if (sidx == 0) {
         uint2 {{B}}_offset(d_outer, {{TRAVERSAL_OFFSET}});
         auto src = simdgroup_matrix_storage<{{MEMORY_NAME_B}}>
         ::apply_offset(
@@ -1267,9 +1258,9 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
         ushort2 tile_dst(D_dimension, C_dst_dimension);
         
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, {{THREADGROUP_SIZE}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, 32>(
           dst, tile_dst,
-          src, {{LEADING_DIMENSION_B}}, tile_src{{ASYNC_THREAD_ID}}, {{TRANSPOSED_B}});
+          src, {{LEADING_DIMENSION_B}}, tile_src{{ASYNC_LANE_ID}}, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
       }
 
@@ -1581,18 +1572,15 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
       source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
       source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
       source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
-	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       if (disableAsyncCopy) {
-        source.SetValue("ASYNC_COPY_CONDITION", "1");
-        source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+        source.SetValue("ASYNC_LANE_ID", ", lane_id");
       } else {
-        source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-        source.SetValue("ASYNC_THREAD_ID", "");
+        source.SetValue("ASYNC_LANE_ID", "");
       }
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      if ({{ASYNC_COPY_CONDITION}}) {
+      if (sidx == 0) {
         uint2 {{OPERAND}}_offset(d_outer, {{PARALLELIZATION_GROUP_OFFSET}});
         auto src = simdgroup_matrix_storage<{{MEMORY_NAME_OPERAND}}>
         ::apply_offset(
@@ -1613,9 +1601,9 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile_dst(D_dst_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, {{THREADGROUP_SIZE}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, 32>(
           dst, tile_dst,
-          src, {{LEADING_DIMENSION_OPERAND}}, tile_src{{ASYNC_THREAD_ID}},
+          src, {{LEADING_DIMENSION_OPERAND}}, tile_src{{ASYNC_LANE_ID}},
           {{TRANSPOSED_OPERAND}});
         simdgroup_event::wait(1, &event);
       }
@@ -1635,18 +1623,15 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
       source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
       source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
       source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
-	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       if (disableAsyncCopy) {
-        source.SetValue("ASYNC_COPY_CONDITION", "1");
-        source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+        source.SetValue("ASYNC_LANE_ID", ", lane_id");
       } else {
-        source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-        source.SetValue("ASYNC_THREAD_ID", "");
+        source.SetValue("ASYNC_LANE_ID", "");
       }
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      if ({{ASYNC_COPY_CONDITION}}) {
+      if (sidx == 0) {
         uint2 {{OPERAND}}_offset(d_outer, {{PARALLELIZATION_GROUP_OFFSET}});
         auto src = (threadgroup {{MEMORY_NAME_OPERAND}}*)(threadgroup_block);
         auto dst = simdgroup_matrix_storage<{{MEMORY_NAME_OPERAND}}>
@@ -1663,9 +1648,9 @@ std::string AttentionKernel::cache(AttentionOperand operand, CachingOperationTyp
         ushort2 tile(D_dimension, R_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, {{THREADGROUP_SIZE}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_OPERAND}}, 32>(
           dst, {{LEADING_DIMENSION_OPERAND}}, tile,
-          src, tile{{ASYNC_THREAD_ID}},
+          src, tile{{ASYNC_LANE_ID}},
           {{TRANSPOSED_OPERAND}});
         simdgroup_event::wait(1, &event);
       }
@@ -2183,18 +2168,15 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
     source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
     source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
     source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
-	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     if (disableAsyncCopy) {
-      source.SetValue("ASYNC_COPY_CONDITION", "1");
-      source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+      source.SetValue("ASYNC_LANE_ID", ", lane_id");
     } else {
-      source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-      source.SetValue("ASYNC_THREAD_ID", "");
+      source.SetValue("ASYNC_LANE_ID", "");
     }
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if ({{ASYNC_COPY_CONDITION}}) {
+    if (sidx == 0) {
       uint2 {{A}}_offset(d_outer, {{PARALLELIZATION_GROUP_OFFSET}});
       auto src = simdgroup_matrix_storage<{{MEMORY_NAME_A}}>
       ::apply_offset(
@@ -2213,9 +2195,9 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       ushort2 tile_dst(D_dst_dimension, R_dimension);
 
       simdgroup_event event;
-      event.async_copy<{{LEADING_BLOCK_DIMENSION_A}}, {{THREADGROUP_SIZE}}>(
+      event.async_copy<{{LEADING_BLOCK_DIMENSION_A}}, 32>(
         dst, tile_dst,
-        src, {{LEADING_DIMENSION_A}}, tile_src{{ASYNC_THREAD_ID}}, {{TRANSPOSED_A}});
+        src, {{LEADING_DIMENSION_A}}, tile_src{{ASYNC_LANE_ID}}, {{TRANSPOSED_A}});
       simdgroup_event::wait(1, &event);
     }
 
@@ -2349,18 +2331,15 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
       source.SetValue("LEADING_BLOCK_DIMENSION_B", std::to_string(leadingBlockDimension(B)));
       source.SetValue("DESCRIPTOR_REGISTER_SIZE", std::to_string(descriptor.registerSize));
       source.SetValue("DECLARE_RHS_LOCATION", declareRHSLocation(descriptor));
-	  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
       if (disableAsyncCopy) {
-        source.SetValue("ASYNC_COPY_CONDITION", "1");
-        source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+        source.SetValue("ASYNC_LANE_ID", ", lane_id");
       } else {
-        source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-        source.SetValue("ASYNC_THREAD_ID", "");
+        source.SetValue("ASYNC_LANE_ID", "");
       }
       source += R"(
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      if ({{ASYNC_COPY_CONDITION}}) {
+      if (sidx == 0) {
         uint2 {{B}}_offset(d_outer, {{TRAVERSAL_OFFSET}});
         auto src = simdgroup_matrix_storage<{{MEMORY_NAME_B}}>
         ::apply_offset(
@@ -2382,9 +2361,9 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
         ushort2 tile_dst(D_dst_dimension, C_dst_dimension);
 
         simdgroup_event event;
-        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, {{THREADGROUP_SIZE}}>(
+        event.async_copy<{{LEADING_BLOCK_DIMENSION_B}}, 32>(
           dst, tile_dst,
-          src, {{LEADING_DIMENSION_B}}, tile_src{{ASYNC_THREAD_ID}}, {{TRANSPOSED_B}});
+          src, {{LEADING_DIMENSION_B}}, tile_src{{ASYNC_LANE_ID}}, {{TRANSPOSED_B}});
         simdgroup_event::wait(1, &event);
       }
 
@@ -2798,18 +2777,15 @@ std::string AttentionKernel::computeD() const noexcept {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
     source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
     source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
-	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     if (disableAsyncCopy) {
-      source.SetValue("ASYNC_COPY_CONDITION", "1");
-      source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+      source.SetValue("ASYNC_LANE_ID", ", lane_id");
     } else {
-      source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-      source.SetValue("ASYNC_THREAD_ID", "");
+      source.SetValue("ASYNC_LANE_ID", "");
     }
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if ({{ASYNC_COPY_CONDITION}}) {
+    if (sidx == 0) {
       uint D_offset = {{TRUNCATED_HEAD_DIMENSION}};
       uint R_offset = {{PARALLELIZATION_GROUP_OFFSET}};
       uint2 offset_src(D_offset, R_offset);
@@ -2837,12 +2813,12 @@ std::string AttentionKernel::computeD() const noexcept {
 
       // Issue two async copies.
       simdgroup_event events[2];
-      events[0].async_copy<{{LEADING_BLOCK_DIMENSION_DO}}, {{THREADGROUP_SIZE}}>(
+      events[0].async_copy<{{LEADING_BLOCK_DIMENSION_DO}}, 32>(
         dO_dst, tile_dst,
-        dO_src, {{LEADING_DIMENSION_DO}}, tile_src{{ASYNC_THREAD_ID}}, {{TRANSPOSED_DO}});
-      events[1].async_copy<{{LEADING_BLOCK_DIMENSION_O}}, {{THREADGROUP_SIZE}}>(
+        dO_src, {{LEADING_DIMENSION_DO}}, tile_src{{ASYNC_LANE_ID}}, {{TRANSPOSED_DO}});
+      events[1].async_copy<{{LEADING_BLOCK_DIMENSION_O}}, 32>(
         O_dst, tile_dst,
-        O_src, {{LEADING_DIMENSION_O}}, tile_src{{ASYNC_THREAD_ID}}, {{TRANSPOSED_O}});
+        O_src, {{LEADING_DIMENSION_O}}, tile_src{{ASYNC_LANE_ID}}, {{TRANSPOSED_O}});
       simdgroup_event::wait(2, events);
     }
 
@@ -3051,18 +3027,15 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
     source.SetValue("TRAVERSAL_DIMENSION", traversalDimensionValue());
     source.SetValue("PADDED_TRAVERSAL_EDGE", paddedTraversalEdgeValue());
-	source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     if (disableAsyncCopy) {
-      source.SetValue("ASYNC_COPY_CONDITION", "1");
-      source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+      source.SetValue("ASYNC_LANE_ID", ", lane_id");
     } else {
-      source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-      source.SetValue("ASYNC_THREAD_ID", "");
+      source.SetValue("ASYNC_LANE_ID", "");
     }
     source += R"(
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if ({{ASYNC_COPY_CONDITION}}) {
+    if (sidx == 0) {
       auto {{OPERAND}}_src = {{OPERAND_LOCATION}} + {{TRAVERSAL_OFFSET}};
       auto {{OPERAND}}_dst =
       (threadgroup {{MEMORY_NAME_OPERAND}}*)(threadgroup_block);
@@ -3076,9 +3049,9 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy<{{THREADGROUP_SIZE}}>(
+      event.async_copy<32>(
         {{OPERAND}}_dst, R_dst_dimension,
-        {{OPERAND}}_src, R_src_dimension{{ASYNC_THREAD_ID}});
+        {{OPERAND}}_src, R_src_dimension{{ASYNC_LANE_ID}});
       simdgroup_event::wait(1, &event);
     }
 

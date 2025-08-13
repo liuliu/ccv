@@ -272,13 +272,10 @@ std::string GEMMKernel::createSource() const noexcept {
   source.SetValue("REGISTER_NAME_C", registerName('C'));
   source.SetValue("REGISTER_NAME_BIAS", registerName('S'));
   source.SetValue("SPLITS_N", std::to_string(splits[1]));
-  source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
   if (disableAsyncCopy) {
-    source.SetValue("ASYNC_COPY_CONDITION", "1");
-    source.SetValue("ASYNC_THREAD_ID", ", sidx * 32 + lane_id");
+    source.SetValue("ASYNC_LANE_ID", ", lane_id");
   } else {
-    source.SetValue("ASYNC_COPY_CONDITION", "sidx == 0");
-    source.SetValue("ASYNC_THREAD_ID", "");
+    source.SetValue("ASYNC_LANE_ID", "");
   }
 
   createUtilities(&source);
@@ -681,7 +678,7 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
     *source += loadBiasLoop;
     *source += R"(
   } else {
-    if ({{ASYNC_COPY_CONDITION}}) {
+    if (sidx == 0) {
       uint2 bias_offset(bias_trans ? M_offset : N_offset, 0);
       auto bias_dst = (threadgroup {{MEMORY_NAME_BIAS}}*)(threadgroup_block);
       auto bias_src =
@@ -694,9 +691,9 @@ void GEMMKernel::createInitializeC(CodeWriter *source) const noexcept {
 
       // Issue an async copy.
       simdgroup_event event;
-      event.async_copy<{{THREADGROUP_SIZE}}>(
+      event.async_copy<32>(
         bias_dst, bias_tile_dimension,
-        bias_src, bias_tile_dimension{{ASYNC_THREAD_ID}});
+        bias_src, bias_tile_dimension{{ASYNC_LANE_ID}});
       simdgroup_event::wait(1, &event);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -786,7 +783,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     C_block, {{LEADING_BLOCK_DIMENSIONS_C}}, offset_in_group);
   
   // Launch the async copy from threadgroup to device memory.
-  if ({{ASYNC_COPY_CONDITION}}) {
+  if (sidx == 0) {
     uint2 C_offset(N_offset, M_offset);
     ushort2 C_tile(min(uint(N_group), N - C_offset.x),
                    min(uint(M_group), M - C_offset.y));
@@ -794,8 +791,8 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
       C, {{LEADING_DIMENSION_C}}, C_offset);
     
     simdgroup_event event;
-    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
-      C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile{{ASYNC_THREAD_ID}});
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, 32>(
+      C_block, C_tile, C_dst, {{LEADING_DIMENSION_C}}, C_tile{{ASYNC_LANE_ID}});
     simdgroup_event::wait(1, &event);
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -865,7 +862,7 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
   threadgroup_barrier(mem_flags::mem_threadgroup);
   
   // Launch the async copy from threadgroup to device memory.
-  if ({{ASYNC_COPY_CONDITION}}) {
+  if (sidx == 0) {
     uint2 C_offset(gid.x * N_group, gid.y * M_group);
     ushort2 C_tile(min(uint(N_group), N - C_offset.x),
                    min(uint(M_group), M - C_offset.y));
@@ -887,8 +884,8 @@ if ({{DIRECT_ACCESS_CONDITION}}) {
     }
     
     simdgroup_event event;
-    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, {{THREADGROUP_SIZE}}>(
-      C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile{{ASYNC_THREAD_ID}});
+    event.async_copy<{{LEADING_BLOCK_DIMENSIONS_C}}, 32>(
+      C_dst, {{LEADING_DIMENSION_C}}, C_tile, C_block, C_tile{{ASYNC_LANE_ID}});
   }
 }
 )";
@@ -941,7 +938,7 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     threadgroup_block + {{BLOCK_BYTES_A}});
   
   // Launch an async copy from device to threadgroup memory.
-  if ({{ASYNC_COPY_CONDITION}}) {
+  if (sidx == 0) {
     uint2 A_offset(k, M_offset);
     uint2 B_offset(N_offset, k);
     auto A_src = simdgroup_matrix_storage<{{MEMORY_NAME_A}}>::apply_offset(
@@ -960,10 +957,10 @@ for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
     ushort2 B_tile_dst(N_tile_dimension, K_tile_padded);
 
     simdgroup_event events[2];
-    events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}, {{THREADGROUP_SIZE}}>(
-      A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src{{ASYNC_THREAD_ID}}, A_trans);
-    events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}, {{THREADGROUP_SIZE}}>(
-      B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src{{ASYNC_THREAD_ID}}, B_trans);
+    events[0].async_copy<{{LEADING_BLOCK_DIMENSIONS_A}}, 32>(
+      A_block, A_tile_dst, A_src, {{LEADING_DIMENSION_A}}, A_tile_src{{ASYNC_LANE_ID}}, A_trans);
+    events[1].async_copy<{{LEADING_BLOCK_DIMENSIONS_B}}, 32>(
+      B_block, B_tile_dst, B_src, {{LEADING_DIMENSION_B}}, B_tile_src{{ASYNC_LANE_ID}}, B_trans);
     simdgroup_event::wait(2, events);
   }
   
