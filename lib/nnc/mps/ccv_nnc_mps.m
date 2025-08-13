@@ -1190,11 +1190,20 @@ static MPSGraphTensorData* ccv_nnc_mps_graph_output_tensor_data(const ccv_nnc_te
 MPSGraphTensorData* ccv_nnc_mps_graph_constant_data(const float val, const int datatype)
 {
 	id<MTLBuffer> buffer;
-	assert(datatype == CCV_16F || datatype == CCV_32F);
+	assert(datatype == CCV_16F || datatype == CCV_32F || datatype == CCV_16BF);
 	if (datatype == CCV_16F)
 	{
 		uint16_t half_bytes;
 		ccv_float_to_half_precision(&val, &half_bytes, 1);
+#ifdef __x86_64__
+		buffer = [ccv_nnc_default_device() newBufferWithLength:sizeof(uint16_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate | MTLResourceHazardTrackingModeTracked];
+		mpmemcpy(buffer, 0, CCV_TENSOR_GPU_MEMORY, &half_bytes, 0, CCV_TENSOR_CPU_MEMORY, sizeof(uint16_t));
+#else
+		buffer = [ccv_nnc_default_device() newBufferWithBytes:&half_bytes length:sizeof(uint16_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
+#endif
+	} else if (datatype == CCV_16BF) {
+		uint16_t half_bytes;
+		ccv_float_to_bfloat(&val, &half_bytes, 1);
 #ifdef __x86_64__
 		buffer = [ccv_nnc_default_device() newBufferWithLength:sizeof(uint16_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModePrivate | MTLResourceHazardTrackingModeTracked];
 		mpmemcpy(buffer, 0, CCV_TENSOR_GPU_MEMORY, &half_bytes, 0, CCV_TENSOR_CPU_MEMORY, sizeof(uint16_t));
