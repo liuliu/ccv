@@ -32,7 +32,7 @@ std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescript
   combine_32(seed, pack_32(hash.splits));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
-  return 0;
+  return seed;
 }
 
 // MARK: - Initializer

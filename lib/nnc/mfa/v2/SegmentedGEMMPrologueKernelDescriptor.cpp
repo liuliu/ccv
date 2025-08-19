@@ -15,7 +15,7 @@ std::size_t std::hash<SegmentedGEMMPrologueKernelDescriptor>::operator()(const S
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
-  return 0;
+  return seed;
 }
 
 // MARK: - Initializer

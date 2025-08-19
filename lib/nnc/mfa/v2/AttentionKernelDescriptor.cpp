@@ -27,7 +27,7 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
   combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
   combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
   combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncCache, hash.preferAsyncLoad, 0, 0 }));
-  return 0;
+  return seed;
 }
 
 // MARK: - Initializer
