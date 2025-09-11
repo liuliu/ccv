@@ -85,7 +85,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		const char *fallback_reason = NULL;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
-		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_METAL_FLASH_ATTENTION)) {
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA)) {
 			use_mfa = false;
 			fallback_reason = "Disabled.";
 		}
