@@ -911,27 +911,32 @@ void GEMMKernel::createMultiplyIterations(CodeWriter *source) const noexcept {
   *source += R"(
 
 // Perform the iterations where async copy is avoided.
-for (uint k = 0; k < {{ASYNC_ITERATIONS_START}}; k += 8) {
-  uint2 A_offset(k, M_offset);
-  uint2 B_offset(N_offset, k);
-  A_offset += uint2(morton_offset.x, offset_in_group.y);
-  B_offset += uint2(offset_in_group.x, morton_offset.y);
+uint k_start = {{ASYNC_ITERATIONS_START}};
+if (M_group <= M - M_offset && N_group <= N - N_offset) {
+  for (uint k = 0; k < {{ASYNC_ITERATIONS_START}}; k += 8) {
+    uint2 A_offset(k, M_offset);
+    uint2 B_offset(N_offset, k);
+    A_offset += uint2(morton_offset.x, offset_in_group.y);
+    B_offset += uint2(offset_in_group.x, morton_offset.y);
   
-  auto A_src = simdgroup_matrix_storage<{{MEMORY_NAME_A}}>::apply_offset(
-    A, {{LEADING_DIMENSION_A}}, A_offset, A_trans);
-  auto B_src = simdgroup_matrix_storage<{{MEMORY_NAME_B}}>::apply_offset(
-    B, {{LEADING_DIMENSION_B}}, B_offset, B_trans);
+    auto A_src = simdgroup_matrix_storage<{{MEMORY_NAME_A}}>::apply_offset(
+      A, {{LEADING_DIMENSION_A}}, A_offset, A_trans);
+    auto B_src = simdgroup_matrix_storage<{{MEMORY_NAME_B}}>::apply_offset(
+      B, {{LEADING_DIMENSION_B}}, B_offset, B_trans);
 
-  simdgroup_matrix_storage<{{REGISTER_NAME_A}}> A_sram[
-    {{REGISTER_M_8}} * (8 / 8)];
-  simdgroup_matrix_storage<{{REGISTER_NAME_B}}> B_sram[
-    (8 / 8) * {{REGISTER_N_8}}];
-  multiply_accumulate(A_src, B_src,
-                      A_sram, B_sram, C_sram, 0);
+    simdgroup_matrix_storage<{{REGISTER_NAME_A}}> A_sram[
+      {{REGISTER_M_8}} * (8 / 8)];
+    simdgroup_matrix_storage<{{REGISTER_NAME_B}}> B_sram[
+      (8 / 8) * {{REGISTER_N_8}}];
+    multiply_accumulate(A_src, B_src,
+                        A_sram, B_sram, C_sram, 0);
+  }
+} else {
+  k_start = 0;
 }
 
 // Perform the iterations where async copy is used.
-for (uint k = {{ASYNC_ITERATIONS_START}}; k < K; k += K_group) {
+for (uint k = k_start; k < K; k += K_group) {
   auto A_block = (threadgroup {{MEMORY_NAME_A}}*)(
     threadgroup_block);
   auto B_block = (threadgroup {{MEMORY_NAME_B}}*)(
