@@ -79,7 +79,7 @@ std::size_t std::hash<mfa::depalettize::hash>::operator()(const mfa::depalettize
 
 mfa::depalettize::pipeline::pipeline(mfa::context* context, mfa::depalettize::hash hash) {
   // FlashNorm not supported for group depalettize yet.
-  CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
+  CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf) || (hash.data_type == MTL::DataTypeBFloat))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   

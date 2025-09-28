@@ -1454,6 +1454,14 @@ void ccv_kmeans1d(const ccv_dense_matrix_t* const a, const int k, int* const clu
 			sorted_undos[i].value = f[i];
 			sorted_undos[i].index = i;
 		}
+	} else if (CCV_GET_DATA_TYPE(a->type) == CCV_16BF) {
+		float* f = (float*)sorted_undos;
+		ccv_bfloat_to_float((uint16_t*)a->data.f16, (float*)f, n);
+		for (i = n - 1; i >= 0; i--)
+		{
+			sorted_undos[i].value = f[i];
+			sorted_undos[i].index = i;
+		}
 	} else if (CCV_GET_DATA_TYPE(a->type) == CCV_32F) {
 		for (i = 0; i < n; i++)
 		{
