@@ -209,7 +209,7 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 
 static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_palettize(const ccv_nnc_tensor_param_t params, const int qbits, const int number_in_blocks)
 {
-	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F);
+	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
 	ccv_nnc_tensor_param_t new_params = params;
 	assert(qbits >= 4 && qbits <= 8);
 	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | ((qbits << 8) & 0xf00);
