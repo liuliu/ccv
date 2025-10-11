@@ -505,7 +505,7 @@ std::vector<AttentionParameterRow> AttentionDescriptor::forward(MTL::Device *con
 std::vector<AttentionParameterRow> AttentionDescriptor::backwardQueryMixed(MTL::Device *const device) const noexcept {
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
     return {
-      AttentionParameterRow(80, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dO, AttentionOperand::dQ }),
+      AttentionParameterRow(80, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dQ }),
       AttentionParameterRow(192, 16, 64, 32, { AttentionOperand::Q, AttentionOperand::dQ }),
       AttentionParameterRow(384, 16, 128, 32, {})
     };
