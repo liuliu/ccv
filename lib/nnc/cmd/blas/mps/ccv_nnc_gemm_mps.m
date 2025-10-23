@@ -254,9 +254,29 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		if (is_mfa_supported)
 		{
+			// On supported devices, use Metal directly.
+			ccv_nnc_mfa_gemm_params_t params = {
+				.data_type = mtl_data_type,
+				.M = (uint32_t)b_rows, // C_rows
+				.N = (uint32_t)b_cols, // C_cols
+				.K = (uint32_t)w_rows, // B_rows
+				.A_trans = (is_transpose_a ? 1 : 0),
+				.B_trans = (is_transpose_w ? 1 : 0),
+				.D_trans = 0,
+				.fused_bias = (bias ? 1 : 0),
+				.register_float = (is_downcast ? 0 : 1),
+				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+				.batch_dimension = b_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
+				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+			};
 			mtl_buffer_t* scratch = 0;
+			const size_t scratch_offset = ccv_nnc_mfa_gemm_reserved_scratch_size(params);
 			if (a_data_size + w_data_size > 0)
-				scratch = ccv_nnc_mfa_request_scratch(context, a_data_size + w_data_size);
+				scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + a_data_size + w_data_size);
 			mtl_buffer_t* a_data = mpgetbuffer((ccv_nnc_tensor_t*)a);
 			size_t a_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)a);
 			ccv_nnc_mfa_depalettize_params_t a_depalettize_params;
@@ -274,7 +294,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				};
 				ccv_nnc_mfa_prepare_depalettize(context, a_depalettize_params);
 				a_data = scratch;
-				a_dataof = 0;
+				a_dataof = scratch_offset;
 			}
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
@@ -293,7 +313,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				};
 				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
 				w_data = scratch;
-				w_dataof = a_data_size;
+				w_dataof = a_data_size + scratch_offset;
 			}
 			if (is_mfa_gemv)
 			{
@@ -330,7 +350,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						a->dataof, // A offset
-						0, // B offset
+						scratch_offset, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
 				}
@@ -343,7 +363,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						w->dataof, // A offset
-						a_data_size, // B offset
+						a_data_size + scratch_offset, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
 				}
@@ -380,24 +400,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 				return CCV_NNC_EXEC_SUCCESS;
 			}
-			// On supported devices, use Metal directly.
-			ccv_nnc_mfa_gemm_params_t params = {
-				.data_type = mtl_data_type,
-				.M = (uint32_t)b_rows, // C_rows
-				.N = (uint32_t)b_cols, // C_cols
-				.K = (uint32_t)w_rows, // B_rows
-				.A_trans = (is_transpose_a ? 1 : 0),
-				.B_trans = (is_transpose_w ? 1 : 0),
-				.D_trans = 0,
-				.fused_bias = (bias ? 1 : 0),
-				.register_float = (is_downcast ? 0 : 1),
-
-				.batch_dimension = b_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
-				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
-				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
-			};
 			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			// Creating a new command buffer has a >10 µs penalty CPU-side. Still
@@ -413,7 +415,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				};
 				size_t tensor_offsets[2] = {
 					a->dataof, // A offset
-					0, // B offset
+					scratch_offset, // B offset
 				};
 				ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
 			}
@@ -426,7 +428,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				};
 				size_t tensor_offsets[2] = {
 					w->dataof, // A offset
-					a_data_size, // B offset
+					a_data_size + scratch_offset // B offset
 				};
 				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
 			}
@@ -728,8 +730,112 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (is_mfa_supported)
 		{
 			mtl_buffer_t* scratch = 0;
+			size_t scratch_offset = 0;
+			ccv_nnc_mfa_gemm_params_t h_params;
+			// On supported devices, use Metal directly.
+			if (h)
+			{
+				if (is_transpose_a)
+				{
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)w_rows, // C_rows
+						.N = (uint32_t)g_rows, // C_cols
+						.K = (uint32_t)w_cols, // B_rows
+						.A_trans = 1,
+						.B_trans = (is_transpose_w ? 1 : 0),
+						.D_trans = 0,
+						.fused_bias = 0,
+						.register_float = 1,
+						.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+						.batch_dimension = g_batch_size,
+						.batch_stride_a = w_batch_size > 1 ? w_rows * w_cols : 0,
+						.batch_stride_b = g_batch_size > 1 ? g_rows * w_cols : 0,
+						.batch_stride_c = h_batch_size > 1 ? w_rows * g_rows : 0,
+						.batch_stride_d = 0,
+					};
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					h_params = params;
+					scratch_offset = ccv_max(scratch_offset, ccv_nnc_mfa_gemm_reserved_scratch_size(params));
+				} else {
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)g_rows, // C_rows
+						.N = (uint32_t)w_rows, // C_cols
+						.K = (uint32_t)w_cols, // B_rows
+						.A_trans = 0,
+						.B_trans = (is_transpose_w ? 0 : 1),
+						.D_trans = 0,
+						.fused_bias = 0,
+						.register_float = 1,
+						.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+						.batch_dimension = g_batch_size,
+						.batch_stride_a = g_batch_size > 1 ? g_rows * w_cols : 0,
+						.batch_stride_b = w_batch_size > 1 ? w_rows * w_cols : 0,
+						.batch_stride_c = h_batch_size > 1 ? g_rows * w_rows : 0,
+						.batch_stride_d = 0,
+					};
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					h_params = params;
+					scratch_offset = ccv_max(scratch_offset, ccv_nnc_mfa_gemm_reserved_scratch_size(params));
+				}
+			}
+
+			ccv_nnc_mfa_gemm_params_t dw_params;
+			// On supported devices, use Metal directly.
+			if (dw)
+			{
+				if (is_transpose_w)
+				{
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)dw_cols, // C_rows
+						.N = (uint32_t)dw_rows, // C_cols
+						.K = (uint32_t)g_rows, // B_rows
+						.A_trans = 1,
+						.B_trans = (is_transpose_a ? 1 : 0),
+						.D_trans = 0,
+						.fused_bias = 0,
+						.register_float = 1,
+						.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+						.batch_dimension = g_batch_size,
+						.batch_stride_a = g_batch_size > 1 ? dw_cols * g_rows : 0,
+						.batch_stride_b = a_batch_size > 1 ? dw_rows * g_rows : 0,
+						.batch_stride_c = dw_batch_size > 1 ? dw_cols * dw_rows : 0,
+						.batch_stride_d = 0,
+					};
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					dw_params = params;
+					scratch_offset = ccv_max(scratch_offset, ccv_nnc_mfa_gemm_reserved_scratch_size(params));
+				} else {
+					ccv_nnc_mfa_gemm_params_t params = {
+						.data_type = mtl_data_type,
+						.M = (uint32_t)dw_rows, // C_rows
+						.N = (uint32_t)dw_cols, // C_cols
+						.K = (uint32_t)g_rows, // B_rows
+						.A_trans = (is_transpose_a ? 0 : 1),
+						.B_trans = 0,
+						.D_trans = 0,
+						.fused_bias = 0,
+						.register_float = 1,
+						.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+						.batch_dimension = g_batch_size,
+						.batch_stride_a = a_batch_size > 1 ? dw_rows * g_rows : 0,
+						.batch_stride_b = g_batch_size > 1 ? dw_cols * g_rows : 0,
+						.batch_stride_c = dw_batch_size > 1 ? dw_rows * dw_cols : 0,
+						.batch_stride_d = 0,
+					};
+					ccv_nnc_mfa_prepare_gemm(context, params);
+					dw_params = params;
+					scratch_offset = ccv_max(scratch_offset, ccv_nnc_mfa_gemm_reserved_scratch_size(params));
+				}
+			}
 			if (a_data_size + w_data_size > 0)
-				scratch = ccv_nnc_mfa_request_scratch(context, a_data_size + w_data_size);
+				scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + a_data_size + w_data_size);
 			mtl_buffer_t* a_data = 0;
 			size_t a_dataof = 0;
 			ccv_nnc_mfa_depalettize_params_t a_depalettize_params;
@@ -751,7 +857,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					ccv_nnc_mfa_prepare_depalettize(context, a_depalettize_params);
 					a_data = scratch;
-					a_dataof = 0;
+					a_dataof = scratch_offset;
 				}
 			}
 			mtl_buffer_t* w_data = 0;
@@ -775,102 +881,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
 					w_data = scratch;
-					w_dataof = a_data_size;
-				}
-			}
-			ccv_nnc_mfa_gemm_params_t h_params;
-			// On supported devices, use Metal directly.
-			if (h)
-			{
-				if (is_transpose_a)
-				{
-					ccv_nnc_mfa_gemm_params_t params = {
-						.data_type = mtl_data_type,
-						.M = (uint32_t)w_rows, // C_rows
-						.N = (uint32_t)g_rows, // C_cols
-						.K = (uint32_t)w_cols, // B_rows
-						.A_trans = 1,
-						.B_trans = (is_transpose_w ? 1 : 0),
-						.D_trans = 0,
-						.fused_bias = 0,
-						.register_float = 1,
-
-						.batch_dimension = g_batch_size,
-						.batch_stride_a = w_batch_size > 1 ? w_rows * w_cols : 0,
-						.batch_stride_b = g_batch_size > 1 ? g_rows * w_cols : 0,
-						.batch_stride_c = h_batch_size > 1 ? w_rows * g_rows : 0,
-						.batch_stride_d = 0,
-					};
-					ccv_nnc_mfa_prepare_gemm(context, params);
-					h_params = params;
-				} else {
-					ccv_nnc_mfa_gemm_params_t params = {
-						.data_type = mtl_data_type,
-						.M = (uint32_t)g_rows, // C_rows
-						.N = (uint32_t)w_rows, // C_cols
-						.K = (uint32_t)w_cols, // B_rows
-						.A_trans = 0,
-						.B_trans = (is_transpose_w ? 0 : 1),
-						.D_trans = 0,
-						.fused_bias = 0,
-						.register_float = 1,
-
-						.batch_dimension = g_batch_size,
-						.batch_stride_a = g_batch_size > 1 ? g_rows * w_cols : 0,
-						.batch_stride_b = w_batch_size > 1 ? w_rows * w_cols : 0,
-						.batch_stride_c = h_batch_size > 1 ? g_rows * w_rows : 0,
-						.batch_stride_d = 0,
-					};
-					ccv_nnc_mfa_prepare_gemm(context, params);
-					h_params = params;
-				}
-			}
-
-			ccv_nnc_mfa_gemm_params_t dw_params;
-			// On supported devices, use Metal directly.
-			if (dw)
-			{
-				if (is_transpose_w)
-				{
-					ccv_nnc_mfa_gemm_params_t params = {
-						.data_type = mtl_data_type,
-						.M = (uint32_t)dw_cols, // C_rows
-						.N = (uint32_t)dw_rows, // C_cols
-						.K = (uint32_t)g_rows, // B_rows
-						.A_trans = 1,
-						.B_trans = (is_transpose_a ? 1 : 0),
-						.D_trans = 0,
-						.fused_bias = 0,
-						.register_float = 1,
-
-						.batch_dimension = g_batch_size,
-						.batch_stride_a = g_batch_size > 1 ? dw_cols * g_rows : 0,
-						.batch_stride_b = a_batch_size > 1 ? dw_rows * g_rows : 0,
-						.batch_stride_c = dw_batch_size > 1 ? dw_cols * dw_rows : 0,
-						.batch_stride_d = 0,
-					};
-					ccv_nnc_mfa_prepare_gemm(context, params);
-					dw_params = params;
-				} else {
-					ccv_nnc_mfa_gemm_params_t params = {
-						.data_type = mtl_data_type,
-						.M = (uint32_t)dw_rows, // C_rows
-						.N = (uint32_t)dw_cols, // C_cols
-						.K = (uint32_t)g_rows, // B_rows
-						.A_trans = (is_transpose_a ? 0 : 1),
-						.B_trans = 0,
-						.D_trans = 0,
-						.fused_bias = 0,
-						.register_float = 1,
-
-						.batch_dimension = g_batch_size,
-						.batch_stride_a = a_batch_size > 1 ? dw_rows * g_rows : 0,
-						.batch_stride_b = g_batch_size > 1 ? dw_cols * g_rows : 0,
-						.batch_stride_c = dw_batch_size > 1 ? dw_rows * dw_cols : 0,
-						.batch_stride_d = 0,
-					};
-					ccv_nnc_mfa_prepare_gemm(context, params);
-					dw_params = params;
+					w_dataof = scratch_offset + a_data_size;
 				}
 			}
 
@@ -890,7 +901,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						w->dataof, // A offset
-						a_data_size, // B offset
+						scratch_offset + a_data_size, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
 				}
@@ -936,7 +947,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						a->dataof, // A offset
-						0, // B offset
+						scratch_offset, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
 				}
@@ -1037,7 +1048,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						a->dataof, // A offset
-						0, // B offset
+            0, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, a_depalettize_params, command_batch, tensors, tensor_offsets);
 				}
@@ -1050,7 +1061,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					};
 					size_t tensor_offsets[2] = {
 						w->dataof, // A offset
-						a_data_size, // B offset
+            a_data_size, // B offset
 					};
 					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
 				}

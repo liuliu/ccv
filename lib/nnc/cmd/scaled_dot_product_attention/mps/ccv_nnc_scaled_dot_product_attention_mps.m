@@ -336,6 +336,25 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			}
 			mtl_buffer_t* weights_data = mpgetbuffer((ccv_nnc_tensor_t*)weights);
 			size_t weights_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)weights);
+			ccv_nnc_mfa_gemm_params_t params = {
+				.data_type = mtl_data_type,
+				.M = (uint32_t)M,
+				.N = (uint32_t)N,
+				.K = (uint32_t)K,
+				.A_trans = false,
+				.B_trans = true,
+				.D_trans = false,
+				.fused_bias = (bias ? 1 : 0),
+				.register_float = (is_downcast ? 0 : 1),
+				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+
+				.batch_dimension = 1,
+				.batch_stride_a = 0,
+				.batch_stride_b = 0,
+				.batch_stride_c = 0,
+				.batch_stride_d = 0,
+			};
+			size_t scratch_offset = ccv_nnc_mfa_gemm_reserved_scratch_size(params);
 			if (CCV_GET_DATA_TYPE(weights->info.datatype) == CCV_QX)
 			{
 				ccv_nnc_tensor_param_t weights_params = weights->info;
@@ -354,8 +373,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 					.length = (uint64_t)count,
 				};
 				ccv_nnc_mfa_prepare_depalettize(context, weights_depalettize_params);
-				weights_data = ccv_nnc_mfa_request_scratch(context, weights_data_size);
-				weights_dataof = 0;
+				weights_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + weights_data_size);
+				weights_dataof = scratch_offset;
 				mtl_buffer_t* tensors[3] = {
 					mpgetbuffer((ccv_nnc_tensor_t*)weights), // A
 					(mtl_buffer_t*)weights_data, // B
@@ -363,28 +382,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				};
 				size_t tensor_offsets[2] = {
 					weights->dataof, // A offset
-					0, // B offset
+					scratch_offset, // B offset
 				};
 				ccv_nnc_mfa_encode_depalettize(context, weights_depalettize_params, command_batch, tensors, tensor_offsets);
 			}
-
-			ccv_nnc_mfa_gemm_params_t params = {
-				.data_type = mtl_data_type,
-				.M = (uint32_t)M,
-				.N = (uint32_t)N,
-				.K = (uint32_t)K,
-				.A_trans = false,
-				.B_trans = true,
-				.D_trans = false,
-				.fused_bias = (bias ? 1 : 0),
-				.register_float = (is_downcast ? 0 : 1),
-
-				.batch_dimension = 1,
-				.batch_stride_a = 0,
-				.batch_stride_b = 0,
-				.batch_stride_c = 0,
-				.batch_stride_d = 0,
-			};
 			ccv_nnc_mfa_prepare_gemm(context, params);
 
 			mtl_buffer_t* bias_buffer = NULL;

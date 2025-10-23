@@ -22,6 +22,12 @@ uint8_t ccv_nnc_mfa_context_supported(mfa::context* context) {
   return context->supported ? 1 : 0;
 }
 
+uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context) {
+  auto device = context->device;
+  // Only apple10 has Neural Accelerators.
+  return (device->supportsFamily(MTL::GPUFamily(1010)));
+}
+
 uint16_t ccv_nnc_mfa_context_log_level(mfa::context* context) {
   return context->log_level;
 }

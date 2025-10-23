@@ -11,6 +11,7 @@ typedef struct {
   uint8_t D_trans;
   uint8_t fused_bias;
   uint8_t register_float;
+  uint8_t use_neural_accelerators;
   
   // Fill these in the same order as the original shape, but null-terminated.
   // Both arrays must have the same length.
@@ -26,6 +27,7 @@ extern "C" {
 #endif // __cplusplus
 
 void ccv_nnc_mfa_prepare_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params);
+size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params);
 void ccv_nnc_mfa_encode_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemm_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
 
 #ifdef __cplusplus

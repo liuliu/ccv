@@ -9,6 +9,7 @@ struct PipelineValue {
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   NS::SharedPtr<MTL::IndirectCommandBuffer> indirect; // This is optional.
   NS::SharedPtr<MTL::Function> function; // This is optional.
+  NS::SharedPtr<MTL::ComputePipelineState> second; // This is optional.
 };
 
 #endif

@@ -34,6 +34,7 @@ enum {
 	CCV_NNC_DISABLE_MFA = 0x8,
 	CCV_NNC_DISABLE_MFA_GEMM = 0x10,
 	CCV_NNC_DISABLE_MFA_ATTENTION = 0x20,
+	CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS = 0x40,
 };
 /**
  * Enable system-wide specific flag.
