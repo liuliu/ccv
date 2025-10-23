@@ -290,18 +290,18 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
         source.SetValue("K_ITER", std::to_string(k));
         source.SetValue("K_ITER_1", std::to_string(k + 1));
         source += R"(
-        else if (k_split_idx == {{K_ITER}}) {
-          #pragma clang loop unroll(full)
-          for (ushort k = {{K_ITER}} * K_split; k < {{K_ITER_1}} * K_split; k += {{BLOCK_DIMENSIONS_K_2}}) {
-            // Create appropriate slice for this thread group to work on.
-            auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
-            auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
-            auto mA1 = A.slice<{{A_SLICE}}>({{A_TILE_K2_SIZE}});
-            auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
-            matmul_op.run(mA0, mB0, cT);
-            matmul_op.run(mA1, mB1, cT);
-          }
-        }
+    else if (k_split_idx == {{K_ITER}}) {
+      #pragma clang loop unroll(full)
+      for (ushort k = {{K_ITER}} * K_split; k < {{K_ITER_1}} * K_split; k += {{BLOCK_DIMENSIONS_K_2}}) {
+        // Create appropriate slice for this thread group to work on.
+        auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
+        auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
+        auto mA1 = A.slice<{{A_SLICE}}>({{A_TILE_K2_SIZE}});
+        auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
+        matmul_op.run(mA0, mB0, cT);
+        matmul_op.run(mA1, mB1, cT);
+      }
+    }
 )";
 	  }
 	}
@@ -341,6 +341,9 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       matmul_op.run(mA, mB, cT);
     }
     if (K % {{BLOCK_DIMENSIONS_K}} != 0) {
+      constexpr auto matmul_descriptor = matmul2d_descriptor({{BLOCK_DIMENSIONS_M}}, {{BLOCK_DIMENSIONS_N}}, dynamic_length_v<int>, {{TRANSPOSE_STATE_A}}, {{TRANSPOSE_STATE_B}}, {{RELAXED_PRECISION}}, matmul2d_descriptor::mode::multiply_accumulate);
+      // create matmul op from above descriptor with {{EXECUTION_SIMD_GROUPS}} SIMD-Groups.
+      matmul2d<matmul_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> matmul_op;
       auto mA = A.slice<{{A_RESIDUAL_SLICE}}>({{A_TILE_LAST_K_SIZE}});
       auto mB = B.slice<{{B_RESIDUAL_SLICE}}>({{B_TILE_LAST_K_SIZE}});
       matmul_op.run(mA, mB, cT);
