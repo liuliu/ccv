@@ -544,11 +544,21 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
     source += "{{OPERAND}} + (gid.z * Hq + gid.y) * R\\";
   } else if (Hq > 1) {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
-    if (!transposed(operand)) {
-      source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}}\\";
+    if (Hq != Hk && (operand.value == AttentionOperand::K || operand.value == AttentionOperand::V || operand.value == AttentionOperand::dK || operand.value == AttentionOperand::dV)) {
+      source.SetValue("HQ_K", std::to_string(Hq / Hk));
+      if (!transposed(operand)) {
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{HQ_K}} * {{HEAD_DIMENSION}}\\";
+      } else {
+        source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{HQ_K}} * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
+      }
     } else {
-      source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
-      source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
+      if (!transposed(operand)) {
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}}\\";
+      } else {
+        source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
+      }
     }
   } else {
     source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride\\";

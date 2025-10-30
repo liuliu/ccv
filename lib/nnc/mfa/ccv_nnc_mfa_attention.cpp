@@ -21,7 +21,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
 {
   mfa::attention::hash hash(params);
 
-  if (!params.masked && params.Hq == params.Hk) {
+  if (!params.masked) {
     simd::ushort2 num_batch_dims(0);
     simd::uint2 batch_sizes(1);
     if (params.batched) {
@@ -71,6 +71,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.transposeState[2] = false;
     attentionDesc.transposeState[3] = false;
     attentionDesc.Hq = hash.Hq;
+    attentionDesc.Hk = hash.Hk;
     attentionDesc.batchDimension = batch_sizes[0];
     attentionDesc.scale = hash.alpha;
     if (params.batched) {

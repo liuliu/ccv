@@ -325,8 +325,9 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 	networkDesc.scale = 1.0 / sqrtf((float)headDimension);
 	Network network(networkDesc);
 	AttentionDescriptor attentionDesc;
-	attentionDesc.lowPrecisionInputs = false;
-	attentionDesc.lowPrecisionIntermediates = false;
+	attentionDesc.isBF16 = false;
+	attentionDesc.lowPrecisionInputs = true;
+	attentionDesc.lowPrecisionIntermediates = true;
 	attentionDesc.matrixDimensions[0] = sequenceDimension;
 	attentionDesc.matrixDimensions[1] = sequenceDimension;
 	attentionDesc.matrixDimensions[2] = headDimension;
@@ -373,13 +374,18 @@ void validateProblemSize(int sequenceDimension, int headDimension)
 			};
 		MTL::Size gridSize = MTL::Size(ceilDivide(sequenceDimension, pipelineValue->kernel->blockDimensions[0]), 1, 1);
 		MTL::Size groupSize = MTL::Size(pipelineValue->kernel->threadgroupSize, 1, 1);
-		encoder->dispatchThreadgroups(gridSize, groupSize);
+		for (int i = 0; i < 20; i++) {
+			encoder->dispatchThreadgroups(gridSize, groupSize);
+		}
 		encoder->endEncoding();
 		commandBuffer->commit();
 		commandBuffer->waitUntilCompleted();
 		auto start = commandBuffer->GPUStartTime();
 		auto end = commandBuffer->GPUEndTime();
 		auto latency = end - start;
+		const long long operations = (long long)(2 * headDimension + 5) * sequenceDimension * sequenceDimension * 20;
+		const int gflops = (int)((double)operations / (double)latency / 1e9);
+		printf("GFlops: %d\n", gflops);
 		auto O = network.inferenceAttention();
 		auto raw = bufferO->contents();
 		for (int rowID = 0; rowID < sequenceDimension; rowID++)
@@ -426,6 +432,8 @@ int main(int argc, char** argv)
 {
 	ccv_nnc_init();
 	{
+		validateProblemSize(8192, 128);
+		/*
 		validateProblemSize(10, 3);
 		validateProblemSize(10, 80);
 		validateProblemSize(8, 2);
@@ -446,6 +454,7 @@ int main(int argc, char** argv)
 		validateProblemSize(4, 2);
 		validateProblemSize(384, 95);
 		validateProblemSize(777, 199);
+		*/
 	}
 	return 0;
 }

@@ -1656,7 +1656,7 @@ TEST_CASE("scaled dot product attention with mps")
 		int R_candidates[num_trials] =         { 128, 4096, 128,  61, 6, 2 };
 		int C_candidates[num_trials] =         { 128, 4096, 128,  49, 2, 1 };
 		int Hq_candidates[num_trials] =        {   8, 32,  32,  13, 3, 1 };
-		int Hk_candidates[num_trials] =        {   8, 32,   8,  13, 3, 1 };
+		int Hk_candidates[num_trials] =        {   8, 8,   8,  13, 3, 1 };
 		int D_candidates[num_trials] =         {  64, 32, 128, 191, 4, 8 };
 		int is_causal_candidates[num_trials] = {   0, 0,   1,   0, 1, 0 };
 
