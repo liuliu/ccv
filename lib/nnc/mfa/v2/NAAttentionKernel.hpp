@@ -29,6 +29,8 @@ struct NAAttentionKernel {
 
   uint16_t executionSIMDGroups;
 
+  bool checkCEdge1;
+
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;
 
   /// The number of threads per group.

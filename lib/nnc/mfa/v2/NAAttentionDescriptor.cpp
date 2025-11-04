@@ -46,10 +46,10 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     } else {
       revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
     }
-    // If we don't need to compute remainder twice, prefer that.
-    if (matrixDimensions[1] % 128 > 64 && matrixDimensions[1] % 96 <= 48) {
+    // If we don't need to compute remainder, prefer that.
+    if (matrixDimensions[1] % 64 > 0 && matrixDimensions[1] % 48 == 0) {
       return simd::ushort3 { 16, 48, revisedHead };
-	} else {
+    } else {
       return simd::ushort3 { 16, 64, revisedHead };
     }
   };
@@ -57,7 +57,9 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   [=]() -> uint16_t {
     return lowPrecisionInputs ? 16 : 8;
   };
-  return NAAttentionKernelDescriptor(createBlockDimensions(), createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), createMemoryPrecisions(), type, scale);
+  auto blockDimensions = createBlockDimensions();
+  bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) >= blockDimensions[1];
+  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale);
 }
 
 std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {

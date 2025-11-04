@@ -23,6 +23,8 @@ struct NAAttentionKernelDescriptor {
 
   uint16_t executionSIMDGroups;
 
+  bool checkCEdge1;
+
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
 
   AttentionKernelType type;
@@ -34,7 +36,7 @@ struct NAAttentionKernelDescriptor {
   NAAttentionKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept;
+  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept;
 
   bool operator==(const NAAttentionKernelDescriptor& rhs) const;
 };

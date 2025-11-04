@@ -11,6 +11,7 @@ bool NAAttentionKernelDescriptor::operator==(const NAAttentionKernelDescriptor& 
   Hq == rhs.Hq && Hk == rhs.Hk &&
   memoryPrecisions == rhs.memoryPrecisions &&
   executionSIMDGroups == rhs.executionSIMDGroups &&
+  checkCEdge1 == rhs.checkCEdge1 &&
   type == rhs.type &&
   scale == rhs.scale;
 }
@@ -26,12 +27,13 @@ std::size_t std::hash<NAAttentionKernelDescriptor>::operator()(const NAAttention
 
 // MARK: - Initializer
 
-NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept {
+NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept {
   this->blockDimensions = blockDimensions;
   this->headDimension = headDimension;
   this->Hq = Hq;
   this->Hk = Hk;
   this->executionSIMDGroups = executionSIMDGroups;
+  this->checkCEdge1 = checkCEdge1;
   this->memoryPrecisions = memoryPrecisions;
   this->type = type;
   this->scale = scale;
