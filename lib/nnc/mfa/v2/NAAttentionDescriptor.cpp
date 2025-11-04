@@ -46,7 +46,12 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     } else {
       revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
     }
-    return simd::ushort3 { 16, 64, revisedHead };
+    // If we don't need to compute remainder twice, prefer that.
+    if (matrixDimensions[1] % 128 > 64 && matrixDimensions[1] % 96 <= 48) {
+      return simd::ushort3 { 16, 48, revisedHead };
+	} else {
+      return simd::ushort3 { 16, 64, revisedHead };
+    }
   };
   auto createExecutionSIMDGroups = 
   [=]() -> uint16_t {
