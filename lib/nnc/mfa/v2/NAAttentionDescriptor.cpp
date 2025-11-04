@@ -46,8 +46,22 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     } else {
       revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
     }
-    // If we don't need to compute remainder, prefer that.
-    if (matrixDimensions[1] % 64 > 0 && matrixDimensions[1] % 48 == 0) {
+    // Prefer ones without partial matrix multiplication (due to tiling).
+    if (matrixDimensions[1] % 64 == 0) {
+      return simd::ushort3 { 16, 64, revisedHead };
+    } else if (matrixDimensions[1] % 48 == 0) {
+      return simd::ushort3 { 16, 48, revisedHead };
+    }
+    // Prefer no trailing involved, so the compute is more evenly distributed.
+    if (matrixDimensions[1] % 128 > 64 && matrixDimensions[1] % 96 < 48) {
+      return simd::ushort3 { 16, 64, revisedHead };
+    } else if (matrixDimensions[1] % 128 < 64 && matrixDimensions[1] % 96 > 48) {
+      return simd::ushort3 { 16, 48, revisedHead };
+    }
+    // If we have to use matrix multiplication, calculate how much wasted compute we are going to be with.
+    const unsigned short remainder64 = matrixDimensions[1] % 64;
+    const unsigned short remainder48 = matrixDimensions[1] % 48;
+    if (remainder64 * 48 < remainder48 * 64) {
       return simd::ushort3 { 16, 48, revisedHead };
     } else {
       return simd::ushort3 { 16, 64, revisedHead };
@@ -58,7 +72,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     return lowPrecisionInputs ? 16 : 8;
   };
   auto blockDimensions = createBlockDimensions();
-  bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) >= blockDimensions[1];
+  bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
   return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale);
 }
 

@@ -1647,18 +1647,18 @@ TEST_CASE("scaled dot product attention with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	// Bypass error: variable-sized object may not be initialized
-#define num_long_trials 4
+#define num_long_trials 6
 #define num_short_trials 2
 #define num_trials (num_long_trials + num_short_trials)
 
 	for (int trial = 0; trial < num_trials; ++trial) {
-		int B_candidates[num_trials] =         {  32, 1,  32,   3, 2, 1 };
-		int R_candidates[num_trials] =         { 128, 4128, 128,  61, 6, 2 };
-		int C_candidates[num_trials] =         { 128, 4128, 128,  49, 2, 1 };
-		int Hq_candidates[num_trials] =        {   8, 32,  32,  13, 3, 1 };
-		int Hk_candidates[num_trials] =        {   8, 8,   8,  13, 3, 1 };
-		int D_candidates[num_trials] =         {  64, 32, 128, 191, 4, 8 };
-		int is_causal_candidates[num_trials] = {   0, 0,   1,   0, 1, 0 };
+		int B_candidates[num_trials] =         {  32, 1, 1, 1,  32,   3, 2, 1 };
+		int R_candidates[num_trials] =         { 128, 4128, 4098, 4162, 128,  61, 6, 2 };
+		int C_candidates[num_trials] =         { 128, 4128, 4098, 4162, 128,  49, 2, 1 };
+		int Hq_candidates[num_trials] =        {   8, 32, 32, 32,  32,  13, 3, 1 };
+		int Hk_candidates[num_trials] =        {   8, 8, 8, 8,   8,  13, 3, 1 };
+		int D_candidates[num_trials] =         {  64, 32, 32, 32, 128, 191, 4, 8 };
+		int is_causal_candidates[num_trials] = {   0, 0, 0, 0,   1,   0, 1, 0 };
 
 		int B = B_candidates[trial];
 		int R = R_candidates[trial];

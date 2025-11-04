@@ -212,12 +212,19 @@ constant uint C [[function_constant(1)]];
   source += R"(
 constant uint Hq = {{HQ}};
 constant uint Hk = {{HK}};
-constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
-constant uint C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
+// In this special case, leaving the rest to the trailing block to process.
+constant uint C_remainder = (C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}) == {{BLOCK_DIMENSIONS_TRAVERSAL}} ? {{BLOCK_DIMENSIONS_TRAVERSAL}} : (C % {{BLOCK_DIMENSIONS_TRAVERSAL}});
 )";
   if (checkCEdge1) {
     source += R"(
+constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 constant uint C_edge_1 = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
+)";
+  } else {
+    // When we are not checking C_edge, C_edge makes sure we process entire blockDimensions.C * 2 block, rather than one of.
+    // And leaving the rest to the C_remainder path.
+    source += R"(
+constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
 )";
   }
   source += R"(
@@ -427,7 +434,16 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
 )";
   if (checkCEdge1) {
     source += R"(
-        cS_1[k] = c < C_edge_1 ? 0 : numeric_limits<float>::lowest();
+        if (c < C_edge_1) {
+          cS_1[k] = 0;
+        } else {
+          auto idx = cS_1.get_multidimensional_index(k);
+          if (idx[0] >= (int)C_remainder) {
+            cS_1[k] = numeric_limits<float>::lowest();
+          } else {
+            cS_1[k] = 0;
+          }
+        }
 )";
   } else {
     source += R"(
@@ -440,25 +456,10 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
       auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-)";
-  if (checkCEdge1) {
-      source += R"(
-      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
-      matmul_qk_op.run(mQ, mK_0, cS_0);
-      if (c < C_edge_1) {
-        auto mK_1 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
-        matmul_qk_op.run(mQ, mK_1, cS_1);
-      }
-)";
-  } else {
-      source += R"(
       auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
       auto mK_1 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
       matmul_qk_op.run(mQ, mK_0, cS_0);
       matmul_qk_op.run(mQ, mK_1, cS_1);
-)";
-  }
-    source += R"(
     }
 )";
   if (headDimension % blockDimensions[2] > 0) {
@@ -466,25 +467,10 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
     source += R"(
     {
       auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-)";
-    if (checkCEdge1) {
-      source += R"(
-      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
-      matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
-      if (c < C_edge_1) {
-        auto mK_1 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
-        matmul_qk_op_remainder.run(mQ, mK_1, cS_1);
-      }
-)";
-    } else {
-      source += R"(
       auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
       auto mK_1 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
       matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
       matmul_qk_op_remainder.run(mQ, mK_1, cS_1);
-)";
-    }
-    source += R"(
     }
 )";
   }
@@ -517,7 +503,16 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
 )";
   if (checkCEdge1) {
     source += R"(
-        cS_1[k] = c < C_edge_1 ? fast::exp2(cS_1[k] * {{DOT_SCALE}} - *dst_it) : 0;
+        if (c < C_edge_1) {
+          cS_1[k] = fast::exp2(cS_1[k] * {{DOT_SCALE}} - *dst_it);
+        } else {
+          auto idx = cS_1.get_multidimensional_index(k);
+          if (idx[0] >= (int)C_remainder) {
+            cS_1[k] = 0;
+          } else {
+            cS_1[k] = fast::exp2(cS_1[k] * {{DOT_SCALE}} - *dst_it);
+          }
+        }
 )";
   } else {
     source += R"(
@@ -603,6 +598,34 @@ source += R"(
 )";
     }
     source += R"(
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_1.get_capacity(); ++k) {
+        if(cS_1.is_valid_element(k)) {
+          auto idx = cS_0.get_multidimensional_index(k);
+          if (idx[0] >= (int)C_remainder) {
+            P_buf[idx[0] - C_remainder + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = 0;
+          } else {
+            P_buf[{{BLOCK_DIMENSIONS_TRAVERSAL}} - C_remainder + idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_1[k];
+          }
+        }
+      }
+      simdgroup_barrier(mem_flags::mem_threadgroup);
+      // The reason to do this is because when K (in GEMM sense) is smaller (in this case, C_remainder is smaller than blockDimensions.C),
+      // we need to start a new matmul descriptor with dynamic_extent for that, hence we copied the P_buf in this way and then sliced it.
+      auto mP = P.slice<dynamic_extent, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{BLOCK_DIMENSIONS_TRAVERSAL}} - C_remainder, 0);
+      constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, dynamic_length_v<int>, false, false, false, matmul2d_descriptor::mode::multiply_accumulate);
+      matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
+)";
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
+      auto mV_1_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, C - C_remainder);
+      matmul_pv_op.run(mP, mV_1_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+    }
+    source += R"(
     }
 )";
   } else {
@@ -625,8 +648,11 @@ source += R"(
 )";
     }
   }
-source += R"(
+  source += R"(
   }
+)";
+  if (!checkCEdge1) { // Process the remainder path.
+    source += R"(
   if (C_remainder > 0) {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
@@ -646,17 +672,17 @@ source += R"(
       matmul_qk_op.run(mQ, mK_0, cS_0);
     }
 )";
-  if (headDimension % blockDimensions[2] > 0) {
-    source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
-    source += R"(
+    if (headDimension % blockDimensions[2] > 0) {
+      source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
+      source += R"(
     {
       auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
       auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, C - C_remainder);
       matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
     }
 )";
-  }
-  source += R"(
+    }
+    source += R"(
     // Online reduce maximum.
     auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cS_0, cM_0_new, reduction_operation::max, numeric_limits<float>::lowest());
@@ -701,11 +727,11 @@ source += R"(
         auto it = cO_0.get_iterator(k);
         auto dst_it = correction.map_iterator(it);
 )";
-  for (unsigned short i = 0; i < kBlocks; i++) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
-  }
-source += R"(
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    }
+    source += R"(
       }
     }
     #pragma clang loop unroll(full)
@@ -726,16 +752,19 @@ source += R"(
     constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, dynamic_length_v<int>, false, false, false, matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
 )";
-  for (unsigned short i = 0; i < kBlocks; i++) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-    source += R"(
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
     auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, C - C_remainder);
     matmul_pv_op.run(mP, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
+    }
+    source += R"(
   }
-source += R"(
+)";
   }
+  source += R"(
   auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
   auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
