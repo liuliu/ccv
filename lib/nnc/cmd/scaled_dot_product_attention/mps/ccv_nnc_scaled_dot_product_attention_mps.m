@@ -225,6 +225,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.batched = (attention_is_batched ? 1 : 0),
 			.masked = (attn_mask != NULL ? 1 : 0),
 			.upcast = !is_downcast,
+			.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
 
 			.batch_dims_q = { 0 },
 			.batch_dims_mask = { 0 },
@@ -596,6 +597,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 				.batched = (attention_is_batched ? 1 : 0),
 				.masked = 0,
 				.upcast = !is_downcast,
+				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
 
 				.batch_dims_q = { 0 },
 				.batch_dims_mask = { 0 },

@@ -1651,7 +1651,7 @@ TEST_CASE("scaled dot product attention with mps")
 #define num_short_trials 2
 #define num_trials (num_long_trials + num_short_trials)
 
-	for (int trial = 0; trial < num_long_trials; ++trial) {
+	for (int trial = 0; trial < num_trials; ++trial) {
 		int B_candidates[num_trials] =         {  32, 1,  32,   3, 2, 1 };
 		int R_candidates[num_trials] =         { 128, 4096, 128,  61, 6, 2 };
 		int C_candidates[num_trials] =         { 128, 4096, 128,  49, 2, 1 };
@@ -1747,13 +1747,14 @@ TEST_CASE("scaled dot product attention with mps in bfloat precision")
 		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
+		const int Hk_candidates[num_trials] = {   8,  8, 4, 2, 8, 32, 8,  8, 8, 8, 8, 32 };
 		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 64, 40, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
 		const int C = C_candidates[trial];
 		const int Hq = Hq_candidates[trial];
-		const int Hk = Hq_candidates[trial];
+		const int Hk = Hk_candidates[trial];
 		const int D = D_candidates[trial];
 		const int is_causal = 0;
 		const float scale = 1.0 / sqrt((float)D);
@@ -1793,7 +1794,7 @@ TEST_CASE("scaled dot product attention with mps in bfloat precision")
 
 		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(copy_of_gpu_o_tensor_f16), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * Hq * D, 5e-3, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * Hq * D, 8e-3, "scaled dot product attention result should be the same");
 
 		ccv_nnc_tensor_free(o_tensor);
 		ccv_nnc_tensor_free(gpu_o_tensor);

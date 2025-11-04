@@ -545,12 +545,12 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
   } else if (Hq > 1) {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
     if (Hq != Hk && (operand.value == AttentionOperand::K || operand.value == AttentionOperand::V || operand.value == AttentionOperand::dK || operand.value == AttentionOperand::dV)) {
-      source.SetValue("HQ_K", std::to_string(Hq / Hk));
+      source.SetValue("H_HK_RATIO", std::to_string(Hq / Hk));
       if (!transposed(operand)) {
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{HQ_K}} * {{HEAD_DIMENSION}}\\";
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{H_HK_RATIO}} * {{HEAD_DIMENSION}}\\";
       } else {
         source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{HQ_K}} * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{H_HK_RATIO}} * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
       }
     } else {
       if (!transposed(operand)) {
@@ -2629,7 +2629,7 @@ static std::string high_precision_to_string(float value) {
   return oss.str();
 }
 
-static std::string dotProductScale(float rsqrtD, bool derivative, unsigned short headDimension) {
+static std::string dotProductScale(float rsqrtD, bool derivative) {
   float logBase2E = 1.442695041;
 
   if (!derivative) {
@@ -2873,7 +2873,7 @@ std::string AttentionKernel::computeD() const noexcept {
   CodeWriter source;
   source.SetValue("BULK_CONTRIBUTIONS", bulkContributions(loopEndFloor));
   source.SetValue("EDGE_CONTRIBUTIONS", edgeContributions(loopEndFloor));
-  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, true, headDimension));
+  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, true));
   source += R"(
 
   float2 D_accumulator(0);
@@ -2940,7 +2940,7 @@ std::string AttentionKernel::onlineReduceMaximum() const noexcept {
   CodeWriter source;
   source.SetValue("REGISTER_NAME_S", registerName(AttentionOperand::S));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
-  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, false, headDimension));
+  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(scale, false));
   source += R"(
 
   // update 'm'
@@ -3103,7 +3103,7 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
   auto overwriteAttentionMatrixElements =
   [=]() -> std::string {
     CodeWriter source;
-    source.SetValue("SCALE", dotProductScale(scale, derivative, headDimension));
+    source.SetValue("SCALE", dotProductScale(scale, derivative));
  
     if (!derivative) {
       source.SetValue("REGISTER_NAME_P", registerName(AttentionOperand::P));

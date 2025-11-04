@@ -10,6 +10,7 @@ typedef struct {
   uint8_t masked;
   uint8_t upcast;
   uint8_t type;
+  uint8_t use_neural_accelerators;
   uint32_t R;
   uint32_t C;
   uint32_t Hq;

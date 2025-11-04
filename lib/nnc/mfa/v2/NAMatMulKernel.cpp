@@ -103,7 +103,7 @@ using namespace mpp::tensor_ops;
   } else {
     source.SetValue("RELAXED_PRECISION", "true");
   }
-  source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(4));
+  source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("REGISTER_NAME_C", memoryName('C'));
 
   source += R"(

@@ -29,7 +29,7 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
       params.N,
       params.K,
     };
-    size_t datatype_size;
+    size_t datatype_size = 0;
     switch (params.data_type) {
       case MTL::DataTypeHalf: {
         gemmDesc.memoryPrecisions = {
@@ -201,7 +201,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     // Calculate the grid size.
     MTL::Size gridSize = kernel->threadgroupsPerGrid(gemmDesc);
     MTL::Size groupSize(int64_t(kernel->threadgroupSize(pipeline.get(), gemmDesc)), 1, 1);
-  
+
     // Dispatch the required number of threads.
     encoder->dispatchThreadgroups(gridSize, groupSize);
   
