@@ -49,6 +49,9 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
 }
 
 uint16_t NAMatMulDescriptor::splitK() const noexcept {
+  if ((this->matrixDimensions[1] % 64) != 0) { // If cannot divide by 64, we cannot have splitK.
+    return 1;
+  }
   if (this->matrixDimensions[2] > 3072 * 4) {
     // Still multiple of 2, but more than 1.
     return this->matrixDimensions[2] / 3072 / 2 * 2;
