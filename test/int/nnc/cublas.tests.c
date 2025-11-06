@@ -4045,11 +4045,6 @@ TEST_CASE("segmented gemm, large k")
 	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
 	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(bt), 0);
-	for (i = 0; i < 80 * 2560; i++) {
-		if (fabs(hb->data.f32[i] - bt->data.f32[i]) > 1e-5) {
-			printf("%d %f %f\n", i, hb->data.f32[i], bt->data.f32[i]);
-		}
-	}
 	REQUIRE_TENSOR_EQ(hb, bt, "should match from CPU");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(indices);

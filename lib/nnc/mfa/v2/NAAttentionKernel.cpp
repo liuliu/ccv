@@ -277,10 +277,6 @@ std::string NAAttentionKernel::operandLocationWithHeadOffsetValue(AttentionOpera
   return source.ToString();
 }
 
-std::string NAAttentionKernel::operandLocationValue(AttentionOperand operand) const noexcept {
-  return operand.name();
-}
-
 std::string NAAttentionKernel::createAdjustOffsets() const noexcept {
   std::vector<AttentionOperand> operands;
   switch (type.value) {
