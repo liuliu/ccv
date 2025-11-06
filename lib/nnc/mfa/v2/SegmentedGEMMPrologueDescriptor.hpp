@@ -37,6 +37,12 @@ struct SegmentedGEMMPrologueDescriptor {
   /// The threadgroup memory for the GEMM kernel.
   uint32_t threadgroupMemoryAllocation;
 
+  /// Whether to dispatch with M or N for the GEMM kernel.
+  bool dispatchMMajor;
+
+  /// Whether this GEMM kernel has a separate splitK reduction kernel.
+  uint16_t splitK;
+
   bool operator==(const SegmentedGEMMPrologueDescriptor& rhs) const;
 
   std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMPrologueKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<SegmentedGEMMPrologueKernelDescriptor, std::unique_ptr<SegmentedGEMMPrologueKernel>> *const libraryCache) const noexcept;

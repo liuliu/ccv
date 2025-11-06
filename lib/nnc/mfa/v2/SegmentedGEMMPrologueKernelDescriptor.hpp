@@ -12,13 +12,15 @@ struct SegmentedGEMMPrologueKernelDescriptor {
   GEMMOperandPrecisions memoryPrecisions;
   /// Required. Whether it contains the bias.
   bool useBias;
+  /// Whether this GEMM kernel has a separate splitK reduction kernel.
+  uint16_t splitK;
   
   // MARK: - Functionality from SegmentedGEMMPrologueDescriptor
   
   SegmentedGEMMPrologueKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  SegmentedGEMMPrologueKernelDescriptor(GEMMOperandPrecisions memoryPrecisions, bool useBias) noexcept;
+  SegmentedGEMMPrologueKernelDescriptor(GEMMOperandPrecisions memoryPrecisions, bool useBias, uint16_t splitK) noexcept;
   
   bool operator==(const SegmentedGEMMPrologueKernelDescriptor& rhs) const;
 };

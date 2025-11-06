@@ -174,7 +174,7 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   uint16_t splitK = this->splitK();
   auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
-  auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[0] * this->matrixDimensions[1] % 2) == 0);
+  auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 
   // Force the user to retrieve the return value from the cache. We ensure
   // the cache takes ownership, and the pointer doesn't become a zombie

@@ -71,7 +71,7 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
     gemmDesc.dispatchMMajor = NAMatMulDescriptor::preferDispatchMMajor(params.M, params.N, params.K);
     gemmDesc.loadM = true;
     gemmDesc.supportIndirectCommandBuffers = false;
-  
+
     gemmDesc.batchDimension = params.batch_dimension;
     if (params.batch_dimension > 1) {
       simd::uint4 batchStrides;
@@ -216,7 +216,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       encoder->setBytes(&params.M, sizeof(params.M), 2);
       encoder->useResource(scratch, MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
-      if ((params.M * params.N % 2) == 0) {
+      if ((params.N % 2) == 0) {
         encoder->dispatchThreadgroups(MTL::Size((params.M * params.N / 2 + 255) / 256, params.batch_dimension, 1), MTL::Size(256, 1, 1));
       } else {
         encoder->dispatchThreadgroups(MTL::Size((params.M * params.N + 255) / 256, params.batch_dimension, 1), MTL::Size(256, 1, 1));

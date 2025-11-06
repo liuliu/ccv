@@ -7,7 +7,8 @@
 bool SegmentedGEMMPrologueKernelDescriptor::operator==(const SegmentedGEMMPrologueKernelDescriptor& rhs) const {
   return
   memoryPrecisions == rhs.memoryPrecisions &&
-  (useBias == rhs.useBias);
+  splitK == rhs.splitK &&
+  useBias == rhs.useBias;
 }
 
 std::size_t std::hash<SegmentedGEMMPrologueKernelDescriptor>::operator()(const SegmentedGEMMPrologueKernelDescriptor& hash) const noexcept {
@@ -20,7 +21,8 @@ std::size_t std::hash<SegmentedGEMMPrologueKernelDescriptor>::operator()(const S
 
 // MARK: - Initializer
 
-SegmentedGEMMPrologueKernelDescriptor::SegmentedGEMMPrologueKernelDescriptor(GEMMOperandPrecisions memoryPrecisions, bool useBias) noexcept {
+SegmentedGEMMPrologueKernelDescriptor::SegmentedGEMMPrologueKernelDescriptor(GEMMOperandPrecisions memoryPrecisions, bool useBias, uint16_t splitK) noexcept {
   this->memoryPrecisions = memoryPrecisions;
   this->useBias = useBias;
+  this->splitK = splitK;
 }

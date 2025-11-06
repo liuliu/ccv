@@ -16,10 +16,8 @@ struct SegmentedGEMMPrologueKernel {
 
   bool useBias;
 
-  unsigned short threadgroupMemoryAllocation;
-
-  /// The number of threads per group.
-  uint16_t threadgroupSize;
+  /// Whether this GEMM kernel has a separate splitK reduction kernel.
+  uint16_t splitK;
 
   SegmentedGEMMPrologueKernel(SegmentedGEMMPrologueKernelDescriptor descriptor, MTL::Device *const device);
 
