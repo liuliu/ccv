@@ -245,7 +245,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.D_trans = 0,
 					.fused_bias = (bias ? 1 : 0),
 					.register_float = 0,
-					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
 
 					.batch_dimension = b_batch_size,
 					.batch_stride_a = a_batch_size > 1 ? H * W * D * I_dim : 0,
@@ -264,7 +264,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					.D_trans = 1,
 					.fused_bias = (bias ? 1 : 0),
 					.register_float = 0,
-					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context),
+					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
 
 					.batch_dimension = b_batch_size,
 					.batch_stride_a = w_batch_size > 1 ? O * I_dim : 0,

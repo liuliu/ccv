@@ -62,7 +62,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         }
       }
     }
-    if (params.type == 0 && params.data_type != MTL::DataTypeBFloat && params.use_neural_accelerators) {
+    if (params.type == 0 && params.use_neural_accelerators) {
       NAAttentionDescriptor attentionDesc;
       attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
       attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;

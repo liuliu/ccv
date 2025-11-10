@@ -28,6 +28,25 @@ uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context) {
   return (device->supportsFamily(MTL::GPUFamily(1010)));
 }
 
+uint8_t ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_mfa_context_t* context) {
+  if (!ccv_nnc_mfa_has_neural_accelerators(context)) {
+    return 0;
+  }
+#ifdef __has_builtin
+#if __has_builtin(__builtin_available)
+  if (__builtin_available(macos 26.1, iOS 26.1, macCatalyst 26.1, tvOS 26.1, *)) {
+    return 1;
+  } else {
+    return 0;
+  }
+#else
+  return 0;
+#endif
+#else
+  return 0;
+#endif
+}
+
 uint16_t ccv_nnc_mfa_context_log_level(mfa::context* context) {
   return context->log_level;
 }

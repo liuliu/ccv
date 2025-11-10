@@ -21,7 +21,7 @@ void ccv_nnc_mfa_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t p
 
 size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
 {
-  if (params.data_type != MTL::DataTypeBFloat && params.use_neural_accelerators) {
+  if (params.use_neural_accelerators) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;
     gemmDesc.matrixDimensions = simd::uint3 {
