@@ -121,9 +121,9 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), Hq, Hk, createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), Hq, Hk, createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
   }
 }
 
@@ -137,6 +137,10 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     uint32_t columnDimension = matrixDimensions[1];
     constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
     constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    uint32_t Hq = this->Hq;
+    constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
+    uint32_t HHkRatio = this->Hq / this->Hk;
+    constants->setConstantValue(&HHkRatio, MTL::DataTypeUInt, 3);
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:
@@ -151,7 +155,7 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     }
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
+      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 4 + operand.bufferIndex());
     }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);

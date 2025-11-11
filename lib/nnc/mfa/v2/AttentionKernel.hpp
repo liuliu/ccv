@@ -39,10 +39,6 @@ struct AttentionKernel {
 
   unsigned short headDimension;
 
-  unsigned short Hq;
-
-  unsigned short Hk;
-
   bool disableAsyncCopy;
 
   unsigned short threadgroupMemoryAllocation;

@@ -17,8 +17,6 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   blockDimensions = descriptor.blockDimensions;
   headDimension = descriptor.headDimension;
-  Hq = descriptor.Hq;
-  Hk = descriptor.Hk;
   leadingDimensions = descriptor.leadingDimensions;
   scale = descriptor.scale;
   disableAsyncCopy = false;
@@ -498,10 +496,10 @@ std::string AttentionKernel::createConstants() const noexcept {
     operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
     break;
   }
-  std::string output = "#define Hq (" + std::to_string(Hq) + ")\n";
+  std::string output = "";
   for (const auto& operand : operands) {
     output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
-    output += std::to_string(operand.bufferIndex() + 2) + ")]];\n";
+    output += std::to_string(operand.bufferIndex() + 4) + ")]];\n";
   }
   return R"(
 
@@ -510,6 +508,9 @@ std::string AttentionKernel::createConstants() const noexcept {
     // Hq = number of query heads.
     constant uint R [[function_constant(0)]];
     constant uint C [[function_constant(1)]];
+
+    constant uint Hq [[function_constant(2)]];
+    constant uint H_Hk_ratio [[function_constant(3)]];
 
 )" + output;
 }
@@ -542,15 +543,14 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
   source.SetValue("OPERAND", operand.name());
   if (operand.value == AttentionOperand::L || operand.value == AttentionOperand::D) {
     source += "{{OPERAND}} + (gid.z * Hq + gid.y) * R\\";
-  } else if (Hq > 1) {
+  } else {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
-    if (Hq != Hk && (operand.value == AttentionOperand::K || operand.value == AttentionOperand::V || operand.value == AttentionOperand::dK || operand.value == AttentionOperand::dV)) {
-      source.SetValue("H_HK_RATIO", std::to_string(Hq / Hk));
+    if (operand.value == AttentionOperand::K || operand.value == AttentionOperand::V || operand.value == AttentionOperand::dK || operand.value == AttentionOperand::dV) {
       if (!transposed(operand)) {
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{H_HK_RATIO}} * {{HEAD_DIMENSION}}\\";
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / H_Hk_ratio * {{HEAD_DIMENSION}}\\";
       } else {
         source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / {{H_HK_RATIO}} * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
+        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / H_Hk_ratio * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
       }
     } else {
       if (!transposed(operand)) {
@@ -560,8 +560,6 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
         source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
       }
     }
-  } else {
-    source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride\\";
   }
   return source.ToString();
 }
