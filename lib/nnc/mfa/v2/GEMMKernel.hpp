@@ -71,6 +71,7 @@ private:
   void createLoadC(CodeWriter *source) const noexcept;
   void createMultiplyIterations(CodeWriter *source) const noexcept;
   void createStoreC(CodeWriter *source) const noexcept;
+  MTL::Library* findPrecompiledLibrary(GEMMKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept;
 };
 
 #endif /* GEMMKernel_hpp */

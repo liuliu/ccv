@@ -228,13 +228,17 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     if (error) {
-      preferAsyncLoad = false;
-      preferAsyncStore = false;
-      disableAsyncCopy = true;
-      source = createSource();
-      string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
       error = nil;
-      library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+      library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      if (!library) {
+        preferAsyncLoad = false;
+        preferAsyncStore = false;
+        disableAsyncCopy = true;
+        source = createSource();
+        string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+        error = nil;
+        library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+      }
     }
     CCV_NNC_MFA_CHECK_ERROR(error);
   }
