@@ -104,18 +104,18 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   auto createLeadingDimensions =
-  [=]() -> AttentionOperands<unsigned short> {
-    AttentionOperands<unsigned short> output;
+  [=]() -> AttentionOperands<bool> {
+    AttentionOperands<bool> output;
     if (leadingDimensions.has_value()) {
-      output[AttentionOperand::Q] = leadingDimensions.value()[0];
-      output[AttentionOperand::K] = leadingDimensions.value()[1];
-      output[AttentionOperand::V] = leadingDimensions.value()[2];
-      output[AttentionOperand::O] = leadingDimensions.value()[3];
+      output[AttentionOperand::Q] = true;
+      output[AttentionOperand::K] = true;
+      output[AttentionOperand::V] = true;
+      output[AttentionOperand::O] = true;
  
-      output[AttentionOperand::dO] = leadingDimensions.value()[3];
-      output[AttentionOperand::dV] = leadingDimensions.value()[2];
-      output[AttentionOperand::dK] = leadingDimensions.value()[1];
-      output[AttentionOperand::dQ] = leadingDimensions.value()[0];
+      output[AttentionOperand::dO] = true;
+      output[AttentionOperand::dV] = true;
+      output[AttentionOperand::dK] = true;
+      output[AttentionOperand::dQ] = true;
     }
     return output;
   };
@@ -156,6 +156,21 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
       constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 4 + operand.bufferIndex());
+      if (leadingDimensions.has_value()) {
+        if (operand.value == AttentionOperand::Q || operand.value == AttentionOperand::dQ) {
+          uint32_t leadingDimension = leadingDimensions.value()[0];
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+        } else if (operand.value == AttentionOperand::K || operand.value == AttentionOperand::dK) {
+          uint32_t leadingDimension = leadingDimensions.value()[1];
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+        } else if (operand.value == AttentionOperand::V || operand.value == AttentionOperand::dV) {
+          uint32_t leadingDimension = leadingDimensions.value()[2];
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+        } else if (operand.value == AttentionOperand::O || operand.value == AttentionOperand::dO) {
+          uint32_t leadingDimension = leadingDimensions.value()[3];
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+        }
+      }
     }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);

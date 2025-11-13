@@ -216,8 +216,8 @@ unsigned short AttentionKernel::blockSequenceLength(AttentionOperand operand) co
 
 std::string AttentionKernel::leadingDimension(AttentionOperand operand) const noexcept {
   auto leadingDimension = leadingDimensions[operand];
-  if (leadingDimension.has_value()) { // Prefer this value.
-    return std::to_string(leadingDimension.value());
+  if (leadingDimension.value_or(false)) { // Prefer this value.
+    return operand.name() + "_leading_dimension";
   }
   if (transposed(operand)) {
     return sequenceLength(operand);
@@ -500,6 +500,10 @@ std::string AttentionKernel::createConstants() const noexcept {
   for (const auto& operand : operands) {
     output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
     output += std::to_string(operand.bufferIndex() + 4) + ")]];\n";
+    if (leadingDimensions[operand].value_or(false)) {
+      output += "  constant uint " + operand.name() + "_leading_dimension [[function_constant(";
+      output += std::to_string(operand.bufferIndex() + 14) + ")]];\n";
+    }
   }
   return R"(
 

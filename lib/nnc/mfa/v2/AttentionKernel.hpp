@@ -31,8 +31,8 @@ struct AttentionKernel {
 
   AttentionOperands<bool> transposeState;
 
-  /// The leading dimensions after transposed (if applied).
-  AttentionOperands<unsigned short> leadingDimensions;
+  /// The leading dimensions after transposed if applied.
+  AttentionOperands<bool> leadingDimensions;
 
   /// parallelization, traversal, head
   simd::ushort3 blockDimensions;
