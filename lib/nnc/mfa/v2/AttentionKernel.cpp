@@ -32,13 +32,17 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     if (error) {
-      preferAsyncCache = false;
-      preferAsyncLoad = false;
-      disableAsyncCopy = true;
-      source = createSource();
-      string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
       error = nil;
-      library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+      library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      if (!library) {
+        preferAsyncCache = false;
+        preferAsyncLoad = false;
+        disableAsyncCopy = true;
+        source = createSource();
+        string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+        error = nil;
+        library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+      }
     }
     CCV_NNC_MFA_CHECK_ERROR(error);
   }
@@ -2627,11 +2631,13 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 
 // MARK: - AttentionKernel+Softmax
 
+/*
 static std::string high_precision_to_string(float value) {
   std::ostringstream oss;
   oss << std::setprecision(std::numeric_limits<float>::max_digits10) << value;
   return oss.str();
 }
+*/
 
 static std::string dotProductScale(bool derivative) {
   if (!derivative) {

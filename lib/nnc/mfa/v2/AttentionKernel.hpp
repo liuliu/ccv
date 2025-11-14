@@ -121,6 +121,7 @@ private:
   std::string onlineCorrectO() const noexcept;
   std::string onlineReduceSum() const noexcept;
   std::string softmax(bool derivative) const noexcept;
+  MTL::Library* findPrecompiledLibrary(AttentionKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept;
 };
 
 #endif /* AttentionKernel_hpp */

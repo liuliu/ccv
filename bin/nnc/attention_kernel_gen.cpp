@@ -1,220 +1,35 @@
-#include "AttentionDescriptor.hpp"
-#include "AttentionKernelDescriptor.hpp"
-#include "AttentionKernel.hpp"
-#include "../ccv_nnc_mfa_hash.hpp"
-#include "../ccv_nnc_mfa_error.hpp"
+extern "C" {
+#include <ccv.h>
+#include <nnc/ccv_nnc.h>
+#include <sys/time.h>
+#include <ctype.h>
+}
+#include "nnc/mfa/v2/ShaderCache.hpp"
+#include "nnc/mfa/v2/AttentionDescriptor.hpp"
+#include "nnc/mfa/v2/AttentionKernelDescriptor.hpp"
+#include "nnc/mfa/v2/AttentionKernel.hpp"
+#include "3rdparty/dsfmt/dSFMT.h"
+#include <iostream>
 
-bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
-  return
-  batchDimension == rhs.batchDimension &&
-  Hq == rhs.Hq &&
-  Hk == rhs.Hk &&
-  scale == rhs.scale &&
-  type == rhs.type &&
-  (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
-  (isBF16 == rhs.isBF16) &&
-  (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
-  simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
-  batchStrides == rhs.batchStrides &&
-  simd_all(matrixDimensions == rhs.matrixDimensions) &&
-  simd_all(transposeState == rhs.transposeState);
+static std::string cacheState(AttentionOperands<bool> cacheStates) noexcept {
+	std::string output;
+	for (uint16_t i = 0; i < AttentionOperand::size(); i++) {
+		AttentionOperand operand((AttentionOperand::Value)i);
+		std::optional<bool> value = cacheStates[operand];
+		if (value.value_or(false)) {
+			output += operand.name();
+		}
+	}
+	return output;
 }
 
-std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor& hash) const noexcept {
-  std::size_t seed = 0;
-  using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.Hq);
-  combine_32(seed, hash.Hk);
-  combine_32(seed, hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
-  if (hash.leadingDimensions.has_value()) {
-    combine_32(seed, hash.leadingDimensions.value()[0]);
-    combine_32(seed, hash.leadingDimensions.value()[1]);
-    combine_32(seed, hash.leadingDimensions.value()[2]);
-    combine_32(seed, hash.leadingDimensions.value()[3]);
-  }
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, 0 }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
-  return seed;
+static std::string toLower(std::string s) noexcept {
+	std::transform(s.begin(), s.end(), s.begin(),
+		[](unsigned char c){ return std::tolower(c); });
+	return s;
 }
 
-AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept {
-  auto createHeadDimension = 
-  [=]() -> unsigned short {
-    return matrixDimensions[2];
-  };
-  std::vector table = parameterFile(type, device);
-  auto row = this->row(table);
-  auto createBlockDimensions =
-  [=]() -> simd::ushort3 {
-    unsigned short parallelization = row.parallelization;
-    unsigned short traversal = row.traversal;
-    unsigned short originalHead = row.head;
-    // Enforce the rule that head block dimension <= head dimension.
-    unsigned short headDimension = createHeadDimension();
-    unsigned short paddedHeadDimension = (headDimension + 7) / 8 * 8;
-    unsigned short revisedHead = std::min(originalHead, paddedHeadDimension);
- 
-    return simd::ushort3 { parallelization, traversal, revisedHead };
-  };
-  
-  auto createCacheState =
-  [=]() -> AttentionOperands<bool> {
-    AttentionOperands<bool> output;
-    switch (type.value) {
-    case AttentionKernelType::forward:
-      output[AttentionOperand::Q] = false;
-      output[AttentionOperand::O] = false;
-      break;
-    case AttentionKernelType::backwardQuery:
-      output[AttentionOperand::Q] = false;
-      output[AttentionOperand::dO] = false;
-      output[AttentionOperand::dQ] = false;
-      break;
-    case AttentionKernelType::backwardKeyValue:
-      output[AttentionOperand::K] = false;
-      output[AttentionOperand::V] = false;
-      output[AttentionOperand::dV] = false;
-      output[AttentionOperand::dK] = false;
-      break;
-    }
-    auto cachedOperands = row.cachedOperands;
-    for (const auto& operand : cachedOperands) {
-      output[operand] = true;
-    }
-    return output;
-  };
-  
-  auto createTransposeState =
-  [=]() -> AttentionOperands<bool> {
-    AttentionOperands<bool> output;
-    output[AttentionOperand::Q] = transposeState[0];
-    output[AttentionOperand::K] = transposeState[1];
-    output[AttentionOperand::V] = transposeState[2];
-    output[AttentionOperand::O] = transposeState[3];
- 
-    output[AttentionOperand::dO] = transposeState[3];
-    output[AttentionOperand::dV] = transposeState[2];
-    output[AttentionOperand::dK] = transposeState[1];
-    output[AttentionOperand::dQ] = transposeState[0];
-    return output;
-  };
-
-  auto createLeadingDimensions =
-  [=]() -> AttentionOperands<bool> {
-    AttentionOperands<bool> output;
-    if (leadingDimensions.has_value()) {
-      output[AttentionOperand::Q] = true;
-      output[AttentionOperand::K] = true;
-      output[AttentionOperand::V] = true;
-      output[AttentionOperand::O] = true;
- 
-      output[AttentionOperand::dO] = true;
-      output[AttentionOperand::dV] = true;
-      output[AttentionOperand::dK] = true;
-      output[AttentionOperand::dQ] = true;
-    }
-    return output;
-  };
-
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
-  } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
-  }
-}
-
-std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> AttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept {
-  auto createPipeline =
-  [=](MTL::Library* library) -> MTL::ComputePipelineState* {
-    // Set the function constants.
-    auto constants = NS::TransferPtr
-    (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t rowDimension = matrixDimensions[0];
-    uint32_t columnDimension = matrixDimensions[1];
-    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
-    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
-    uint32_t Hq = this->Hq;
-    constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
-    uint32_t HHkRatio = this->Hq / this->Hk;
-    constants->setConstantValue(&HHkRatio, MTL::DataTypeUInt, 3);
-    float scale = this->scale;
-    constants->setConstantValue(&scale, MTL::DataTypeFloat, 4);
-    std::vector<AttentionOperand> operands;
-    switch (type.value) {
-    case AttentionKernelType::forward:
-      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O};
-      break;
-    case AttentionKernelType::backwardQuery:
-      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dQ};
-      break;
-    case AttentionKernelType::backwardKeyValue:
-      operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
-      break;
-    }
-    for (const auto& operand : operands) {
-      uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 5 + operand.bufferIndex());
-      if (leadingDimensions.has_value()) {
-        if (operand.value == AttentionOperand::Q || operand.value == AttentionOperand::dQ) {
-          uint32_t leadingDimension = leadingDimensions.value()[0];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
-        } else if (operand.value == AttentionOperand::K || operand.value == AttentionOperand::dK) {
-          uint32_t leadingDimension = leadingDimensions.value()[1];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
-        } else if (operand.value == AttentionOperand::V || operand.value == AttentionOperand::dV) {
-          uint32_t leadingDimension = leadingDimensions.value()[2];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
-        } else if (operand.value == AttentionOperand::O || operand.value == AttentionOperand::dO) {
-          uint32_t leadingDimension = leadingDimensions.value()[3];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
-        }
-      }
-    }
-
-    NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
-    NS::Error* error = nil;
-
-    auto pipelineDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
-    pipelineDesc->setComputeFunction(NS::TransferPtr
-    (library->newFunction(swiftName, constants.get(), &error)).get());
-    pipelineDesc->setMaxTotalThreadsPerThreadgroup(1024);
-    CCV_NNC_MFA_CHECK_ERROR(error);
-    
-    auto pipeline = device->newComputePipelineState(pipelineDesc.get(), MTL::PipelineOptionNone, NULL, &error);
-    CCV_NNC_MFA_CHECK_ERROR(error);
-    return pipeline;
-  };
-
-  auto createKernel =
-  [=](AttentionKernelDescriptor descriptor) -> AttentionKernel* {
-    auto iterator = libraryCache->find(descriptor);
-    if (iterator != libraryCache->end()) {
-      return iterator->second.get();
-    } else {
-      AttentionKernel* kernel = new AttentionKernel(descriptor, device);
-      (*libraryCache)[descriptor] = std::unique_ptr<AttentionKernel>(kernel);
-      return kernel;
-    }
-  };
-
-  auto kernelDesc = kernelDescriptor(device, dprops);
-  AttentionKernel* kernel = createKernel(kernelDesc);
-  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
-
-  // Force the user to retrieve the return value from the cache. We ensure
-  // the cache takes ownership, and the pointer doesn't become a zombie
-  // object.
-  PipelineValue<AttentionKernel>* output = new PipelineValue<AttentionKernel> { kernel, pipeline };
-  return std::make_pair(kernelDesc, output);
-}
-
-// MARK: - AttentionDescriptor+Precisions
-
-AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createMemoryPrecisions() const noexcept {
+static AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16) noexcept {
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
   
   if (lowPrecisionInputs) {
@@ -362,12 +177,12 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createMemoryPrecisi
   return memoryPrecisions;
 }
 
-AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPrecisions(MTL::Device *const device) const noexcept {
+AttentionOperands<GEMMOperandPrecision> createRegisterPrecisions(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16, bool family1009) noexcept {
   AttentionOperands<GEMMOperandPrecision> registerPrecisions;
   
   // Query whether the hardware fuses the promotion of BF16 to FP32 with
   // the FMA assembly instruction.
-  const bool hasNativeBF16Casting = device->supportsFamily(MTL::GPUFamily(1009));
+  const bool hasNativeBF16Casting = family1009;
   
   // Inputs have the same register precision across kernels.
   if (lowPrecisionInputs) {
@@ -443,31 +258,7 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPreci
 
 // MARK: - AttentionDescriptor+Parameters
 
-std::vector<AttentionParameterRow> AttentionDescriptor::parameterFile(AttentionKernelType type, MTL::Device *const device) const noexcept {
-  if (lowPrecisionInputs && lowPrecisionIntermediates) {
-    switch (type.value) {
-    case AttentionKernelType::forward: 
-      return forwardMixed(device);
-    case AttentionKernelType::backwardQuery:
-      return backwardQueryMixed(device);
-    case AttentionKernelType::backwardKeyValue:
-      return backwardKeyValueMixed(device);
-    }
-  } else {
-    switch (type.value) {
-    case AttentionKernelType::forward: 
-      return forward(device);
-    case AttentionKernelType::backwardQuery:
-      return backwardQuery(device);
-    case AttentionKernelType::backwardKeyValue:
-      return backwardKeyValue(device);
-    }
-  }
-  return defaultParameters(device);
-}
-
-AttentionParameterRow AttentionDescriptor::row(const std::vector<AttentionParameterRow>& table) const noexcept {
-  auto headDimension = matrixDimensions[2];
+static AttentionParameterRow fetchRow(const std::vector<AttentionParameterRow>& table, unsigned short headDimension) noexcept {
   int matchedRowID = table.size() - 1;
   for (int i = 0; i < table.size(); i++) {
     if (headDimension <= table[i].maximumHeadDimension) {
@@ -478,16 +269,16 @@ AttentionParameterRow AttentionDescriptor::row(const std::vector<AttentionParame
   return table[matchedRowID];
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::defaultParameters(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+static std::vector<AttentionParameterRow> defaultParameters(bool family1009) noexcept {
+  if (family1009) {
     return { AttentionParameterRow(0, 16, 128, 16, {}) };
   } else {
     return { AttentionParameterRow(0, 32, 80, 16, {}) };
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::forwardMixed(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> forwardMixedParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(32, 16, 128, 16, { AttentionOperand::Q, AttentionOperand::O }),
       AttentionParameterRow(96, 16, 128, 32, { AttentionOperand::Q, AttentionOperand::O }),
@@ -504,8 +295,8 @@ std::vector<AttentionParameterRow> AttentionDescriptor::forwardMixed(MTL::Device
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::forward(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> forwardParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(8, 16, 128, 16, { AttentionOperand::Q, AttentionOperand::O }),
       AttentionParameterRow(16, 16, 64, 16, { AttentionOperand::Q, AttentionOperand::O }),
@@ -523,8 +314,8 @@ std::vector<AttentionParameterRow> AttentionDescriptor::forward(MTL::Device *con
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::backwardQueryMixed(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> backwardQueryMixedParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(80, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dQ }),
       AttentionParameterRow(192, 16, 64, 32, { AttentionOperand::Q, AttentionOperand::dQ }),
@@ -539,8 +330,8 @@ std::vector<AttentionParameterRow> AttentionDescriptor::backwardQueryMixed(MTL::
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::backwardQuery(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> backwardQueryParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(16, 16, 64, 8, { AttentionOperand::Q, AttentionOperand::dO, AttentionOperand::dQ }),
       AttentionParameterRow(32, 16, 64, 16, { AttentionOperand::Q, AttentionOperand::dQ }),
@@ -557,8 +348,8 @@ std::vector<AttentionParameterRow> AttentionDescriptor::backwardQuery(MTL::Devic
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValueMixed(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> backwardKeyValueMixedParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(56, 16, 64, 8, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
       AttentionParameterRow(80, 16, 32, 16, { AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
@@ -577,8 +368,8 @@ std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValueMixed(MT
   }
 }
 
-std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValue(MTL::Device *const device) const noexcept {
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
+std::vector<AttentionParameterRow> backwardKeyValueParameters(bool family1009) noexcept {
+  if (family1009) {
     return {
       AttentionParameterRow(16, 16, 64, 8, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
       AttentionParameterRow(32, 16, 32, 16, { AttentionOperand::K, AttentionOperand::V, AttentionOperand::dV, AttentionOperand::dK }),
@@ -595,4 +386,238 @@ std::vector<AttentionParameterRow> AttentionDescriptor::backwardKeyValue(MTL::De
       AttentionParameterRow(384, 32, 80, 16, {})
     };
   }
+}
+
+static std::vector<AttentionParameterRow> parameterFile(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool family1009) noexcept {
+  if (lowPrecisionInputs && lowPrecisionIntermediates) {
+    switch (type.value) {
+    case AttentionKernelType::forward: 
+      return forwardMixedParameters(family1009);
+    case AttentionKernelType::backwardQuery:
+      return backwardQueryMixedParameters(family1009);
+    case AttentionKernelType::backwardKeyValue:
+      return backwardKeyValueMixedParameters(family1009);
+    }
+  } else {
+    switch (type.value) {
+    case AttentionKernelType::forward: 
+      return forwardParameters(family1009);
+    case AttentionKernelType::backwardQuery:
+      return backwardQueryParameters(family1009);
+    case AttentionKernelType::backwardKeyValue:
+      return backwardKeyValueParameters(family1009);
+    }
+  }
+  return defaultParameters(family1009);
+}
+
+static AttentionKernelDescriptor kernelDescriptor(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16, bool family1009, unsigned short headDimension) noexcept {
+  std::vector table = parameterFile(type, lowPrecisionInputs, lowPrecisionIntermediates, family1009);
+  auto row = fetchRow(table, headDimension);
+  auto createBlockDimensions =
+  [=]() -> simd::ushort3 {
+    unsigned short parallelization = row.parallelization;
+    unsigned short traversal = row.traversal;
+    unsigned short originalHead = row.head;
+    // Enforce the rule that head block dimension <= head dimension.
+    unsigned short paddedHeadDimension = (headDimension + 7) / 8 * 8;
+    unsigned short revisedHead = std::min(originalHead, paddedHeadDimension);
+ 
+    return simd::ushort3 { parallelization, traversal, revisedHead };
+  };
+  
+  auto createCacheState =
+  [=]() -> AttentionOperands<bool> {
+    AttentionOperands<bool> output;
+    switch (type.value) {
+    case AttentionKernelType::forward:
+      output[AttentionOperand::Q] = false;
+      output[AttentionOperand::O] = false;
+      break;
+    case AttentionKernelType::backwardQuery:
+      output[AttentionOperand::Q] = false;
+      output[AttentionOperand::dO] = false;
+      output[AttentionOperand::dQ] = false;
+      break;
+    case AttentionKernelType::backwardKeyValue:
+      output[AttentionOperand::K] = false;
+      output[AttentionOperand::V] = false;
+      output[AttentionOperand::dV] = false;
+      output[AttentionOperand::dK] = false;
+      break;
+    }
+    auto cachedOperands = row.cachedOperands;
+    for (const auto& operand : cachedOperands) {
+      output[operand] = true;
+    }
+    return output;
+  };
+  
+  auto createTransposeState =
+  [=]() -> AttentionOperands<bool> {
+    AttentionOperands<bool> output;
+    output[AttentionOperand::Q] = false;
+    output[AttentionOperand::K] = false;
+    output[AttentionOperand::V] = false;
+    output[AttentionOperand::O] = false;
+ 
+    output[AttentionOperand::dO] = false;
+    output[AttentionOperand::dV] = false;
+    output[AttentionOperand::dK] = false;
+    output[AttentionOperand::dQ] = false;
+    return output;
+  };
+
+  auto createLeadingDimensions =
+  [=]() -> AttentionOperands<bool> {
+    AttentionOperands<bool> output;
+    output[AttentionOperand::Q] = true;
+    output[AttentionOperand::K] = true;
+    output[AttentionOperand::V] = true;
+    output[AttentionOperand::O] = true;
+ 
+    output[AttentionOperand::dO] = true;
+    output[AttentionOperand::dV] = true;
+    output[AttentionOperand::dK] = true;
+    output[AttentionOperand::dQ] = true;
+    return output;
+  };
+
+  if (family1009) {
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), true, false, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type);
+  } else {
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), false, true, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type);
+  }
+}
+
+int main(int argc, char** argv)
+{
+	ccv_nnc_init();
+	{
+		NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+		AttentionOperands<bool> transposeState;
+		transposeState[AttentionOperand::Q] = false;
+		transposeState[AttentionOperand::K] = false;
+		transposeState[AttentionOperand::V] = false;
+		transposeState[AttentionOperand::O] = false;
+		transposeState[AttentionOperand::dQ] = false;
+		transposeState[AttentionOperand::dK] = false;
+		transposeState[AttentionOperand::dV] = false;
+		transposeState[AttentionOperand::dO] = false;
+		AttentionOperands<bool> leadingDimensions;
+		leadingDimensions[AttentionOperand::Q] = true;
+		leadingDimensions[AttentionOperand::K] = true;
+		leadingDimensions[AttentionOperand::V] = true;
+		leadingDimensions[AttentionOperand::O] = true;
+		leadingDimensions[AttentionOperand::dQ] = true;
+		leadingDimensions[AttentionOperand::dK] = true;
+		leadingDimensions[AttentionOperand::dV] = true;
+		leadingDimensions[AttentionOperand::dO] = true;
+		int j, k, l, m;
+		unsigned short headDimensions[] = { 40, 64, 80, 128, 160, 256 };
+		bool lowPrecisionInputs = true;
+		for (j = 0; j < 2; j++)
+		{
+			bool lowPrecisionIntermediates = j == 0 ? true : false;
+			for (k = 0; k < 2; k++)
+			{
+				bool family1009 = k == 0 ? false : true;
+				for (l = 0; l < 2; l++)
+				{
+					bool isBF16 = l == 0 ? false : true;
+					if (isBF16 && lowPrecisionIntermediates) // These two are not compatible.
+						continue;
+					for (m = 0; m < 6; m++)
+					{
+						unsigned short headDimension = headDimensions[m];
+						{
+							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::forward, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
+							std::string file = std::string("f_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							/*
+							std::cout << "///filename: " << file << std::endl;
+							std::cout << "#include <metal_stdlib>" << std::endl;
+							auto kernel = new AttentionKernel(kernelDesc, device.get());
+							delete kernel;
+							*/
+							file = toLower(file);
+							std::cout << R"(
+  } else if (type.value == AttentionKernelType::forward &&
+)";
+							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
+							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
+							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
+							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
+							std::cout << "#else" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_macosx_metallib, sizeof(" << file << "_macosx_metallib), NULL, 0);" << std::endl;
+							std::cout << "#endif";
+							std::cout << R"(
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+)";
+						}
+						{
+							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardQuery, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
+							std::string file = std::string("bq_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							/*
+							std::cout << "///filename: " << file << std::endl;
+							std::cout << "#include <metal_stdlib>" << std::endl;
+							auto kernel = new AttentionKernel(kernelDesc, device.get());
+							delete kernel;
+							*/
+							file = toLower(file);
+							std::cout << R"(
+  } else if (type.value == AttentionKernelType::backwardQuery &&
+)";
+							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
+							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
+							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
+							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
+							std::cout << "#else" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_macosx_metallib, sizeof(" << file << "_macosx_metallib), NULL, 0);" << std::endl;
+							std::cout << "#endif";
+							std::cout << R"(
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+)";
+						}
+						{
+							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardKeyValue, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
+							std::string file = std::string("bkv_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							/*
+							std::cout << "///filename: " << file << std::endl;
+							std::cout << "#include <metal_stdlib>" << std::endl;
+							auto kernel = new AttentionKernel(kernelDesc, device.get());
+							delete kernel;
+							*/
+							file = toLower(file);
+							std::cout << R"(
+  } else if (type.value == AttentionKernelType::backwardKeyValue &&
+)";
+							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
+							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
+							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
+							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
+							std::cout << "#else" << std::endl;
+							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_macosx_metallib, sizeof(" << file << "_macosx_metallib), NULL, 0);" << std::endl;
+							std::cout << "#endif";
+							std::cout << R"(
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+)";
+						}
+					}
+				}
+			}
+		}
+	}
+	return 0;
 }
