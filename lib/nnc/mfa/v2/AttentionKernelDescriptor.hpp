@@ -51,14 +51,12 @@ struct AttentionKernelDescriptor {
 
   AttentionKernelType type;
 
-  float scale;
-
   // MARK: - Functionality from AttentionDescriptor
   
   AttentionKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, float scale) noexcept;
+  AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type) noexcept;
 
   bool operator==(const AttentionKernelDescriptor& rhs) const;
 };

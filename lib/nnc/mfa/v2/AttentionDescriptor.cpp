@@ -121,9 +121,9 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, scale);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
   }
 }
 
@@ -141,6 +141,8 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
     uint32_t HHkRatio = this->Hq / this->Hk;
     constants->setConstantValue(&HHkRatio, MTL::DataTypeUInt, 3);
+    float scale = this->scale;
+    constants->setConstantValue(&scale, MTL::DataTypeFloat, 4);
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:
@@ -155,20 +157,20 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     }
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 4 + operand.bufferIndex());
+      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 5 + operand.bufferIndex());
       if (leadingDimensions.has_value()) {
         if (operand.value == AttentionOperand::Q || operand.value == AttentionOperand::dQ) {
           uint32_t leadingDimension = leadingDimensions.value()[0];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
         } else if (operand.value == AttentionOperand::K || operand.value == AttentionOperand::dK) {
           uint32_t leadingDimension = leadingDimensions.value()[1];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
         } else if (operand.value == AttentionOperand::V || operand.value == AttentionOperand::dV) {
           uint32_t leadingDimension = leadingDimensions.value()[2];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
         } else if (operand.value == AttentionOperand::O || operand.value == AttentionOperand::dO) {
           uint32_t leadingDimension = leadingDimensions.value()[3];
-          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 14 + operand.bufferIndex());
+          constants->setConstantValue(&leadingDimension, MTL::DataTypeUInt, 15 + operand.bufferIndex());
         }
       }
     }

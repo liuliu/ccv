@@ -17,8 +17,6 @@ struct AttentionKernel {
 
   AttentionKernelType type;
 
-  float scale;
-
   AttentionOperands<bool> cacheState;
 
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
