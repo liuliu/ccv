@@ -140,7 +140,7 @@ inline static void gen_rand_array(sfmt_t * sfmt, w128_t *array, int size) {
  * This function swaps high and low 32-bit of 64-bit integers in user
  * specified array.
  *
- * @param array an 128-bit array to be swaped.
+ * @param array an 128-bit array to be swapped.
  * @param size size of 128-bit array.
  */
 inline static void swap(w128_t *array, int size) {
