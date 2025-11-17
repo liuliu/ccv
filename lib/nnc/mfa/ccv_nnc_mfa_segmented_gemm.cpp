@@ -19,7 +19,7 @@ using namespace ccv::nnc;
 
 size_t ccv_nnc_mfa_segmented_gemm_reserved_scratch_size(ccv_nnc_mfa_segmented_gemm_params_t params)
 {
-  if (params.data_type != MTL::DataTypeBFloat && params.use_neural_accelerators) {
+  if (params.use_neural_accelerators) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;
     gemmDesc.matrixDimensions = simd::uint3 {
@@ -124,7 +124,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       break;
   }
   prologueDesc.useBias = params.fused_bias;
-  if (params.data_type != MTL::DataTypeBFloat && params.use_neural_accelerators) {
+  if (params.use_neural_accelerators) {
     NAMatMulDescriptor gemmDesc;
     gemmDesc.matrixDimensions = simd::uint3 {
       params.M,
