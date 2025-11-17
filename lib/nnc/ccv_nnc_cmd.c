@@ -964,3 +964,10 @@ void ccv_nnc_set_device_permutation(const int type, const int* const device_map,
 	cusetdevicemap(device_map, size);
 #endif
 }
+
+void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_set_binary_artifacts(paths_to_read, paths_to_read_size, path_to_write);
+#endif
+}

@@ -36,7 +36,7 @@ struct GeluDescriptor {
 
   bool operator==(const GeluDescriptor& rhs) const;
 
-  std::pair<GeluKernelDescriptor, PipelineValue<GeluKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<GeluKernelDescriptor, std::unique_ptr<GeluKernel>> *const libraryCache) const noexcept;
+  std::pair<GeluKernelDescriptor, PipelineValue<GeluKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<GeluKernelDescriptor, std::unique_ptr<GeluKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

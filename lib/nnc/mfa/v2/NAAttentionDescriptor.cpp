@@ -76,7 +76,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale);
 }
 
-std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {
+std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     // Set the function constants.

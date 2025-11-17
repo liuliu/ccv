@@ -930,6 +930,15 @@ CCV_WARN_UNUSED(int) ccv_nnc_queue_watermark(void);
  */
 void ccv_nnc_set_device_permutation(const int type, const int* const device_map, const int size);
 /**
+ * Set the path to binary artifacts that would accelerate command compilations. Note that the binary
+ * artifacts path are separated into read one and write one. They could be the same, but would be
+ * better to be a separate one to avoid competing with each other.
+ * @param paths_to_read The file paths to read binary artifacts. Whether it is a file or directory is implementation dependent.
+ * @param paths_to_read_size How many paths in 1.
+ * @param path_to_write The file path to write binary artifacts. Whether it is a file or directory is implementation dependent.
+ */
+void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
+/**
  * Quantize a given memory region of a given datatype / memory resides, into nbits palette.
  * @param input The input memory region, it can be CCV_64F, CCV_32F or CCV_16F.
  * @param datatype The datatype, it can be CCV_64F, CCV_32F or CCV_16F.

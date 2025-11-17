@@ -39,7 +39,7 @@ struct CMulDescriptor {
 
   bool operator==(const CMulDescriptor& rhs) const;
 
-  std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<CMulKernelDescriptor, std::unique_ptr<CMulKernel>> *const libraryCache) const noexcept;
+  std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CMulKernelDescriptor, std::unique_ptr<CMulKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

@@ -51,7 +51,7 @@ struct NAMatMulDescriptor {
 
   uint16_t splitK() const noexcept;
 
-  std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept;
+  std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept;
 
   static bool preferDispatchMMajor(const uint32_t M, const uint32_t N, const uint32_t K) noexcept;
 };

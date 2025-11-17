@@ -44,7 +44,7 @@ struct NAAttentionDescriptor {
 
   bool operator==(const NAAttentionDescriptor& rhs) const;
 
-  std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept;
+  std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept;
 
 private:
   NAAttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;

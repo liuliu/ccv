@@ -45,7 +45,7 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
   return seed;
 }
 
-std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<GEMMKernelDescriptor, std::unique_ptr<GEMMKernel>> *const libraryCache) const noexcept {
+std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<GEMMKernelDescriptor, std::unique_ptr<GEMMKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.
@@ -67,10 +67,12 @@ std::pair<GEMMKernelDescriptor, PipelineValue<GEMMKernel> *> GEMMDescriptor::fin
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t M = this->matrixDimensions[0];
+    if (!this->loadM) {
+      uint32_t M = this->matrixDimensions[0];
+      constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    }
     uint32_t N = this->matrixDimensions[1];
     uint32_t K = this->matrixDimensions[2];
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
 

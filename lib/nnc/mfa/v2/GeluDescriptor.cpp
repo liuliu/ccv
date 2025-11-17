@@ -20,7 +20,7 @@ std::size_t std::hash<GeluDescriptor>::operator()(const GeluDescriptor& hash) co
   return seed;
 }
 
-std::pair<GeluKernelDescriptor, PipelineValue<GeluKernel> *> GeluDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<GeluKernelDescriptor, std::unique_ptr<GeluKernel>> *const libraryCache) const noexcept {
+std::pair<GeluKernelDescriptor, PipelineValue<GeluKernel> *> GeluDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<GeluKernelDescriptor, std::unique_ptr<GeluKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.

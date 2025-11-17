@@ -1,8 +1,14 @@
 #include "NAMatMulDescriptor.hpp"
 #include "NAMatMulKernelDescriptor.hpp"
 #include "NAMatMulKernel.hpp"
+#include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+
+static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std::string& pathToWrite) noexcept {
+  NS::Error *error = nil;
+  binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
+}
 
 bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   auto lhsMatrixDimensions = matrixDimensions;
@@ -67,7 +73,7 @@ bool NAMatMulDescriptor::preferDispatchMMajor(const uint32_t M, const uint32_t N
   return M > 1024 || M > N;
 }
 
-std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept {
+std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.
@@ -89,10 +95,12 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t M = this->matrixDimensions[0];
+    if (!this->loadM) {
+      uint32_t M = this->matrixDimensions[0];
+      constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    }
     uint32_t N = this->matrixDimensions[1];
     uint32_t K = this->matrixDimensions[2];
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
 
@@ -120,35 +128,57 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
       auto reduceSum = NS::TransferPtr
       (library->newFunction(reduceSumName, constants.get(), &error));
       CCV_NNC_MFA_CHECK_ERROR(error);
-      if (this->supportIndirectCommandBuffers) {
-        auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
-        descriptor->setComputeFunction(function.get());
-        descriptor->setSupportIndirectCommandBuffers(true);
-        auto pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
-        auto secondDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
-        secondDesc->setComputeFunction(reduceSum.get());
-        secondDesc->setSupportIndirectCommandBuffers(true);
-        auto second = device->newComputePipelineState(secondDesc.get(), MTL::PipelineOptionNone, nullptr, &error);
-        return std::pair(pipeline, second);
-      } else {
-        auto pipeline = device->newComputePipelineState(function.get(), MTL::PipelineOptionNone, nullptr, &error);
-        CCV_NNC_MFA_CHECK_ERROR(error);
-        auto second = device->newComputePipelineState(reduceSum.get(), MTL::PipelineOptionNone, nullptr, &error);
-        CCV_NNC_MFA_CHECK_ERROR(error);
-        return std::pair(pipeline, second);
+      auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+      descriptor->setComputeFunction(function.get());
+      descriptor->setSupportIndirectCommandBuffers(this->supportIndirectCommandBuffers);
+      MTL::ComputePipelineState* pipeline = nullptr;
+      if (binaryArchivesToRead) {
+        descriptor->setBinaryArchives(binaryArchivesToRead);
+        pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
       }
+      bool binaryArchiveMiss = false;
+      if (pipeline == nullptr) {
+        error = nil;
+        pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+        binaryArchiveMiss = true;
+      }
+      auto secondDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+      secondDesc->setComputeFunction(reduceSum.get());
+      secondDesc->setSupportIndirectCommandBuffers(this->supportIndirectCommandBuffers);
+      MTL::ComputePipelineState* second = nullptr;
+      if (binaryArchivesToRead) {
+        secondDesc->setBinaryArchives(binaryArchivesToRead);
+        second = device->newComputePipelineState(secondDesc.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
+      }
+      if (second == nullptr) {
+        error = nil;
+        second = device->newComputePipelineState(secondDesc.get(), MTL::PipelineOptionNone, nullptr, &error);
+        binaryArchiveMiss = true;
+      }
+      if (binaryArchiveMiss && binaryArchiveToWrite != nullptr) {
+        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+        binaryArchiveToWrite->addComputePipelineFunctions(secondDesc.get(), &error);
+        serializeBinaries(binaryArchiveToWrite, pathToWrite);
+      }
+      return std::pair(pipeline, second);
     } else {
-      if (this->supportIndirectCommandBuffers) {
-        auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
-        descriptor->setComputeFunction(function.get());
-        descriptor->setSupportIndirectCommandBuffers(true);
-        auto pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
-        return std::pair(pipeline, nullptr);
-      } else {
-        auto pipeline = device->newComputePipelineState(function.get(), MTL::PipelineOptionNone, nullptr, &error);
-        CCV_NNC_MFA_CHECK_ERROR(error);
-        return std::pair(pipeline, nullptr);
+      auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+      descriptor->setComputeFunction(function.get());
+      descriptor->setSupportIndirectCommandBuffers(this->supportIndirectCommandBuffers);
+      MTL::ComputePipelineState* pipeline = nullptr;
+      if (binaryArchivesToRead) {
+        descriptor->setBinaryArchives(binaryArchivesToRead);
+        pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
       }
+      if (pipeline == nullptr) {
+        error = nil;
+        pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+        if (binaryArchiveToWrite != nullptr) {
+          binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+          serializeBinaries(binaryArchiveToWrite, pathToWrite);
+        }
+      }
+      return std::pair(pipeline, nullptr);
     }
   };
 

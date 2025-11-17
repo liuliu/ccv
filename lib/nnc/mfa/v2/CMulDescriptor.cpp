@@ -27,7 +27,7 @@ std::size_t std::hash<CMulDescriptor>::operator()(const CMulDescriptor& hash) co
   return seed;
 }
 
-std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> CMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<CMulKernelDescriptor, std::unique_ptr<CMulKernel>> *const libraryCache) const noexcept {
+std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> CMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CMulKernelDescriptor, std::unique_ptr<CMulKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.

@@ -33,7 +33,7 @@ struct CastDescriptor {
 
   bool operator==(const CastDescriptor& rhs) const;
 
-  std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<CastKernelDescriptor, std::unique_ptr<CastKernel>> *const libraryCache) const noexcept;
+  std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CastKernelDescriptor, std::unique_ptr<CastKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

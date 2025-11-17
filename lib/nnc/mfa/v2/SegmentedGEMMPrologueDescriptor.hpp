@@ -45,7 +45,7 @@ struct SegmentedGEMMPrologueDescriptor {
 
   bool operator==(const SegmentedGEMMPrologueDescriptor& rhs) const;
 
-  std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMPrologueKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<SegmentedGEMMPrologueKernelDescriptor, std::unique_ptr<SegmentedGEMMPrologueKernel>> *const libraryCache) const noexcept;
+  std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMPrologueKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<SegmentedGEMMPrologueKernelDescriptor, std::unique_ptr<SegmentedGEMMPrologueKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

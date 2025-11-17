@@ -51,6 +51,15 @@ private:
   /// WARNING: Not thread safe. But will the DSL interpreter even use
   /// multithreading?
   std::unordered_map<TypeInfoRef, std::unique_ptr<TypeErasedUnorderedMap>, Hasher, EqualTo> pipelineCache;
+
+  NS::SharedPtr<NS::Array> _binaryArchivesToRead;
+
+  NS::SharedPtr<MTL::BinaryArchive> _binaryArchiveToWrite;
+
+  std::string pathToWrite;
+
+  std::vector<std::string> pathsToRead;
+
 public:
   /// Implementation of the logic for choosing between 'device' and
   /// 'threadgroup' store.
@@ -66,13 +75,81 @@ public:
       return iterator->second.get();
     }
     UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *libraryCache = static_cast<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *>(this->libraryCache.try_emplace(typeid(KernelDescriptor), std::make_unique<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>>>()).first->second.get());
-    auto result = descriptor.findKernel(device, dprops, &libraryCache->map);
+    auto binaryArchivesToRead = this->binaryArchivesToRead(device);
+    auto binaryArchiveToWrite = this->binaryArchiveToWrite(device);
+    auto result = descriptor.findKernel(device, dprops, binaryArchivesToRead, binaryArchiveToWrite, this->pathToWrite, &libraryCache->map);
     pipelineCache->map[descriptor] = std::unique_ptr<PipelineValue<Kernel>>(result.second);
     return result.second;
   }
 
   void evict() noexcept {
     pipelineCache.clear();
+  }
+  
+  void setBinaryArchives(MTL::Device *const device, const std::vector<std::string>& pathsToRead, std::string pathToWrite) noexcept {
+    this->pathsToRead = pathsToRead;
+    this->pathToWrite = pathToWrite;
+    // Need to recreate the binaryArchivesToRead.
+    if (this->_binaryArchivesToRead.get() != nullptr) {
+      std::vector<MTL::BinaryArchive *> binaryArchives;
+      for (const auto& it : pathsToRead) {
+        auto descriptor = NS::TransferPtr(MTL::BinaryArchiveDescriptor::alloc()->init());
+        descriptor->setUrl(NS::URL::fileURLWithPath(NS::String::string(it.c_str(), NS::UTF8StringEncoding)));
+        NS::Error *error = nil;
+        auto binaryArchive = device->newBinaryArchive(descriptor.get(), &error);
+        if (binaryArchive != nullptr) {
+          binaryArchives.push_back(binaryArchive);
+        }
+      }
+      if (!binaryArchives.empty()) {
+        this->_binaryArchivesToRead = NS::TransferPtr(NS::Array::alloc()->init((const NS::Object* const *)binaryArchives.data(), binaryArchives.size()));
+        for (const auto& it : binaryArchives) {
+          it->release();
+        }
+      } else {
+        this->_binaryArchivesToRead.reset();
+      }
+    }
+  }
+
+  NS::Array* binaryArchivesToRead(MTL::Device *const device) noexcept {
+    if (this->_binaryArchivesToRead.get() != nullptr) {
+      return this->_binaryArchivesToRead.get();
+    }
+    if (this->pathsToRead.empty()) {
+      return nullptr;
+    }
+    std::vector<MTL::BinaryArchive *> binaryArchives;
+    for (const auto& it : this->pathsToRead) {
+      auto descriptor = NS::TransferPtr(MTL::BinaryArchiveDescriptor::alloc()->init());
+      descriptor->setUrl(NS::URL::fileURLWithPath(NS::String::string(it.c_str(), NS::UTF8StringEncoding)));
+      NS::Error *error = nil;
+      auto binaryArchive = device->newBinaryArchive(descriptor.get(), &error);
+      if (binaryArchive != nullptr) {
+        binaryArchives.push_back(binaryArchive);
+      }
+    }
+    if (binaryArchives.empty()) {
+      return nullptr;
+    }
+    this->_binaryArchivesToRead = NS::TransferPtr(NS::Array::alloc()->init((const NS::Object* const *)binaryArchives.data(), binaryArchives.size()));
+    for (const auto& it : binaryArchives) {
+      it->release();
+    }
+    return this->_binaryArchivesToRead.get();
+  }
+
+  MTL::BinaryArchive* binaryArchiveToWrite(MTL::Device *const device) noexcept {
+    if (_binaryArchiveToWrite.get() != nullptr) {
+      return _binaryArchiveToWrite.get();
+    }
+    if (this->pathToWrite.empty()) {
+      return nullptr;
+    }
+    auto descriptor = NS::TransferPtr(MTL::BinaryArchiveDescriptor::alloc()->init());
+    NS::Error *error = nil;
+    _binaryArchiveToWrite = NS::TransferPtr(device->newBinaryArchive(descriptor.get(), &error));
+    return _binaryArchiveToWrite.get();
   }
 };
 

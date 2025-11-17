@@ -19,7 +19,7 @@ std::size_t std::hash<CastDescriptor>::operator()(const CastDescriptor& hash) co
   return seed;
 }
 
-std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> CastDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<CastKernelDescriptor, std::unique_ptr<CastKernel>> *const libraryCache) const noexcept {
+std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> CastDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CastKernelDescriptor, std::unique_ptr<CastKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.

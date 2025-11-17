@@ -32,7 +32,7 @@ std::size_t std::hash<SegmentedGEMMPrologueDescriptor>::operator()(const Segment
   return seed;
 }
 
-std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMPrologueKernel> *> SegmentedGEMMPrologueDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<SegmentedGEMMPrologueKernelDescriptor, std::unique_ptr<SegmentedGEMMPrologueKernel>> *const libraryCache) const noexcept {
+std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMPrologueKernel> *> SegmentedGEMMPrologueDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<SegmentedGEMMPrologueKernelDescriptor, std::unique_ptr<SegmentedGEMMPrologueKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.

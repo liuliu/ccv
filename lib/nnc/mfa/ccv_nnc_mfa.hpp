@@ -65,6 +65,8 @@ public:
 } // namespace nnc
 } // namespace ccv
 
+std::pair<std::string, std::string> ccv_nnc_mfa_get_binary_artifacts(void);
+
 extern "C" {
 #endif // __cplusplus
 
@@ -80,6 +82,7 @@ void ccv_nnc_mfa_log_message(const char* message);
 mtl_command_batch_t* ccv_nnc_start_command_batch(mtl_command_queue_t* command_queue);
 void ccv_nnc_finish_command_batch(mtl_command_batch_t* command_batch);
 mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size);
+void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* context, const char** paths_to_read, const int paths_to_read_size, const char* path_to_write);
 
 #ifdef __cplusplus
 } // extern "C"

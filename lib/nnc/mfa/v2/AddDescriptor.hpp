@@ -33,7 +33,7 @@ struct AddDescriptor {
 
   bool operator==(const AddDescriptor& rhs) const;
 
-  std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, std::unordered_map<AddKernelDescriptor, std::unique_ptr<AddKernel>> *const libraryCache) const noexcept;
+  std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<AddKernelDescriptor, std::unique_ptr<AddKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

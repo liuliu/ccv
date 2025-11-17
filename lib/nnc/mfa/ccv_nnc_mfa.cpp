@@ -55,6 +55,15 @@ mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const 
   return context->request_scratch(size);
 }
 
+void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* const context, const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write) {
+  std::vector<std::string> paths_to_read_vec;
+  for (int i = 0; i < paths_to_read_size; i++) {
+    paths_to_read_vec.push_back(std::string(paths_to_read[i]));
+  }
+  std::string path_to_write_str = path_to_write != nullptr ? std::string(path_to_write) : std::string();
+  context->v2_cache.setBinaryArchives(context->device.get(), paths_to_read_vec, path_to_write_str);
+}
+
 void ccv_nnc_mfa_log_message(const char* message) {
   std::cerr << METAL_LOG_HEADER << message << std::endl;
 }

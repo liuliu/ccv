@@ -19,7 +19,7 @@ std::size_t std::hash<AddDescriptor>::operator()(const AddDescriptor& hash) cons
   return seed;
 }
 
-std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> AddDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, std::unordered_map<AddKernelDescriptor, std::unique_ptr<AddKernel>> *const libraryCache) const noexcept {
+std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> AddDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<AddKernelDescriptor, std::unique_ptr<AddKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
   // the shader cache itself is cleaned up.

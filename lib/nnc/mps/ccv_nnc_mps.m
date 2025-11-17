@@ -716,6 +716,11 @@ void ccv_nnc_mps_set_queue_watermark(int watermark)
 	command_buffers_watermark = ccv_max(ccv_min(watermark, OLD_MAX_COMMAND_BUFFER_SIZE), 0);
 }
 
+void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write)
+{
+	ccv_nnc_mfa_set_binary_archives(ccv_nnc_default_mfa_context(), paths_to_read, paths_to_read_size, path_to_write);
+}
+
 void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* mps_command_buffer, MTLCommandBatch* command_batch)
 {
 	id<MTLCommandBuffer> mtl_command_buffer;
