@@ -29,6 +29,8 @@ struct NAAttentionKernel {
 
   uint16_t executionSIMDGroups;
 
+  bool bypassThreadgroupMemory;
+
   bool checkCEdge1;
 
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;

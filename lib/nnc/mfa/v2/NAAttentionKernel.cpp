@@ -17,6 +17,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   executionSIMDGroups = descriptor.executionSIMDGroups;
   checkCEdge1 = descriptor.checkCEdge1;
   scale = descriptor.scale;
+  bypassThreadgroupMemory = true;
 
   source = createSource();
 
@@ -24,6 +25,13 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
   library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  if (!library) {
+    bypassThreadgroupMemory = false;
+    source = createSource();
+    string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+    error = nil;
+    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  }
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
@@ -383,7 +391,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   } else {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
   }
-  if (blockDimensions[2] % 32 == 0) {
+  if (blockDimensions[2] % 32 == 0 || bypassThreadgroupMemory) {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
   } else {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
@@ -433,10 +441,19 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
 )";
   const unsigned short kBlocks = (std::max(headDimension, blockDimensions[2]) + blockDimensions[2] - 1) / blockDimensions[2];
-  // Allocate O
-  for (unsigned short i = 0; i < kBlocks; i++) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();\n";
+  if (bypassThreadgroupMemory) {
+    source += "  auto cP = matmul_pv_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_O}}, {{MEMORY_NAME_V}}, float>();\n";
+    // Allocate O
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();\n";
+    }
+  } else {
+    // Allocate O
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();\n";
+    }
   }
   source += R"(
   for (uint c = 0; c < C_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL_2}}) {
@@ -555,7 +572,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
   }
-source += R"(
+  source += R"(
         }
       }
     } else {
@@ -569,10 +586,30 @@ source += R"(
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
   }
-source += R"(
+  source += R"(
         }
       }
     }
+)";
+  if (bypassThreadgroupMemory) {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if(cS_0.is_valid_element(k)) {
+        cP[k] = ({{MEMORY_NAME_O}})cS_0[k];
+      }
+    }
+)";
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+    matmul_pv_op.run(cP, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+    }
+  } else {
+    source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if(cS_0.is_valid_element(k)) {
@@ -582,16 +619,36 @@ source += R"(
     }
     simdgroup_barrier(mem_flags::mem_threadgroup);
 )";
-  for (unsigned short i = 0; i < kBlocks; i++) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-    source += R"(
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
     auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
     matmul_pv_op.run(P, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
+    }
   }
   if (checkCEdge1) {
-    source += R"(
+    if (bypassThreadgroupMemory) {
+      source += R"(
+    if (c < C_edge_1) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_1.get_capacity(); ++k) {
+        if(cS_1.is_valid_element(k)) {
+          cP[k] = ({{MEMORY_NAME_O}})cS_1[k];
+        }
+      }
+)";
+      for (unsigned short i = 0; i < kBlocks; i++) {
+        source.SetValue("LOOP_INDEX", std::to_string(i));
+        source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+        source += R"(
+      auto mV_1_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
+      matmul_pv_op.run(cP, mV_1_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+      }
+    } else {
+      source += R"(
     if (c < C_edge_1) {
       #pragma clang loop unroll(full)
       for (unsigned short k = 0; k < cS_1.get_capacity(); ++k) {
@@ -602,13 +659,14 @@ source += R"(
       }
       simdgroup_barrier(mem_flags::mem_threadgroup);
 )";
-    for (unsigned short i = 0; i < kBlocks; i++) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += R"(
+      for (unsigned short i = 0; i < kBlocks; i++) {
+        source.SetValue("LOOP_INDEX", std::to_string(i));
+        source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+        source += R"(
       auto mV_1_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
       matmul_pv_op.run(P, mV_1_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
+      }
     }
     source += R"(
     } else {
@@ -642,7 +700,25 @@ source += R"(
     }
 )";
   } else {
-    source += R"(
+    if (bypassThreadgroupMemory) {
+      source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_1.get_capacity(); ++k) {
+      if(cS_1.is_valid_element(k)) {
+        cP[k] = ({{MEMORY_NAME_O}})cS_1[k];
+      }
+    }
+)";
+      for (unsigned short i = 0; i < kBlocks; i++) {
+        source.SetValue("LOOP_INDEX", std::to_string(i));
+        source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+        source += R"(
+    auto mV_1_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
+    matmul_pv_op.run(cP, mV_1_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+      }
+    } else {
+      source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_1.get_capacity(); ++k) {
       if(cS_1.is_valid_element(k)) {
@@ -652,13 +728,14 @@ source += R"(
     }
     simdgroup_barrier(mem_flags::mem_threadgroup);
 )";
-    for (unsigned short i = 0; i < kBlocks; i++) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += R"(
+      for (unsigned short i = 0; i < kBlocks; i++) {
+        source.SetValue("LOOP_INDEX", std::to_string(i));
+        source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+        source += R"(
     auto mV_1_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c + {{BLOCK_DIMENSIONS_TRAVERSAL}});
     matmul_pv_op.run(P, mV_1_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
+      }
     }
   }
   source += R"(
