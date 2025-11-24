@@ -17,7 +17,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   executionSIMDGroups = descriptor.executionSIMDGroups;
   checkCEdge1 = descriptor.checkCEdge1;
   scale = descriptor.scale;
-  bypassThreadgroupMemory = true;
+  bypassThreadgroupMemory = false;
 
   source = createSource();
 
@@ -391,7 +391,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   } else {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
   }
-  if (blockDimensions[2] % 32 == 0 || bypassThreadgroupMemory) {
+  if (blockDimensions[2] % 32 == 0) {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
   } else {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
@@ -593,6 +593,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
 )";
   if (bypassThreadgroupMemory) {
     source += R"(
+    simdgroup_barrier(mem_flags::mem_none);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if(cS_0.is_valid_element(k)) {

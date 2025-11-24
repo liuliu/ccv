@@ -1675,13 +1675,13 @@ TEST_CASE("scaled dot product attention with mps")
 		ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 
 		for (int i = 0; i < B * R * Hq * D; ++i) {
-			q_tensor->data.f32[i] = (float)(i) / (float)(ccv_min(B * R * Hq * D, 131072));
+			q_tensor->data.f32[i] = (float)(i) / (float)(B * R * Hq * D);
 		}
 		for (int i = 0; i < B * C * Hk * D; ++i) {
-			k_tensor->data.f32[i] = (float)(i) / (float)(ccv_min(B * C * Hk * D, 131072));
+			k_tensor->data.f32[i] = (float)(i) / (float)(B * C * Hk * D);
 		}
 		for (int i = 0; i < B * C * Hk * D; ++i) {
-			v_tensor->data.f32[i] = (float)(i) / (float)(ccv_min(B * C * Hk * D, 131072));
+			v_tensor->data.f32[i] = (float)(i) / (float)(B * C * Hk * D);
 		}
 
 		ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
@@ -1715,7 +1715,7 @@ TEST_CASE("scaled dot product attention with mps")
 		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
 
-		REQUIRE_TENSOR_EQ(copy_of_gpu_o_tensor, o_tensor, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * Hq * D, 2e-5, "scaled dot product attention result should be the same");
 
 		ccv_nnc_tensor_free(o_tensor);
 		ccv_nnc_tensor_free(gpu_o_tensor);
