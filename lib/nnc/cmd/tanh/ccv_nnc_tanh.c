@@ -38,7 +38,7 @@ static void _ccv_nnc_tanh_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_TANH_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_tanh_cpu_ref.c, gpu/ccv_nnc_tanh_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_tanh_cpu_ref.c, gpu/ccv_nnc_tanh_gpu_cudnn.cu, mps/ccv_nnc_tanh_mps.m)
 {
 	registry->bitmask = _ccv_nnc_tanh_forw_bitmask;
 	registry->allow_inplace = _ccv_nnc_tanh_allow_first_replace;
@@ -46,7 +46,7 @@ REGISTER_COMMAND(CCV_NNC_TANH_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_TANH_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_tanh_cpu_ref.c, gpu/ccv_nnc_tanh_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_tanh_cpu_ref.c, gpu/ccv_nnc_tanh_gpu_cudnn.cu, mps/ccv_nnc_tanh_mps.m)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_tanh_back_bitmask;
