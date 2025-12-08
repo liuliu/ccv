@@ -4,6 +4,9 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 #include "_ccv_nnc_graph.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#endif
 
 // MARK - Level-5 API
 
@@ -2804,7 +2807,7 @@ void ccv_cnnp_model_parameters_zip_map(ccv_cnnp_model_t* const model, const ccv_
 	for (i = 0; i < aux_out_size; i++)
 		outputs[i + 1] = aux_outs[i];
 	const uint32_t* const from_init_v = CCV_NNC_INIT_V(from_compiled_data->tensors_init.v);
-  uint32_t* const to_init_v = CCV_NNC_INIT_V(to_compiled_data->tensors_init.v);
+	uint32_t* const to_init_v = CCV_NNC_INIT_V(to_compiled_data->tensors_init.v);
 	for (i = 0; i < rnum; i++)
 	{
 		const int src_d = *(int*)ccv_array_get(from_parameter_indices,from_param_ref >= 0 ? from_param_ref : i);
@@ -3030,6 +3033,79 @@ void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const
 		// No need to mark this symbol as init'ed, it is already.
 	}
 	ccv_array_free(to_parameter_indices);
+}
+
+void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, ccv_nnc_stream_context_t* const stream_context)
+{
+	// Only CUDA backend has this feature.
+#ifdef HAVE_CUDA
+	int to_param_ref;
+	ccv_array_t* const to_parameter_indices = _ccv_cnnp_model_parameter_indices(model, parameters, &to_param_ref);
+	// To models.
+	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
+	assert(to_compiled_data);
+	// Tensor has to be inited already.
+	assert(!!to_compiled_data->tensors_init.v);
+	assert(to_compiled_data->tensors.parameters);
+	// From models.
+	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int rnum = (to_param_ref < 0) ? to_parameter_indices->rnum : 1;
+	int i;
+	for (i = 0; i < rnum; i++)
+	{
+		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
+		assert(dest_d >= 0);
+		assert(dest_d < to_compiled_data->parameters->rnum);
+		if (parallel_count > 1)
+		{
+			assert(0 && "Cannot support this when data parallel is in effect.");
+		} else {
+			ccv_nnc_tensor_t* const src = CCV_NNC_TENSOR(to_compiled_data->tensors.parameters[dest_d]);
+			assert(src);
+			ccv_nnc_tensor_param_t params = src->info;
+			if (CCV_TENSOR_GET_MEMORY(params.type) != CCV_TENSOR_GPU_MEMORY)
+				continue;
+			const size_t size = ccv_nnc_tensor_data_size(params);
+			if (size <= 0)
+				continue;
+			const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
+			ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
+			tensor->dataof = 0;
+			tensor->alias_ref = 0;
+			tensor->sig = 0;
+			tensor->refcount = 1;
+			tensor->info = params;
+			if (tfb)
+			{
+				tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype) | params.dim[2];
+				// This corresponding to mat->step
+				tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.datatype) | params.dim[2]));
+			} else // This won't be recognized by ccv_dense_matrix_t
+				tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.datatype);
+			// Remove this flag so it can be deallocated as usual.
+			tensor->type &= ~CCV_NO_DATA_ALLOC;
+			assert(CCV_TENSOR_GET_DEVICE(params.type) != CCV_COMPUTE_DEVICE_ANY);
+			void* ptr = cumallocmanaged(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
+			if (ptr) // If allocated successfully. Otherwise we go through the fallback path.
+			{
+				tensor->data.u8 = (uint8_t*)ptr;
+				cumemadvisereadmostly(CCV_TENSOR_GET_DEVICE_ID(params.type), tensor->data.u8, size);
+				tensor->type |= CCV_MAPPED_MEM; // This denotes the tensor is mapped to CPU, and would prefer a explicit prefetch call.
+			} else {
+				// Allocation failed.
+				ccfree(tensor);
+				continue;
+			}
+			// TODO: Cannot run this on the stream context yet, due to allocation and deallocations.
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &src, 1, &tensor, 1, 0);
+			to_compiled_data->tensors.parameters[dest_d] = tensor;
+			ccv_nnc_tensor_free(src);
+			// Can free out the old one.
+		}
+		// No need to mark this symbol as init'ed, it is already.
+	}
+	ccv_array_free(to_parameter_indices);
+#endif
 }
 
 ccv_nnc_cmd_t ccv_cnnp_model_minimizer(ccv_cnnp_model_t* const model)

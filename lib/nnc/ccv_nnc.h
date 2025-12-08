@@ -4190,6 +4190,13 @@ void ccv_cnnp_model_parameters_map(ccv_cnnp_model_t* const model, const ccv_cnnp
  */
 void ccv_cnnp_model_parameter_gradients_map(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const aux_ins, const int aux_in_size, ccv_nnc_tensor_t* const* const aux_outs, const int aux_out_size, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * If possible, move the parameter(s) to unified memory.
+ * @param model The composed model to have parameters mapped.
+ * @param parameters The parameters to be mapped.
+ * @param stream_context The stream context to be associated with.
+ */
+void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameters, ccv_nnc_stream_context_t* const stream_context);
+/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
