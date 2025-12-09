@@ -3042,11 +3042,11 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 	int to_param_ref;
 	ccv_array_t* const to_parameter_indices = _ccv_cnnp_model_parameter_indices(model, parameters, &to_param_ref);
 	// To models.
-	ccv_cnnp_compiled_data_t* const to_compiled_data = model->compiled_data;
-	assert(to_compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
 	// Tensor has to be inited already.
-	assert(!!to_compiled_data->tensors_init.v);
-	assert(to_compiled_data->tensors.parameters);
+	assert(!!compiled_data->tensors_init.v);
+	assert(compiled_data->tensors.parameters);
 	// From models.
 	const int parallel_count = ccv_max(model->parallel_count, 1);
 	const int rnum = (to_param_ref < 0) ? to_parameter_indices->rnum : 1;
@@ -3055,12 +3055,12 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 	{
 		const int dest_d = *(int*)ccv_array_get(to_parameter_indices, to_param_ref >= 0 ? to_param_ref : i);
 		assert(dest_d >= 0);
-		assert(dest_d < to_compiled_data->parameters->rnum);
+		assert(dest_d < compiled_data->parameters->rnum);
 		if (parallel_count > 1)
 		{
 			assert(0 && "Cannot support this when data parallel is in effect.");
 		} else {
-			ccv_nnc_tensor_t* const src = CCV_NNC_TENSOR(to_compiled_data->tensors.parameters[dest_d]);
+			ccv_nnc_tensor_t* const src = CCV_NNC_TENSOR(compiled_data->tensors.parameters[dest_d]);
 			assert(src);
 			ccv_nnc_tensor_param_t params = src->info;
 			if (CCV_TENSOR_GET_MEMORY(params.type) != CCV_TENSOR_GPU_MEMORY)
@@ -3068,6 +3068,7 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 			const size_t size = ccv_nnc_tensor_data_size(params);
 			if (size <= 0)
 				continue;
+			const int should_free = !((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1);
 			const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 			ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 			tensor->dataof = 0;
@@ -3098,9 +3099,10 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 			}
 			// TODO: Cannot run this on the stream context yet, due to allocation and deallocations.
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &src, 1, &tensor, 1, 0);
-			to_compiled_data->tensors.parameters[dest_d] = tensor;
-			ccv_nnc_tensor_free(src);
+			compiled_data->tensors.parameters[dest_d] = tensor;
 			// Can free out the old one.
+			if (should_free)
+				ccv_nnc_tensor_free(src);
 		}
 		// No need to mark this symbol as init'ed, it is already.
 	}
