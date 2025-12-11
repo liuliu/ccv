@@ -3068,7 +3068,7 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 			const size_t size = ccv_nnc_tensor_data_size(params);
 			if (size <= 0)
 				continue;
-			const int should_free = !((uintptr_t)compiled_data->tensors.parameters[i] & (uintptr_t)1);
+			const int should_free = !((uintptr_t)compiled_data->tensors.parameters[dest_d] & (uintptr_t)1);
 			const int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 			ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 			tensor->dataof = 0;
