@@ -2197,11 +2197,12 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 	const int param_sel = parameter->param_sel > 0 ? parameter->param_sel - 1 : parameter->param_sel;
 	assert(parameter->param_sel != 0);
 	const int tensors_init = !!compiled_data->tensors_init.v;
+	int this_tensor_init = tensors_init;
 	if (!tensors_init)
-		_ccv_cnnp_model_tensors_init(model, compiled_data);
+		ccv_cnnp_model_tensors_init_0(model, compiled_data);
 	else if ((uintptr_t)compiled_data->tensors_init.v & (uintptr_t)1)
 	// Check if it is not fully allocated, if it is not, init_1.
-		ccv_cnnp_model_tensors_init_1(model, compiled_data);
+		this_tensor_init = 0;
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	ccv_cnnp_model_add_to_parameter_indices(parameter->model, param_sel, parameter_indices);
 	const int param_ref = parameter->param_ref > 0 ? parameter->param_ref - 1 : parameter->param_ref;
@@ -2215,10 +2216,34 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 	assert(d >= 0);
 	assert(d < parameter_size);
 	const int parallel_count = ccv_max(model->parallel_count, 1);
+	int i;
+	if (!this_tensor_init)
+	{
+		if (compiled_data->tensors.parameters[d])
+		{
+			for (i = 1; i < parallel_count; i++)
+				{ assert(compiled_data->tensors.parameters[d + i * parameter_size]); }
+			this_tensor_init = 1;
+		} else {
+			const ccv_nnc_tensor_symbol_t parameter = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, d);
+			ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(parameter.graph, parameter);
+			if (CCV_TENSOR_GET_DEVICE(info.type) == CCV_COMPUTE_DEVICE_ANY)
+				CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+			const int device_id = CCV_TENSOR_GET_DEVICE_ID(info.type);
+			compiled_data->tensors.parameters[d] = ccv_nnc_tensor_new(0, info, 0);
+			for (i = 1; i < parallel_count; i++)
+			{
+				if (i != device_id)
+					CCV_TENSOR_SET_DEVICE_ID(info.type, i);
+				else
+					CCV_TENSOR_SET_DEVICE_ID(info.type, 0);
+				compiled_data->tensors.parameters[d + i * parameter_size] = ccv_nnc_tensor_new(0, info, 0);
+			}
+		}
+	}
 	ccv_nnc_tensor_t* const dest = CCV_NNC_TENSOR(compiled_data->tensors.parameters[d]);
 	assert(dest);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)tensor), TENSOR_LIST(dest), 0);
-	int i;
 	for (i = 1; i < parallel_count; i++)
 	{
 		ccv_nnc_tensor_t* const copy_tensor = CCV_NNC_TENSOR(compiled_data->tensors.parameters[d + i * parameter_size]);
@@ -2227,8 +2252,16 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 	}
 	// Mark this symbol as init'ed.
 	const int s = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, d))->d;
-  uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
+	uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
 	init_v[s >> 5] |= (1u << (s & 0x1f));
+	// If we just allocated this tensor, now it is time to check if we need to mark it as fully allocated.
+	if (!this_tensor_init)
+	{
+		if (ccv_cnnp_model_tensors_any_to_alloc(model, compiled_data))
+			compiled_data->tensors_init.v = (uint32_t*)((uintptr_t)compiled_data->tensors_init.v | (uintptr_t)1);
+		else // Remove the flag.
+			compiled_data->tensors_init.v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
+	}
 }
 
 void ccv_cnnp_model_parameter_copy(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t parameter, ccv_nnc_tensor_t* const tensor)
