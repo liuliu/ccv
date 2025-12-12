@@ -1,0 +1,6 @@
+module C_ccv {
+    header "ccv.h"
+    header "ccv_internal.h"
+    header "nnc/ccv_nnc_tfb.h"
+    export *
+}

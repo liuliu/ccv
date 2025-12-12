@@ -1,0 +1,7 @@
+module ccv_case {
+    header "case.h"
+    header "case_main.h"
+    header "ccv_case.h"
+    header "ccv_nnc_case.h"
+    export *
+}
