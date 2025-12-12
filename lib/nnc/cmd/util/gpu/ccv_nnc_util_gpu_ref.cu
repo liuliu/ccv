@@ -34,12 +34,18 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
 				CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost, stream));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY) {
-				const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
-				const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
-				if (device_a == device_b)
-					CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice, stream));
-				else
-					CUDA_ENFORCE(cudaMemcpyPeerAsync(b->data.u8, device_b, a->data.u8, device_a, size, stream));
+				if ((a->type & CCV_MAPPED_MEM) || (b->type & CCV_MAPPED_MEM))
+				{
+					// Prefer default for unified virtual addressing.
+					CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDefault, stream));
+				} else {
+					const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
+					const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
+					if (device_a == device_b)
+						CUDA_ENFORCE(cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice, stream));
+					else
+						CUDA_ENFORCE(cudaMemcpyPeerAsync(b->data.u8, device_b, a->data.u8, device_a, size, stream));
+				}
 			}
 		} else {
 			if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
@@ -49,12 +55,18 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
 				CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost));
 			else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY) {
-				const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
-				const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
-				if (device_a == device_b)
-					CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice));
-				else
-					CUDA_ENFORCE(cudaMemcpyPeer(b->data.u8, device_b, a->data.u8, device_a, size));
+				if ((a->type & CCV_MAPPED_MEM) || (b->type & CCV_MAPPED_MEM))
+				{
+					// Prefer default for unified virtual addressing.
+					CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDefault));
+				} else {
+					const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
+					const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
+					if (device_a == device_b)
+						CUDA_ENFORCE(cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice));
+					else
+						CUDA_ENFORCE(cudaMemcpyPeer(b->data.u8, device_b, a->data.u8, device_a, size));
+				}
 			}
 		}
 	}

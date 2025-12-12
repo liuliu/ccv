@@ -3090,7 +3090,6 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 			if (ptr) // If allocated successfully. Otherwise we go through the fallback path.
 			{
 				tensor->data.u8 = (uint8_t*)ptr;
-				cumemadvisereadmostly(CCV_TENSOR_GET_DEVICE_ID(params.type), tensor->data.u8, size);
 				tensor->type |= CCV_MAPPED_MEM; // This denotes the tensor is mapped to CPU, and would prefer a explicit prefetch call.
 			} else {
 				// Allocation failed.
@@ -3099,6 +3098,7 @@ void ccv_cnnp_model_parameters_to_unified_memory(ccv_cnnp_model_t* const model, 
 			}
 			// TODO: Cannot run this on the stream context yet, due to allocation and deallocations.
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &src, 1, &tensor, 1, 0);
+			cumemadvisereadmostly(CCV_TENSOR_GET_DEVICE_ID(params.type), tensor->data.u8, size);
 			compiled_data->tensors.parameters[dest_d] = tensor;
 			// Can free out the old one.
 			if (should_free)
