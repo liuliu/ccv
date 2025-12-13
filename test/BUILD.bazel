@@ -5,6 +5,7 @@ cc_library(
 	includes = [
 		"."
 	],
+	copts = ["-fno-implicit-modules"],
 	hdrs = [
 		"case.h",
 		"case_main.h",
