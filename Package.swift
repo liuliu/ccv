@@ -30,7 +30,7 @@ let package = Package(
                 "SFMT-sse2.h",  // SSE2 (x86) - not available on ARM
             ],
             sources: ["SFMT.c"],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
                 .unsafeFlags(["-w"])
@@ -87,7 +87,7 @@ let package = Package(
                 "scheme.mk",
                 ".ycm_extra_conf.py",
             ],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
                 .define("HAVE_CBLAS"),
@@ -156,7 +156,7 @@ let package = Package(
                 "cmd/upsample/gpu",
                 "cmd/util/gpu",
             ],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
                 .headerSearchPath(".."),
@@ -206,7 +206,7 @@ let package = Package(
                 "makefile",
             ],
             sources: [],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
             ]

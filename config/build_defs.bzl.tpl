@@ -4,4 +4,4 @@ def ccv_default_copts():
         "//config:arm_build": ["-mfpu=neon", "-mfloat-abi=hard"],
         "//config:x86_build": ["-msse2"],
         "//conditions:default": []
-    }) + ["-fno-implicit-modules"] + %{ccv_setting_copts}
+    }) + %{ccv_setting_copts}
