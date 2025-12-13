@@ -205,7 +205,11 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   };
 
   uint16_t splitK = this->splitK();
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM);
+  uint16_t blockDimensionM = this->matrixDimensions[0];
+  if (blockDimensionM > 128) {
+    blockDimensionM = 128;
+  }
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { blockDimensionM, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 
