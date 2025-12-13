@@ -220,8 +220,10 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   createInitializeC(&source);
   if (splitK > 1) {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1] * splitK) + " + k_split_idx * " + std::to_string(blockDimensions[1]));
+    source.SetValue("BLOCK_DIMENSIONS_M_SPLIT_K", std::to_string(blockDimensions[0] * splitK));
   } else {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1]));
+    source.SetValue("BLOCK_DIMENSIONS_M_SPLIT_K", std::to_string(blockDimensions[0]));
   }
   source += R"(
 
@@ -375,8 +377,19 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   }
   source += R"(
-    auto mC = C.slice({{SPLIT_K_STORE_OFFSET}}, tgid.y * {{BLOCK_DIMENSIONS_M}});
-    cT.store(mC);
+    // Since OS 26.2, cT.store(mC) is no longer safe store (not respecting C size). Doing this manually.
+    auto mC = C_buf + tgid.y * {{BLOCK_DIMENSIONS_M_SPLIT_K}} * N + {{SPLIT_K_STORE_OFFSET}};
+    const int N_edge = N - tgid.x * {{BLOCK_DIMENSIONS_N}};
+    const int M_edge = M - tgid.y * {{BLOCK_DIMENSIONS_M}};
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
+      if(cT.is_valid_element(k)) {
+        auto idx = cT.get_multidimensional_index(k);
+        if (idx[0] < N_edge && idx[1] < M_edge) {
+          mC[idx[1] * {{SPLIT_K}} * N + idx[0]] = cT[k];
+        }
+      }
+    }
   }
 }
 )";
