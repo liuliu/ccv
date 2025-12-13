@@ -105,7 +105,6 @@ cc_library(
 	includes = [
 		"."
 	],
-	copts = ["-fno-implicit-modules"],
 	deps = [
 		"@local_config_ccv//config:config"
 	]
@@ -349,7 +348,6 @@ cc_library(
 	includes = [
 		"."
 	],
-	copts = ["-fno-implicit-modules"],
 	deps = [
 		":khash", # Have reference in _ccv_nnc_stream.h
 		":ccv_headers"
