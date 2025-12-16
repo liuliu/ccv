@@ -173,7 +173,7 @@ let package = Package(
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
                 .define("USE_DISPATCH"),
                 .define("HAVE_MPS"),
-                .unsafeFlags(["-fblocks", "-fno-objc-arc", "-w"])
+                .unsafeFlags(["-fblocks", "-fno-objc-arc", "-w", "-I.."])
             ],
             cxxSettings: [
                 .headerSearchPath("."),
