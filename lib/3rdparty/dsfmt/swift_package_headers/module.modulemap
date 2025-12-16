@@ -1,0 +1,4 @@
+module dSFMT {
+    header "../dSFMT.h"
+    export *
+}

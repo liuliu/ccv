@@ -1,1 +1,2 @@
-../case.h
+// Forwarding header
+#include "../case.h"

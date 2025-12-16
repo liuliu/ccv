@@ -1,1 +1,2 @@
-../ccv.h
+// Forwarding header
+#include "../ccv.h"

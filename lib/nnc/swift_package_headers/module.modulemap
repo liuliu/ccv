@@ -1,8 +1,8 @@
 module C_nnc {
-    header "nnc/ccv_nnc.h"
-    header "nnc/ccv_nnc_easy.h"
-    header "nnc/ccv_nnc_internal.h"
-    header "nnc/ccv_nnc_tfb.h"
-    header "nnc/co.h"
+    header "../ccv_nnc.h"
+    header "../ccv_nnc_easy.h"
+    header "../ccv_nnc_internal.h"
+    header "../ccv_nnc_tfb.h"
+    header "../co.h"
     export *
 }

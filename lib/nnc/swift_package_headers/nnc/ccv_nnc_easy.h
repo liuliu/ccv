@@ -1,1 +1,2 @@
-../../ccv_nnc_easy.h
+// Forwarding header
+#include "../../ccv_nnc_easy.h"
