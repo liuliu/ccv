@@ -1,4 +1,5 @@
 module C_nnc {
+    use C_ccv
     header "../ccv_nnc.h"
     header "../ccv_nnc_easy.h"
     header "../ccv_nnc_internal.h"
