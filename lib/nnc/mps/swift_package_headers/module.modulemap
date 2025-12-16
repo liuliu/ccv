@@ -1,0 +1,4 @@
+module lib_nnc_mps_compat {
+    export C_nnc
+    export *
+}
