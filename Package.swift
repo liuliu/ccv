@@ -255,7 +255,7 @@ let package = Package(
         // MPS BLAS integration test
         .executableTarget(
             name: "mpsblas.tests",
-            dependencies: ["C_nnc", "ccv_case", "dSFMT"],
+            dependencies: ["C_nnc", "lib_nnc_mps_compat", "ccv_case", "dSFMT"],
             path: "test/int/nnc",
             sources: ["mpsblas.tests.c"],
             cSettings: [
@@ -277,7 +277,7 @@ let package = Package(
         // MPS DNN integration test
         .executableTarget(
             name: "mpsdnn.tests",
-            dependencies: ["C_nnc", "ccv_case", "dSFMT"],
+            dependencies: ["C_nnc", "lib_nnc_mps_compat", "ccv_case", "dSFMT"],
             path: "test/int/nnc",
             sources: ["mpsdnn.tests.c"],
             cSettings: [
