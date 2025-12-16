@@ -1,0 +1,4 @@
+module C_sfmt {
+    header "../SFMT.h"
+    export *
+}
