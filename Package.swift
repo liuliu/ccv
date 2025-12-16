@@ -45,8 +45,9 @@ let package = Package(
             name: "dSFMT",
             path: "lib/3rdparty/dsfmt",
             sources: ["dSFMT.c"],
-            publicHeadersPath: ".",
+            publicHeadersPath: "swift_package_headers",
             cSettings: [
+                .headerSearchPath("."),
                 .unsafeFlags(["-w"])
             ]
         ),
@@ -259,10 +260,6 @@ let package = Package(
             path: "test/int/nnc",
             sources: ["mpsblas.tests.c"],
             cSettings: [
-                .headerSearchPath("../.."),
-                .headerSearchPath("../../../lib"),
-                .headerSearchPath("../../../lib/nnc"),
-                .headerSearchPath("../../../lib/3rdparty/dsfmt"),
                 .define("HAVE_CBLAS"),
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
                 .define("HAVE_MPS"),
@@ -281,10 +278,6 @@ let package = Package(
             path: "test/int/nnc",
             sources: ["mpsdnn.tests.c"],
             cSettings: [
-                .headerSearchPath("../.."),
-                .headerSearchPath("../../../lib"),
-                .headerSearchPath("../../../lib/nnc"),
-                .headerSearchPath("../../../lib/3rdparty/dsfmt"),
                 .define("HAVE_CBLAS"),
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
                 .define("HAVE_MPS"),
