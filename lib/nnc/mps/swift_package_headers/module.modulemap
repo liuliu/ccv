@@ -1,4 +1,6 @@
 module lib_nnc_mps_compat {
+    use C_nnc
+    header "../ccv_nnc_mps.h"
     export C_nnc
     export *
 }
