@@ -229,65 +229,6 @@ let package = Package(
                 .linkedFramework("Foundation"),
             ]
         ),
-
-        // Test case framework (header-only)
-        .target(
-            name: "ccv_case",
-            path: "test",
-            exclude: [
-                "unit",
-                "int",
-                "regression",
-                "all.mk",
-                "all.mk.erb",
-                "all.rb",
-                "all.tests.c",
-                "cover-gen.rb",
-                "known-leaks.txt",
-                "makefile",
-            ],
-            sources: [],
-            publicHeadersPath: "swift_package_headers",
-            cSettings: [
-                .headerSearchPath("."),
-            ]
-        ),
-
-        // MPS BLAS integration test
-        .executableTarget(
-            name: "mpsblas.tests",
-            dependencies: ["C_nnc", "lib_nnc_mps_compat", "ccv_case", "dSFMT"],
-            path: "test/int/nnc",
-            sources: ["mpsblas.tests.c"],
-            cSettings: [
-                .define("HAVE_CBLAS"),
-                .define("HAVE_ACCELERATE_FRAMEWORK"),
-                .define("HAVE_MPS"),
-                .unsafeFlags(["-w"])
-            ],
-            linkerSettings: [
-                .linkedLibrary("sqlite3"),
-                .unsafeFlags(["-Xlinker", "-U", "-Xlinker", "___test_case_setup", "-Xlinker", "-U", "-Xlinker", "___test_case_teardown"]),
-            ]
-        ),
-
-        // MPS DNN integration test
-        .executableTarget(
-            name: "mpsdnn.tests",
-            dependencies: ["C_nnc", "lib_nnc_mps_compat", "ccv_case", "dSFMT"],
-            path: "test/int/nnc",
-            sources: ["mpsdnn.tests.c"],
-            cSettings: [
-                .define("HAVE_CBLAS"),
-                .define("HAVE_ACCELERATE_FRAMEWORK"),
-                .define("HAVE_MPS"),
-                .unsafeFlags(["-w"])
-            ],
-            linkerSettings: [
-                .linkedLibrary("sqlite3"),
-                .unsafeFlags(["-Xlinker", "-U", "-Xlinker", "___test_case_setup", "-Xlinker", "-U", "-Xlinker", "___test_case_teardown"]),
-            ]
-        ),
     ],
     cLanguageStandard: .gnu11,
     cxxLanguageStandard: .cxx17
