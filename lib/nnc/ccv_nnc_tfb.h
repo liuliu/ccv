@@ -20,10 +20,6 @@
 #ifndef GUARD_ccv_nnc_tfb_h
 #define GUARD_ccv_nnc_tfb_h
 
-#ifndef CCV_NNC_TENSOR_TFB
-#define CCV_NNC_TENSOR_TFB (1)
-#endif
-
 #include <unistd.h>
 #include <stdint.h>
 
