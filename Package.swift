@@ -172,6 +172,7 @@ let package = Package(
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
                 .define("USE_DISPATCH"),
                 .define("HAVE_MPS"),
+                .define("CCV_NNC_TENSOR_TFB", to: "1"),  
                 .unsafeFlags(["-fblocks", "-fno-objc-arc", "-w"])
             ],
             cxxSettings: [
