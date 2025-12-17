@@ -36,7 +36,9 @@
 #endif
 
 // Include toll-free bridging for ccv_nnc_tensor_t
+#ifndef CCV_NNC_TENSOR_TFB
 #define CCV_NNC_TENSOR_TFB (1)
+#endif
 #include "nnc/ccv_nnc_tfb.h"
 
 /* Doxygen will ignore these, otherwise it has problem to process warn_unused_result directly. */
