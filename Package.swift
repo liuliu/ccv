@@ -94,7 +94,6 @@ let package = Package(
             cSettings: [
                 .headerSearchPath("."),
                 .define("HAVE_CBLAS"),
-                .define("CCV_NNC_TENSOR_TFB", to: "1"),
                 .define("HAVE_PTHREAD"),
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
                 .define("USE_DISPATCH"),
