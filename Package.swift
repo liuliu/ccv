@@ -19,6 +19,9 @@ let package = Package(
         .library(
             name: "sfmt",
             targets: ["C_sfmt"]),
+        .library(
+            name: "lib_nnc_mps_compat",
+            targets: ["lib_nnc_mps_compat"]),
     ],
     targets: [
         // SFMT - SIMD-oriented Fast Mersenne Twister
@@ -110,6 +113,7 @@ let package = Package(
                 // Exclude CUDA/GPU files (not needed for MPS)
                 "gpu",
                 // Exclude build artifacts and makefiles
+                "mps",
                 "makefile",
                 "cmd/makefile",
                 "cmd/config.mk",
@@ -188,7 +192,42 @@ let package = Package(
                 .linkedFramework("Foundation"),
             ]
         ),
-
+        // MPS Compatibility layer for NNC
+        .target(
+            name: "lib_nnc_mps_compat",
+            dependencies: ["C_nnc"],
+            path: "lib/nnc/mps",
+            exclude: [
+                "makefile",
+                ".ycm_extra_conf.py",
+                ".dep.mk",
+            ],
+            sources: [
+                "ccv_nnc_mps.m",
+                "ccv_nnc_palettize.m",
+            ],
+            publicHeadersPath: ".",
+            cSettings: [
+                .headerSearchPath("."),
+                .headerSearchPath(".."),
+                .headerSearchPath("../.."),
+                .headerSearchPath("../cmd"),
+                .headerSearchPath("../mfa"),
+                .headerSearchPath("../mfa/3rdparty/metal-cpp"),
+                .define("HAVE_CBLAS"),
+                .define("HAVE_PTHREAD"),
+                .define("HAVE_ACCELERATE_FRAMEWORK"),
+                .define("USE_DISPATCH"),
+                .define("HAVE_MPS"),
+                .unsafeFlags(["-fblocks", "-fno-objc-arc", "-w"])
+            ],
+            linkerSettings: [
+                .linkedFramework("Metal"),
+                .linkedFramework("MetalPerformanceShaders"),
+                .linkedFramework("MetalPerformanceShadersGraph"),
+                .linkedFramework("Foundation"),
+            ]
+        ),
         // Test case framework (header-only)
         .target(
             name: "ccv_case",
