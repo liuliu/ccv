@@ -12,7 +12,7 @@ let package = Package(
     products: [
         .library(
             name: "ccv",
-            targets: ["C_ccv"]),
+            targets: ["C_swiftpm_ccv"]),
         .library(
             name: "nnc",
             targets: ["C_nnc"]),
@@ -74,7 +74,7 @@ let package = Package(
 
         // Main CCV library
         .target(
-            name: "C_ccv",
+            name: "C_swiftpm_ccv",
             dependencies: ["C_sfmt", "dSFMT", "kissfft", "siphash"],
             path: "lib",
             exclude: [
@@ -107,7 +107,7 @@ let package = Package(
         // NNC - Neural Network Collection
         .target(
             name: "C_nnc",
-            dependencies: ["C_ccv", "C_sfmt", "dSFMT"],
+            dependencies: ["C_swiftpm_ccv", "C_sfmt", "dSFMT"],
             path: "lib/nnc",
             exclude: [
                 // Exclude CUDA/GPU files (not needed for MPS)
