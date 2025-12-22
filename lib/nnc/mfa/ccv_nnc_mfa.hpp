@@ -12,6 +12,7 @@
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_gemv.hpp"
 #include "ccv_nnc_mfa_cast.hpp"
+#include "ccv_nnc_mfa_swish.hpp"
 #include "ccv_nnc_mfa_add.hpp"
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 

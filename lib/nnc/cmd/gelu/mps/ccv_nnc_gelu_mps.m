@@ -35,6 +35,10 @@ static int _ccv_nnc_gelu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					mtl_data_type = 16;
 					break;
 				}
+				case CCV_16BF: {
+					mtl_data_type = 121;
+					break;
+				}
 				case CCV_32F: {
 					mtl_data_type = 3;
 					break;
@@ -168,6 +172,10 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					mtl_data_type = 16;
 					break;
 				}
+				case CCV_16BF: {
+					mtl_data_type = 121;
+					break;
+				}
 				case CCV_32F: {
 					mtl_data_type = 3;
 					break;
@@ -289,7 +297,7 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_GELU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gelu_forw;
@@ -298,7 +306,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_GELU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_
 REGISTER_COMMAND_BACKEND(CCV_NNC_GELU_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gelu_back;

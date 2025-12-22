@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/GeluDescriptor.hpp"
-#include "v2/GeluKernel.hpp"
+#include "v2/SwishDescriptor.hpp"
+#include "v2/SwishKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -9,12 +9,12 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
-void ccv_nnc_mfa_prepare_gelu(mfa::context* context, ccv_nnc_mfa_gelu_params_t params)
+void ccv_nnc_mfa_prepare_swish(mfa::context* context, ccv_nnc_mfa_swish_params_t params)
 {
   // Do nothing now.
 }
 
-void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
+void ccv_nnc_mfa_encode_swish(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
 {
   auto encoder = command_batch->startCommand();
 
@@ -29,9 +29,8 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
     CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
   }
 
-  GeluDescriptor descriptor;
+  SwishDescriptor descriptor;
   descriptor.gradient = params.gradient ? 1 : 0;
-  descriptor.tanh = params.tanh ? 1 : 0;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {
@@ -52,7 +51,7 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto &shaderCache = context->v2_cache;
   DeviceProperties dprops = DeviceProperties();
-  auto pipelineValue = shaderCache.findKernel<GeluKernel, GeluDescriptor, GeluKernelDescriptor>(descriptor, context->device.get(), dprops);
+  auto pipelineValue = shaderCache.findKernel<SwishKernel, SwishDescriptor, SwishKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();
   auto kernel = pipelineValue->kernel;
   auto pipeline = pipelineValue->pipeline;
@@ -81,7 +80,7 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
   }
 
   unsigned int count;
-  if (params.tanh && (params.length % 4 == 0)) {
+  if (params.length % 4 == 0) {
     count = params.length / 4;
   } else {
     count = params.length;
