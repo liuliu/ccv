@@ -1,6 +1,0 @@
-module C_nnc {
-    header "ccv_nnc.h"
-    header "ccv_nnc_internal.h"
-    header "ccv_nnc_easy.h"
-    export *
-}
