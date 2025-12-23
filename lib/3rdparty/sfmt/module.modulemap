@@ -1,4 +1,4 @@
-module C_sfmt {
+module C_swiftpm_sfmt {
     header "SFMT.h"
     header "SFMT-common.h"
     header "SFMT-params.h"

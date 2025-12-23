@@ -18,7 +18,7 @@ let package = Package(
             targets: ["C_nnc"]),
         .library(
             name: "sfmt",
-            targets: ["C_sfmt"]),
+            targets: ["C_swiftpm_sfmt"]),
         .library(
             name: "lib_nnc_mps_compat",
             targets: ["lib_nnc_mps_compat"]),
@@ -75,7 +75,7 @@ let package = Package(
         // Main CCV library
         .target(
             name: "C_swiftpm_ccv",
-            dependencies: ["C_sfmt", "dSFMT", "kissfft", "siphash"],
+            dependencies: ["C_swiftpm_sfmt", "dSFMT", "kissfft", "siphash"],
             path: "lib",
             exclude: [
                 "3rdparty",
