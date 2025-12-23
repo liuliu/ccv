@@ -15,10 +15,10 @@ let package = Package(
             targets: ["C_swiftpm_ccv"]),
         .library(
             name: "nnc",
-            targets: ["C_nnc"]),
+            targets: ["C_swiftpm_nnc"]),
         .library(
             name: "sfmt",
-            targets: ["C_swiftpm_sfmt"]),
+            targets: ["C_sfmt"]),
         .library(
             name: "lib_nnc_mps_compat",
             targets: ["lib_nnc_mps_compat"]),
@@ -26,7 +26,7 @@ let package = Package(
     targets: [
         // SFMT - SIMD-oriented Fast Mersenne Twister
         .target(
-            name: "C_swiftpm_sfmt",
+            name: "C_sfmt",
             path: "lib/3rdparty/sfmt",
             exclude: [
                 "SFMT-alti.h",  // Altivec (PowerPC) - not available on ARM
@@ -75,7 +75,7 @@ let package = Package(
         // Main CCV library
         .target(
             name: "C_swiftpm_ccv",
-            dependencies: ["C_swiftpm_sfmt", "dSFMT", "kissfft", "siphash"],
+            dependencies: ["C_sfmt", "dSFMT", "kissfft", "siphash"],
             path: "lib",
             exclude: [
                 "3rdparty",
@@ -106,8 +106,8 @@ let package = Package(
 
         // NNC - Neural Network Collection
         .target(
-            name: "C_nnc",
-            dependencies: ["C_swiftpm_ccv", "C_swiftpm_sfmt", "dSFMT"],
+            name: "C_swiftpm_nnc",
+            dependencies: ["C_swiftpm_ccv", "C_sfmt", "dSFMT"],
             path: "lib/nnc",
             exclude: [
                 // Exclude CUDA/GPU files (not needed for MPS)
@@ -195,7 +195,7 @@ let package = Package(
         // MPS Compatibility layer for NNC
         .target(
             name: "lib_nnc_mps_compat",
-            dependencies: ["C_nnc"],
+            dependencies: ["C_swiftpm_nnc"],
             path: "lib/nnc/mps",
             exclude: [
                 "makefile",
