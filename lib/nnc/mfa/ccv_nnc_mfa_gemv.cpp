@@ -82,7 +82,7 @@ std::size_t std::hash<mfa::gemv::hash>::operator()(const mfa::gemv::hash& hash) 
 
 mfa::gemv::pipeline::pipeline(mfa::context* context, mfa::gemv::hash hash) {
   // FlashNorm not supported for group gemv yet.
-  CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))
+  CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf) || (hash.data_type == MTL::DataTypeBFloat))
   
   auto* pool = NS::AutoreleasePool::alloc()->init();
   
@@ -118,7 +118,7 @@ kernel void gemv(
 
       float all_sum = simd_sum(sumf);
       if (tiisg == 0) {
-        dst[r1] = bias[r1] + all_sum;
+        dst[r1] = bias[r1] + (real)all_sum;
       }
     }
   } else {
@@ -142,7 +142,7 @@ kernel void gemv(
 
       float all_sum = simd_sum(sumf);
       if (tiisg == 0) {
-        dst[r1] = bias[r1] + all_sum;
+        dst[r1] = bias[r1] + (real)all_sum;
       }
     }
   }
@@ -178,7 +178,7 @@ kernel void gemv(
 
       float all_sum = simd_sum(sumf);
       if (tiisg == 0) {
-        dst[r1] = all_sum;
+        dst[r1] = (real)all_sum;
       }
     }
   } else {
@@ -202,7 +202,7 @@ kernel void gemv(
 
       float all_sum = simd_sum(sumf);
       if (tiisg == 0) {
-        dst[r1] = all_sum;
+        dst[r1] = (real)all_sum;
       }
     }
   }
@@ -215,6 +215,11 @@ kernel void gemv(
     defines += std::string("typedef float real;");
     defines += "\n";
     defines += std::string("typedef float4 real4;");
+    defines += "\n";
+  } else if (hash.data_type == MTL::DataTypeBFloat) {
+    defines += std::string("typedef bfloat real;");
+    defines += "\n";
+    defines += std::string("typedef bfloat4 real4;");
     defines += "\n";
   } else {
     defines += std::string("typedef half real;");
