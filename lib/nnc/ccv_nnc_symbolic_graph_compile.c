@@ -572,7 +572,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 					if (tensor_blocks[y].companion_ref) \
 					{ \
 						const int companion_ref = tensor_blocks[y].companion_ref - 1; \
-						tensor_block_cannot_insert[companion_ref >> 5] |= (1u << (companion_ref & 0x1f)); \
+						tensor_block_cannot_insert[companion_ref >> 5] &= ~(1u << (companion_ref & 0x1f)); \
 					} \
 				} \
 			} while(0)
@@ -587,7 +587,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 					if (tensor_blocks[x].companion_ref) \
 					{ \
 						const int companion_ref = tensor_blocks[x].companion_ref - 1; \
-						tensor_block_cannot_insert[companion_ref >> 5] |= (1u << (companion_ref & 0x1f)); \
+						tensor_block_cannot_insert[companion_ref >> 5] &= ~(1u << (companion_ref & 0x1f)); \
 					} \
 				} \
 			} while(0)
