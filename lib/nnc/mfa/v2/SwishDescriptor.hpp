@@ -1,5 +1,5 @@
-#ifndef MFA_GELUDESCRIPTOR_HPP_
-#define MFA_GELUDESCRIPTOR_HPP_
+#ifndef MFA_SWISHDESCRIPTOR_HPP_
+#define MFA_SWISHDESCRIPTOR_HPP_
 
 #include <simd/simd.h>
 #include <utility>

@@ -88,7 +88,7 @@ kernel void swish(
   const uint idx = tpig.x;
   if (idx >= count)
     return;
-  const float x = (float4)(src[idx]);
+  const float x = (float)(src[idx]);
   const float y = 1. / (1. + exp(-x));
   const float y_sq = y * y;
   destination[idx] = (real)((float)g[idx] * (x * (y - y_sq) + y));
