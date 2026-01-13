@@ -588,6 +588,8 @@ void _register_command_CCV_NNC_REDUCE_SUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CU
 void _register_command_CCV_NNC_REDUCE_SUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MEAN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_REDUCE_MAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_NORM2_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_NORM2_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1113,6 +1115,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_REDUCE_SUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[41].backends[3]));
 	_register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[2].backends[3]));
 	_register_command_CCV_NNC_REDUCE_MEAN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[3].backends[3]));
+	_register_command_CCV_NNC_REDUCE_MAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[30].backends[3]));
+	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[144].backends[3]));
 	_register_command_CCV_NNC_REDUCE_NORM2_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[134].backends[3]));
 	_register_command_CCV_NNC_REDUCE_NORM2_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[135].backends[3]));
 	_register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[100].backends[5]));

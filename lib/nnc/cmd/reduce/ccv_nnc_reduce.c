@@ -81,7 +81,7 @@ static int _ccv_nnc_reduce_max_back_bitmask(const ccv_nnc_cmd_param_t cmd, const
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_MAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_max_cpu_ref.c, mps/ccv_nnc_reduce_max_mps.m)
+	FIND_BACKEND(ccv_nnc_reduce_max_cpu_ref.c, mps/ccv_nnc_reduce_max_mps.m, gpu/ccv_nnc_reduce_max_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_reduce_max_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
@@ -115,7 +115,7 @@ static int _ccv_nnc_reduce_min_back_bitmask(const ccv_nnc_cmd_param_t cmd, const
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_MIN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_reduce_min_cpu_ref.c, mps/ccv_nnc_reduce_min_mps.m)
+	FIND_BACKEND(ccv_nnc_reduce_min_cpu_ref.c, mps/ccv_nnc_reduce_min_mps.m, gpu/ccv_nnc_reduce_min_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_reduce_min_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
