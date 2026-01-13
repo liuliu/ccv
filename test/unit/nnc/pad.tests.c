@@ -59,4 +59,31 @@ TEST_CASE("implement pad replicate")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("implement pad reflect")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 5), 0);
+	a->data.f32[0] = 1;
+	a->data.f32[1] = 2;
+	a->data.f32[2] = 3;
+	a->data.f32[3] = 4;
+	a->data.f32[4] = 5;
+	a->data.f32[5] = 6;
+	a->data.f32[6] = 7;
+	a->data.f32[7] = 8;
+	a->data.f32[8] = 9;
+	ccv_nnc_cmd_exec(CMD_PAD_FORWARD(CCV_NNC_PAD_REFLECT, (2, 1), (0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	float btp[] = {
+		8, 7, 8, 9, 8,
+		5, 4, 5, 6, 5,
+		2, 1, 2, 3, 2,
+		5, 4, 5, 6, 5,
+		8, 7, 8, 9, 8,
+	};
+	ccv_nnc_tensor_t bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 5, 5), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "result should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

@@ -61,6 +61,24 @@ static int _ccv_nnc_pad_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				}
 			}
 		}
+	} else if (cmd.info.pad.type == CCV_NNC_PAD_REFLECT) {
+		for (i[0] = 0; i[0] < bdim[0]; i[0]++)
+		{
+			float* const ap0 = ap + (i[0] - begin[0] > adim[0] - 1 ? adim[0] - 2 - (i[0] - begin[0] - adim[0]) : abs(i[0] - begin[0])) * astride[0];
+			float* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < bdim[1]; i[1]++)
+			{
+				float* const ap1 = ap0 + (i[1] - begin[1] > adim[1] - 1 ? adim[1] - 2 - (i[1] - begin[1] - adim[1]) : abs(i[1] - begin[1])) * astride[1];
+				float* bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < bdim[2]; i[2]++)
+				{
+					float* const ap2 = ap1 + (i[2] - begin[2] > adim[2] - 1 ? adim[2] - 2 - (i[2] - begin[2] - adim[2]) : abs(i[2] - begin[2])) * astride[2];
+					for (x = 0; x < bdim[3]; x++)
+						bp1[x] = ap2[(x - begin[3] > adim[3] - 1 ? adim[3] - 2 - (x - begin[3] - adim[3]) : abs(x - begin[3]))];
+					bp1 += bstride[2];
+				}
+			}
+		}
 	} else {
 		assert(cmd.info.pad.type == CCV_NNC_PAD_REPLICATE);
 		for (i[0] = 0; i[0] < bdim[0]; i[0]++)

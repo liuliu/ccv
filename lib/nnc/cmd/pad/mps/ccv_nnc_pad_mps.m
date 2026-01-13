@@ -44,6 +44,8 @@ static int _ccv_nnc_pad_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			MPSGraphPaddingMode paddingMode;
 			if (type == CCV_NNC_PAD_ZERO)
 				paddingMode = MPSGraphPaddingModeZero;
+			else if (type == CCV_NNC_PAD_REFLECT)
+				paddingMode = MPSGraphPaddingModeReflect;
 			else
 				paddingMode = MPSGraphPaddingModeClampToEdge;
 			MPSGraphTensor* mps_b = [graph padTensor:mps_a withPaddingMode:paddingMode leftPadding:leftPadding rightPadding:rightPadding constantValue:0 name:nil];

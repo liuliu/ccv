@@ -98,7 +98,8 @@ enum {
 
 enum {
 	CCV_NNC_PAD_ZERO = 0, /**< Pad 0s. */
-	CCV_NNC_PAD_REPLICATE = 1, /**< Pad by replicating the edge. */
+	CCV_NNC_PAD_REPLICATE = 1, /**< Pad by replicating the edge, (a, b) to (a, a, b). */
+	CCV_NNC_PAD_REFLECT = 2, /**< Pad by reflecting the edge, (a, b) to (b, a, b). */
 };
 
 enum {
