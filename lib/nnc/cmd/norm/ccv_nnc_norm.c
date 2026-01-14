@@ -287,28 +287,45 @@ REGISTER_COMMAND(CCV_NNC_GROUP_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 
 static int _ccv_nnc_rmsnorm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 2 inputs (x, gamma)
-	// 2 outputs (y, saved_inv_std)
-	if (input_bitmasks[0] == 3u && output_bitmasks[0] == 3u)
-		return 1;
+	if (cmd.rmsnorm.elementwise_affine)
+	{
+		// 2 inputs (x, gamma)
+		// 2 outputs (y, saved_inv_std)
+		if (input_bitmasks[0] == 3u && output_bitmasks[0] == 3u)
+			return 1;
+	} else {
+		// 1 inputs (x)
+		// 2 outputs (y, saved_inv_std)
+		if (input_bitmasks[0] == 1u && output_bitmasks[0] == 3u)
+			return 1;
+	}
 	return 0;
 }
 
 static int _ccv_nnc_rmsnorm_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 1 + 4 + 8 + 32
-	// Inputs (gradient, 0, x, gamma, 0, saved_inv_std)
-	// Output the propagated error, dgamma
-	if ((input_bitmasks[0] & 45u) == 45u && (output_bitmasks[0] & 3u) == 3u)
-		return 1;
-	if ((input_bitmasks[0] & 45u) == 45u && (output_bitmasks[0] & 1u) == 1u)
-		return 1;
+	if (cmd.rmsnorm.elementwise_affine)
+	{
+		// 1 + 4 + 8 + 32
+		// Inputs (gradient, 0, x, gamma, 0, saved_inv_std)
+		// Output the propagated error, dgamma
+		if ((input_bitmasks[0] & 45u) == 45u && (output_bitmasks[0] & 3u) == 3u)
+			return 1;
+		if ((input_bitmasks[0] & 45u) == 45u && (output_bitmasks[0] & 1u) == 1u)
+			return 1;
+	} else {
+		// 1 + 4 + 16
+		// Inputs (gradient, 0, x, 0, saved_inv_std)
+		// Output the propagated error
+		if ((input_bitmasks[0] & 21u) == 21u && (output_bitmasks[0] & 1u) == 1u)
+			return 1;
+	}
 	return 0;
 }
 
 static void _ccv_nnc_rmsnorm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 2);
+	assert(input_size == 2 || input_size == 1);
 	assert(output_size == 1 || output_size == 2);
 	outputs[0] = inputs[0];
 	if (output_size == 1)
@@ -324,7 +341,7 @@ static void _ccv_nnc_rmsnorm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, con
 
 static void _ccv_nnc_rmsnorm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 6);
+	assert(input_size == 6 || input_size == 5);
 	assert(output_size == 1 || output_size == 2);
 	outputs[0] = inputs[0];
 	int i, j;
@@ -351,6 +368,6 @@ REGISTER_COMMAND(CCV_NNC_RMSNORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registr
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_FORWARD)
-#define CMD_RMSNORM_FORWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_RMSNORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_BACKWARD)
-#define CMD_RMSNORM_BACKWARD(_epsilon, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_RMSNORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)

@@ -170,6 +170,7 @@ typedef struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm.axis[]] The axis selected to compute mean / variance. */
 			int count; /**< [rmsnorm.count] The number of axis selected. */
 			float epsilon; /**< [rmsnorm.epsilon] The epsilon for standard derivation. */
+			int elementwise_affine; /**< [rmsnorm.elementwise_affine] Whether it supports scale. */
 		} rmsnorm;
 		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
@@ -4549,11 +4550,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, con
  * @param epsilon The epsilon in layer norm parameter.
  * @param axis The axis are the feature axis to compute norm.
  * @param axis_count How many axis we count as feature.
+ * @param elementwise_affine Whether it contains scale.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A rmsnorm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name);
 /**
  * Add two input tensors together. Different from sum because this support broadcasting.
  * @param p The weight for the first input.
