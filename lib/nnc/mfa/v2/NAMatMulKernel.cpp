@@ -276,7 +276,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
     source += R"(
     if (k_split_idx == 0) {
       #pragma clang loop unroll(full)
-      for (ushort k = 0; k < K_split; k += {{BLOCK_DIMENSIONS_K_2}}) {
+      for (uint k = 0; k < K_split; k += {{BLOCK_DIMENSIONS_K_2}}) {
         // Create appropriate slice for this thread group to work on.
         auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
         auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
@@ -287,31 +287,29 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       }
     }
 )";
-    if (splitK > 2) {
-      for (uint16_t k = 1; k < splitK - 1; k++) {
-        source.SetValue("K_ITER", std::to_string(k));
-        source.SetValue("K_ITER_1", std::to_string(k + 1));
-        source += R"(
-    else if (k_split_idx == {{K_ITER}}) {
-      #pragma clang loop unroll(full)
-      for (ushort k = {{K_ITER}} * K_split; k < {{K_ITER_1}} * K_split; k += {{BLOCK_DIMENSIONS_K_2}}) {
-        // Create appropriate slice for this thread group to work on.
-        auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
-        auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
-        auto mA1 = A.slice<{{A_SLICE}}>({{A_TILE_K2_SIZE}});
-        auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
-        matmul_op.run(mA0, mB0, cT);
-        matmul_op.run(mA1, mB1, cT);
-      }
-    }
-)";
-	  }
-	}
     source.SetValue("SPLIT_K_1", std::to_string(splitK - 1));
+    if (splitK > 2) {
+      source += R"(
+    else if (k_split_idx > 0 && k_split_idx < {{SPLIT_K_1}}) {
+      const uint k_start = k_split_idx * K_split;
+      #pragma clang loop unroll(full)
+      for (uint i_k = 0; i_k < K_split; i_k += {{BLOCK_DIMENSIONS_K_2}}) {
+        const uint k = k_start + i_k;
+        // Create appropriate slice for this thread group to work on.
+        auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
+        auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
+        auto mA1 = A.slice<{{A_SLICE}}>({{A_TILE_K2_SIZE}});
+        auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
+        matmul_op.run(mA0, mB0, cT);
+        matmul_op.run(mA1, mB1, cT);
+      }
+    }
+)";
+	}
     source += R"(
     else {
       #pragma clang loop unroll(full)
-      for (ushort k = {{SPLIT_K_1}} * K_split; k < K_edge; k += {{BLOCK_DIMENSIONS_K_2}}) {
+      for (uint k = {{SPLIT_K_1}} * K_split; k < K_edge; k += {{BLOCK_DIMENSIONS_K_2}}) {
         // Create appropriate slice for this thread group to work on.
         auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
         auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
@@ -325,7 +323,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   } else {
     source += R"(
     #pragma clang loop unroll(full)
-    for (ushort k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_K_2}}) {
+    for (uint k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_K_2}}) {
       // Create appropriate slice for this thread group to work on.
       auto mA0 = A.slice<{{A_SLICE}}>({{A_TILE_K1_SIZE}});
       auto mB0 = B.slice<{{B_SLICE}}>({{B_TILE_K1_SIZE}});
@@ -426,7 +424,7 @@ kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
   A_buf += tpig.x / {{BLOCK_DIMENSIONS_N_DIV_2}} * {{BLOCK_DIMENSIONS_N_DIV_2_SPLIT_K}} + tpig.x % {{BLOCK_DIMENSIONS_N_DIV_2}};
   {{MEMORY_NAME_C}}2 val = A_buf[0];
   #pragma clang loop unroll(full)
-  for (unsigned short k = 1; k < {{SPLIT_K}}; k++) {
+  for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N_DIV_2}}];
   }
   B_buf[tpig.x] = val;
@@ -459,7 +457,7 @@ kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
   A_buf += tpig.x / {{BLOCK_DIMENSIONS_N}} * {{BLOCK_DIMENSIONS_N_SPLIT_K}} + tpig.x % {{BLOCK_DIMENSIONS_N}};
   {{MEMORY_NAME_C}} val = A_buf[0];
   #pragma clang loop unroll(full)
-  for (unsigned short k = 1; k < {{SPLIT_K}}; k++) {
+  for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N}}];
   }
   B_buf[tpig.x] = val;

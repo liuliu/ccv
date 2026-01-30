@@ -96,7 +96,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
-  if (params.use_neural_accelerators) {
+  if (params.use_neural_accelerators && params.K < 65536) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;
     gemmDesc.matrixDimensions = simd::uint3 {
