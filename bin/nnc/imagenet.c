@@ -167,7 +167,7 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 		ccv_cnnp_model_t* const expand_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 			ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), DIM_ALLOC(), 1, HINT((1, 1), (0, 0)), 0, 1, 0),
 			ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
-			ccv_cnnp_swish(0)
+			ccv_cnnp_swish(1, 0)
 		), 1, 0);
 		x = ccv_cnnp_model_apply(expand_conv, MODEL_IO_LIST(x));
 	}
@@ -175,14 +175,14 @@ static ccv_cnnp_model_t* _mconv_block_new(const int kernel_size, const int strid
 	ccv_cnnp_model_t* const depthwise_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(expand_filters, expand_filters, DIM_ALLOC(kernel_size, kernel_size), DIM_ALLOC(), 1, HINT((strides, strides), (paddings, paddings)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
-		ccv_cnnp_swish(0)
+		ccv_cnnp_swish(1, 0)
 	), 1, 0);
 	x = ccv_cnnp_model_apply(depthwise_conv, MODEL_IO_LIST(x));
 	const int se_filters = ccv_max(1, (int)(input_filters * se_ratio + 0.5));
 	ccv_cnnp_model_t* const se_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0),
 		ccv_cnnp_convolution(1, se_filters, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
-		ccv_cnnp_swish(0),
+		ccv_cnnp_swish(1, 0),
 		ccv_cnnp_convolution(1, expand_filters, DIM_ALLOC(1, 1), DIM_ALLOC(), 0, HINT((1, 1), (0, 0)), 0, 1, 0),
 		ccv_cnnp_sigmoid(0)
 	), 1, 0);
@@ -223,7 +223,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 	ccv_cnnp_model_t* const init_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(3, 3), DIM_ALLOC(), 1, HINT((2, 2), (1, 1)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
-		ccv_cnnp_swish(0)
+		ccv_cnnp_swish(1, 0)
 	), 1, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_mconv_block_layer_new(1, 3, 1, 1, 32, 16, 0.25, dropout), MODEL_IO_LIST(output));
@@ -236,7 +236,7 @@ ccv_cnnp_model_t* _efficientnet_b0(void)
 	ccv_cnnp_model_t* const head_conv = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 1280, DIM_ALLOC(1, 1), DIM_ALLOC(), 1, HINT((1, 1), (0, 0)), 0, 1, 0),
 		ccv_cnnp_batch_norm(0.9, 1e-4, 1, 0),
-		ccv_cnnp_swish(0)
+		ccv_cnnp_swish(1, 0)
 	), 1, 0);
 	output = ccv_cnnp_model_apply(head_conv, MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), ccv_nnc_no_hint, 0), MODEL_IO_LIST(output));

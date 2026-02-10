@@ -4438,10 +4438,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
 /**
  * A swish activation layer model.
+ * @param beta The beta coefficient in swish: x * sigmoid(beta * x).
  * @param name The unique name of the model.
  * @return A swish activation layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const float beta, const char* const name);
 /**
  * A GELU activation layer model.
  * @param tanh Whether enable fast approximate GELU.
