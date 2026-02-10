@@ -299,9 +299,9 @@
 // CCV_NNC_SORT_BACKWARD
 #define CMD_SORT_BACKWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_SORT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sort={.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_SWISH_FORWARD
-#define CMD_SWISH_FORWARD() ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_SWISH_FORWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)
 // CCV_NNC_SWISH_BACKWARD
-#define CMD_SWISH_BACKWARD() ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_SWISH_BACKWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)
 // CCV_NNC_TANH_FORWARD
 #define CMD_TANH_FORWARD() ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_TANH_BACKWARD

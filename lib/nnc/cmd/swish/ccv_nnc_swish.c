@@ -38,6 +38,6 @@ REGISTER_COMMAND(CCV_NNC_SWISH_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SWISH_FORWARD)
-#define CMD_SWISH_FORWARD() ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_SWISH_FORWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SWISH_BACKWARD)
-#define CMD_SWISH_BACKWARD() ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_SWISH_BACKWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)

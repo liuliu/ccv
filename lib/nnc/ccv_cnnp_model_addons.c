@@ -1742,7 +1742,7 @@ static void _ccv_cnnp_swish_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	assert(output_size == 1);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t swish = CMD_SWISH_FORWARD();
+	const ccv_nnc_cmd_t swish = CMD_SWISH_FORWARD(1);
 	ccv_nnc_hint_tensor_auto(swish, (ccv_nnc_tensor_param_t []){
 			params,
 		}, 1, ccv_nnc_no_hint, &output_params, 1);

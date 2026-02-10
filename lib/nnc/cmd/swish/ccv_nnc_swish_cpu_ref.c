@@ -24,10 +24,15 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	{
 		assert(a->info.dim[i] == b->info.dim[i]);
 	}
+	const float beta = cmd.info.swish.beta;
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;
 	for (i = 0; i < count; i++)
-		bp[i] = ap[i] / (1. + exp(-ap[i]));
+	{
+		const float x = ap[i];
+		const float y = 1. / (1. + exp(-beta * x));
+		bp[i] = x * y;
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -48,32 +53,17 @@ static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		assert(a->info.dim[i] == g->info.dim[i]);
 		assert(g->info.dim[i] == h->info.dim[i]);
 	}
+	const float beta = cmd.info.swish.beta;
 	float* ap = a->data.f32;
 	float* gp = g->data.f32;
 	float* hp = h->data.f32;
-	/**
-	 * e^x*(x+e^x+1)/(e^x+1)^2
-	 * = x*e^x/(e^x+1)^2+e^x/(e^x+1) = x*e^x/(e^x+1)^2+y
-	 *
-	 * e^x/(e^x+1)^2 = ((e^x+1)^2-e^2x-1)/(2*(e^x+1)^2)
-	 * = 1/2*(1-e^2x/(e^x+1)^2-1/(e^x+1)^2)
-	 * = 1/2*(1-y^2-1/(e^x+1)^2)
-	 *
-	 * y = e^x/(e^x+1) = 1 - 1/(e^x+1)
-	 * 1/(e^x+1) = 1-y
-	 *
-	 * 1/2*(1-y^2-1/(e^x+1)^2) = 1/2*(1-y^2-(1-y)^2)
-	 * = 1/2*(1-y^2-1+2y-y^2)
-	 * = y-y^2
-	 *
-	 * x*e^x/(e^x+1)^2+y = x*(y-y^2)+y
-	 */
+	/* d/dx (x * sigmoid(beta * x)) = sigmoid(beta * x) + beta * x * sigmoid(beta * x) * (1 - sigmoid(beta * x)). */
 	for (i = 0; i < count; i++)
 	{
 		const float x = ap[i];
-		const float y = 1. / (1. + exp(-x));
+		const float y = 1. / (1. + exp(-beta * x));
 		const float y2 = y * y;
-		hp[i] = gp[i] * (x * (y - y2) + y);
+		hp[i] = gp[i] * (beta * x * (y - y2) + y);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
