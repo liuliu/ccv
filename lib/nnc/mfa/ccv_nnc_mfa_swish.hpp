@@ -3,6 +3,7 @@
 
 typedef struct {
   uint8_t gradient;
+  float beta;
   uint64_t data_type;
   uint32_t length;
 } ccv_nnc_mfa_swish_params_t;

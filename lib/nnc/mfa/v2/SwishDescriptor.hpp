@@ -2,6 +2,7 @@
 #define MFA_SWISHDESCRIPTOR_HPP_
 
 #include <simd/simd.h>
+#include <functional>
 #include <utility>
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
@@ -10,14 +11,17 @@
 struct SwishKernelDescriptor {
   uint8_t gradient;
   uint8_t value;
+  float beta;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const SwishKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision && gradient == rhs.gradient; }
+  constexpr bool operator==(const SwishKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision && gradient == rhs.gradient && beta == rhs.beta; }
 };
 
 template<>
 struct std::hash<SwishKernelDescriptor>
 {
-  std::size_t operator()(const SwishKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const SwishKernelDescriptor& hash) const noexcept {
+    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.memoryPrecision.value << 16)) ^ std::hash<float>()(hash.beta);
+  }
 };
 
 struct SwishKernel;
@@ -26,6 +30,8 @@ struct SwishDescriptor {
   uint8_t gradient;
 
   uint8_t value;
+
+  float beta;
 
   GEMMOperandPrecision memoryPrecision;
 
@@ -43,4 +49,3 @@ struct std::hash<SwishDescriptor>
 };
 
 #endif
-

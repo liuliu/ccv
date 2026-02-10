@@ -9,6 +9,7 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	assert(input_size == 1);
 	assert(output_size == 1);
+	const float beta = cmd.info.swish.beta;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	@autoreleasepool {
@@ -62,6 +63,7 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		if (use_mfa) {
 			ccv_nnc_mfa_swish_params_t params = {
 				.gradient = 0,
+				.beta = beta,
 				.data_type = mtl_data_type
 			};
 			const size_t count = ccv_nnc_tensor_count(a->info);
@@ -90,11 +92,29 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_a name:nil];
-				MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
-				MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-				MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
-				MPSGraphTensor* mps_b = [graph divisionWithPrimaryTensor:mps_a secondaryTensor:mps_denom name:nil];
+				MPSGraphTensor* mps_b;
+				if (beta == 1)
+				{
+					MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_a name:nil];
+					MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
+					mps_b = [graph divisionWithPrimaryTensor:mps_a secondaryTensor:mps_denom name:nil];
+				} else {
+					MPSGraphTensor* mps_a_f32 = mps_a;
+					if (a->info.datatype != CCV_32F)
+						mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+					MPSGraphTensor* mps_beta = [graph constantWithScalar:beta dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_beta_a = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_beta name:nil];
+					MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_beta_a name:nil];
+					MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
+					MPSGraphTensor* mps_b_f32 = [graph divisionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_denom name:nil];
+					if (b->info.datatype != CCV_32F)
+						mps_b_f32 = [graph castTensor:mps_b_f32 toType:ccv_nnc_mps_datatype(b->info.datatype) name:@"mps_b"];
+					mps_b = mps_b_f32;
+				}
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
@@ -108,6 +128,7 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 2);
+	const float beta = cmd.info.swish.beta;
 	const ccv_nnc_tensor_view_t* const g = (const ccv_nnc_tensor_view_t*)inputs[0]; // gradient
 	assert(CCV_IS_TENSOR_CONTIGUOUS(g));
 
@@ -177,6 +198,7 @@ static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		if (use_mfa) {
 			ccv_nnc_mfa_swish_params_t params = {
 				.gradient = 1,
+				.beta = beta,
 				.data_type = mtl_data_type
 			};
 			const size_t count = ccv_nnc_tensor_count(g->info);
@@ -214,16 +236,43 @@ static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
 
-				MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_a name:nil];
-				MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
-				MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-				MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
-				MPSGraphTensor* mps_y = [graph divisionWithPrimaryTensor:mps_one secondaryTensor:mps_denom name:nil];
-				MPSGraphTensor* mps_y_2 = [graph multiplicationWithPrimaryTensor:mps_y secondaryTensor:mps_y name:nil];
-				MPSGraphTensor* mps_y_diff = [graph subtractionWithPrimaryTensor:mps_y secondaryTensor:mps_y_2 name:nil];
-				MPSGraphTensor* mps_multiply = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_y_diff name:nil];
-				MPSGraphTensor* mps_sum = [graph additionWithPrimaryTensor:mps_y secondaryTensor:mps_multiply name:nil];
-				MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_sum name:nil];
+				MPSGraphTensor* mps_h;
+				if (beta == 1)
+				{
+					MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_a name:nil];
+					MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
+					MPSGraphTensor* mps_y = [graph divisionWithPrimaryTensor:mps_one secondaryTensor:mps_denom name:nil];
+					MPSGraphTensor* mps_y_2 = [graph multiplicationWithPrimaryTensor:mps_y secondaryTensor:mps_y name:nil];
+					MPSGraphTensor* mps_y_diff = [graph subtractionWithPrimaryTensor:mps_y secondaryTensor:mps_y_2 name:nil];
+					MPSGraphTensor* mps_multiply = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_y_diff name:nil];
+					MPSGraphTensor* mps_sum = [graph additionWithPrimaryTensor:mps_y secondaryTensor:mps_multiply name:nil];
+					mps_h = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_sum name:nil];
+				} else {
+					MPSGraphTensor* mps_a_f32 = mps_a;
+					if (a->info.datatype != CCV_32F)
+						mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+					MPSGraphTensor* mps_g_f32 = mps_g;
+					if (g->info.datatype != CCV_32F)
+						mps_g_f32 = [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+					MPSGraphTensor* mps_beta = [graph constantWithScalar:beta dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_beta_a = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_beta name:nil];
+					MPSGraphTensor* mps_neg = [graph negativeWithTensor:mps_beta_a name:nil];
+					MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg name:nil];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
+					MPSGraphTensor* mps_y = [graph divisionWithPrimaryTensor:mps_one secondaryTensor:mps_denom name:nil];
+					MPSGraphTensor* mps_y_2 = [graph multiplicationWithPrimaryTensor:mps_y secondaryTensor:mps_y name:nil];
+					MPSGraphTensor* mps_y_diff = [graph subtractionWithPrimaryTensor:mps_y secondaryTensor:mps_y_2 name:nil];
+					MPSGraphTensor* mps_beta_x = [graph multiplicationWithPrimaryTensor:mps_beta secondaryTensor:mps_a_f32 name:nil];
+					MPSGraphTensor* mps_multiply = [graph multiplicationWithPrimaryTensor:mps_beta_x secondaryTensor:mps_y_diff name:nil];
+					MPSGraphTensor* mps_sum = [graph additionWithPrimaryTensor:mps_y secondaryTensor:mps_multiply name:nil];
+					MPSGraphTensor* mps_h_f32 = [graph multiplicationWithPrimaryTensor:mps_g_f32 secondaryTensor:mps_sum name:nil];
+					if (h->info.datatype != CCV_32F)
+						mps_h_f32 = [graph castTensor:mps_h_f32 toType:ccv_nnc_mps_datatype(h->info.datatype) name:@"mps_h"];
+					mps_h = mps_h_f32;
+				}
 
 				[resultTensors addObject:mps_h];
 			});

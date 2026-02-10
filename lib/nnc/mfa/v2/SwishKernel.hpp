@@ -19,6 +19,8 @@ struct SwishKernel {
 
   uint8_t value;
 
+  float beta;
+
   GEMMOperandPrecision memoryPrecision;
 
   SwishKernel(SwishKernelDescriptor descriptor, MTL::Device *const device);
@@ -31,4 +33,3 @@ private:
 };
 
 #endif /* SwishKernel_hpp */
-

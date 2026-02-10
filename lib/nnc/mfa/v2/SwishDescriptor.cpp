@@ -8,6 +8,7 @@ bool SwishDescriptor::operator==(const SwishDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   gradient == rhs.gradient &&
   value == rhs.value &&
+  beta == rhs.beta &&
   length == rhs.length;
 }
 
@@ -15,7 +16,7 @@ std::size_t std::hash<SwishDescriptor>::operator()(const SwishDescriptor& hash) 
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.length, 0 }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.length, *reinterpret_cast<const uint32_t*>(&hash.beta) }));
   return seed;
 }
 
@@ -38,6 +39,7 @@ std::pair<SwishKernelDescriptor, PipelineValue<SwishKernel> *> SwishDescriptor::
   SwishKernelDescriptor kernelDesc;
   kernelDesc.gradient = gradient;
   kernelDesc.value = value;
+  kernelDesc.beta = beta;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   // WARNING: The owner must explicitly retain the compute pipeline.
@@ -55,6 +57,8 @@ std::pair<SwishKernelDescriptor, PipelineValue<SwishKernel> *> SwishDescriptor::
       count = length;
       constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
     }
+    if (beta != 1)
+      constants->setConstantValue(&beta, MTL::DataTypeFloat, NS::UInteger(1));
 
     NS::String* swiftName = NS::String::string("swish", NS::UTF8StringEncoding);
     NS::Error* error = nil;

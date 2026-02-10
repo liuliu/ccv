@@ -31,6 +31,7 @@ void ccv_nnc_mfa_encode_swish(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_
 
   SwishDescriptor descriptor;
   descriptor.gradient = params.gradient ? 1 : 0;
+  descriptor.beta = params.beta;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {
@@ -92,4 +93,3 @@ void ccv_nnc_mfa_encode_swish(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_
 
   command_batch->finishCommand(encoder);
 }
-
