@@ -191,6 +191,16 @@ cc_binary(
 )
 
 cc_binary(
+	name = "grid_sample.tests",
+	srcs = ["grid_sample.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "graph.io.tests",
 	srcs = ["graph.io.tests.c"],
 	copts = ccv_default_copts(),

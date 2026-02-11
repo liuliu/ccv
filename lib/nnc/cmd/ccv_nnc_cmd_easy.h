@@ -110,6 +110,10 @@
 #define CMD_GELU_FORWARD(_tanh) ccv_nnc_cmd(CCV_NNC_GELU_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gelu={.tanh=_tanh}}, 0)
 // CCV_NNC_GELU_BACKWARD
 #define CMD_GELU_BACKWARD(_tanh) ccv_nnc_cmd(CCV_NNC_GELU_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gelu={.tanh=_tanh}}, 0)
+// CCV_NNC_GRID_SAMPLE_FORWARD
+#define CMD_GRID_SAMPLE_FORWARD(_align_corners) ccv_nnc_cmd(CCV_NNC_GRID_SAMPLE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.grid_sample={.align_corners=(_align_corners)}}), 0)
+// CCV_NNC_GRID_SAMPLE_BACKWARD
+#define CMD_GRID_SAMPLE_BACKWARD(_align_corners) ccv_nnc_cmd(CCV_NNC_GRID_SAMPLE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.grid_sample={.align_corners=(_align_corners)}}), 0)
 // CCV_NNC_HISTOGRAM_FORWARD
 #define CMD_HISTOGRAM_EVEN(_bins, _min, _max) ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_EVEN,.bins=_bins,.min=_min,.max=_max}}), 0)
 // CCV_NNC_HISTOGRAM_FORWARD

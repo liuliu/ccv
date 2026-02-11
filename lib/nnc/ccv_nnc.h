@@ -247,6 +247,9 @@ typedef struct {
 			int align_corners; /**< [upsample.align_corners] Whether to scale to align corners. Thus, for 0...1, if false, it will align to -0.25, 0.25, 0.75, 1.25, if true, it will align to 0, 0.3333, 0.6666, 1.0 */
 		} upsample;
 		struct {
+			int align_corners;
+		} grid_sample;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
