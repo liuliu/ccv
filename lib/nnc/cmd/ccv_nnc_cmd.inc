@@ -676,6 +676,7 @@ void _register_command_CCV_NNC_EWABS_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc
 void _register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_GELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_GRID_SAMPLE_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_INDEX_SELECT_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_ISNAN_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_LEAKY_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1207,6 +1208,7 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[120].backends[6]));
 	_register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[10].backends[6]));
 	_register_command_CCV_NNC_GELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[11].backends[6]));
+	_register_command_CCV_NNC_GRID_SAMPLE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[80].backends[6]));
 	_register_command_CCV_NNC_INDEX_SELECT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[30].backends[6]));
 	_register_command_CCV_NNC_REDUCE_ISNAN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[88].backends[6]));
 	_register_command_CCV_NNC_LEAKY_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[90].backends[6]));

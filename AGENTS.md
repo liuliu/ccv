@@ -77,3 +77,11 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
   - `gpu/ccv_nnc_OPS_gpu_cudnn.cu`: GPU implementation via cuDNN.
   - `gpu/ccv_nnc_OPS_gpu_ref.cu`: GPU implementation via direct CUDA kernels.
   - `mps/ccv_nnc_OPS_mps.m`: Apple MPS backend implementation (MPSGraph / MFA).
+- Integration test philosophy (`test/int/nnc`):
+  - Prefer larger randomized tensors over tiny hand-crafted examples.
+  - Validate GPU outputs by comparing against CPU reference implementation outputs, using the same command and compatible tensor formats.
+  - Cover both `NCHW` and `NHWC` layouts when backend support exists.
+  - Use tolerance-based comparisons for floating-point parity (`REQUIRE_ARRAY_EQ_WITH_TOLERANCE`).
+- `grid_sample` integration test specifics:
+  - NCHW path can be guarded by `CCV_NNC_BACKEND_GPU_CUDNN || CCV_NNC_BACKEND_MPS`.
+  - NHWC path is currently guarded by `CCV_NNC_BACKEND_MPS` (cuDNN implementation path is NCHW-only internally).

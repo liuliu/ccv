@@ -17,7 +17,7 @@ static int _ccv_nnc_grid_sample_back_bitmask(const ccv_nnc_cmd_param_t cmd, cons
 }
 
 REGISTER_COMMAND(CCV_NNC_GRID_SAMPLE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_grid_sample_cpu_ref.c, gpu/ccv_nnc_grid_sample_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_grid_sample_cpu_ref.c, gpu/ccv_nnc_grid_sample_gpu_cudnn.cu, mps/ccv_nnc_grid_sample_mps.m)
 {
 	registry->bitmask = _ccv_nnc_grid_sample_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
