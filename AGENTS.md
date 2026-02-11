@@ -67,3 +67,13 @@ To avoid polluting commit history after local validation, restore generated file
 ```sh
 git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cmd/ccv_nnc_backend.h lib/nnc/cmd/ccv_nnc_cmd_easy.h lib/nnc/cmd/config.mk
 ```
+
+## Session Learnings
+
+- Branch sync policy: when asked to keep a branch up to date with another branch, use `git rebase` instead of `git merge` (unless explicitly requested otherwise).
+- Operator file naming convention (generic):
+  - `ccv_nnc_OPS.c`: operator metadata / registry logic (in-place support, tensor shape inference, etc.).
+  - `ccv_nnc_OPS_cpu_ref.c`: CPU reference implementation.
+  - `gpu/ccv_nnc_OPS_gpu_cudnn.cu`: GPU implementation via cuDNN.
+  - `gpu/ccv_nnc_OPS_gpu_ref.cu`: GPU implementation via direct CUDA kernels.
+  - `mps/ccv_nnc_OPS_mps.m`: Apple MPS backend implementation (MPSGraph / MFA).
