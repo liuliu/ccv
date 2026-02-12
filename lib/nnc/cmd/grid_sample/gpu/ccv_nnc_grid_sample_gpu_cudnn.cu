@@ -19,22 +19,38 @@ __global__ static void _ccv_nnc_grid_sample_transform_grid_kernel(const size_t c
 	}
 }
 
-static void _ccv_nnc_grid_sample_nchw_dim(const ccv_nnc_tensor_t* const tensor, int* const n, int* const c, int* const h, int* const w)
+static void _ccv_nnc_grid_sample_dim(const ccv_nnc_tensor_t* const tensor, const int format, int* const n, int* const c, int* const h, int* const w)
 {
 	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
 	assert(nd == 3 || nd == 4);
-	assert(tensor->info.format == CCV_TENSOR_FORMAT_NCHW);
-	if (nd == 4)
+	assert(format == CCV_TENSOR_FORMAT_NCHW || format == CCV_TENSOR_FORMAT_NHWC);
+	if (format == CCV_TENSOR_FORMAT_NCHW)
 	{
-		*n = tensor->info.dim[0];
-		*c = tensor->info.dim[1];
-		*h = tensor->info.dim[2];
-		*w = tensor->info.dim[3];
+		if (nd == 4)
+		{
+			*n = tensor->info.dim[0];
+			*c = tensor->info.dim[1];
+			*h = tensor->info.dim[2];
+			*w = tensor->info.dim[3];
+		} else {
+			*n = 1;
+			*c = tensor->info.dim[0];
+			*h = tensor->info.dim[1];
+			*w = tensor->info.dim[2];
+		}
 	} else {
-		*n = 1;
-		*c = tensor->info.dim[0];
-		*h = tensor->info.dim[1];
-		*w = tensor->info.dim[2];
+		if (nd == 4)
+		{
+			*n = tensor->info.dim[0];
+			*h = tensor->info.dim[1];
+			*w = tensor->info.dim[2];
+			*c = tensor->info.dim[3];
+		} else {
+			*n = 1;
+			*h = tensor->info.dim[0];
+			*w = tensor->info.dim[1];
+			*c = tensor->info.dim[2];
+		}
 	}
 }
 
@@ -63,8 +79,8 @@ static int _ccv_nnc_grid_sample_forw_cudnn(const ccv_nnc_cmd_t cmd, const ccv_nn
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const grid = inputs[1];
 	ccv_nnc_tensor_t* const b = outputs[0];
-	assert(a->info.format == CCV_TENSOR_FORMAT_NCHW);
-	assert(b->info.format == CCV_TENSOR_FORMAT_NCHW);
+	assert(a->info.format == b->info.format);
+	assert(a->info.format == CCV_TENSOR_FORMAT_NCHW || a->info.format == CCV_TENSOR_FORMAT_NHWC);
 	assert(a->info.datatype == CCV_32F);
 	assert(grid->info.datatype == CCV_32F);
 	assert(b->info.datatype == CCV_32F);
@@ -72,11 +88,13 @@ static int _ccv_nnc_grid_sample_forw_cudnn(const ccv_nnc_cmd_t cmd, const ccv_nn
 	assert(CCV_IS_TENSOR_CONTIGUOUS(grid));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 
+	const int format = a->info.format;
+	const cudnnTensorFormat_t cudnn_format = (format == CCV_TENSOR_FORMAT_NHWC) ? CUDNN_TENSOR_NHWC : CUDNN_TENSOR_NCHW;
 	int n = 0, c = 0, h = 0, w = 0;
 	int bn = 0, bc = 0, bh = 0, bw = 0;
 	int gn = 0, gh = 0, gw = 0;
-	_ccv_nnc_grid_sample_nchw_dim(a, &n, &c, &h, &w);
-	_ccv_nnc_grid_sample_nchw_dim(b, &bn, &bc, &bh, &bw);
+	_ccv_nnc_grid_sample_dim(a, format, &n, &c, &h, &w);
+	_ccv_nnc_grid_sample_dim(b, format, &bn, &bc, &bh, &bw);
 	_ccv_nnc_grid_sample_grid_dim(grid, &gn, &gh, &gw);
 	assert(bn == n);
 	assert(bc == c);
@@ -92,8 +110,8 @@ static int _ccv_nnc_grid_sample_forw_cudnn(const ccv_nnc_cmd_t cmd, const ccv_nn
 	CUDNN_ENFORCE(cudnnCreateTensorDescriptor(&a_desc));
 	CUDNN_ENFORCE(cudnnCreateTensorDescriptor(&b_desc));
 	CUDNN_ENFORCE(cudnnCreateSpatialTransformerDescriptor(&st_desc));
-	CUDNN_ENFORCE(cudnnSetTensor4dDescriptor(a_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, n, c, h, w));
-	CUDNN_ENFORCE(cudnnSetTensor4dDescriptor(b_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, bn, bc, bh, bw));
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptor(a_desc, cudnn_format, CUDNN_DATA_FLOAT, n, c, h, w));
+	CUDNN_ENFORCE(cudnnSetTensor4dDescriptor(b_desc, cudnn_format, CUDNN_DATA_FLOAT, bn, bc, bh, bw));
 	const int st_dim[4] = {bn, bc, bh, bw};
 	CUDNN_ENFORCE(cudnnSetSpatialTransformerNdDescriptor(st_desc, CUDNN_SAMPLER_BILINEAR, CUDNN_DATA_FLOAT, 4, st_dim));
 	static const float one = 1;

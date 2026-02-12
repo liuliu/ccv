@@ -95,9 +95,10 @@ TEST_CASE("compare grid_sample in NCHW with mps / cudnn")
 	ccv_nnc_tensor_free(hbt);
 }
 
-TEST_CASE("compare grid_sample in NHWC with mps with align corners")
+TEST_CASE("compare grid_sample in NHWC with mps / cudnn with align corners")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) ||
+		ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int N = 2;
 	const int C = 11;
 	const int H = 14;
@@ -136,9 +137,10 @@ TEST_CASE("compare grid_sample in NHWC with mps with align corners")
 	ccv_nnc_tensor_free(hbt);
 }
 
-TEST_CASE("compare grid_sample in NHWC with mps")
+TEST_CASE("compare grid_sample in NHWC with mps / cudnn")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) ||
+		ccv_nnc_cmd_ok(CCV_NNC_GRID_SAMPLE_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int N = 2;
 	const int C = 11;
 	const int H = 14;
