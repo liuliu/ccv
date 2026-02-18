@@ -5,21 +5,6 @@
 #include "nnc/ccv_nnc_internal.h"
 #include <math.h>
 
-static inline float _ccv_nnc_grid_sample_unnormalize(const float v, const int size, const int align_corners)
-{
-	if (align_corners)
-		return (v + 1) * (size - 1) * 0.5f;
-	return ((v + 1) * size - 1) * 0.5f;
-}
-
-static inline int _ccv_nnc_grid_sample_offset(const int n, const int c, const int y, const int x, const int n_axis, const int c_axis, const int y_axis, const int x_axis, const int stride[CCV_NNC_MAX_DIM_ALLOC])
-{
-	int offset = c * stride[c_axis] + y * stride[y_axis] + x * stride[x_axis];
-	if (n_axis >= 0)
-		offset += n * stride[n_axis];
-	return offset;
-}
-
 static int _ccv_nnc_grid_sample_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
@@ -32,6 +17,7 @@ static int _ccv_nnc_grid_sample_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(b->info.datatype == CCV_32F);
 	assert(a->info.format == b->info.format);
 	assert(a->info.format == CCV_TENSOR_FORMAT_NCHW || a->info.format == CCV_TENSOR_FORMAT_NHWC);
+	assert(grid->info.format == CCV_TENSOR_FORMAT_NHWC);
 	int adim[CCV_NNC_MAX_DIM_ALLOC];
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	int griddim[CCV_NNC_MAX_DIM_ALLOC];
@@ -48,71 +34,59 @@ static int _ccv_nnc_grid_sample_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int and = ccv_nnc_tensor_nd(a->info.dim);
 	const int bnd = ccv_nnc_tensor_nd(b->info.dim);
 	const int gnd = ccv_nnc_tensor_nd(grid->info.dim);
+	assert(and == 3 || and == 4);
+	assert(bnd == 3 || bnd == 4);
+	assert(gnd == 3 || gnd == 4);
 
-	const int an_axis = (and == 4) ? 0 : -1;
-	const int bn_axis = (bnd == 4) ? 0 : -1;
-	const int gn_axis = (gnd == 4) ? 0 : -1;
+	const int ahw = ccv_nnc_tensor_hw(a->info, and, CCV_NNC_MAX_DIM);
+	const int bhw = ccv_nnc_tensor_hw(b->info, bnd, CCV_NNC_MAX_DIM);
+	const int ghw = ccv_nnc_tensor_hw(grid->info, gnd, CCV_NNC_MAX_DIM);
+	assert(ahw >= 0);
+	assert(bhw >= 0);
+	assert(ghw >= 0);
 
-	int ac_axis = 0, ah_axis = 0, aw_axis = 0;
-	int bc_axis = 0, bh_axis = 0, bw_axis = 0;
-	if (a->info.format == CCV_TENSOR_FORMAT_NCHW)
-	{
-		assert(and == 3 || and == 4);
-		assert(bnd == 3 || bnd == 4);
-		ac_axis = (and == 4) ? 1 : 0;
-		ah_axis = (and == 4) ? 2 : 1;
-		aw_axis = (and == 4) ? 3 : 2;
-		bc_axis = (bnd == 4) ? 1 : 0;
-		bh_axis = (bnd == 4) ? 2 : 1;
-		bw_axis = (bnd == 4) ? 3 : 2;
-	} else {
-		assert(and == 3 || and == 4);
-		assert(bnd == 3 || bnd == 4);
-		ah_axis = (and == 4) ? 1 : 0;
-		aw_axis = (and == 4) ? 2 : 1;
-		ac_axis = (and == 4) ? 3 : 2;
-		bh_axis = (bnd == 4) ? 1 : 0;
-		bw_axis = (bnd == 4) ? 2 : 1;
-		bc_axis = (bnd == 4) ? 3 : 2;
-	}
-
-	const int N = (an_axis >= 0) ? adim[an_axis] : 1;
-	const int C = adim[ac_axis];
-	const int H_in = adim[ah_axis];
-	const int W_in = adim[aw_axis];
-	const int N_out = (bn_axis >= 0) ? bdim[bn_axis] : 1;
-	const int C_out = bdim[bc_axis];
-	const int H_out = bdim[bh_axis];
-	const int W_out = bdim[bw_axis];
+	const int N = ccv_nnc_tensor_get_n(a->info);
+	const int C = ccv_nnc_tensor_get_c(a->info);
+	const int H_in = adim[ahw];
+	const int W_in = adim[ahw + 1];
+	const int N_out = ccv_nnc_tensor_get_n(b->info);
+	const int C_out = ccv_nnc_tensor_get_c(b->info);
+	const int H_out = bdim[bhw];
+	const int W_out = bdim[bhw + 1];
 	assert(N_out == N);
 	assert(C_out == C);
-
-	assert(gnd == 3 || gnd == 4);
-	const int gh_axis = (gnd == 4) ? 1 : 0;
-	const int gw_axis = (gnd == 4) ? 2 : 1;
-	const int gc_axis = (gnd == 4) ? 3 : 2;
-	const int N_grid = (gn_axis >= 0) ? griddim[gn_axis] : 1;
-	assert(griddim[gc_axis] == 2);
+	const int N_grid = ccv_nnc_tensor_get_n(grid->info);
+	assert(griddim[ghw + 2] == 2);
 	assert(N_grid == N);
-	assert(griddim[gh_axis] == H_out);
-	assert(griddim[gw_axis] == W_out);
+	assert(griddim[ghw] == H_out);
+	assert(griddim[ghw + 1] == W_out);
 
 	const int align_corners = cmd.info.grid_sample.align_corners;
 	const float* const ap = a->data.f32;
 	const float* const gridp = grid->data.f32;
 	float* const bp = b->data.f32;
+	const int anstride = (and == CCV_NNC_MAX_DIM + 2) ? astride[0] : 0;
+	const int ahstride = astride[ahw];
+	const int awstride = astride[ahw + 1];
+	const int acstride = (a->info.format == CCV_TENSOR_FORMAT_NCHW) ? astride[ahw - 1] : astride[ahw + 2];
+	const int bnstride = (bnd == CCV_NNC_MAX_DIM + 2) ? bstride[0] : 0;
+	const int bhstride = bstride[bhw];
+	const int bwstride = bstride[bhw + 1];
+	const int bcstride = (b->info.format == CCV_TENSOR_FORMAT_NCHW) ? bstride[bhw - 1] : bstride[bhw + 2];
+	const int gnstride = (gnd == CCV_NNC_MAX_DIM + 2) ? gridstride[0] : 0;
+	const int ghstride = gridstride[ghw];
+	const int gwstride = gridstride[ghw + 1];
+	const int gcstride = gridstride[ghw + 2];
 
 	for (int n = 0; n < N; n++)
 		for (int y = 0; y < H_out; y++)
 			for (int x = 0; x < W_out; x++)
 			{
-				int grid_offset = y * gridstride[gh_axis] + x * gridstride[gw_axis];
-				if (gn_axis >= 0)
-					grid_offset += n * gridstride[gn_axis];
+				const int grid_offset = n * gnstride + y * ghstride + x * gwstride;
 				const float gx = gridp[grid_offset];
-				const float gy = gridp[grid_offset + gridstride[gc_axis]];
-				const float ix = _ccv_nnc_grid_sample_unnormalize(gx, W_in, align_corners);
-				const float iy = _ccv_nnc_grid_sample_unnormalize(gy, H_in, align_corners);
+				const float gy = gridp[grid_offset + gcstride];
+				const float ix = align_corners ? (gx + 1) * (W_in - 1) * 0.5f : ((gx + 1) * W_in - 1) * 0.5f;
+				const float iy = align_corners ? (gy + 1) * (H_in - 1) * 0.5f : ((gy + 1) * H_in - 1) * 0.5f;
 				const int x0 = (int)floorf(ix);
 				const int y0 = (int)floorf(iy);
 				const int x1 = x0 + 1;
@@ -121,32 +95,22 @@ static int _ccv_nnc_grid_sample_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				const float wy1 = iy - y0;
 				const float wx0 = 1.0f - wx1;
 				const float wy0 = 1.0f - wy1;
+				const int a_offset_nc = n * anstride;
+				const int b_offset_nc = n * bnstride;
 				for (int c = 0; c < C; c++)
 				{
 					float v00 = 0, v01 = 0, v10 = 0, v11 = 0;
+					const int a_offset_ncc = a_offset_nc + c * acstride;
 					if (y0 >= 0 && y0 < H_in && x0 >= 0 && x0 < W_in)
-					{
-						const int offset = _ccv_nnc_grid_sample_offset(n, c, y0, x0, an_axis, ac_axis, ah_axis, aw_axis, astride);
-						v00 = ap[offset];
-					}
+						v00 = ap[a_offset_ncc + y0 * ahstride + x0 * awstride];
 					if (y0 >= 0 && y0 < H_in && x1 >= 0 && x1 < W_in)
-					{
-						const int offset = _ccv_nnc_grid_sample_offset(n, c, y0, x1, an_axis, ac_axis, ah_axis, aw_axis, astride);
-						v01 = ap[offset];
-					}
+						v01 = ap[a_offset_ncc + y0 * ahstride + x1 * awstride];
 					if (y1 >= 0 && y1 < H_in && x0 >= 0 && x0 < W_in)
-					{
-						const int offset = _ccv_nnc_grid_sample_offset(n, c, y1, x0, an_axis, ac_axis, ah_axis, aw_axis, astride);
-						v10 = ap[offset];
-					}
+						v10 = ap[a_offset_ncc + y1 * ahstride + x0 * awstride];
 					if (y1 >= 0 && y1 < H_in && x1 >= 0 && x1 < W_in)
-					{
-						const int offset = _ccv_nnc_grid_sample_offset(n, c, y1, x1, an_axis, ac_axis, ah_axis, aw_axis, astride);
-						v11 = ap[offset];
-					}
+						v11 = ap[a_offset_ncc + y1 * ahstride + x1 * awstride];
 					const float v = v00 * wy0 * wx0 + v01 * wy0 * wx1 + v10 * wy1 * wx0 + v11 * wy1 * wx1;
-					const int boffset = _ccv_nnc_grid_sample_offset(n, c, y, x, bn_axis, bc_axis, bh_axis, bw_axis, bstride);
-					bp[boffset] = v;
+					bp[b_offset_nc + c * bcstride + y * bhstride + x * bwstride] = v;
 				}
 			}
 	return CCV_NNC_EXEC_SUCCESS;
