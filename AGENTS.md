@@ -85,3 +85,12 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
 - `grid_sample` integration test specifics:
   - NCHW path can be guarded by `CCV_NNC_BACKEND_GPU_CUDNN || CCV_NNC_BACKEND_MPS`.
   - NHWC path is currently guarded by `CCV_NNC_BACKEND_MPS` (cuDNN implementation path is NCHW-only internally).
+- Variable naming convention preference:
+  - Prefer `<tensor>_nd` style names (for example, `a_nd`, `b_nd`, `w_nd`) as the default rule.
+  - `adim` / `bdim` / `astride`-style names are acceptable as specific shape/stride-array exceptions, not the general naming pattern.
+- `ctags` usage expectation and workflow:
+  - `ctags` should be available and used to discover reusable helpers before introducing local utility functions.
+  - Practical flow:
+    - List relevant helper functions from common headers: `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h`.
+    - Filter by intent (example): `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h | rg 'tensor_get_|tensor_hw|tensor_view_get_'`.
+    - Reuse discovered existing helpers when possible, instead of adding local utility functions.

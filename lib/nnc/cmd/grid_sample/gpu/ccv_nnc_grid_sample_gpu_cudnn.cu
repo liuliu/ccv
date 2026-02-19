@@ -38,15 +38,15 @@ static int _ccv_nnc_grid_sample_forw_cudnn(const ccv_nnc_cmd_t cmd, const ccv_nn
 
 	const int format = a->info.format;
 	const cudnnTensorFormat_t cudnn_format = (format == CCV_TENSOR_FORMAT_NHWC) ? CUDNN_TENSOR_NHWC : CUDNN_TENSOR_NCHW;
-	const int and_nd = ccv_nnc_tensor_nd(a->info.dim);
-	const int bnd = ccv_nnc_tensor_nd(b->info.dim);
-	const int gnd = ccv_nnc_tensor_nd(grid->info.dim);
-	assert(and_nd == 3 || and_nd == 4);
-	assert(bnd == 3 || bnd == 4);
-	assert(gnd == 3 || gnd == 4);
-	const int ahw = ccv_nnc_tensor_hw(a->info, and_nd, CCV_NNC_MAX_DIM);
-	const int bhw = ccv_nnc_tensor_hw(b->info, bnd, CCV_NNC_MAX_DIM);
-	const int ghw = ccv_nnc_tensor_hw(grid->info, gnd, CCV_NNC_MAX_DIM);
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int grid_nd = ccv_nnc_tensor_nd(grid->info.dim);
+	assert(a_nd == 3 || a_nd == 4);
+	assert(b_nd == 3 || b_nd == 4);
+	assert(grid_nd == 3 || grid_nd == 4);
+	const int ahw = ccv_nnc_tensor_hw(a->info, a_nd, CCV_NNC_MAX_DIM);
+	const int bhw = ccv_nnc_tensor_hw(b->info, b_nd, CCV_NNC_MAX_DIM);
+	const int ghw = ccv_nnc_tensor_hw(grid->info, grid_nd, CCV_NNC_MAX_DIM);
 	assert(ahw >= 0);
 	assert(bhw >= 0);
 	assert(ghw >= 0);
