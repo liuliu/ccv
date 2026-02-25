@@ -123,15 +123,23 @@ static int _ccv_nnc_tensor_block_a_after_b_exclusively(const ccv_sparse_matrix_t
 {
 	assert(a);
 	assert(b);
+	if (!a->rnum || !b->rnum)
+		return 0;
 	int x, y, max_hop = 0;
 	for (x = 0; x < a->rnum; x++)
+	{
+		ccv_sparse_matrix_vector_t* const vector = ccv_get_sparse_matrix_vector(exec_dep, *(int*)ccv_array_get(a, x));
+		if (!vector)
+			return 0;
 		for (y = 0; y < b->rnum; y++)
 		{
-			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a, x), *(int*)ccv_array_get(b, y));
+			const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell_from_vector(exec_dep, vector, *(int*)ccv_array_get(b, y));
 			if (!cell.i32 || cell.i32[0] == 0)
 				return 0;
-			max_hop = ccv_max(cell.i32[0], max_hop);
+			if (cell.i32[0] > max_hop)
+				max_hop = cell.i32[0];
 		}
+	}
 	// We've entered this nested-for loop, therefore, it must be verifiably, deterministically after b now.
 	// The max hop also denotes if that is the case, how many hops, maximally speaking, we need to get from a to b.
 	return max_hop;
@@ -222,24 +230,31 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 			for (j = i + 1; j < tensor_block_size; j++)
 				if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[j]))
 				{
+					// We only reuse buffers within the same memory type. The tensor_dt / tensor_df
+					// matrices are only queried later for same-type candidates in this function,
+					// thus cross-type hop relations are not needed for allocation planning here.
+					if (tensor_blocks[i].type != tensor_blocks[j].type)
+						continue;
 					// Check to see if they interfere (default to yes).
 					// If any of the i's head is deterministically later than j's tail
 					// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
 					const int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
+					int j_hop_i = 0;
 					if (i_hop_j > 0)
 					{
 						ccv_set_sparse_matrix_cell(tensor_dt, i, j, &i_hop_j);
 						ccv_set_sparse_matrix_cell(tensor_df, j, i, &i_hop_j);
+					} else {
+						// It cannot be that both directions are positive. If i can hop to j, we don't
+						// need the reverse hop value for any subsequent allocation decision.
+						j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
+						if (j_hop_i > 0)
+						{
+							ccv_set_sparse_matrix_cell(tensor_dt, j, i, &j_hop_i);
+							ccv_set_sparse_matrix_cell(tensor_df, i, j, &j_hop_i);
+						}
 					}
-					const int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
-					if (j_hop_i > 0)
-					{
-						ccv_set_sparse_matrix_cell(tensor_dt, j, i, &j_hop_i);
-						ccv_set_sparse_matrix_cell(tensor_df, i, j, &j_hop_i);
-					}
-					// It cannot be that both i can hop to j can j can hop to i.
-					assert(!(i_hop_j > 0 && j_hop_i > 0));
-					if (!i_hop_j && !j_hop_i && tensor_blocks[i].type == tensor_blocks[j].type)
+					if (!i_hop_j && !j_hop_i)
 					{
 						if (!adj[i].itf)
 							adj[i].itf = ccv_array_new(sizeof(int), 1, 0);
@@ -370,7 +385,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 #undef for_block
 				assert(y_size + x_size <= tensor_block_size);
 				int x, y;
-				_ccv_nnc_sort_by_hops(y_buf, y_size, 0);
+				if (y_size > 1)
+					_ccv_nnc_sort_by_hops(y_buf, y_size, 0);
 				for (y = 0; y < y_size; y++)
 				{
 					const int hop = exec_dep_rows + y_buf[y].hop;
@@ -384,7 +400,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new_and_free_exec
 						break;
 					}
 				}
-				_ccv_nnc_sort_by_hops(x_buf, x_size, 0);
+				if (x_size > 1)
+					_ccv_nnc_sort_by_hops(x_buf, x_size, 0);
 				for (x = 0; x < x_size; x++)
 				{
 					const int hop = exec_dep_rows + x_buf[x].hop;
