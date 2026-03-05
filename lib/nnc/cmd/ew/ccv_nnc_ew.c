@@ -300,7 +300,7 @@ static void _ccv_nnc_ewpow_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const
 }
 
 REGISTER_COMMAND(CCV_NNC_EWPOW_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu, mps/ccv_nnc_ew_mps.m)
 {
 	registry->bitmask = _ccv_nnc_ewpow_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_ewpow_tensor_auto_forw;
@@ -410,7 +410,7 @@ static int _ccv_nnc_ewsin_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int 
 }
 
 REGISTER_COMMAND(CCV_NNC_EWSIN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu, mps/ccv_nnc_ew_mps.m)
 {
 	registry->bitmask = _ccv_nnc_ewsin_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -446,7 +446,7 @@ static int _ccv_nnc_ewcos_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int 
 }
 
 REGISTER_COMMAND(CCV_NNC_EWCOS_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu, mps/ccv_nnc_ew_mps.m)
 {
 	registry->bitmask = _ccv_nnc_ewcos_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
