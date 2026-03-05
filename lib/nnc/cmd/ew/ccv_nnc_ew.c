@@ -275,6 +275,51 @@ REGISTER_COMMAND(CCV_NNC_EWEXP_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWEXP_BACKWARD)
 #define CMD_EWEXP_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWEXP_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 
+static int _ccv_nnc_ewpow_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+static int _ccv_nnc_ewpow_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	// We only care about the original input.
+	if ((input_bitmasks[0] & (7u & ~((uint64_t)1u << 0) & ~((uint64_t)1u << 2))) == ((0u << 0) | (1u << 1) | (0u << 2)) && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+static void _ccv_nnc_ewpow_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	assert(output_size >= 1);
+	assert(input_size >= 1);
+	int i;
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[0];
+}
+
+REGISTER_COMMAND(CCV_NNC_EWPOW_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->bitmask = _ccv_nnc_ewpow_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_ewpow_tensor_auto_forw;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+}
+
+REGISTER_COMMAND(CCV_NNC_EWPOW_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->bitmask = _ccv_nnc_ewpow_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWPOW_FORWARD)
+#define CMD_EWPOW_FORWARD(_exponent) ccv_nnc_cmd(CCV_NNC_EWPOW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.pow={.exponent=_exponent}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWPOW_BACKWARD)
+#define CMD_EWPOW_BACKWARD(_exponent) ccv_nnc_cmd(CCV_NNC_EWPOW_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.pow={.exponent=_exponent}}), 0)
+
 static int _ccv_nnc_ewlog_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
@@ -348,6 +393,78 @@ REGISTER_COMMAND(CCV_NNC_EWSQRT_BACKWARD)(ccv_nnc_cmd_registry_t* const registry
 #define CMD_EWSQRT_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWSQRT_BACKWARD)
 #define CMD_EWSQRT_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+
+static int _ccv_nnc_ewsin_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+static int _ccv_nnc_ewsin_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	// We only care about the original input.
+	if ((input_bitmasks[0] & (7u & ~((uint64_t)1u << 0) & ~((uint64_t)1u << 2))) == ((0u << 0) | (1u << 1) | (0u << 2)) && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+REGISTER_COMMAND(CCV_NNC_EWSIN_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->bitmask = _ccv_nnc_ewsin_forw_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+}
+
+REGISTER_COMMAND(CCV_NNC_EWSIN_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->bitmask = _ccv_nnc_ewsin_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWSIN_FORWARD)
+#define CMD_EWSIN_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSIN_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWSIN_BACKWARD)
+#define CMD_EWSIN_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSIN_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+
+static int _ccv_nnc_ewcos_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+static int _ccv_nnc_ewcos_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	// We only care about the original input.
+	if ((input_bitmasks[0] & (7u & ~((uint64_t)1u << 0) & ~((uint64_t)1u << 2))) == ((0u << 0) | (1u << 1) | (0u << 2)) && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+REGISTER_COMMAND(CCV_NNC_EWCOS_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->bitmask = _ccv_nnc_ewcos_forw_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
+}
+
+REGISTER_COMMAND(CCV_NNC_EWCOS_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c, gpu/ccv_nnc_ew_gpu_ref.cu)
+{
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->bitmask = _ccv_nnc_ewcos_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWCOS_FORWARD)
+#define CMD_EWCOS_FORWARD() ccv_nnc_cmd(CCV_NNC_EWCOS_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWCOS_BACKWARD)
+#define CMD_EWCOS_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWCOS_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 
 static int _ccv_nnc_ewabs_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {

@@ -270,6 +270,120 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nn
 }
 
 template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewpow_kernel(const size_t count, const float exp, const NUM1* const a, NUM2* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		c[i] = (NUM2)powf((float)a[i], exp);
+	}
+}
+
+static int _ccv_nnc_ewpow_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 1);
+	const ccv_nnc_tensor_t* const a = inputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* const c = outputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+	const float exp = cmd.info.pow.exponent;
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == c->info.dim[i]); }
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+	{
+		_ccv_nnc_ewpow_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, a->data.f32, c->data.f32);
+	} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewpow_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, a->data.f32, (__half*)c->data.f16);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+		_ccv_nnc_ewpow_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, (__half*)a->data.f16, c->data.f32);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewpow_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, (__half*)a->data.f16, (__half*)c->data.f16);
+	} else {
+		assert(0);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewpow_back_da_kernel(const size_t count, const float exp, const NUM1* const a, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM2)(exp * powf((float)a[i], exp - 1));
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_ewpow_back_da_kernel(const size_t count, const float exp, const NUM1* const g, const NUM2* const a, NUM3* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM3)((float)g[i] * exp * powf((float)a[i], exp - 1));
+	}
+}
+
+static int _ccv_nnc_ewpow_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_nnc_tensor_t* const g = inputs[0];
+	const ccv_nnc_tensor_t* const a = inputs[1];
+	const float exp = cmd.info.pow.exponent;
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	if (g)
+	{
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
+		assert(g->info.datatype == a->info.datatype);
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+			{ assert(a->info.dim[i] == g->info.dim[i]); }
+	}
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (output_size > 0 && outputs[0])
+	{
+		ccv_nnc_tensor_t* const h = outputs[0];
+		assert(CCV_IS_TENSOR_CONTIGUOUS(h));
+		assert(h->info.datatype == a->info.datatype);
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+			{ assert(a->info.dim[i] == h->info.dim[i]); }
+		if (!g)
+		{
+			if (a->info.datatype == CCV_32F)
+				_ccv_nnc_ewpow_back_da_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, a->data.f32, h->data.f32);
+			else if (a->info.datatype == CCV_16F)
+				_ccv_nnc_ewpow_back_da_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, (__half*)a->data.f16, (__half*)h->data.f16);
+			else
+				assert(0);
+		} else {
+			if (a->info.datatype == CCV_32F)
+				_ccv_nnc_ewpow_back_da_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, g->data.f32, a->data.f32, h->data.f32);
+			else if (a->info.datatype == CCV_16F)
+				_ccv_nnc_ewpow_back_da_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, exp, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+			else
+				assert(0);
+		}
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWPOW_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewpow_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWPOW_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewpow_back;
+}
+
+template<typename NUM1, typename NUM2>
 __global__ void _ccv_nnc_ewlog_kernel(const size_t count, const NUM1* const a, NUM2* const c)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
@@ -459,6 +573,218 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWSQRT_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_n
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_ewsqrt_back;
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewsin_kernel(const size_t count, const NUM1* const a, NUM2* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		c[i] = (NUM2)sinf((float)a[i]);
+	}
+}
+
+static int _ccv_nnc_ewsin_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 1);
+	const ccv_nnc_tensor_t* const a = inputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* const c = outputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == c->info.dim[i]); }
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+	{
+		_ccv_nnc_ewsin_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, c->data.f32);
+	} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewsin_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)c->data.f16);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+		_ccv_nnc_ewsin_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, c->data.f32);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewsin_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)c->data.f16);
+	} else {
+		assert(0);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewsin_back_kernel(const size_t count, const NUM1* const a, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM2)cosf((float)a[i]);
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_ewsin_back_kernel(const size_t count, const NUM1* const g, const NUM2* const a, NUM3* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM3)((float)g[i] * cosf((float)a[i]));
+	}
+}
+
+static int _ccv_nnc_ewsin_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_nnc_tensor_t* const g = inputs[0];
+	const ccv_nnc_tensor_t* const a = inputs[1];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* const h = outputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == h->info.dim[i]); }
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (!g)
+	{
+		if (a->info.datatype == CCV_32F && h->info.datatype == CCV_32F)
+			_ccv_nnc_ewsin_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, h->data.f32);
+		else if (a->info.datatype == CCV_16F && h->info.datatype == CCV_16F)
+			_ccv_nnc_ewsin_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)h->data.f16);
+		else
+			assert(0);
+	} else {
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
+		assert(g->info.datatype == a->info.datatype);
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
+			{ assert(g->info.dim[i] == a->info.dim[i]); }
+		if (a->info.datatype == CCV_32F && h->info.datatype == CCV_32F)
+			_ccv_nnc_ewsin_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, g->data.f32, a->data.f32, h->data.f32);
+		else if (a->info.datatype == CCV_16F && h->info.datatype == CCV_16F)
+			_ccv_nnc_ewsin_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+		else
+			assert(0);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewcos_kernel(const size_t count, const NUM1* const a, NUM2* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		c[i] = (NUM2)cosf((float)a[i]);
+	}
+}
+
+static int _ccv_nnc_ewcos_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 1);
+	const ccv_nnc_tensor_t* const a = inputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* const c = outputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == c->info.dim[i]); }
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+	{
+		_ccv_nnc_ewcos_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, c->data.f32);
+	} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewcos_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)c->data.f16);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
+		_ccv_nnc_ewcos_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, c->data.f32);
+	} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
+		_ccv_nnc_ewcos_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)c->data.f16);
+	} else {
+		assert(0);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_ewcos_back_kernel(const size_t count, const NUM1* const a, NUM2* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM2)(-sinf((float)a[i]));
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_ewcos_back_kernel(const size_t count, const NUM1* const g, const NUM2* const a, NUM3* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		h[i] = (NUM3)(-(float)g[i] * sinf((float)a[i]));
+	}
+}
+
+static int _ccv_nnc_ewcos_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_nnc_tensor_t* const g = inputs[0];
+	const ccv_nnc_tensor_t* const a = inputs[1];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* const h = outputs[0];
+	assert(CCV_IS_TENSOR_CONTIGUOUS(h));
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == h->info.dim[i]); }
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if (!g)
+	{
+		if (a->info.datatype == CCV_32F && h->info.datatype == CCV_32F)
+			_ccv_nnc_ewcos_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, h->data.f32);
+		else if (a->info.datatype == CCV_16F && h->info.datatype == CCV_16F)
+			_ccv_nnc_ewcos_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)h->data.f16);
+		else
+			assert(0);
+	} else {
+		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
+		assert(g->info.datatype == a->info.datatype);
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
+			{ assert(g->info.dim[i] == a->info.dim[i]); }
+		if (a->info.datatype == CCV_32F && h->info.datatype == CCV_32F)
+			_ccv_nnc_ewcos_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, g->data.f32, a->data.f32, h->data.f32);
+		else if (a->info.datatype == CCV_16F && h->info.datatype == CCV_16F)
+			_ccv_nnc_ewcos_back_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)g->data.f16, (__half*)a->data.f16, (__half*)h->data.f16);
+		else
+			assert(0);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWSIN_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewsin_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWSIN_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewsin_back;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWCOS_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewcos_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWCOS_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewcos_back;
 }
 
 template<typename NUM1, typename NUM2>

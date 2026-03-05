@@ -270,6 +270,9 @@ typedef struct {
 			float beta; /**< [swish.beta] The beta parameter in swish: x * sigmoid(beta * x). */
 		} swish;
 		struct {
+			float exponent; /**< [pow.exponent] The exponent in y = x ^ exponent. */
+		} pow;
+		struct {
 			float scale; /**< [scaled_dot_product_attention.scale] The scale we multiple to the dot product of Q & K */
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
 			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32. */
@@ -4598,6 +4601,25 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_div(const int reciprocal, const char
  * @return A model that can be applied with one input, and generate output that is the square root of the input.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sqrt(const char* const name);
+/**
+ * Raise the input tensor to a constant exponent element-wise.
+ * @param exponent The exponent in y = x ^ exponent.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the element-wise power.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_pow(const float exponent, const char* const name);
+/**
+ * Sine of the input tensor.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the sine of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sin(const char* const name);
+/**
+ * Cosine of the input tensor.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the cosine of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
 /**
  * Multiply two input tensors together as if these are complex numbers.
  * @param name The unique name of the model.

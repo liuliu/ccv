@@ -90,6 +90,10 @@
 #define CMD_EWEXP_FORWARD() ccv_nnc_cmd(CCV_NNC_EWEXP_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWEXP_BACKWARD
 #define CMD_EWEXP_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWEXP_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWPOW_FORWARD
+#define CMD_EWPOW_FORWARD(_exponent) ccv_nnc_cmd(CCV_NNC_EWPOW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.pow={.exponent=_exponent}}), 0)
+// CCV_NNC_EWPOW_BACKWARD
+#define CMD_EWPOW_BACKWARD(_exponent) ccv_nnc_cmd(CCV_NNC_EWPOW_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.pow={.exponent=_exponent}}), 0)
 // CCV_NNC_EWLOG_FORWARD
 #define CMD_EWLOG_FORWARD() ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWLOG_BACKWARD
@@ -98,6 +102,14 @@
 #define CMD_EWSQRT_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWSQRT_BACKWARD
 #define CMD_EWSQRT_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSIN_FORWARD
+#define CMD_EWSIN_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSIN_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSIN_BACKWARD
+#define CMD_EWSIN_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSIN_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWCOS_FORWARD
+#define CMD_EWCOS_FORWARD() ccv_nnc_cmd(CCV_NNC_EWCOS_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWCOS_BACKWARD
+#define CMD_EWCOS_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWCOS_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWABS_FORWARD
 #define CMD_EWABS_FORWARD() ccv_nnc_cmd(CCV_NNC_EWABS_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWABS_BACKWARD

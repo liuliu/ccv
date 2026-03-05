@@ -35,6 +35,51 @@ TEST_CASE("dynamic graph to compute reciprocal")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph to compute power and gradients")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 2;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPOW_FORWARD(3), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(c), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 8, 1e-5, "pow result should be equal.");
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], 12, 1e-5, "d(pow(a,3))/da should be 3 * pow(a,2).");
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to compute sin and gradient")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 0.5;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSIN_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(b), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, b)->data.f32[0], sinf(0.5), 1e-5, "sin result should be equal.");
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(b), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], cosf(0.5), 1e-5, "d(sin(x))/dx should be cos(x).");
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to compute cos and gradient")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 0.5;
+	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWCOS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(b), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, b)->data.f32[0], cosf(0.5), 1e-5, "cos result should be equal.");
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(b), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], -sinf(0.5), 1e-5, "d(cos(x))/dx should be -sin(x).");
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("dynamic graph with alias")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
@@ -496,6 +541,60 @@ TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with reci
 	ccv_cnnp_model_free(div);
 	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 1 / 1.23, 1e-5, "should be equal");
 	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], -1 / (1.23 * 1.23), 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with pow")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 2;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const pow = ccv_cnnp_pow(3, "pow");
+	ccv_nnc_dynamic_graph_evaluate(graph, pow, 1, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	ccv_cnnp_model_set_minimizer(pow, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0, 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+	ccv_cnnp_model_free(pow);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], 8, 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], 12, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with sin")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 0.5;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const sin = ccv_cnnp_sin("sin");
+	ccv_nnc_dynamic_graph_evaluate(graph, sin, 1, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	ccv_cnnp_model_set_minimizer(sin, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0, 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+	ccv_cnnp_model_free(sin);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], sinf(0.5), 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], cosf(0.5), 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("dynamic graph to evaluate cnnp model without any parameters with cos")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 0.5;
+	ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_cnnp_model_t* const cos = ccv_cnnp_cos("cos");
+	ccv_nnc_dynamic_graph_evaluate(graph, cos, 1, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(c), 0, 0);
+	ccv_nnc_tensor_variable_t da = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, TENSOR_VARIABLE_LIST(c), 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(da), 0);
+	ccv_cnnp_model_set_minimizer(cos, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0, 0);
+	ccv_nnc_dynamic_graph_apply_gradients(graph, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(), 0, 0, 0);
+	ccv_cnnp_model_free(cos);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, c)->data.f32[0], cosf(0.5), 1e-5, "should be equal");
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, da)->data.f32[0], -sinf(0.5), 1e-5, "should be equal");
 	ccv_nnc_dynamic_graph_free(graph);
 }
 

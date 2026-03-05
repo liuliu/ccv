@@ -2181,6 +2181,149 @@ static ccv_cnnp_model_t* _ccv_cnnp_sqrt_copy(const ccv_cnnp_model_t* const super
 	return ccv_cnnp_sqrt(self->super.name);
 }
 
+// MARK - Pow Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_cmd_param_t params;
+} ccv_cnnp_model_pow_t;
+
+static void _ccv_cnnp_pow_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_pow_t* const self = (ccv_cnnp_model_pow_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_pow_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[1];
+	input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t pow = ccv_nnc_cmd(CCV_NNC_EWPOW_FORWARD, 0, self->params, 0);
+	ccv_nnc_hint_tensor_auto(pow, input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, pow, inputs, input_size, outputs, output_size, "pow");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_pow_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_pow_isa = {
+	.build = _ccv_cnnp_pow_build,
+	.copy = _ccv_cnnp_pow_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_pow(const float exponent, const char* const name)
+{
+	ccv_cnnp_model_pow_t* const model_pow = (ccv_cnnp_model_pow_t*)cccalloc(1, sizeof(ccv_cnnp_model_pow_t));
+	model_pow->super.isa = &ccv_cnnp_pow_isa;
+	model_pow->super.input_size = 1;
+	model_pow->super.outputs = &model_pow->output;
+	model_pow->super.output_size = 1;
+	model_pow->params = (ccv_nnc_cmd_param_t){
+		.size = {
+			.dim = { 1, 1, 1 }
+		},
+		.pow = {
+			.exponent = exponent,
+		},
+	};
+	ccv_cnnp_model_copy_name(&model_pow->super, name);
+	return (ccv_cnnp_model_t*)model_pow;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_pow_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_pow_t* const self = (const ccv_cnnp_model_pow_t*)super;
+	return ccv_cnnp_pow(self->params.pow.exponent, super->name);
+}
+
+// MARK - Sin Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_sin_t;
+
+static void _ccv_cnnp_sin_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_sin_build] -\n");
+	assert(output_size == 1);
+	assert(input_size == 1);
+	ccv_nnc_tensor_param_t input_params[1];
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t sin = CMD_EWSIN_FORWARD();
+	input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_hint_tensor_auto(sin, input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, sin, inputs, 1, outputs, output_size, "sin");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_sin_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_sin_isa = {
+	.build = _ccv_cnnp_sin_build,
+	.copy = _ccv_cnnp_sin_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_sin(const char* const name)
+{
+	ccv_cnnp_model_sin_t* const model_sin = (ccv_cnnp_model_sin_t*)cccalloc(1, sizeof(ccv_cnnp_model_sin_t));
+	model_sin->super.isa = &ccv_cnnp_sin_isa;
+	model_sin->super.input_size = 1;
+	model_sin->super.outputs = &model_sin->output;
+	model_sin->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_sin->super, name);
+	return (ccv_cnnp_model_t*)model_sin;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_sin_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	return ccv_cnnp_sin(super->name);
+}
+
+// MARK - Cos Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_cos_t;
+
+static void _ccv_cnnp_cos_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_cos_build] -\n");
+	assert(output_size == 1);
+	assert(input_size == 1);
+	ccv_nnc_tensor_param_t input_params[1];
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t cos = CMD_EWCOS_FORWARD();
+	input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_hint_tensor_auto(cos, input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cos, inputs, 1, outputs, output_size, "cos");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_cos_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_cos_isa = {
+	.build = _ccv_cnnp_cos_build,
+	.copy = _ccv_cnnp_cos_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_cos(const char* const name)
+{
+	ccv_cnnp_model_cos_t* const model_cos = (ccv_cnnp_model_cos_t*)cccalloc(1, sizeof(ccv_cnnp_model_cos_t));
+	model_cos->super.isa = &ccv_cnnp_cos_isa;
+	model_cos->super.input_size = 1;
+	model_cos->super.outputs = &model_cos->output;
+	model_cos->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_cos->super, name);
+	return (ccv_cnnp_model_t*)model_cos;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_cos_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	return ccv_cnnp_cos(super->name);
+}
+
 // MARK - Cmul Layer
 
 typedef struct {
