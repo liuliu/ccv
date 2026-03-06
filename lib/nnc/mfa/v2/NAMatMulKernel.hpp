@@ -53,4 +53,3 @@ private:
 };
 
 #endif /* NAMatMulKernel_hpp */
-

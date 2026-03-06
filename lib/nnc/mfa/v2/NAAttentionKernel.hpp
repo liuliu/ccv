@@ -47,7 +47,6 @@ private:
   std::string memoryName(AttentionOperand operand) const noexcept;
   std::string sequenceLength(AttentionOperand operand) const noexcept;
   unsigned short blockSequenceLength(AttentionOperand operand) const noexcept;
-
   std::string operandLocationWithHeadOffsetValue(AttentionOperand operand) const noexcept;
 
   /// AttentionKernel+Source
@@ -59,4 +58,3 @@ private:
 };
 
 #endif /* NAAttentionKernel_hpp */
-

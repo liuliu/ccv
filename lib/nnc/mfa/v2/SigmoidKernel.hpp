@@ -1,29 +1,26 @@
-#ifndef SwishKernel_hpp
-#define SwishKernel_hpp
+#ifndef SigmoidKernel_hpp
+#define SigmoidKernel_hpp
 
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include <simd/simd.h>
-#include "SwishDescriptor.hpp"
+#include "SigmoidDescriptor.hpp"
 
-struct SwishKernel {
+struct SigmoidKernel {
   NS::SharedPtr<MTL::Library> library;
-  
+
   std::string source;
 
   unsigned short threadgroupMemoryAllocation;
 
-  /// The number of threads per group.
   MTL::Size threadgroupSize;
 
   uint8_t gradient;
 
   uint8_t value;
 
-  float beta;
-
   GEMMOperandPrecision memoryPrecision;
 
-  SwishKernel(SwishKernelDescriptor descriptor, MTL::Device *const device);
+  SigmoidKernel(SigmoidKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
   unsigned short createThreadgroupMemoryAllocation() const noexcept;
@@ -31,4 +28,4 @@ private:
   std::string createConstants() const noexcept;
 };
 
-#endif /* SwishKernel_hpp */
+#endif

@@ -68,7 +68,6 @@ private:
   std::string paddedTraversalEdgeValue() const noexcept;
   unsigned short paddedHeadDimensionValue() const noexcept;
   unsigned short paddedHeadEdgeValue() const noexcept;
-  unsigned short threadgroupSizeValue() const noexcept;
   unsigned short createThreadgroupMemoryAllocation() const noexcept;
   std::string operandLocationValue(AttentionOperand operand) const noexcept;
   std::string operandLocationWithHeadOffsetValue(AttentionOperand operand) const noexcept;
@@ -125,4 +124,3 @@ private:
 };
 
 #endif /* AttentionKernel_hpp */
-

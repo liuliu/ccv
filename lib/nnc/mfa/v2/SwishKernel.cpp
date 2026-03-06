@@ -1,8 +1,6 @@
 #include "SwishKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
-#include <algorithm>
-
 SwishKernel::SwishKernel(SwishKernelDescriptor descriptor, MTL::Device *const device) {
 
   gradient = descriptor.gradient;

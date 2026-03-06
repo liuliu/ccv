@@ -746,6 +746,83 @@ TEST_CASE("compare sigmoid with mps in half precision")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+TEST_CASE("compare sigmoid with mps and more vectorization cases")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SIGMOID_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	ccv_nnc_tensor_t* const a0 = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 32, 32), 0);
+	ccv_nnc_tensor_t* const b0 = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 32, 32), 0);
+	ccv_nnc_tensor_t* const ha0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32, 32), 0);
+	ccv_nnc_tensor_t* const hb0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32, 32), 0);
+	ccv_nnc_tensor_t* const tb0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32, 32), 0);
+	for (i = 0; i < 32 * 32; i++)
+		switch (i % 6)
+		{
+			case 0:
+				ha0->data.f32[i] = -80;
+				break;
+			case 1:
+				ha0->data.f32[i] = 80;
+				break;
+			case 2:
+				ha0->data.f32[i] = -20;
+				break;
+			case 3:
+				ha0->data.f32[i] = 20;
+				break;
+			default:
+				ha0->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 12 - 6;
+				break;
+		}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha0), TENSOR_LIST(a0), 0);
+	ccv_nnc_cmd_exec(CMD_SIGMOID_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a0), TENSOR_LIST(b0), 0);
+	ccv_nnc_cmd_exec(CMD_SIGMOID_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha0), TENSOR_LIST(tb0), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b0), TENSOR_LIST(hb0), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb0->data.f32, hb0->data.f32, 32 * 32, 1e-6, "sigmoid from mps should match from CPU for the length %% 1024 == 0 case");
+	ccv_nnc_tensor_free(a0);
+	ccv_nnc_tensor_free(b0);
+	ccv_nnc_tensor_free(ha0);
+	ccv_nnc_tensor_free(hb0);
+	ccv_nnc_tensor_free(tb0);
+
+	ccv_nnc_tensor_t* const a1 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 61), 0);
+	ccv_nnc_tensor_t* const b1 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 61), 0);
+	ccv_nnc_tensor_t* const ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 17, 61), 0);
+	ccv_nnc_tensor_t* const hb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 17, 61), 0);
+	ccv_nnc_tensor_t* const tb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 17, 61), 0);
+	for (i = 0; i < 17 * 61; i++)
+		switch (i % 6)
+		{
+			case 0:
+				ha1->data.f32[i] = -80;
+				break;
+			case 1:
+				ha1->data.f32[i] = 80;
+				break;
+			case 2:
+				ha1->data.f32[i] = -20;
+				break;
+			case 3:
+				ha1->data.f32[i] = 20;
+				break;
+			default:
+				ha1->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 12 - 6;
+				break;
+		}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha1), TENSOR_LIST(a1), 0);
+	ccv_nnc_cmd_exec(CMD_SIGMOID_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a1), TENSOR_LIST(b1), 0);
+	ccv_nnc_cmd_exec(CMD_SIGMOID_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha1), TENSOR_LIST(tb1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b1), TENSOR_LIST(hb1), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb1->data.f32, hb1->data.f32, 17 * 61, 1e-6, "sigmoid from mps should match from CPU for the tail case");
+	ccv_nnc_tensor_free(a1);
+	ccv_nnc_tensor_free(b1);
+	ccv_nnc_tensor_free(ha1);
+	ccv_nnc_tensor_free(hb1);
+	ccv_nnc_tensor_free(tb1);
+}
+
 
 TEST_CASE("compare sigmoid gradient with mps")
 {

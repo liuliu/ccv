@@ -303,10 +303,6 @@ unsigned short AttentionKernel::paddedHeadEdgeValue() const noexcept {
   return output;
 }
 
-unsigned short AttentionKernel::threadgroupSizeValue() const noexcept {
-  return 32 * (blockDimensions[0] / 8);
-}
-
 unsigned short AttentionKernel::createThreadgroupMemoryAllocation() const noexcept {
   unsigned short output = 0;
   unsigned short* outputRef = &output;
