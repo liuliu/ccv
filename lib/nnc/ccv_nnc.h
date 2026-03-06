@@ -4602,6 +4602,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_div(const int reciprocal, const char
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sqrt(const char* const name);
 /**
+ * Natural logarithm of the input tensor.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the natural logarithm of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_log(const char* const name);
+/**
  * Raise the input tensor to a constant exponent element-wise.
  * @param exponent The exponent in y = x ^ exponent.
  * @param name The unique name of the model.

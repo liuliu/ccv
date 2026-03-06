@@ -329,8 +329,8 @@ static int _ccv_nnc_ewlog_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int 
 
 static int _ccv_nnc_ewlog_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// We don't care about the original output.
-	if ((input_bitmasks[0] & 3u) == 3u && output_bitmasks[0] == 1u)
+	// We only care about the original input.
+	if ((input_bitmasks[0] & 2u) == 2u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }

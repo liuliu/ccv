@@ -2181,6 +2181,50 @@ static ccv_cnnp_model_t* _ccv_cnnp_sqrt_copy(const ccv_cnnp_model_t* const super
 	return ccv_cnnp_sqrt(self->super.name);
 }
 
+// MARK - Log Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_log_t;
+
+static void _ccv_cnnp_log_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_log_build] -\n");
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params[1];
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t log = CMD_EWLOG_FORWARD();
+	assert(input_size == 1);
+	input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_hint_tensor_auto(log, input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, log, inputs, 1, outputs, output_size, "log");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_log_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_log_isa = {
+	.build = _ccv_cnnp_log_build,
+	.copy = _ccv_cnnp_log_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_log(const char* const name)
+{
+	ccv_cnnp_model_log_t* const model_log = (ccv_cnnp_model_log_t*)cccalloc(1, sizeof(ccv_cnnp_model_log_t));
+	model_log->super.isa = &ccv_cnnp_log_isa;
+	model_log->super.input_size = 1;
+	model_log->super.outputs = &model_log->output;
+	model_log->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_log->super, name);
+	return (ccv_cnnp_model_t*)model_log;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_log_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	return ccv_cnnp_log(super->name);
+}
+
 // MARK - Pow Layer
 
 typedef struct {
