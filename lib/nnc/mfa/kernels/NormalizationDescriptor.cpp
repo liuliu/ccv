@@ -80,9 +80,10 @@ std::pair<NormalizationKernelDescriptor, PipelineValue<NormalizationKernel>*> No
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     NS::String* swiftName = NS::String::string("normalization", NS::UTF8StringEncoding);
+    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     NS::Error* error = nil;
 
-    auto function = NS::TransferPtr(library->newFunction(swiftName, nullptr, &error));
+    auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
 
     auto pipeline = device->newComputePipelineState(function.get(), &error);
