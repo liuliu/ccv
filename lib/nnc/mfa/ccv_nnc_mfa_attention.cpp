@@ -5,13 +5,13 @@ using namespace ccv::nnc;
 
 #include <string>
 
-#include "v2/ShaderCache.hpp"
-#include "v2/AttentionKernel.hpp"
-#include "v2/AttentionKernelDescriptor.hpp"
-#include "v2/AttentionDescriptor.hpp"
-#include "v2/NAAttentionKernel.hpp"
-#include "v2/NAAttentionKernelDescriptor.hpp"
-#include "v2/NAAttentionDescriptor.hpp"
+#include "kernels/ShaderCache.hpp"
+#include "kernels/AttentionKernel.hpp"
+#include "kernels/AttentionKernelDescriptor.hpp"
+#include "kernels/AttentionDescriptor.hpp"
+#include "kernels/NAAttentionKernel.hpp"
+#include "kernels/NAAttentionKernelDescriptor.hpp"
+#include "kernels/NAAttentionDescriptor.hpp"
 
 // MARK: - C
 
@@ -82,7 +82,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       }
       attentionDesc.type = AttentionKernelType::forward;
       auto pool = NS::AutoreleasePool::alloc()->init();
-      auto &shaderCache = context->v2_cache;
+      auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
       auto pipelineValue = shaderCache.findKernel<NAAttentionKernel, NAAttentionDescriptor, NAAttentionKernelDescriptor>(attentionDesc, context->device.get(), dprops);
       pool->drain();
@@ -165,7 +165,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     if (params.type == 0) {
       attentionDesc.type = AttentionKernelType::forward;
       auto pool = NS::AutoreleasePool::alloc()->init();
-      auto &shaderCache = context->v2_cache;
+      auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
       auto pipelineValue = shaderCache.findKernel<AttentionKernel, AttentionDescriptor, AttentionKernelDescriptor>(attentionDesc, context->device.get(), dprops);
       pool->drain();
@@ -257,7 +257,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         attentionDesc.batchStrides[AttentionOperand::dO] = hash.R * hash.D * hash.Hq;
       }
       auto pool = NS::AutoreleasePool::alloc()->init();
-      auto &shaderCache = context->v2_cache;
+      auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
       attentionDesc.type = AttentionKernelType::backwardQuery;
       auto backwardQueryPipelineValue = shaderCache.findKernel<AttentionKernel, AttentionDescriptor, AttentionKernelDescriptor>(attentionDesc, context->device.get(), dprops);
@@ -605,7 +605,7 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
 }
 
 mfa::attention::pipeline::pipeline(mfa::context* context, mfa::attention::hash hash) {
-  if (!hash.masked) { // Avoid pipeline setup if we use v2.
+  if (!hash.masked) { // Avoid pipeline setup if we use kernels.
     return;
   }
   CCV_NNC_MFA_PRECONDITION((hash.data_type == MTL::DataTypeFloat) || (hash.data_type == MTL::DataTypeHalf))

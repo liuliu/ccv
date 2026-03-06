@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/GeluDescriptor.hpp"
-#include "v2/GeluKernel.hpp"
+#include "kernels/GeluDescriptor.hpp"
+#include "kernels/GeluKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -50,7 +50,7 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
   }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  auto &shaderCache = context->v2_cache;
+  auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<GeluKernel, GeluDescriptor, GeluKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();

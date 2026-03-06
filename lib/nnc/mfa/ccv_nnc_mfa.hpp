@@ -21,7 +21,7 @@
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
-#include "v2/ShaderCache.hpp"
+#include "kernels/ShaderCache.hpp"
 #include <unordered_map>
 
 namespace ccv {
@@ -53,12 +53,7 @@ public:
   context(MTL::Device* device);
   
   cache<attention::hash, attention::pipeline> attention_cache;
-  cache<normalization::hash, normalization::pipeline> normalization_cache;
-  cache<depalettize::hash, depalettize::pipeline> depalettize_cache;
-  cache<adam::hash, adam::pipeline> adam_cache;
-  cache<gemv::hash, gemv::pipeline> gemv_cache;
-
-  ShaderCache v2_cache;
+  ShaderCache kernel_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
 };

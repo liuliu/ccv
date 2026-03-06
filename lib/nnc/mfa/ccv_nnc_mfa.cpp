@@ -11,7 +11,7 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
 }
 
 void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context) {
-  context->v2_cache.evict();
+  context->kernel_cache.evict();
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
@@ -61,7 +61,7 @@ void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* const context, const
     paths_to_read_vec.push_back(std::string(paths_to_read[i]));
   }
   std::string path_to_write_str = path_to_write != nullptr ? std::string(path_to_write) : std::string();
-  context->v2_cache.setBinaryArchives(context->device.get(), paths_to_read_vec, path_to_write_str);
+  context->kernel_cache.setBinaryArchives(context->device.get(), paths_to_read_vec, path_to_write_str);
 }
 
 void ccv_nnc_mfa_log_message(const char* message) {
@@ -120,30 +120,6 @@ inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* con
 
 template <>
 void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
-void mfa::cache<mfa::normalization::hash, mfa::normalization::pipeline>::prepare(mfa::context* context, mfa::normalization::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
-void mfa::cache<mfa::depalettize::hash, mfa::depalettize::pipeline>::prepare(mfa::context* context, mfa::depalettize::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
-void mfa::cache<mfa::adam::hash, mfa::adam::pipeline>::prepare(mfa::context* context, mfa::adam::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
-template <>
-void mfa::cache<mfa::gemv::hash, mfa::gemv::pipeline>::prepare(mfa::context* context, mfa::gemv::hash hash)
 {
   _mfa_cache_prepare(&map, context, hash);
 }

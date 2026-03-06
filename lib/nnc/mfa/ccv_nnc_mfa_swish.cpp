@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/SwishDescriptor.hpp"
-#include "v2/SwishKernel.hpp"
+#include "kernels/SwishDescriptor.hpp"
+#include "kernels/SwishKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -50,7 +50,7 @@ void ccv_nnc_mfa_encode_swish(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_
   }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  auto &shaderCache = context->v2_cache;
+  auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<SwishKernel, SwishDescriptor, SwishKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();

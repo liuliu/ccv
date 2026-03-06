@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/SigmoidDescriptor.hpp"
-#include "v2/SigmoidKernel.hpp"
+#include "kernels/SigmoidDescriptor.hpp"
+#include "kernels/SigmoidKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -47,7 +47,7 @@ void ccv_nnc_mfa_encode_sigmoid(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sigm
   }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  auto& shaderCache = context->v2_cache;
+  auto& shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<SigmoidKernel, SigmoidDescriptor, SigmoidKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();

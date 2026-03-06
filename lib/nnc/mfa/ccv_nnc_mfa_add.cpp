@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/AddDescriptor.hpp"
-#include "v2/AddKernel.hpp"
+#include "kernels/AddDescriptor.hpp"
+#include "kernels/AddKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -45,7 +45,7 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  auto &shaderCache = context->v2_cache;
+  auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<AddKernel, AddDescriptor, AddKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();

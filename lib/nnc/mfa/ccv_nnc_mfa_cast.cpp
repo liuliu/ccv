@@ -1,7 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_hash.hpp"
-#include "v2/CastDescriptor.hpp"
-#include "v2/CastKernel.hpp"
+#include "kernels/CastDescriptor.hpp"
+#include "kernels/CastKernel.hpp"
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
@@ -51,7 +51,7 @@ void ccv_nnc_mfa_encode_cast(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cast_pa
   }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  auto &shaderCache = context->v2_cache;
+  auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<CastKernel, CastDescriptor, CastKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();

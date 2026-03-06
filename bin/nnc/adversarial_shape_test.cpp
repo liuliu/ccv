@@ -4,10 +4,10 @@ extern "C" {
 #include <sys/time.h>
 #include <ctype.h>
 }
-#include "nnc/mfa/v2/ShaderCache.hpp"
-#include "nnc/mfa/v2/GEMMDescriptor.hpp"
-#include "nnc/mfa/v2/GEMMKernelDescriptor.hpp"
-#include "nnc/mfa/v2/GEMMKernel.hpp"
+#include "nnc/mfa/kernels/ShaderCache.hpp"
+#include "nnc/mfa/kernels/GEMMDescriptor.hpp"
+#include "nnc/mfa/kernels/GEMMKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/GEMMKernel.hpp"
 #include "3rdparty/dsfmt/dSFMT.h"
 #include <iostream>
 

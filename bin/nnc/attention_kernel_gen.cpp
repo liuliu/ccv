@@ -4,10 +4,10 @@ extern "C" {
 #include <sys/time.h>
 #include <ctype.h>
 }
-#include "nnc/mfa/v2/ShaderCache.hpp"
-#include "nnc/mfa/v2/AttentionDescriptor.hpp"
-#include "nnc/mfa/v2/AttentionKernelDescriptor.hpp"
-#include "nnc/mfa/v2/AttentionKernel.hpp"
+#include "nnc/mfa/kernels/ShaderCache.hpp"
+#include "nnc/mfa/kernels/AttentionDescriptor.hpp"
+#include "nnc/mfa/kernels/AttentionKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/AttentionKernel.hpp"
 #include "3rdparty/dsfmt/dSFMT.h"
 #include <iostream>
 

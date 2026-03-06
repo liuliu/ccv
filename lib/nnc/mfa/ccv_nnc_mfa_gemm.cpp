@@ -3,13 +3,13 @@
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
-#include "v2/ShaderCache.hpp"
-#include "v2/GEMMKernel.hpp"
-#include "v2/GEMMKernelDescriptor.hpp"
-#include "v2/GEMMDescriptor.hpp"
-#include "v2/NAMatMulKernel.hpp"
-#include "v2/NAMatMulKernelDescriptor.hpp"
-#include "v2/NAMatMulDescriptor.hpp"
+#include "kernels/ShaderCache.hpp"
+#include "kernels/GEMMKernel.hpp"
+#include "kernels/GEMMKernelDescriptor.hpp"
+#include "kernels/GEMMDescriptor.hpp"
+#include "kernels/NAMatMulKernel.hpp"
+#include "kernels/NAMatMulKernelDescriptor.hpp"
+#include "kernels/NAMatMulDescriptor.hpp"
 #include <string>
 
 // MARK: - C
@@ -165,7 +165,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     // makes one. Or find a different solution, like spawning a pool inside
     // of 'fetchKernel' when a new kernel variant is compiled.
     auto pool = NS::AutoreleasePool::alloc()->init();
-    auto &shaderCache = context->v2_cache;
+    auto &shaderCache = context->kernel_cache;
     DeviceProperties dprops = DeviceProperties();
     auto pipelineValue = shaderCache.findKernel<NAMatMulKernel, NAMatMulDescriptor, NAMatMulKernelDescriptor>(gemmDesc, context->device.get(), dprops);
     pool->drain();
@@ -289,7 +289,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     // makes one. Or find a different solution, like spawning a pool inside
     // of 'fetchKernel' when a new kernel variant is compiled.
     auto pool = NS::AutoreleasePool::alloc()->init();
-    auto &shaderCache = context->v2_cache;
+    auto &shaderCache = context->kernel_cache;
     DeviceProperties dprops = DeviceProperties();
     auto pipelineValue = shaderCache.findKernel<GEMMKernel, GEMMDescriptor, GEMMKernelDescriptor>(gemmDesc, context->device.get(), dprops);
     pool->drain();

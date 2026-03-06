@@ -126,7 +126,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
 	@autoreleasepool {
-		// Fake the astride at a_nd - 3. For this one, we have flexibility to change fo v2 GEMM kernels.
+		// Fake the astride at a_nd - 3. For this one, we have flexibility to change fo kernel GEMM kernels.
 		const int a_batch_stride = astride[a_nd - 3];
 		// Only fake it if it is larger than the expected compact stride.
 		if (a_batch_stride > astride[a_nd - 2] * adim[a_nd - 2])

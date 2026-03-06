@@ -3,16 +3,16 @@
 #include <simd/simd.h>
 using namespace ccv::nnc;
 
-#include "v2/ShaderCache.hpp"
-#include "v2/SegmentedGEMMPrologueKernel.hpp"
-#include "v2/SegmentedGEMMPrologueKernelDescriptor.hpp"
-#include "v2/SegmentedGEMMPrologueDescriptor.hpp"
-#include "v2/GEMMKernel.hpp"
-#include "v2/GEMMKernelDescriptor.hpp"
-#include "v2/GEMMDescriptor.hpp"
-#include "v2/NAMatMulKernel.hpp"
-#include "v2/NAMatMulKernelDescriptor.hpp"
-#include "v2/NAMatMulDescriptor.hpp"
+#include "kernels/ShaderCache.hpp"
+#include "kernels/SegmentedGEMMPrologueKernel.hpp"
+#include "kernels/SegmentedGEMMPrologueKernelDescriptor.hpp"
+#include "kernels/SegmentedGEMMPrologueDescriptor.hpp"
+#include "kernels/GEMMKernel.hpp"
+#include "kernels/GEMMKernelDescriptor.hpp"
+#include "kernels/GEMMDescriptor.hpp"
+#include "kernels/NAMatMulKernel.hpp"
+#include "kernels/NAMatMulKernelDescriptor.hpp"
+#include "kernels/NAMatMulDescriptor.hpp"
 #include <string>
 
 // MARK: - C
@@ -178,7 +178,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     gemmDesc.batchStrides = std::nullopt;
 
     // Instantiate the prologue.
-    auto &shaderCache = context->v2_cache;
+    auto &shaderCache = context->kernel_cache;
     DeviceProperties dprops = DeviceProperties();
 
     auto gemmPipelineValue = shaderCache.findKernel<NAMatMulKernel, NAMatMulDescriptor, NAMatMulKernelDescriptor>(gemmDesc, context->device.get(), dprops);
@@ -284,7 +284,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     gemmDesc.batchStrides = std::nullopt;
 
     // Instantiate the prologue.
-    auto &shaderCache = context->v2_cache;
+    auto &shaderCache = context->kernel_cache;
     DeviceProperties dprops = DeviceProperties();
 
     auto gemmPipelineValue = shaderCache.findKernel<GEMMKernel, GEMMDescriptor, GEMMKernelDescriptor>(gemmDesc, context->device.get(), dprops);

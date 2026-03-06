@@ -167,7 +167,7 @@ let package = Package(
                 .headerSearchPath("cmd"),
                 .headerSearchPath("mfa"),
                 .headerSearchPath("mfa/3rdparty/metal-cpp"),
-                .headerSearchPath("mfa/v2"),
+                .headerSearchPath("mfa/kernels"),
                 .define("HAVE_CBLAS"),
                 .define("HAVE_PTHREAD"),
                 .define("HAVE_ACCELERATE_FRAMEWORK"),
@@ -180,7 +180,7 @@ let package = Package(
                 .headerSearchPath(".."),
                 .headerSearchPath("mfa"),
                 .headerSearchPath("mfa/3rdparty/metal-cpp"),
-                .headerSearchPath("mfa/v2"),
+                .headerSearchPath("mfa/kernels"),
                 .define("HAVE_MPS"),
                 .unsafeFlags(["-std=c++17", "-w"])
             ],
