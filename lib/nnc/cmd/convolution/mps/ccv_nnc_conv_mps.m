@@ -147,6 +147,10 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				use_mfa = false;
 				fallback_reason = "Image layout conversion.";
 			}
+			if (a->info.format != CCV_TENSOR_FORMAT_NHWC && (!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context))) {
+				use_mfa = false;
+				fallback_reason = "Image layout incompatible.";
+			}
 		}
 
 		if (use_mfa) {
