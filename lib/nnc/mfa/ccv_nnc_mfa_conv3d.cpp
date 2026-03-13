@@ -127,7 +127,7 @@ void ccv_nnc_mfa_encode_conv3d(mfa::context* context, ccv_nnc_mfa_conv3d_params_
   conv3d_desc.batchDimension = params.batch_size;
   conv3d_desc.inputChannels = params.input_channels;
   conv3d_desc.outputChannels = params.output_channels;
-  const uint32_t max_block_n = params.data_type == 3 ? 256u : 512u;
+  const uint32_t max_block_n = 128u;
   const uint32_t rounded_output_channels =
       ((params.output_channels + 31u) / 32u) * 32u;
   const uint32_t block_n =

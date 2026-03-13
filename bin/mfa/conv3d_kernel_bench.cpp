@@ -198,12 +198,12 @@ void validate_small(
   const Conv3DShape shape{
       .batch = 1,
       .input_d = 4,
-      .input_h = 33,
-      .input_w = 35,
+      .input_h = 9,
+      .input_w = 65,
       .input_c = 16,
       .output_d = 2,
-      .output_h = 33,
-      .output_w = 35,
+      .output_h = 9,
+      .output_w = 65,
       .output_c = 32,
       .kernel_d = 3,
       .kernel_h = 3,
@@ -309,7 +309,7 @@ int main(int argc, char** argv)
   }
   simd::ushort2 block_dimensions {
       static_cast<unsigned short>(
-          std::min<uint32_t>(((channels + 31u) / 32u) * 32u, 512u)),
+          std::min<uint32_t>(((channels + 31u) / 32u) * 32u, 128u)),
       32,
   };
   if (argc >= 3)

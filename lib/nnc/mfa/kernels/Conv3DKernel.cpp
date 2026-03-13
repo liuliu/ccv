@@ -165,6 +165,75 @@ METAL_FUNC void initialize_accumulator(
   }
 }
 
+METAL_FUNC void multiply_accumulate_implicit_interior(
+  const device {{SCALAR_NAME}} *input,
+  const device {{SCALAR_NAME}} *weights,
+  uint output_depth,
+  uint output_height,
+  uint M_offset,
+  uint N_offset,
+  ushort2 morton_offset,
+  ushort2 offset_in_group,
+  thread simdgroup_matrix_storage<{{SCALAR_NAME}}> *A_sram,
+  thread simdgroup_matrix_storage<{{SCALAR_NAME}}> *B_sram,
+  thread simdgroup_matrix_storage<{{SCALAR_NAME}}> *C_sram
+) {
+#pragma clang loop unroll(full)
+  for (uint kd = 0; kd < KERNEL_DEPTH; ++kd) {
+    const uint input_depth = output_depth + kd;
+#pragma clang loop unroll(full)
+    for (uint kh = 0; kh < KERNEL_HEIGHT; ++kh) {
+      const uint row_plane_base =
+        (((input_depth * uint(INPUT_HEIGHT) +
+           (output_height + kh - uint(PADDING_TOP))) *
+          uint(INPUT_WIDTH)) * INPUT_CHANNELS);
+#pragma clang loop unroll(full)
+      for (uint kw = 0; kw < KERNEL_WIDTH; ++kw) {
+        const int input_width_base = int(M_offset) + int(kw) - PADDING_LEFT;
+        const uint k_spatial_base =
+          ((kd * KERNEL_HEIGHT + kh) * KERNEL_WIDTH + kw) * INPUT_CHANNELS;
+#pragma clang loop unroll(enable)
+        for (uint c_base = 0; c_base < INPUT_CHANNELS; c_base += 8) {
+          const uint lane_channel = c_base + morton_offset.x;
+#pragma clang loop unroll(full)
+          for (ushort m = 0; m < REGISTER_M; m += 8) {
+            const ushort row = m + morton_offset.y;
+            const uint address =
+              row_plane_base +
+              (uint(input_width_base) + uint(row)) * INPUT_CHANNELS +
+              lane_channel;
+            const {{SCALAR2_NAME}} values =
+              *((const device {{SCALAR2_NAME}}*)(input + address));
+            auto A = get_sram(A_sram, 8, ushort2(0, m));
+            *A = simdgroup_matrix_storage<{{SCALAR_NAME}}>(values);
+          }
+
+          const uint k_base = k_spatial_base + c_base;
+          uint2 B_offset(N_offset, k_base);
+          B_offset += uint2(offset_in_group.x, morton_offset.y);
+          auto B_src = apply_offset_const(weights, GEMM_K, B_offset, B_trans);
+#pragma clang loop unroll(full)
+          for (ushort n = 0; n < REGISTER_N; n += 8) {
+            auto B = get_sram(B_sram, REGISTER_N, ushort2(n, 0));
+            B->load(B_src, GEMM_K, ushort2(n, 0), B_trans);
+          }
+
+#pragma clang loop unroll(full)
+          for (ushort m = 0; m < REGISTER_M; m += 8) {
+#pragma clang loop unroll(full)
+            for (ushort n = 0; n < REGISTER_N; n += 8) {
+              auto A = get_sram(A_sram, 8, ushort2(0, m));
+              auto B = get_sram(B_sram, REGISTER_N, ushort2(n, 0));
+              auto C = get_sram(C_sram, REGISTER_N, ushort2(n, m));
+              C->multiply(*A, *B);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 METAL_FUNC void multiply_accumulate_implicit(
   const device {{SCALAR_NAME}} *input,
   const device {{SCALAR_NAME}} *weights,
@@ -332,20 +401,35 @@ kernel void conv3d(device const {{SCALAR_NAME}} *input [[buffer(0)]],
   source += R"(
   thread simdgroup_matrix_storage<{{SCALAR_NAME}}> A_sram[(REGISTER_M / 8)];
   thread simdgroup_matrix_storage<{{SCALAR_NAME}}> B_sram[(REGISTER_N / 8)];
-  multiply_accumulate_implicit(
-      input,
-      weights,
-      output_depth,
-      output_height,
-      M_offset,
-      N_offset,
-      interior_tile,
-      full_n_tile,
-      morton_offset,
-      offset_in_group,
-      A_sram,
-      B_sram,
-      C_sram);
+  if (interior_tile && full_n_tile) {
+    multiply_accumulate_implicit_interior(
+        input,
+        weights,
+        output_depth,
+        output_height,
+        M_offset,
+        N_offset,
+        morton_offset,
+        offset_in_group,
+        A_sram,
+        B_sram,
+        C_sram);
+  } else {
+    multiply_accumulate_implicit(
+        input,
+        weights,
+        output_depth,
+        output_height,
+        M_offset,
+        N_offset,
+        interior_tile,
+        full_n_tile,
+        morton_offset,
+        offset_in_group,
+        A_sram,
+        B_sram,
+        C_sram);
+  }
 
 	  if (full_m_tile && full_n_tile) {
     uint2 C_offset(N_offset + offset_in_group.x, M_offset + offset_in_group.y);
