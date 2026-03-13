@@ -10,6 +10,10 @@ NAConv3DKernel::NAConv3DKernel(NAConv3DKernelDescriptor descriptor, MTL::Device 
   dataType = descriptor.dataType;
   inputChannels = descriptor.inputChannels;
   outputChannels = descriptor.outputChannels;
+  paddingLeft = descriptor.paddingLeft;
+  paddingRight = descriptor.paddingRight;
+  paddingTop = descriptor.paddingTop;
+  paddingBottom = descriptor.paddingBottom;
   useBias = descriptor.useBias;
   executionSIMDGroups = 4;
 
@@ -42,7 +46,7 @@ std::string NAConv3DKernel::createSource() const noexcept {
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
-#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+#include <MetalPerformancePrimitives/MPPTensorOpsConvolution2d.h>
 
 using namespace metal;
 using namespace mpp::tensor_ops;
@@ -60,6 +64,10 @@ constant uint WIDTH [[function_constant(2)]];
   source.SetValue("KERNEL_WIDTH", std::to_string(kernelDimensions[2]));
   source.SetValue("INPUT_CHANNELS", std::to_string(inputChannels));
   source.SetValue("OUTPUT_CHANNELS", std::to_string(outputChannels));
+  source.SetValue("PADDING_LEFT", std::to_string(paddingLeft));
+  source.SetValue("PADDING_RIGHT", std::to_string(paddingRight));
+  source.SetValue("PADDING_TOP", std::to_string(paddingTop));
+  source.SetValue("PADDING_BOTTOM", std::to_string(paddingBottom));
   source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("INPUT_TILE_WIDTH", std::to_string(blockDimensions[0] + kernelDimensions[2] - 1));
   source.SetValue("INPUT_TILE_HEIGHT", std::to_string(blockDimensions[1] + kernelDimensions[1] - 1));
@@ -118,7 +126,11 @@ constant uint WIDTH [[function_constant(2)]];
 {
   const uint batch = tgid.z / DEPTH;
   const uint output_slice = tgid.z % DEPTH;
-  activation_buf += (((DEPTH + {{KERNEL_DEPTH}} - 1) * batch) + output_slice) * ((WIDTH + {{KERNEL_WIDTH}} - 1) * (HEIGHT + {{KERNEL_HEIGHT}} - 1) * {{INPUT_CHANNELS}});
+  const int inputWidth = int(WIDTH) + {{KERNEL_WIDTH}} - 1 - {{PADDING_LEFT}} - {{PADDING_RIGHT}};
+  const int inputHeight = int(HEIGHT) + {{KERNEL_HEIGHT}} - 1 - {{PADDING_TOP}} - {{PADDING_BOTTOM}};
+  const int baseOffsetX = ({{KERNEL_WIDTH}} - 1) / 2;
+  const int baseOffsetY = ({{KERNEL_HEIGHT}} - 1) / 2;
+  activation_buf += (((DEPTH + {{KERNEL_DEPTH}} - 1) * batch) + output_slice) * (inputWidth * inputHeight * {{INPUT_CHANNELS}});
   output_buf += ((DEPTH * batch) + output_slice) * (WIDTH * HEIGHT * {{OUTPUT_CHANNELS}});
 
   const int output_origin_x = int(tgid.x) * {{BLOCK_DIMENSIONS_WIDTH}};
@@ -127,12 +139,16 @@ constant uint WIDTH [[function_constant(2)]];
     return;
   }
 
-  const int input_origin_x = output_origin_x;
-  const int input_origin_y = output_origin_y;
+  const int unclamped_input_origin_x = output_origin_x - {{PADDING_LEFT}};
+  const int unclamped_input_origin_y = output_origin_y - {{PADDING_TOP}};
+  const int clamped_input_origin_x = max(0, min(unclamped_input_origin_x, max(0, inputWidth - {{INPUT_TILE_WIDTH}})));
+  const int clamped_input_origin_y = max(0, min(unclamped_input_origin_y, max(0, inputHeight - {{INPUT_TILE_HEIGHT}})));
+  const int adjusted_offset_x = baseOffsetX + (unclamped_input_origin_x - clamped_input_origin_x);
+  const int adjusted_offset_y = baseOffsetY + (unclamped_input_origin_y - clamped_input_origin_y);
 
   auto activation_base_tensor = tensor<device {{SCALAR_NAME}}, dextents<int32_t, 4>, tensor_inline>(
       activation_buf,
-      dextents<int32_t, 4>({{INPUT_CHANNELS}}, int(WIDTH) + {{KERNEL_WIDTH}} - 1, int(HEIGHT) + {{KERNEL_HEIGHT}} - 1, 1));
+      dextents<int32_t, 4>({{INPUT_CHANNELS}}, inputWidth, inputHeight, 1));
   auto output_base = tensor<device {{SCALAR_NAME}}, dextents<int32_t, 4>, tensor_inline>(
       output_buf,
       dextents<int32_t, 4>({{OUTPUT_CHANNELS}}, WIDTH, HEIGHT, 1));
@@ -149,16 +165,18 @@ constant uint WIDTH [[function_constant(2)]];
       int2(1, 1),
       1,
       false,
-      convolution2d_descriptor::mode::)" + std::string(accumulate ? "multiply_accumulate" : "multiply") + R"();
+      convolution2d_descriptor::mode::)" + std::string((accumulate || useBias) ? "multiply_accumulate" : "multiply") + R"();
   convolution2d<descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> conv2d_op;
-  conv2d_op.set_offsets(int2(({{KERNEL_WIDTH}} - 1) / 2, ({{KERNEL_HEIGHT}} - 1) / 2));
+  conv2d_op.set_offsets(int2(adjusted_offset_x, adjusted_offset_y));
 
   if (output_origin_x + {{BLOCK_DIMENSIONS_WIDTH}} <= int(WIDTH) &&
-      output_origin_y + {{BLOCK_DIMENSIONS_HEIGHT}} <= int(HEIGHT)) {
+      output_origin_y + {{BLOCK_DIMENSIONS_HEIGHT}} <= int(HEIGHT) &&
+      unclamped_input_origin_x == clamped_input_origin_x &&
+      unclamped_input_origin_y == clamped_input_origin_y) {
     auto activation = activation_base_tensor.slice<{{INPUT_CHANNELS}}, {{INPUT_TILE_WIDTH}}, {{INPUT_TILE_HEIGHT}}, 1>(
         0,
-        input_origin_x,
-        input_origin_y,
+        clamped_input_origin_x,
+        clamped_input_origin_y,
         0);
     auto output = output_base.slice<{{OUTPUT_CHANNELS}}, {{BLOCK_DIMENSIONS_WIDTH}}, {{BLOCK_DIMENSIONS_HEIGHT}}, 1>(
         0,
@@ -171,8 +189,8 @@ constant uint WIDTH [[function_constant(2)]];
   } else {
     auto activation = activation_base_tensor.slice(
         0,
-        input_origin_x,
-        input_origin_y,
+        clamped_input_origin_x,
+        clamped_input_origin_y,
         0);
     auto output = output_base.slice(
         0,

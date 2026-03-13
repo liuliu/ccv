@@ -14,6 +14,10 @@ struct NAConv3DDescriptor {
   uint32_t batchDimension = 1;
   uint32_t inputChannels;
   uint32_t outputChannels;
+  uint32_t paddingLeft;
+  uint32_t paddingRight;
+  uint32_t paddingTop;
+  uint32_t paddingBottom;
   simd::uint3 matrixDimensions;
   simd::uint3 kernelDimensions;
   bool useBias;

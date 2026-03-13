@@ -9,15 +9,25 @@ using namespace ccv::nnc;
 
 static NAConv3DDescriptor _ccv_nnc_mfa_conv3d_descriptor_from_params(ccv_nnc_mfa_conv3d_params_t params)
 {
+  const int32_t total_padding_height = (int32_t)params.output_dimensions[1] + (int32_t)params.filter_dimensions[1] - 1 - (int32_t)params.input_dimensions[1];
+  const int32_t total_padding_width = (int32_t)params.output_dimensions[2] + (int32_t)params.filter_dimensions[2] - 1 - (int32_t)params.input_dimensions[2];
   CCV_NNC_MFA_PRECONDITION(params.output_dimensions[0] + params.filter_dimensions[0] - 1 == params.input_dimensions[0]);
-  CCV_NNC_MFA_PRECONDITION(params.output_dimensions[1] + params.filter_dimensions[1] - 1 == params.input_dimensions[1]);
-  CCV_NNC_MFA_PRECONDITION(params.output_dimensions[2] + params.filter_dimensions[2] - 1 == params.input_dimensions[2]);
+  CCV_NNC_MFA_PRECONDITION(total_padding_height >= (int32_t)params.padding_bottom);
+  CCV_NNC_MFA_PRECONDITION(total_padding_width >= (int32_t)params.padding_right);
+  const uint32_t padding_right = params.padding_right;
+  const uint32_t padding_left = (uint32_t)(total_padding_width - (int32_t)padding_right);
+  const uint32_t padding_bottom = params.padding_bottom;
+  const uint32_t padding_top = (uint32_t)(total_padding_height - (int32_t)padding_bottom);
 
   NAConv3DDescriptor conv3d_desc;
   conv3d_desc.dataType = params.data_type;
   conv3d_desc.batchDimension = params.batch_size;
   conv3d_desc.inputChannels = params.input_channels;
   conv3d_desc.outputChannels = params.output_channels;
+  conv3d_desc.paddingLeft = padding_left;
+  conv3d_desc.paddingRight = padding_right;
+  conv3d_desc.paddingTop = padding_top;
+  conv3d_desc.paddingBottom = padding_bottom;
   conv3d_desc.matrixDimensions = simd::uint3 { params.output_dimensions[0], params.output_dimensions[1], params.output_dimensions[2] };
   conv3d_desc.kernelDimensions = simd::uint3 { params.filter_dimensions[0], params.filter_dimensions[1], params.filter_dimensions[2] };
   conv3d_desc.useBias = params.fused_bias;
@@ -34,8 +44,7 @@ size_t ccv_nnc_mfa_conv3d_reserved_scratch_size(ccv_nnc_mfa_conv3d_params_t para
 
 void ccv_nnc_mfa_prepare_conv3d(mfa::context* context, ccv_nnc_mfa_conv3d_params_t params)
 {
-  (void)context;
-  (void)params;
+  // No-op.
 }
 
 void ccv_nnc_mfa_encode_conv3d(mfa::context* context, ccv_nnc_mfa_conv3d_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
@@ -52,8 +61,6 @@ void ccv_nnc_mfa_encode_conv3d(mfa::context* context, ccv_nnc_mfa_conv3d_params_
   CCV_NNC_MFA_PRECONDITION((params.filter_dimensions[1] % 2) == 1);
   CCV_NNC_MFA_PRECONDITION(params.stride_dimensions[0] == 1 && params.stride_dimensions[1] == 1 && params.stride_dimensions[2] == 1);
   CCV_NNC_MFA_PRECONDITION(params.dilation_dimensions[0] == 1 && params.dilation_dimensions[1] == 1 && params.dilation_dimensions[2] == 1);
-  CCV_NNC_MFA_PRECONDITION(params.padding_begin[0] == 0 && params.padding_begin[1] == 0 && params.padding_begin[2] == 0);
-  CCV_NNC_MFA_PRECONDITION(params.padding_end[0] == 0 && params.padding_end[1] == 0 && params.padding_end[2] == 0);
 
   auto conv3d_desc = _ccv_nnc_mfa_conv3d_descriptor_from_params(params);
   auto pool = NS::AutoreleasePool::alloc()->init();
@@ -70,10 +77,8 @@ void ccv_nnc_mfa_encode_conv3d(mfa::context* context, ccv_nnc_mfa_conv3d_params_
   const uint32_t kernel_depth = conv3d_desc.kernelDimensions[0];
   const uint32_t kernel_height = conv3d_desc.kernelDimensions[1];
   const uint32_t kernel_width = conv3d_desc.kernelDimensions[2];
-  const uint32_t output_height = conv3d_desc.matrixDimensions[1];
-  const uint32_t output_width = conv3d_desc.matrixDimensions[2];
-  const uint32_t input_height = output_height + kernel_height - 1;
-  const uint32_t input_width = output_width + kernel_width - 1;
+  const uint32_t input_height = params.input_dimensions[1];
+  const uint32_t input_width = params.input_dimensions[2];
 
   const uint32_t weight_slice_element_count = kernel_height * kernel_width * conv3d_desc.inputChannels * conv3d_desc.outputChannels;
   const uint32_t weight_element_count = kernel_depth * weight_slice_element_count;

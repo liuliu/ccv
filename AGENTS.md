@@ -94,3 +94,43 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
     - List relevant helper functions from common headers: `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h`.
     - Filter by intent (example): `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h | rg 'tensor_get_|tensor_hw|tensor_view_get_'`.
     - Reuse discovered existing helpers when possible, instead of adding local utility functions.
+- MFA Conv3D / `NAConv3D` implementation notes:
+  - Frontend selection in `lib/nnc/cmd/convolution/mps/ccv_nnc_conv_mps.m` should keep `use_mfa_gemm` and `use_mfa_conv3d` separate.
+  - Current `use_mfa_conv3d` support surface is intentionally narrow:
+    - 3D convolution only.
+    - kernel depth must be `3`.
+    - spatial kernel may be any odd square (`3x3`, `5x5`, `7x7`, ...).
+    - stride and dilation must be `1`.
+    - depth padding is unsupported.
+    - input / output channels must both be divisible by `16`.
+    - NA hardware must be available in production code.
+  - `ccv_nnc_mfa_prepare_conv3d(...)` should stay a no-op, like other MFA prepare entry points that do not need eager work.
+  - `NAConv3D` uses the same batching pattern as `NAMatMul`:
+    - do not loop batch on the host;
+    - use `threadgroup_position_in_grid.z` to encode `batch * output_depth`.
+    - host dispatch should iterate only across kernel-depth slices.
+  - Conv3D weights are currently accepted in OIDHW / NCHW layout and must be permuted to DHWIO scratch before the MFA kernel runs.
+  - Conv3D scratch reservation should mirror GEMM:
+    - reserve the front of MFA scratch for permuted weights with `ccv_nnc_mfa_conv3d_reserved_scratch_size(...)`;
+    - if weights are palettized, depalettize after that reserved region so the two scratch uses do not overlap.
+  - Bias support in `NAConv3D` is fused only into the first multiply kernel:
+    - `conv3d_multiply` initializes the destination from bias (or zero);
+    - later `conv3d_multiply_accumulate` slices only accumulate.
+  - Spatial padding support rules:
+    - use named fields `padding_left`, `padding_right`, `padding_top`, `padding_bottom` in the C MFA params.
+    - normalize asymmetric padding conservatively by preserving `right` / `bottom` and deriving `left` / `top` from output shape.
+    - this matches the repo's existing "prefer more padding in the beginning" rule from `ccv_nnc_hint_auto(...)`.
+  - Descriptor / kernel descriptor rule:
+    - any non-derived value needed by `NAConv3DKernelDescriptor` must also be present in `NAConv3DDescriptor`;
+    - otherwise shader cache keys and generated kernel source can diverge.
+    - padding is a `KernelDescriptor` property and should be inlined into kernel source, not passed with `setBytes`.
+  - Padded Conv3D test specifics:
+    - `hint.border.begin/end` for 3D convolution are `D/H/W` only; channels are not part of hint borders.
+    - for padded 3D test cases, prefer explicit `stride = 1` hints instead of `ccv_nnc_hint_auto(...)`;
+    - `ccv_nnc_hint_auto(...)` can infer the wrong depth stride for padded 3D shapes, causing `ccv_nnc_hint_verify(...)` to fail before the MFA path is exercised.
+  - Test style for `test/int/nnc/mpsdnn.tests.c`:
+    - keep focused test cases self-contained instead of factoring a small local helper shared across several similar cases.
+  - Local validation workflow for `NAConv3D` on a machine without neural accelerators:
+    - temporarily force `use_neural_accelerators = 1` in `ccv_nnc_conv_mps.m`;
+    - run `./mpsdnn.tests "mfa conv3d"` from `test/int/nnc`;
+    - revert the force after validation so production code uses `ccv_nnc_mfa_has_neural_accelerators(context)`.

@@ -8,6 +8,10 @@ bool NAConv3DKernelDescriptor::operator==(const NAConv3DKernelDescriptor& rhs) c
   dataType == rhs.dataType &&
   inputChannels == rhs.inputChannels &&
   outputChannels == rhs.outputChannels &&
+  paddingLeft == rhs.paddingLeft &&
+  paddingRight == rhs.paddingRight &&
+  paddingTop == rhs.paddingTop &&
+  paddingBottom == rhs.paddingBottom &&
   useBias == rhs.useBias;
 }
 
@@ -19,15 +23,23 @@ std::size_t std::hash<NAConv3DKernelDescriptor>::operator()(const NAConv3DKernel
   combine_64(seed, hash.dataType);
   combine_32(seed, hash.inputChannels);
   combine_32(seed, hash.outputChannels);
+  combine_32(seed, hash.paddingLeft);
+  combine_32(seed, hash.paddingRight);
+  combine_32(seed, hash.paddingTop);
+  combine_32(seed, hash.paddingBottom);
   combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
   return seed;
 }
 
-NAConv3DKernelDescriptor::NAConv3DKernelDescriptor(simd::ushort2 blockDimensions, simd::ushort3 kernelDimensions, uint64_t dataType, uint32_t inputChannels, uint32_t outputChannels, bool useBias) noexcept {
+NAConv3DKernelDescriptor::NAConv3DKernelDescriptor(simd::ushort2 blockDimensions, simd::ushort3 kernelDimensions, uint64_t dataType, uint32_t inputChannels, uint32_t outputChannels, uint32_t paddingLeft, uint32_t paddingRight, uint32_t paddingTop, uint32_t paddingBottom, bool useBias) noexcept {
   this->blockDimensions = blockDimensions;
   this->kernelDimensions = kernelDimensions;
   this->dataType = dataType;
   this->inputChannels = inputChannels;
   this->outputChannels = outputChannels;
+  this->paddingLeft = paddingLeft;
+  this->paddingRight = paddingRight;
+  this->paddingTop = paddingTop;
+  this->paddingBottom = paddingBottom;
   this->useBias = useBias;
 }

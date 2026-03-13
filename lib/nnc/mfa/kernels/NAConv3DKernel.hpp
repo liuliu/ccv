@@ -17,6 +17,10 @@ struct NAConv3DKernel {
   uint64_t dataType;
   uint32_t inputChannels;
   uint32_t outputChannels;
+  uint32_t paddingLeft;
+  uint32_t paddingRight;
+  uint32_t paddingTop;
+  uint32_t paddingBottom;
   bool useBias;
   uint16_t executionSIMDGroups;
 

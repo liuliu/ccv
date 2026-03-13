@@ -15,6 +15,10 @@ bool NAConv3DDescriptor::operator==(const NAConv3DDescriptor& rhs) const {
   batchDimension == rhs.batchDimension &&
   inputChannels == rhs.inputChannels &&
   outputChannels == rhs.outputChannels &&
+  paddingLeft == rhs.paddingLeft &&
+  paddingRight == rhs.paddingRight &&
+  paddingTop == rhs.paddingTop &&
+  paddingBottom == rhs.paddingBottom &&
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
   simd_all(kernelDimensions == rhs.kernelDimensions) &&
   useBias == rhs.useBias;
@@ -27,6 +31,10 @@ std::size_t std::hash<NAConv3DDescriptor>::operator()(const NAConv3DDescriptor& 
   combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.inputChannels);
   combine_32(seed, hash.outputChannels);
+  combine_32(seed, hash.paddingLeft);
+  combine_32(seed, hash.paddingRight);
+  combine_32(seed, hash.paddingTop);
+  combine_32(seed, hash.paddingBottom);
   combine_64(seed, pack_64(simd_make_uint2(hash.matrixDimensions[0], hash.matrixDimensions[1])));
   combine_32(seed, hash.matrixDimensions[2]);
   combine_64(seed, pack_64(simd_make_uint2(hash.kernelDimensions[0], hash.kernelDimensions[1])));
@@ -36,7 +44,7 @@ std::size_t std::hash<NAConv3DDescriptor>::operator()(const NAConv3DDescriptor& 
 }
 
 NAConv3DKernelDescriptor NAConv3DDescriptor::kernelDescriptor() const noexcept {
-  return NAConv3DKernelDescriptor(simd::ushort2 { 8, 8 }, simd::ushort3 { (unsigned short)kernelDimensions[0], (unsigned short)kernelDimensions[1], (unsigned short)kernelDimensions[2] }, dataType, inputChannels, outputChannels, useBias);
+  return NAConv3DKernelDescriptor(simd::ushort2 { 8, 8 }, simd::ushort3 { (unsigned short)kernelDimensions[0], (unsigned short)kernelDimensions[1], (unsigned short)kernelDimensions[2] }, dataType, inputChannels, outputChannels, paddingLeft, paddingRight, paddingTop, paddingBottom, useBias);
 }
 
 std::pair<NAConv3DKernelDescriptor, PipelineValue<NAConv3DKernel> *> NAConv3DDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAConv3DKernelDescriptor, std::unique_ptr<NAConv3DKernel>> *const libraryCache) const noexcept {

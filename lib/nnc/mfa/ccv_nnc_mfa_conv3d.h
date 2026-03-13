@@ -12,8 +12,10 @@ typedef struct {
   uint32_t filter_dimensions[3]; // D, H, W
   uint32_t stride_dimensions[3]; // D, H, W
   uint32_t dilation_dimensions[3]; // D, H, W
-  uint32_t padding_begin[3]; // D, H, W
-  uint32_t padding_end[3]; // D, H, W
+  uint32_t padding_left;
+  uint32_t padding_right;
+  uint32_t padding_top;
+  uint32_t padding_bottom;
   uint8_t format;
   uint8_t fused_bias;
   uint8_t use_neural_accelerators;

@@ -269,9 +269,9 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			} else if (ccv_max(cmd.info.convolution.dilation[size_nd - 3], 1) != 1 || ccv_max(cmd.info.convolution.dilation[size_nd - 2], 1) != 1 || ccv_max(cmd.info.convolution.dilation[size_nd - 1], 1) != 1) {
 				use_mfa_conv3d = false;
 				fallback_reason_conv3d = "Dilated filter.";
-			} else if (hint.border.begin[size_nd - 3] != 0 || hint.border.end[size_nd - 3] != 0 || hint.border.begin[size_nd - 2] != 0 || hint.border.end[size_nd - 2] != 0 || hint.border.begin[size_nd - 1] != 0 || hint.border.end[size_nd - 1] != 0) {
+			} else if (hint.border.begin[size_nd - 3] != 0 || hint.border.end[size_nd - 3] != 0) {
 				use_mfa_conv3d = false;
-				fallback_reason_conv3d = "Padded.";
+				fallback_reason_conv3d = "Depth padding unsupported.";
 			} else if ((input_channels % 16) != 0 || (output_channels % 16) != 0) {
 				use_mfa_conv3d = false;
 				fallback_reason_conv3d = "Channel dimensions incompatible.";
@@ -431,99 +431,90 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_mfa_encode_gemm(context, params, command_batch, tensors, tensor_offsets);
 			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-		} else {
-			if (use_mfa_conv3d) {
-				ccv_nnc_mfa_conv3d_params_t params = {
-					.data_type = mtl_data_type,
-					.batch_size = (uint32_t)b_batch_size,
-					.input_channels = (uint32_t)input_channels,
-					.output_channels = (uint32_t)output_channels,
-					.groups = (uint32_t)cmd.info.convolution.groups,
-					.input_dimensions = { (uint32_t)input_d, (uint32_t)input_h, (uint32_t)input_w },
-					.output_dimensions = { (uint32_t)output_d, (uint32_t)output_h, (uint32_t)output_w },
-					.filter_dimensions = { (uint32_t)kernel_d, (uint32_t)kernel_h, (uint32_t)kernel_w },
-					.stride_dimensions = {
-						(uint32_t)(size_nd == 3 ? hint.stride.dim[size_nd - 3] : 1),
-						(uint32_t)hint.stride.dim[size_nd - 2],
-						(uint32_t)hint.stride.dim[size_nd - 1],
-					},
-					.dilation_dimensions = {
-						(uint32_t)(size_nd == 3 ? ccv_max(cmd.info.convolution.dilation[size_nd - 3], 1) : 1),
-						(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 2], 1),
-						(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 1], 1),
-					},
-					.padding_begin = {
-						(uint32_t)(size_nd == 3 ? hint.border.begin[size_nd - 3] : 0),
-						(uint32_t)hint.border.begin[size_nd - 2],
-						(uint32_t)hint.border.begin[size_nd - 1],
-					},
-					.padding_end = {
-						(uint32_t)(size_nd == 3 ? hint.border.end[size_nd - 3] : 0),
-						(uint32_t)hint.border.end[size_nd - 2],
-						(uint32_t)hint.border.end[size_nd - 1],
-					},
-					.format = (uint8_t)a->info.format,
-					.fused_bias = (bias ? 1 : 0),
-					.use_neural_accelerators = use_neural_accelerators,
+		} else if (use_mfa_conv3d) {
+			ccv_nnc_mfa_conv3d_params_t params = {
+				.data_type = mtl_data_type,
+				.batch_size = (uint32_t)b_batch_size,
+				.input_channels = (uint32_t)input_channels,
+				.output_channels = (uint32_t)output_channels,
+				.groups = (uint32_t)cmd.info.convolution.groups,
+				.input_dimensions = { (uint32_t)input_d, (uint32_t)input_h, (uint32_t)input_w },
+				.output_dimensions = { (uint32_t)output_d, (uint32_t)output_h, (uint32_t)output_w },
+				.filter_dimensions = { (uint32_t)kernel_d, (uint32_t)kernel_h, (uint32_t)kernel_w },
+				.stride_dimensions = {
+					(uint32_t)(size_nd == 3 ? hint.stride.dim[size_nd - 3] : 1),
+					(uint32_t)hint.stride.dim[size_nd - 2],
+					(uint32_t)hint.stride.dim[size_nd - 1],
+				},
+				.dilation_dimensions = {
+					(uint32_t)(size_nd == 3 ? ccv_max(cmd.info.convolution.dilation[size_nd - 3], 1) : 1),
+					(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 2], 1),
+					(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 1], 1),
+				},
+				.padding_left = (uint32_t)hint.border.begin[size_nd - 1],
+				.padding_right = (uint32_t)hint.border.end[size_nd - 1],
+				.padding_top = (uint32_t)hint.border.begin[size_nd - 2],
+				.padding_bottom = (uint32_t)hint.border.end[size_nd - 2],
+				.format = (uint8_t)a->info.format,
+				.fused_bias = (bias ? 1 : 0),
+				.use_neural_accelerators = use_neural_accelerators,
+			};
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
+			ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+			size_t scratch_offset = ccv_nnc_mfa_conv3d_reserved_scratch_size(params);
+			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				ccv_nnc_tensor_param_t w_params = w->info;
+				const int palette_datatype = (w_params.datatype & 0xff) << 12;
+				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
+				depalettize_w_params.datatype = palette_datatype;
+				depalettize_w_params.reserved = 0;
+				const size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+				const size_t count = ccv_nnc_tensor_count(w_params);
+				const int qbits = (w_params.datatype & 0xf00) >> 8;
+				const int number_in_blocks = w_params.reserved;
+				w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+					.data_type = palette_datatype == CCV_16F ? 16 : 3,
+					.qbits = (uint32_t)qbits,
+					.number_in_blocks = (uint32_t)number_in_blocks,
+					.length = (uint64_t)count,
 				};
-				mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
-				size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
-				ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
-				size_t scratch_offset = ccv_nnc_mfa_conv3d_reserved_scratch_size(params);
-				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
-				{
-					ccv_nnc_tensor_param_t w_params = w->info;
-					const int palette_datatype = (w_params.datatype & 0xff) << 12;
-					ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-					depalettize_w_params.datatype = palette_datatype;
-					depalettize_w_params.reserved = 0;
-					const size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
-					const size_t count = ccv_nnc_tensor_count(w_params);
-					const int qbits = (w_params.datatype & 0xf00) >> 8;
-					const int number_in_blocks = w_params.reserved;
-					w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
-						.data_type = palette_datatype == CCV_16F ? 16 : 3,
-						.qbits = (uint32_t)qbits,
-						.number_in_blocks = (uint32_t)number_in_blocks,
-						.length = (uint64_t)count,
-					};
-					ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
-					w_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_data_size);
-					w_dataof = scratch_offset;
-				}
-				ccv_nnc_mfa_prepare_conv3d(context, params);
-				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
-				{
-					mtl_buffer_t* tensors[3] = {
-						mpgetbuffer((ccv_nnc_tensor_t*)w),
-						w_data,
-						NULL,
-					};
-					size_t tensor_offsets[2] = {
-						w->dataof,
-						scratch_offset,
-					};
-					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
-				}
-				mtl_buffer_t* tensors[5] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)a),
+				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				w_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_data_size);
+				w_dataof = scratch_offset;
+			}
+			ccv_nnc_mfa_prepare_conv3d(context, params);
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+			{
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)w),
 					w_data,
-					mpgetbuffer((ccv_nnc_tensor_t*)b),
-					bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : NULL,
 					NULL,
 				};
-				size_t tensor_offsets[4] = {
-					a->dataof,
-					w_dataof,
-					b->dataof,
-					bias ? bias->dataof : 0,
+				size_t tensor_offsets[2] = {
+					w->dataof,
+					scratch_offset,
 				};
-				ccv_nnc_mfa_encode_conv3d(context, params, command_batch, tensors, tensor_offsets);
-				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
 			}
-		}
-		if (!use_mfa_gemm && !use_mfa_conv3d) {
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				w_data,
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : NULL,
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w_dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			ccv_nnc_mfa_encode_conv3d(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else {
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
 			MPSCommandBuffer* command_buffer;
