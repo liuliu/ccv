@@ -8,6 +8,9 @@
 
 Conv3DKernel::Conv3DKernel(Conv3DKernelDescriptor descriptor, MTL::Device *const device) {
   blockDimensions = descriptor.blockDimensions;
+  CCV_NNC_MFA_PRECONDITION(blockDimensions[0] > 0 && blockDimensions[1] > 0);
+  CCV_NNC_MFA_PRECONDITION(blockDimensions[0] <= 512 && (blockDimensions[0] % 32) == 0);
+  CCV_NNC_MFA_PRECONDITION(blockDimensions[1] == 32);
   kernelDimensions = descriptor.kernelDimensions;
   dataType = descriptor.dataType;
   inputChannels = descriptor.inputChannels;
@@ -31,7 +34,10 @@ uint16_t Conv3DKernel::permutationThreadgroupSize(MTL::ComputePipelineState *con
 }
 
 uint16_t Conv3DKernel::threadgroupSize(MTL::ComputePipelineState *const pipelineState, const Conv3DDescriptor &descriptor) const noexcept {
-  return 32;
+  const uint16_t simdgroups_n = blockDimensions[0] > 32 ? blockDimensions[0] / 32 : 1;
+  const uint16_t threadgroup_size = 32 * simdgroups_n;
+  CCV_NNC_MFA_PRECONDITION(threadgroup_size <= pipelineState->maxTotalThreadsPerThreadgroup());
+  return threadgroup_size;
 }
 
 MTL::Size Conv3DKernel::threadgroupsPerGrid(const Conv3DDescriptor &descriptor) const noexcept {
@@ -67,6 +73,15 @@ constant uint WIDTH [[function_constant(2)]];
   source.SetValue("PADDING_RIGHT", std::to_string(paddingRight));
   source.SetValue("PADDING_TOP", std::to_string(paddingTop));
   source.SetValue("PADDING_BOTTOM", std::to_string(paddingBottom));
+  const uint16_t register_m = 32;
+  const uint16_t register_n = 32;
+  const uint16_t simdgroups_n = blockDimensions[0] / register_n;
+  source.SetValue("M_GROUP", std::to_string(register_m));
+  source.SetValue("N_GROUP", std::to_string(blockDimensions[0]));
+  source.SetValue("REGISTER_M", std::to_string(register_m));
+  source.SetValue("REGISTER_N", std::to_string(register_n));
+  source.SetValue("SIMDGROUPS_N", std::to_string(simdgroups_n));
+  source.SetValue("SIMDGROUP_COUNT", std::to_string(simdgroups_n));
   source.SetValue("USE_BIAS", useBias ? "1" : "0");
 
   source += R"(
@@ -85,10 +100,12 @@ constant int PADDING_TOP = {{PADDING_TOP}};
 constant int PADDING_BOTTOM = {{PADDING_BOTTOM}};
 
 constant bool B_trans = true;
-constant ushort M_group = 32;
-constant ushort N_group = 32;
-constant ushort REGISTER_M = 32;
-constant ushort REGISTER_N = 32;
+constant ushort M_group = {{M_GROUP}};
+constant ushort N_group = {{N_GROUP}};
+constant ushort REGISTER_M = {{REGISTER_M}};
+constant ushort REGISTER_N = {{REGISTER_N}};
+constant ushort SIMDGROUPS_N = {{SIMDGROUPS_N}};
+constant ushort SIMDGROUP_COUNT = {{SIMDGROUP_COUNT}};
 
 template <typename T>
 METAL_FUNC thread simdgroup_matrix_storage<T>* get_sram(
@@ -262,15 +279,18 @@ kernel void conv3d(device const {{SCALAR_NAME}} *input [[buffer(0)]],
   }
   source += R"(
                    uint3 gid [[threadgroup_position_in_grid]],
+                   ushort sidx [[simdgroup_index_in_threadgroup]],
                    ushort lane_id [[thread_index_in_simdgroup]])
 {
-  const uint N_offset = gid.x * N_group;
+  const uint N_base = gid.x * N_group;
   const uint width_tiles = (WIDTH + M_group - 1) / M_group;
   const uint width_tile = gid.y % width_tiles;
   const uint height_depth = gid.y / width_tiles;
   const uint output_height = height_depth % HEIGHT;
   const uint output_depth = height_depth / HEIGHT;
-  const uint M_offset = width_tile * M_group;
+  const uint M_base = width_tile * M_group;
+  const uint N_offset = N_base + uint(sidx) * REGISTER_N;
+  const uint M_offset = M_base;
   const uint batch = gid.z;
 
   if (N_offset >= OUTPUT_CHANNELS || M_offset >= WIDTH) {
@@ -289,14 +309,14 @@ kernel void conv3d(device const {{SCALAR_NAME}} *input [[buffer(0)]],
 
   const ushort2 morton_offset = morton_order(lane_id);
   const ushort2 offset_in_group(morton_offset.x, morton_offset.y);
-  const bool full_m_tile = (M_offset + M_group <= WIDTH);
-  const bool full_n_tile = (N_offset + N_group <= OUTPUT_CHANNELS);
+  const bool full_m_tile = (M_offset + REGISTER_M <= WIDTH);
+  const bool full_n_tile = (N_offset + REGISTER_N <= OUTPUT_CHANNELS);
   const bool interior_tile =
       full_m_tile && full_n_tile &&
       (output_height >= uint(PADDING_TOP)) &&
       (output_height + (KERNEL_HEIGHT - uint(PADDING_TOP) - 1) < uint(INPUT_HEIGHT)) &&
       (M_offset >= uint(PADDING_LEFT)) &&
-      (M_offset + M_group + (KERNEL_WIDTH - uint(PADDING_LEFT) - 1) <= uint(INPUT_WIDTH));
+      (M_offset + REGISTER_M + (KERNEL_WIDTH - uint(PADDING_LEFT) - 1) <= uint(INPUT_WIDTH));
 
   thread simdgroup_matrix_storage<{{SCALAR_NAME}}> C_sram[(REGISTER_M / 8) * (REGISTER_N / 8)];
 )";
@@ -327,7 +347,7 @@ kernel void conv3d(device const {{SCALAR_NAME}} *input [[buffer(0)]],
       B_sram,
       C_sram);
 
-  if (full_m_tile && full_n_tile) {
+	  if (full_m_tile && full_n_tile) {
     uint2 C_offset(N_offset + offset_in_group.x, M_offset + offset_in_group.y);
     auto C_dst = simdgroup_matrix_storage<{{SCALAR_NAME}}>::apply_offset(
         output, OUTPUT_CHANNELS, C_offset);
@@ -339,29 +359,30 @@ kernel void conv3d(device const {{SCALAR_NAME}} *input [[buffer(0)]],
         C->store(C_dst, OUTPUT_CHANNELS, ushort2(n, m));
       }
     }
-  } else {
-    threadgroup {{SCALAR_NAME}} C_block[M_group * N_group];
-    auto C_block_dst =
-      simdgroup_matrix_storage<{{SCALAR_NAME}}>::apply_offset(
-        C_block, N_group, offset_in_group);
+	  } else {
+	    threadgroup {{SCALAR_NAME}} C_block[SIMDGROUP_COUNT * REGISTER_M * REGISTER_N];
+	    threadgroup {{SCALAR_NAME}}* C_tile = C_block + uint(sidx) * REGISTER_M * REGISTER_N;
+	    auto C_block_dst =
+	      simdgroup_matrix_storage<{{SCALAR_NAME}}>::apply_offset(
+	        C_tile, REGISTER_N, offset_in_group);
 #pragma clang loop unroll(full)
-    for (ushort m = 0; m < REGISTER_M; m += 8) {
+	    for (ushort m = 0; m < REGISTER_M; m += 8) {
 #pragma clang loop unroll(full)
-      for (ushort n = 0; n < REGISTER_N; n += 8) {
-        auto C = get_sram(C_sram, REGISTER_N, ushort2(n, m));
-        C->store(C_block_dst, N_group, ushort2(n, m));
-      }
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+	      for (ushort n = 0; n < REGISTER_N; n += 8) {
+	        auto C = get_sram(C_sram, REGISTER_N, ushort2(n, m));
+	        C->store(C_block_dst, REGISTER_N, ushort2(n, m));
+	      }
+	    }
+	    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    for (uint i = lane_id; i < uint(M_group) * uint(N_group); i += 32) {
-      const uint row = i / uint(N_group);
-      const uint col = i % uint(N_group);
-      if (M_offset + row < WIDTH && N_offset + col < OUTPUT_CHANNELS) {
-        output[(M_offset + row) * OUTPUT_CHANNELS + (N_offset + col)] = C_block[i];
-      }
-    }
-  }
+	    for (uint i = lane_id; i < uint(REGISTER_M) * uint(REGISTER_N); i += 32) {
+	      const uint row = i / uint(REGISTER_N);
+	      const uint col = i % uint(REGISTER_N);
+	      if (M_offset + row < WIDTH && N_offset + col < OUTPUT_CHANNELS) {
+	        output[(M_offset + row) * OUTPUT_CHANNELS + (N_offset + col)] = C_tile[i];
+	      }
+	    }
+	  }
 }
 
 kernel void permute_oidhw_to_ok(device const {{SCALAR_NAME}} *source [[buffer(0)]],

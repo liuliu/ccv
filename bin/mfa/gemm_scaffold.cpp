@@ -225,7 +225,7 @@ double benchmark_case(
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
   std::cerr << "[scaffold] creating device\n";
@@ -302,17 +302,36 @@ int main()
 
   print_matrix("GPU C", c, gemm.M, gemm.N);
 
+  uint32_t benchmark_m = 3072;
+  uint32_t benchmark_n = 3072;
+  uint32_t benchmark_k = 3072;
+  if (argc >= 4)
+  {
+    const long parsed_m = std::strtol(argv[1], nullptr, 10);
+    const long parsed_n = std::strtol(argv[2], nullptr, 10);
+    const long parsed_k = std::strtol(argv[3], nullptr, 10);
+    if (parsed_m <= 0 || parsed_n <= 0 || parsed_k <= 0)
+    {
+      std::cerr << "Invalid GEMM shape arguments.\n";
+      pool->drain();
+      return 2;
+    }
+    benchmark_m = static_cast<uint32_t>(parsed_m);
+    benchmark_n = static_cast<uint32_t>(parsed_n);
+    benchmark_k = static_cast<uint32_t>(parsed_k);
+  }
+
   const GemmCase benchmark_gemm{
-      .M = 3072,
-      .N = 3072,
-      .K = 3072,
+      .M = benchmark_m,
+      .N = benchmark_n,
+      .K = benchmark_k,
       .transpose_a = false,
       .transpose_b = true,
   };
   const BenchmarkConfig benchmark_config{
-      .warmup_iterations = 1,
-      .timed_iterations = 3,
-      .duplicated_dispatches = 4,
+      .warmup_iterations = 2,
+      .timed_iterations = 10,
+      .duplicated_dispatches = 1,
   };
   DeviceProperties dprops{};
   const auto benchmark_descriptor =

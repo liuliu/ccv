@@ -118,13 +118,14 @@ std::vector<float> cpu_conv3d(
   return output;
 }
 
-Conv3DDescriptor make_descriptor(const Conv3DShape& shape)
+Conv3DDescriptor make_descriptor(const Conv3DShape& shape, simd::ushort2 block_dimensions)
 {
   Conv3DDescriptor descriptor;
   descriptor.dataType = 16;
   descriptor.batchDimension = shape.batch;
   descriptor.inputChannels = shape.input_c;
   descriptor.outputChannels = shape.output_c;
+  descriptor.blockDimensions = block_dimensions;
   descriptor.paddingLeft = shape.pad_w;
   descriptor.paddingRight = shape.pad_w;
   descriptor.paddingTop = shape.pad_h;
@@ -210,7 +211,7 @@ void validate_small(
       .pad_h = 1,
       .pad_w = 1,
   };
-  const auto descriptor = make_descriptor(shape);
+  const auto descriptor = make_descriptor(shape, simd::ushort2 { 32, 32 });
   auto pipeline_value =
       shader_cache.findKernel<Conv3DKernel, Conv3DDescriptor, Conv3DKernelDescriptor>(
           descriptor, device, dprops);
@@ -306,6 +307,31 @@ int main(int argc, char** argv)
     }
     channels = static_cast<uint32_t>(parsed);
   }
+  simd::ushort2 block_dimensions {
+      static_cast<unsigned short>(
+          std::min<uint32_t>(((channels + 31u) / 32u) * 32u, 512u)),
+      32,
+  };
+  if (argc >= 3)
+  {
+    const long parsed_block_n = std::strtol(argv[2], nullptr, 10);
+    long parsed_block_m = 32;
+    if (argc >= 4)
+      parsed_block_m = std::strtol(argv[3], nullptr, 10);
+    if (parsed_block_n <= 0 || parsed_block_m != 32 || (parsed_block_n % 32) != 0)
+    {
+      std::fprintf(
+          stderr,
+          "Invalid block dimensions: %s x %s (M tile must stay 32, N tile must be a multiple of 32)\n",
+          argv[2],
+          argc >= 4 ? argv[3] : "32");
+      std::_Exit(2);
+    }
+    block_dimensions = simd::ushort2 {
+        static_cast<unsigned short>(parsed_block_n),
+        static_cast<unsigned short>(parsed_block_m),
+    };
+  }
 
   const Conv3DShape shape{
       .batch = 1,
@@ -323,7 +349,7 @@ int main(int argc, char** argv)
       .pad_h = 1,
       .pad_w = 1,
   };
-  const auto descriptor = make_descriptor(shape);
+  const auto descriptor = make_descriptor(shape, block_dimensions);
   auto pipeline_value =
       shader_cache.findKernel<Conv3DKernel, Conv3DDescriptor, Conv3DKernelDescriptor>(
           descriptor, device.get(), dprops);
@@ -399,7 +425,7 @@ int main(int argc, char** argv)
   std::fprintf(
       stderr,
       "conv3d kernel bench: device=%s input=%ux%ux%ux%ux%u output=%ux%ux%ux%ux%u "
-      "kernel=%ux%ux%u padding=(0,%u,%u) grid=%llu x %llu x %llu warmup=%d timed=%d "
+      "kernel=%ux%ux%u block=%u x %u padding=(0,%u,%u) grid=%llu x %llu x %llu warmup=%d timed=%d "
       "avg_ms=%.3f tflops=%.3f checksum1024=%.6f\n",
       device->name()->utf8String(),
       shape.batch,
@@ -415,6 +441,8 @@ int main(int argc, char** argv)
       shape.kernel_d,
       shape.kernel_h,
       shape.kernel_w,
+      descriptor.blockDimensions[0],
+      descriptor.blockDimensions[1],
       shape.pad_h,
       shape.pad_w,
       static_cast<unsigned long long>(grid.width),

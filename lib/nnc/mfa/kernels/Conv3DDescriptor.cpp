@@ -15,6 +15,7 @@ bool Conv3DDescriptor::operator==(const Conv3DDescriptor& rhs) const {
   batchDimension == rhs.batchDimension &&
   inputChannels == rhs.inputChannels &&
   outputChannels == rhs.outputChannels &&
+  simd_all(blockDimensions == rhs.blockDimensions) &&
   paddingLeft == rhs.paddingLeft &&
   paddingRight == rhs.paddingRight &&
   paddingTop == rhs.paddingTop &&
@@ -31,6 +32,7 @@ std::size_t std::hash<Conv3DDescriptor>::operator()(const Conv3DDescriptor& hash
   combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.inputChannels);
   combine_32(seed, hash.outputChannels);
+  combine_32(seed, pack_32(hash.blockDimensions));
   combine_32(seed, hash.paddingLeft);
   combine_32(seed, hash.paddingRight);
   combine_32(seed, hash.paddingTop);
@@ -45,7 +47,7 @@ std::size_t std::hash<Conv3DDescriptor>::operator()(const Conv3DDescriptor& hash
 
 Conv3DKernelDescriptor Conv3DDescriptor::kernelDescriptor() const noexcept {
   return Conv3DKernelDescriptor(
-      simd::ushort2 { 32, 32 },
+      blockDimensions,
       simd::ushort3 {
           (unsigned short)kernelDimensions[0],
           (unsigned short)kernelDimensions[1],

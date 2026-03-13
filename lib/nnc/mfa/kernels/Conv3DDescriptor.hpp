@@ -14,6 +14,7 @@ struct Conv3DDescriptor {
   uint32_t batchDimension = 1;
   uint32_t inputChannels;
   uint32_t outputChannels;
+  simd::ushort2 blockDimensions = simd::ushort2 { 32, 32 };
   uint32_t paddingLeft;
   uint32_t paddingRight;
   uint32_t paddingTop;
