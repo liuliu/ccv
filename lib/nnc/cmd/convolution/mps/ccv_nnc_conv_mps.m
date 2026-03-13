@@ -54,25 +54,35 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 	}
 	@autoreleasepool {
-		bool use_mfa = true;
-		const char *fallback_reason = NULL;
+		bool use_mfa_gemm = true;
+		bool use_mfa_conv3d = true;
+		const char* fallback_reason_gemm = NULL;
+		const char* fallback_reason_conv3d = NULL;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
-		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM)) {
-			use_mfa = false;
-			fallback_reason = "Disabled.";
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA)) {
+			use_mfa_gemm = false;
+			use_mfa_conv3d = false;
+			fallback_reason_gemm = "Disabled.";
+			fallback_reason_conv3d = "Disabled.";
+		} else if (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM) {
+			use_mfa_gemm = false;
+			fallback_reason_gemm = "Disabled.";
 		}
 
 		uint32_t mtl_data_type = UINT32_MAX;
+		uint8_t use_neural_accelerators = 0;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
-		if (use_mfa) {
+		if (use_mfa_gemm || use_mfa_conv3d) {
 			const int is_same_dtype =
 				(a->info.datatype == w_datatype) &&
 				(a->info.datatype == b->info.datatype) &&
 				(bias ? (a->info.datatype == bias->info.datatype) : 1);
 			if (!is_same_dtype) {
-				use_mfa = false;
-				fallback_reason = "Mixed precision.";
+				use_mfa_gemm = false;
+				use_mfa_conv3d = false;
+				fallback_reason_gemm = "Mixed precision.";
+				fallback_reason_conv3d = "Mixed precision.";
 			}
 
 			switch (a->info.datatype) {
@@ -85,21 +95,25 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					break;
 				}
 				default: {
-					use_mfa = false;
-					fallback_reason = "Unsupported data type.";
+					use_mfa_gemm = false;
+					use_mfa_conv3d = false;
+					fallback_reason_gemm = "Unsupported data type.";
+					fallback_reason_conv3d = "Unsupported data type.";
 					break;
 				}
 			}
+			if (mtl_data_type != UINT32_MAX)
+				use_neural_accelerators = ccv_nnc_mfa_has_neural_accelerators(context);
 		}
 
 		const int a_nd = ccv_nnc_tensor_nd(adim);
 		const int w_nd = ccv_nnc_tensor_nd(w->info.dim);
 		const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 		int is_batched = 0;
-		int a_batch_size;
-		int w_batch_size;
-		int b_batch_size;
-		if (use_mfa) {
+		int a_batch_size = 1;
+		int w_batch_size = 1;
+		int b_batch_size = 1;
+		if (use_mfa_gemm || use_mfa_conv3d) {
 			a_batch_size = a_nd < size_nd + 2 ? 1 : adim[a_nd - size_nd - 2];
 			int i;
 			for (i = 0; i < a_nd - size_nd - 2; i++)
@@ -137,47 +151,134 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			}
 
 			if (is_batched && !is_mfa_compatible_batch) {
-				use_mfa = false;
-				fallback_reason = "Unsupported batch.";
+				use_mfa_gemm = false;
+				use_mfa_conv3d = false;
+				fallback_reason_gemm = "Unsupported batch.";
+				fallback_reason_conv3d = "Unsupported batch.";
 			}
 
 			// For simplicity, omit the logic for transposing the output matrix
 			// between formats.
 			if (a->info.format != b->info.format) {
-				use_mfa = false;
-				fallback_reason = "Image layout conversion.";
+				use_mfa_gemm = false;
+				use_mfa_conv3d = false;
+				fallback_reason_gemm = "Image layout conversion.";
+				fallback_reason_conv3d = "Image layout conversion.";
 			}
-			if (a->info.format != CCV_TENSOR_FORMAT_NHWC && (!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context))) {
-				use_mfa = false;
-				fallback_reason = "Image layout incompatible.";
+			if (use_mfa_gemm && a->info.format != CCV_TENSOR_FORMAT_NHWC && use_neural_accelerators) {
+				use_mfa_gemm = false;
+				fallback_reason_gemm = "Image layout incompatible.";
+			}
+			if (use_mfa_conv3d && a->info.format != CCV_TENSOR_FORMAT_NHWC) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Image layout incompatible.";
 			}
 		}
 
-		if (use_mfa) {
-			// Height and width of the filter, not the image.
-			const int W = wdim[w_nd - 1];
-			const int H = wdim[w_nd - 2];
-			const int D = size_nd > 2 ? wdim[w_nd - 3] : 1;
+		const int kernel_w = wdim[w_nd - 1];
+		const int kernel_h = wdim[w_nd - 2];
+		const int kernel_d = size_nd > 2 ? wdim[w_nd - 3] : 1;
+		int input_w = 0;
+		int input_h = 0;
+		int input_d = 1;
+		int input_channels = 0;
+		int output_w = 0;
+		int output_h = 0;
+		int output_d = 1;
+		int output_channels = 0;
+		if (use_mfa_gemm || use_mfa_conv3d) {
+			assert(a->info.format == b->info.format);
+			if (a->info.format == CCV_TENSOR_FORMAT_NHWC) {
+				input_channels = adim[a_nd - 1];
+				input_w = adim[a_nd - 2];
+				input_h = adim[a_nd - 3];
+				output_channels = bdim[b_nd - 1];
+				output_w = bdim[b_nd - 2];
+				output_h = bdim[b_nd - 3];
+				if (size_nd == 3)
+				{
+					input_d = adim[a_nd - 4];
+					output_d = bdim[b_nd - 4];
+				}
+			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
+				input_w = adim[a_nd - 1];
+				input_h = adim[a_nd - 2];
+				output_w = bdim[b_nd - 1];
+				output_h = bdim[b_nd - 2];
+				if (size_nd == 3)
+				{
+					input_d = adim[a_nd - 3];
+					input_channels = adim[a_nd - 4];
+					output_d = bdim[b_nd - 3];
+					output_channels = bdim[b_nd - 4];
+				} else {
+					input_channels = adim[a_nd - 3];
+					output_channels = bdim[b_nd - 3];
+				}
+			} else {
+				assert(false);
+			}
+			assert(input_channels == wdim[w_nd - size_nd - 1]);
+			assert(output_channels == wdim[w_nd - size_nd - 2]);
+		}
 
-			if ((H != 1) || (W != 1) || (D != 1)) {
-				use_mfa = false;
-				fallback_reason = "Kernel size not 1x1.";
+		if (use_mfa_gemm) {
+			if ((kernel_h != 1) || (kernel_w != 1) || (kernel_d != 1)) {
+				use_mfa_gemm = false;
+				fallback_reason_gemm = "Kernel size not 1x1.";
 			} else if (hint.stride.dim[1] != 1 || hint.stride.dim[0] != 1 || (size_nd == 3 && hint.stride.dim[2] != 1)) {
-				use_mfa = false;
-				fallback_reason = "Strided filter.";
+				use_mfa_gemm = false;
+				fallback_reason_gemm = "Strided filter.";
 			} else if (hint.border.begin[1] != 0 || hint.border.end[1] != 0 || hint.border.begin[0] != 0 || hint.border.end[0] != 0 || (size_nd == 3 && (hint.border.begin[2] != 0 || hint.border.end[2] != 0))) {
-				use_mfa = false;
-				fallback_reason = "Padded.";
+				use_mfa_gemm = false;
+				fallback_reason_gemm = "Padded.";
 			} else if (cmd.info.convolution.groups != 1) {
 				// Groups require batched GEMM, which is available in MFA. We won't add
 				// support until we encounter a production use case with groups + 1x1
 				// filters.
-				use_mfa = false;
-				fallback_reason = "Grouped.";
+				use_mfa_gemm = false;
+				fallback_reason_gemm = "Grouped.";
 			}
 		}
 
-		if (use_mfa) {
+		if (use_mfa_conv3d) {
+			if (size_nd != 3) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Not 3D convolution.";
+			} else if (!use_neural_accelerators) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Neural accelerators unavailable.";
+			} else if (cmd.info.convolution.groups != 1) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Grouped.";
+			} else if (w_batch_size != 1) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Batched weights unsupported.";
+			} else if (kernel_d != 3) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Kernel depth not 3.";
+			} else if (kernel_h != kernel_w) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Spatial kernel not square.";
+			} else if ((kernel_h % 2) != 1) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Spatial kernel not odd-sized.";
+			} else if (hint.stride.dim[size_nd - 3] != 1 || hint.stride.dim[size_nd - 2] != 1 || hint.stride.dim[size_nd - 1] != 1) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Strided filter.";
+			} else if (ccv_max(cmd.info.convolution.dilation[size_nd - 3], 1) != 1 || ccv_max(cmd.info.convolution.dilation[size_nd - 2], 1) != 1 || ccv_max(cmd.info.convolution.dilation[size_nd - 1], 1) != 1) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Dilated filter.";
+			} else if (hint.border.begin[size_nd - 3] != 0 || hint.border.end[size_nd - 3] != 0 || hint.border.begin[size_nd - 2] != 0 || hint.border.end[size_nd - 2] != 0 || hint.border.begin[size_nd - 1] != 0 || hint.border.end[size_nd - 1] != 0) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Padded.";
+			} else if ((input_channels % 16) != 0 || (output_channels % 16) != 0) {
+				use_mfa_conv3d = false;
+				fallback_reason_conv3d = "Channel dimensions incompatible.";
+			}
+		}
+
+		if (use_mfa_gemm || use_mfa_conv3d) {
 			const int is_contiguous =
 				(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 				(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
@@ -186,94 +287,67 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (!is_contiguous) {
 				// There is one real-world example of a Conv1x1 with non-contiguous
 				// tensors, but it's 1 out of 10-100 operations in the network.
-				use_mfa = false;
-				fallback_reason = "Strided.";
+				use_mfa_gemm = false;
+				use_mfa_conv3d = false;
+				fallback_reason_gemm = "Strided.";
+				fallback_reason_conv3d = "Strided.";
 			}
 		}
 
+		const char* fallback_reason = fallback_reason_gemm ? fallback_reason_gemm : fallback_reason_conv3d;
+		if (size_nd == 3 && fallback_reason_conv3d)
+			fallback_reason = fallback_reason_conv3d;
+
 		if (METAL_LOG_LEVEL(context) >= 3) {
-			if (use_mfa) {
-				ccv_nnc_mfa_log_message("Compatible convolution found.");
+			if (use_mfa_gemm) {
+				ccv_nnc_mfa_log_message("Compatible convolution found via MFA GEMM.");
+			} else if (use_mfa_conv3d) {
+				ccv_nnc_mfa_log_message("Compatible convolution found via MFA Conv3D.");
 			} else {
 				ccv_nnc_mfa_log_message("Incompatible convolution found. Incompatible because:");
 				ccv_nnc_mfa_log_message(fallback_reason);
 			}
 		}
 
-		if (use_mfa) {
-
-			int O;
-			int H;
-			int W;
-			int D = 1;
-
-			// Bypass a compilation error from a header.
-			int I_dim;
-			assert(a->info.format == b->info.format);
-			if (a->info.format == CCV_TENSOR_FORMAT_NHWC) {
-				// HWxI -> MxK
-				I_dim = adim[a_nd - 1];
-				W = adim[a_nd - 2];
-				H = adim[a_nd - 3];
-				if (size_nd == 3)
-					D = adim[a_nd - 4];
-			} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW) {
-				// IxHW -> KxM
-				W = adim[a_nd - 1];
-				H = adim[a_nd - 2];
-				if (size_nd == 3)
-				{
-					D = adim[a_nd - 3];
-					I_dim = adim[a_nd - 4];
-				} else
-					I_dim = adim[a_nd - 3];
-			} else {
-				// This should never happen.
-				assert(false);
-			}
-
-			// OxI -> NxK
-			assert(I_dim == wdim[w_nd - size_nd - 1]);
-			O = wdim[w_nd - size_nd - 2];
-
+		if (use_mfa_gemm) {
 			ccv_nnc_mfa_gemm_params_t params;
 			if (a->info.format == CCV_TENSOR_FORMAT_NHWC)
 			{
 				params = (ccv_nnc_mfa_gemm_params_t){
 					.data_type = mtl_data_type,
-					.M = (uint32_t)(H * W * D),
-					.N = (uint32_t)O,
-					.K = (uint32_t)I_dim,
+					.M = (uint32_t)(input_h * input_w * input_d),
+					.N = (uint32_t)output_channels,
+					.K = (uint32_t)input_channels,
 					.A_trans = 0,
 					.B_trans = 1,
 					.D_trans = 0,
 					.fused_bias = (bias ? 1 : 0),
 					.register_float = 0,
-					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
+					.use_neural_accelerators = use_neural_accelerators,
 
 					.batch_dimension = b_batch_size,
-					.batch_stride_a = a_batch_size > 1 ? H * W * D * I_dim : 0,
-					.batch_stride_b = w_batch_size > 1 ? O * I_dim : 0,
-					.batch_stride_c = b_batch_size > 1 ? H * W * D * O : 0,
+					.batch_stride_a = a_batch_size > 1 ? input_h * input_w * input_d * input_channels : 0,
+					.batch_stride_b = w_batch_size > 1 ? output_channels * input_channels : 0,
+					.batch_stride_c = b_batch_size > 1 ? input_h * input_w * input_d * output_channels : 0,
 					.batch_stride_d = 0,
 				};
 			} else {
 				params = (ccv_nnc_mfa_gemm_params_t){
 					.data_type = mtl_data_type,
-					.M = (uint32_t)O,
-					.N = (uint32_t)(H * W * D),
-					.K = (uint32_t)I_dim,
+					.M = (uint32_t)output_channels,
+					.N = (uint32_t)(input_h * input_w * input_d),
+					.K = (uint32_t)input_channels,
 					.A_trans = 0,
 					.B_trans = 0,
 					.D_trans = 1,
 					.fused_bias = (bias ? 1 : 0),
 					.register_float = 0,
-					.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
+					.use_neural_accelerators = use_neural_accelerators,
 
 					.batch_dimension = b_batch_size,
-					.batch_stride_a = w_batch_size > 1 ? O * I_dim : 0,
-					.batch_stride_b = a_batch_size > 1 ? H * W * D * I_dim : 0,
-					.batch_stride_c = b_batch_size > 1 ? H * W * D * O : 0,
+					.batch_stride_a = w_batch_size > 1 ? output_channels * input_channels : 0,
+					.batch_stride_b = a_batch_size > 1 ? input_h * input_w * input_d * input_channels : 0,
+					.batch_stride_c = b_batch_size > 1 ? input_h * input_w * input_d * output_channels : 0,
 					.batch_stride_d = 0,
 				};
 			}
@@ -358,6 +432,98 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			}
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
+			if (use_mfa_conv3d) {
+				ccv_nnc_mfa_conv3d_params_t params = {
+					.data_type = mtl_data_type,
+					.batch_size = (uint32_t)b_batch_size,
+					.input_channels = (uint32_t)input_channels,
+					.output_channels = (uint32_t)output_channels,
+					.groups = (uint32_t)cmd.info.convolution.groups,
+					.input_dimensions = { (uint32_t)input_d, (uint32_t)input_h, (uint32_t)input_w },
+					.output_dimensions = { (uint32_t)output_d, (uint32_t)output_h, (uint32_t)output_w },
+					.filter_dimensions = { (uint32_t)kernel_d, (uint32_t)kernel_h, (uint32_t)kernel_w },
+					.stride_dimensions = {
+						(uint32_t)(size_nd == 3 ? hint.stride.dim[size_nd - 3] : 1),
+						(uint32_t)hint.stride.dim[size_nd - 2],
+						(uint32_t)hint.stride.dim[size_nd - 1],
+					},
+					.dilation_dimensions = {
+						(uint32_t)(size_nd == 3 ? ccv_max(cmd.info.convolution.dilation[size_nd - 3], 1) : 1),
+						(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 2], 1),
+						(uint32_t)ccv_max(cmd.info.convolution.dilation[size_nd - 1], 1),
+					},
+					.padding_begin = {
+						(uint32_t)(size_nd == 3 ? hint.border.begin[size_nd - 3] : 0),
+						(uint32_t)hint.border.begin[size_nd - 2],
+						(uint32_t)hint.border.begin[size_nd - 1],
+					},
+					.padding_end = {
+						(uint32_t)(size_nd == 3 ? hint.border.end[size_nd - 3] : 0),
+						(uint32_t)hint.border.end[size_nd - 2],
+						(uint32_t)hint.border.end[size_nd - 1],
+					},
+					.format = (uint8_t)a->info.format,
+					.fused_bias = (bias ? 1 : 0),
+					.use_neural_accelerators = use_neural_accelerators,
+				};
+				mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+				size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
+				ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+				size_t scratch_offset = ccv_nnc_mfa_conv3d_reserved_scratch_size(params);
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					ccv_nnc_tensor_param_t w_params = w->info;
+					const int palette_datatype = (w_params.datatype & 0xff) << 12;
+					ccv_nnc_tensor_param_t depalettize_w_params = w_params;
+					depalettize_w_params.datatype = palette_datatype;
+					depalettize_w_params.reserved = 0;
+					const size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+					const size_t count = ccv_nnc_tensor_count(w_params);
+					const int qbits = (w_params.datatype & 0xf00) >> 8;
+					const int number_in_blocks = w_params.reserved;
+					w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+						.data_type = palette_datatype == CCV_16F ? 16 : 3,
+						.qbits = (uint32_t)qbits,
+						.number_in_blocks = (uint32_t)number_in_blocks,
+						.length = (uint64_t)count,
+					};
+					ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+					w_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_data_size);
+					w_dataof = scratch_offset;
+				}
+				ccv_nnc_mfa_prepare_conv3d(context, params);
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					mtl_buffer_t* tensors[3] = {
+						mpgetbuffer((ccv_nnc_tensor_t*)w),
+						w_data,
+						NULL,
+					};
+					size_t tensor_offsets[2] = {
+						w->dataof,
+						scratch_offset,
+					};
+					ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				}
+				mtl_buffer_t* tensors[5] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)a),
+					w_data,
+					mpgetbuffer((ccv_nnc_tensor_t*)b),
+					bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : NULL,
+					NULL,
+				};
+				size_t tensor_offsets[4] = {
+					a->dataof,
+					w_dataof,
+					b->dataof,
+					bias ? bias->dataof : 0,
+				};
+				ccv_nnc_mfa_encode_conv3d(context, params, command_batch, tensors, tensor_offsets);
+				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			}
+		}
+		if (!use_mfa_gemm && !use_mfa_conv3d) {
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
 			MPSCommandBuffer* command_buffer;

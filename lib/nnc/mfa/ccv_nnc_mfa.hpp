@@ -10,6 +10,7 @@
 #include "ccv_nnc_mfa_cmul.hpp"
 #include "ccv_nnc_mfa_gelu.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
+#include "ccv_nnc_mfa_conv3d.h"
 #include "ccv_nnc_mfa_gemv.hpp"
 #include "ccv_nnc_mfa_cast.hpp"
 #include "ccv_nnc_mfa_sigmoid.hpp"
