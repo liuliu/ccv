@@ -37,6 +37,28 @@ Example from repo root:
 find . -name .dep.mk -delete
 ```
 
+## UBSAN Build Flow (`test/unit/nnc`)
+
+From this workspace, run UBSAN from `test/unit/nnc` (not repo root):
+
+```sh
+cd test/unit/nnc
+make clean
+make ubsan -j64
+```
+
+Notes:
+
+- `make clean` is not available at repo root (`make: *** No rule to make target 'clean'.`).
+- In this Codex sandbox, ASAN leak detection may fail early with:
+  - `LeakSanitizer has encountered a fatal error`
+  - `LeakSanitizer does not work under ptrace`
+- To run UBSAN/ASAN-built unit tests in this environment, disable leak detection:
+
+```sh
+ASAN_OPTIONS=detect_leaks=0 ./dynamic.graph.tests "<filter>"
+```
+
 ## Command Registry Generation (`lib/nnc/cmd`)
 
 Do not hand-edit these generated files:
