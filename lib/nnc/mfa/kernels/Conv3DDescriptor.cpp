@@ -4,11 +4,6 @@
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
 
-static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std::string& pathToWrite) noexcept {
-  NS::Error *error = nil;
-  binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
-}
-
 bool Conv3DDescriptor::operator==(const Conv3DDescriptor& rhs) const {
   return
   dataType == rhs.dataType &&
@@ -92,20 +87,10 @@ std::pair<Conv3DKernelDescriptor, PipelineValue<Conv3DKernel> *> Conv3DDescripto
     auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
     descriptor->setComputeFunction(function.get());
 
-    MTL::ComputePipelineState* pipeline = nullptr;
-    if (binaryArchivesToRead) {
-      descriptor->setBinaryArchives(binaryArchivesToRead);
-      pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
-    }
-    if (pipeline == nullptr) {
-      error = nil;
-      pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
-      CCV_NNC_MFA_CHECK_ERROR(error);
-      if (binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
-        serializeBinaries(binaryArchiveToWrite, pathToWrite);
-      }
-    }
+    error = nil;
+    auto pipeline =
+        device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+    CCV_NNC_MFA_CHECK_ERROR(error);
     return pipeline;
   };
 
@@ -119,20 +104,10 @@ std::pair<Conv3DKernelDescriptor, PipelineValue<Conv3DKernel> *> Conv3DDescripto
     auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
     descriptor->setComputeFunction(function.get());
 
-    MTL::ComputePipelineState* pipeline = nullptr;
-    if (binaryArchivesToRead) {
-      descriptor->setBinaryArchives(binaryArchivesToRead);
-      pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
-    }
-    if (pipeline == nullptr) {
-      error = nil;
-      pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
-      CCV_NNC_MFA_CHECK_ERROR(error);
-      if (binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
-        serializeBinaries(binaryArchiveToWrite, pathToWrite);
-      }
-    }
+    error = nil;
+    auto pipeline =
+        device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+    CCV_NNC_MFA_CHECK_ERROR(error);
     return pipeline;
   };
 
