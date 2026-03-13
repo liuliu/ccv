@@ -245,9 +245,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (size_nd != 3) {
 				use_mfa_conv3d = false;
 				fallback_reason_conv3d = "Not 3D convolution.";
-			} else if (!use_neural_accelerators) {
-				use_mfa_conv3d = false;
-				fallback_reason_conv3d = "Neural accelerators unavailable.";
 			} else if (cmd.info.convolution.groups != 1) {
 				use_mfa_conv3d = false;
 				fallback_reason_conv3d = "Grouped.";
