@@ -195,23 +195,23 @@ METAL_FUNC void multiply_accumulate_implicit_interior(
 #pragma clang loop unroll(enable)
         for (uint c_base = 0; c_base < INPUT_CHANNELS; c_base += 8) {
           const uint lane_channel = c_base + morton_offset.x;
+          const device {{SCALAR_NAME}} *A_row =
+            input + row_plane_base +
+            (uint(input_width_base) + uint(morton_offset.y)) * INPUT_CHANNELS +
+            lane_channel;
 #pragma clang loop unroll(full)
           for (ushort m = 0; m < REGISTER_M; m += 8) {
-            const ushort row = m + morton_offset.y;
-            const uint address =
-              row_plane_base +
-              (uint(input_width_base) + uint(row)) * INPUT_CHANNELS +
-              lane_channel;
             const {{SCALAR2_NAME}} values =
-              *((const device {{SCALAR2_NAME}}*)(input + address));
+              *((const device {{SCALAR2_NAME}}*)A_row);
             auto A = get_sram(A_sram, 8, ushort2(0, m));
             *A = simdgroup_matrix_storage<{{SCALAR_NAME}}>(values);
+            A_row += 8 * INPUT_CHANNELS;
           }
 
           const uint k_base = k_spatial_base + c_base;
-          uint2 B_offset(N_offset, k_base);
-          B_offset += uint2(offset_in_group.x, morton_offset.y);
-          auto B_src = apply_offset_const(weights, GEMM_K, B_offset, B_trans);
+          const device {{SCALAR_NAME}} *B_src =
+            weights + ulong(N_offset + offset_in_group.x) * GEMM_K +
+            k_base + morton_offset.y;
 #pragma clang loop unroll(full)
           for (ushort n = 0; n < REGISTER_N; n += 8) {
             auto B = get_sram(B_sram, REGISTER_N, ushort2(n, 0));
