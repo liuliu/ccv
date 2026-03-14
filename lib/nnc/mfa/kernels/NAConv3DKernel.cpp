@@ -38,7 +38,9 @@ MTL::Size NAConv3DKernel::threadgroupsPerGrid(const NAConv3DDescriptor &descript
   [=](uint32_t target, uint16_t granularity) -> uint32_t {
     return (target + granularity - 1) / granularity;
   };
-  return MTL::Size(ceilDivide(descriptor.matrixDimensions[2], blockDimensions[0]), ceilDivide(descriptor.matrixDimensions[1], blockDimensions[1]), descriptor.batchDimension * descriptor.matrixDimensions[0]);
+  // Use the empirically better zxy packing for the kd-only Conv3D path:
+  // grid.x = packed(batch, outputDepth), grid.y = spatialX, grid.z = spatialY.
+  return MTL::Size(descriptor.batchDimension * descriptor.matrixDimensions[0], ceilDivide(descriptor.matrixDimensions[2], blockDimensions[0]), ceilDivide(descriptor.matrixDimensions[1], blockDimensions[1]));
 }
 
 std::string NAConv3DKernel::createSource() const noexcept {
@@ -124,8 +126,8 @@ constant uint WIDTH [[function_constant(2)]];
     source += R"(
                    uint3 tgid [[threadgroup_position_in_grid]])
 {
-  const uint batch = tgid.z / DEPTH;
-  const uint output_slice = tgid.z % DEPTH;
+  const uint batch = tgid.x / DEPTH;
+  const uint output_slice = tgid.x % DEPTH;
   const int inputWidth = int(WIDTH) + {{KERNEL_WIDTH}} - 1 - {{PADDING_LEFT}} - {{PADDING_RIGHT}};
   const int inputHeight = int(HEIGHT) + {{KERNEL_HEIGHT}} - 1 - {{PADDING_TOP}} - {{PADDING_BOTTOM}};
   const int baseOffsetX = ({{KERNEL_WIDTH}} - 1) / 2;
@@ -133,8 +135,8 @@ constant uint WIDTH [[function_constant(2)]];
   activation_buf += (((DEPTH + {{KERNEL_DEPTH}} - 1) * batch) + output_slice) * (inputWidth * inputHeight * {{INPUT_CHANNELS}});
   output_buf += ((DEPTH * batch) + output_slice) * (WIDTH * HEIGHT * {{OUTPUT_CHANNELS}});
 
-  const int output_origin_x = int(tgid.x) * {{BLOCK_DIMENSIONS_WIDTH}};
-  const int output_origin_y = int(tgid.y) * {{BLOCK_DIMENSIONS_HEIGHT}};
+  const int output_origin_x = int(tgid.y) * {{BLOCK_DIMENSIONS_WIDTH}};
+  const int output_origin_y = int(tgid.z) * {{BLOCK_DIMENSIONS_HEIGHT}};
   if (output_origin_x >= int(WIDTH) || output_origin_y >= int(HEIGHT)) {
     return;
   }
