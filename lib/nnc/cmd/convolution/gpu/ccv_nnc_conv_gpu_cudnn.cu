@@ -31,10 +31,14 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, cmd.info, hint, inputs[1]->info.datatype);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
+	const int size_nd = ccv_nnc_tensor_nd(cmd.info.size.dim) - 1;
 
 	cudnnConvolutionFwdAlgo_t algo;
 	// Choose an algorithm
-	switch (cmd.algorithm)
+	// For 3D convolution, the legacy cudnnConvolutionFwdAlgo_t enum does not capture
+	// the full engine configuration that cuDNN's heuristic path selects, and forcing
+	// the enum can be substantially slower on modern NVIDIA GPUs.
+	switch (size_nd == 3 ? -1 : cmd.algorithm)
 	{
 		case CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_IMPLICIT_GEMM:
 			algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
@@ -141,6 +145,11 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, size_t max_works
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
+	const int size_nd = ccv_nnc_tensor_nd(cmd.info.size.dim) - 1;
+	if (size_nd == 3)
+		// For 3D convolution, cuDNN's heuristic path can select a faster engine configuration
+		// than what is preserved by the legacy forward-algorithm enum alone.
+		return -1;
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	void* workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (max_workspace_size && !workmem)
