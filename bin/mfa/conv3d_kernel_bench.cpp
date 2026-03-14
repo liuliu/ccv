@@ -309,7 +309,7 @@ int main(int argc, char** argv)
   }
   simd::ushort2 block_dimensions {
       static_cast<unsigned short>(
-          std::min<uint32_t>(((channels + 31u) / 32u) * 32u, 128u)),
+          std::min<uint32_t>(((channels + 31u) / 32u) * 32u, 64u)),
       32,
   };
   if (argc >= 3)

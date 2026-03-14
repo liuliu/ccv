@@ -130,7 +130,7 @@ Conv3DDescriptor make_generic_descriptor(const Conv3DShape& shape)
   descriptor.blockDimensions = simd::ushort2 {
       static_cast<unsigned short>(
           std::min<uint32_t>(
-              std::max<uint32_t>(((shape.output_c + 31u) / 32u) * 32u, 32u), 128u)),
+              std::max<uint32_t>(((shape.output_c + 31u) / 32u) * 32u, 32u), 64u)),
       32,
   };
   descriptor.paddingLeft = shape.pad_w;
