@@ -527,7 +527,7 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
             }
           }
         }
-)";
+)");
     } else {
       source->SetValue("INITIALIZE_C", R"(
         #pragma clang loop unroll(full)
@@ -537,7 +537,7 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
             cT[k] = bias_buf[{{BIAS_INDEX}}];
           }
         }
-)";
+)");
     }
   } else {
     source->SetValue("INITIALIZE_C", R"(
@@ -547,6 +547,6 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
         cT[k] = 0;
       }
     }
-)";
+)");
   }
 }
