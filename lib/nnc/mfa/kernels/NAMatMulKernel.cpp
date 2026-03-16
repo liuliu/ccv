@@ -507,10 +507,11 @@ constant uint K_split = K / {{SPLIT_K}} / {{BLOCK_DIMENSIONS_K_2}} * {{BLOCK_DIM
 #pragma mark - Caching
 
 void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
+  CodeWriter initializeC;
   if (useBias) {
-    source->SetValue("BIAS_INDEX", transposeState[2] ? "idx[1]" : "idx[0]");
+    initializeC.SetValue("BIAS_INDEX", transposeState[2] ? "idx[1]" : "idx[0]");
     if (splitK > 1) {
-      source->SetValue("INITIALIZE_C", R"(
+      initializeC += R"(
         if (k_split_idx == 0) {
           #pragma clang loop unroll(full)
           for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
@@ -527,9 +528,9 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
             }
           }
         }
-)");
+)";
     } else {
-      source->SetValue("INITIALIZE_C", R"(
+      initializeC += R"(
         #pragma clang loop unroll(full)
         for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
           if(cT.is_valid_element(k)) {
@@ -537,16 +538,17 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
             cT[k] = bias_buf[{{BIAS_INDEX}}];
           }
         }
-)");
+)";
     }
   } else {
-    source->SetValue("INITIALIZE_C", R"(
+    initializeC += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
       if(cT.is_valid_element(k)) {
         cT[k] = 0;
       }
     }
-)");
+)";
   }
+  source->SetValue("INITIALIZE_C", initializeC.ToString());
 }
