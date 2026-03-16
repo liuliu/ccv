@@ -85,7 +85,6 @@ using namespace mpp::tensor_ops;
 
   source.SetValue("TRANSPOSE_STATE_A", std::to_string(bool(transposeState[0])));
   source.SetValue("TRANSPOSE_STATE_B", std::to_string(bool(transposeState[1])));
-  source.SetValue("TRANSPOSE_STATE_BIAS", std::to_string(bool(transposeState[2])));
   source.SetValue("BLOCK_DIMENSIONS_M", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_N", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_K", std::to_string(blockDimensions[2]));
@@ -252,9 +251,15 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   }
   if (useBias) {
-    source += R"(
+    if (transposeState[2]) {
+      source += R"(
+  bias_buf = bias_buf + tgid.y * {{BLOCK_DIMENSIONS_M}};
+)";
+    } else {
+      source += R"(
   bias_buf = bias_buf + tgid.x * {{BLOCK_DIMENSIONS_N}};
 )";
+    }
   }
   source += R"(
 
@@ -503,6 +508,7 @@ constant uint K_split = K / {{SPLIT_K}} / {{BLOCK_DIMENSIONS_K_2}} * {{BLOCK_DIM
 
 void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
   if (useBias) {
+    source->SetValue("BIAS_INDEX", transposeState[2] ? "idx[1]" : "idx[0]");
     if (splitK > 1) {
       source->SetValue("INITIALIZE_C", R"(
         if (k_split_idx == 0) {
@@ -510,7 +516,7 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
           for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
             if(cT.is_valid_element(k)) {
               auto idx = cT.get_multidimensional_index(k);
-              cT[k] = bias_buf[idx[0]];
+              cT[k] = bias_buf[{{BIAS_INDEX}}];
             }
           }
         } else {
@@ -521,17 +527,17 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
             }
           }
         }
-)");
+)";
     } else {
       source->SetValue("INITIALIZE_C", R"(
         #pragma clang loop unroll(full)
         for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
           if(cT.is_valid_element(k)) {
             auto idx = cT.get_multidimensional_index(k);
-            cT[k] = bias_buf[idx[0]];
+            cT[k] = bias_buf[{{BIAS_INDEX}}];
           }
         }
-)");
+)";
     }
   } else {
     source->SetValue("INITIALIZE_C", R"(
@@ -541,6 +547,6 @@ void NAMatMulKernel::createInitializeC(CodeWriter *source) const noexcept {
         cT[k] = 0;
       }
     }
-)");
+)";
   }
 }

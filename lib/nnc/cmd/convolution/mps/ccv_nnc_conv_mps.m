@@ -165,10 +165,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				fallback_reason_gemm = "Image layout conversion.";
 				fallback_reason_conv3d = "Image layout conversion.";
 			}
-			if (use_mfa_gemm && a->info.format != CCV_TENSOR_FORMAT_NHWC && use_neural_accelerators) {
-				use_mfa_gemm = false;
-				fallback_reason_gemm = "Image layout incompatible.";
-			}
 			if (use_mfa_conv3d && a->info.format != CCV_TENSOR_FORMAT_NHWC) {
 				use_mfa_conv3d = false;
 				fallback_reason_conv3d = "Image layout incompatible.";
