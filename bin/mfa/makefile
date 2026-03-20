@@ -3,7 +3,7 @@ include ../../lib/config.mk
 CFLAGS := -std=c++17 -O0 -g -Wall -I"../.." -I"../../lib" $(CFLAGS)
 LDFLAGS := $(LDFLAGS) -framework QuartzCore
 
-TARGETS = gemm_scaffold conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
+TARGETS = gemm_scaffold na_gemm_splitk_bench conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
 
 COMMON_OBJS = \
 	Metal.local.o \
@@ -19,6 +19,11 @@ COMMON_OBJS = \
 	Conv3DKernelDescriptor.local.o \
 	Conv3DKernel.local.o
 
+NA_GEMM_OBJS = \
+	NAMatMulDescriptor.local.o \
+	NAMatMulKernelDescriptor.local.o \
+	NAMatMulKernel.local.o
+
 NA_CONV_OBJS = \
 	NAConv3DDescriptor.local.o \
 	NAConv3DKernelDescriptor.local.o \
@@ -29,9 +34,12 @@ NA_CONV_OBJS = \
 all: $(TARGETS)
 
 clean:
-	rm -f gemm_scaffold.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_CONV_OBJS) $(TARGETS)
+	rm -f gemm_scaffold.o na_gemm_splitk_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(TARGETS)
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+na_gemm_splitk_bench: na_gemm_splitk_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 conv3d_layout_scaffold: conv3d_layout_scaffold.o $(COMMON_OBJS)
@@ -53,6 +61,9 @@ conv3d_branch_validate: conv3d_branch_validate.o $(COMMON_OBJS) $(NA_CONV_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 gemm_scaffold.o: gemm_scaffold.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+na_gemm_splitk_bench.o: na_gemm_splitk_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 conv3d_layout_scaffold.o: conv3d_layout_scaffold.cpp
@@ -107,6 +118,15 @@ Conv3DKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/Conv3DKernelDescriptor
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 Conv3DKernel.local.o: ../../lib/nnc/mfa/kernels/Conv3DKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAMatMulDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAMatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulKernelDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAMatMulKernel.local.o: ../../lib/nnc/mfa/kernels/NAMatMulKernel.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAConv3DDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAConv3DDescriptor.cpp

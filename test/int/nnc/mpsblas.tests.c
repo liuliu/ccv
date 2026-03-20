@@ -5,11 +5,170 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
+#include <math.h>
+#include <stdlib.h>
 
 TEST_SETUP()
 {
 	ccv_nnc_init();
 }
+
+static float _mps_forward_na_gemm_a_value(const int row, const int k)
+{
+	return (float)(((row * 17 + k * 13) % 23) + 1) / 512.0f;
+}
+
+static float _mps_forward_na_gemm_b_value(const int col, const int k)
+{
+	return (float)(((col * 19 + k * 7) % 29) + 1) / 512.0f;
+}
+
+static void _mps_forward_na_gemm_fill_half(ccv_float16_t* const data, const int rows, const int cols, const int for_a)
+{
+	float* const row_buffer = (float*)ccmalloc(sizeof(float) * cols);
+	int i, j;
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < cols; j++)
+			row_buffer[j] = for_a ? _mps_forward_na_gemm_a_value(i, j) : _mps_forward_na_gemm_b_value(i, j);
+		ccv_float_to_half_precision(row_buffer, (uint16_t*)data + (size_t)i * cols, cols);
+	}
+	ccfree(row_buffer);
+}
+
+static float _mps_forward_na_gemm_expected(const int row, const int col, const int k_dim)
+{
+	float sum = 0;
+	int k;
+	for (k = 0; k < k_dim; k++)
+		sum += _mps_forward_na_gemm_a_value(row, k) * _mps_forward_na_gemm_b_value(col, k);
+	return sum;
+}
+
+static int _mps_forward_na_gemm_sample_indices(const int dim, const int boundary, const int include_large_m_boundary, int indices[8])
+{
+	const int candidates[] = {
+		0, 1, boundary - 1, boundary,
+		include_large_m_boundary ? 32767 : -1,
+		include_large_m_boundary ? 32768 : -1,
+		dim / 2, dim - 1,
+	};
+	int i, j;
+	int count = 0;
+	for (i = 0; i < 8; i++)
+	{
+		if (candidates[i] < 0 || candidates[i] >= dim)
+			continue;
+		for (j = 0; j < count; j++)
+			if (indices[j] == candidates[i])
+				break;
+		if (j < count)
+			continue;
+		indices[count++] = candidates[i];
+	}
+	return count;
+}
+
+typedef struct {
+	int row;
+	int col;
+	float actual;
+	float expected;
+} _mps_forward_na_gemm_mismatch_t;
+
+static int _mps_forward_na_gemm_validate_shape(const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, n_dim), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n_dim, k_dim), 0);
+	_mps_forward_na_gemm_fill_half(ha->data.f16, m_dim, k_dim, 1);
+	_mps_forward_na_gemm_fill_half(hw->data.f16, n_dim, k_dim, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+
+	int row_samples[8];
+	int col_samples[8];
+	const int row_sample_size = _mps_forward_na_gemm_sample_indices(m_dim, 128, 1, row_samples);
+	const int col_sample_size = _mps_forward_na_gemm_sample_indices(n_dim, 64, 0, col_samples);
+	ccv_nnc_tensor_t* const sample_h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1), 0);
+	ccv_nnc_tensor_t* const sample_f = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	int ok = 1;
+	int i, j;
+	for (i = 0; i < row_sample_size; i++)
+		for (j = 0; j < col_sample_size; j++)
+		{
+			ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, GPU_TENSOR_NHWC(000, 16F, 1, 1), DIM_ALLOC(row_samples[i], col_samples[j]), DIM_ALLOC(n_dim, 1));
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)bv), TENSOR_LIST(sample_h), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sample_h), TENSOR_LIST(sample_f), 0);
+			mismatch->row = row_samples[i];
+			mismatch->col = col_samples[j];
+			mismatch->actual = sample_f->data.f32[0];
+			mismatch->expected = _mps_forward_na_gemm_expected(row_samples[i], col_samples[j], k_dim);
+			ccv_nnc_tensor_view_free(bv);
+			if (fabsf(mismatch->actual - mismatch->expected) > 2e-1f)
+			{
+				ok = 0;
+				goto cleanup;
+			}
+		}
+
+cleanup:
+	ccv_nnc_tensor_free(sample_h);
+	ccv_nnc_tensor_free(sample_f);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	return ok;
+}
+
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
+#define NA_GEMM_SHAPE_TEST(M, N, K) \
+	TEST_CASE("mps forward gemm no bias NA shape " STRINGIFY(M) "x" STRINGIFY(N) "x" STRINGIFY(K)) \
+	{ \
+		if (!getenv("CCV_NNC_RUN_NA_GEMM_SHAPE_TESTS")) \
+			return; \
+		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)); \
+		_mps_forward_na_gemm_mismatch_t mismatch = {}; \
+		REQUIRE(_mps_forward_na_gemm_validate_shape(M, N, K, &mismatch), "sampled GEMM result should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected); \
+	}
+
+// Derived from shapes.txt NA lines, assuming the call shape is C = A @ B^T.
+NA_GEMM_SHAPE_TEST(306, 2048, 3840)
+NA_GEMM_SHAPE_TEST(306, 4096, 3840)
+NA_GEMM_SHAPE_TEST(306, 3840, 4096)
+NA_GEMM_SHAPE_TEST(306, 15360, 3840)
+NA_GEMM_SHAPE_TEST(306, 3840, 15360)
+NA_GEMM_SHAPE_TEST(1024, 4096, 4096)
+NA_GEMM_SHAPE_TEST(1024, 32, 4096)
+NA_GEMM_SHAPE_TEST(1024, 16384, 4096)
+NA_GEMM_SHAPE_TEST(1024, 4096, 16384)
+NA_GEMM_SHAPE_TEST(1024, 2048, 2048)
+NA_GEMM_SHAPE_TEST(1024, 32, 2048)
+NA_GEMM_SHAPE_TEST(1024, 8192, 2048)
+NA_GEMM_SHAPE_TEST(1024, 2048, 8192)
+NA_GEMM_SHAPE_TEST(1, 2048, 256)
+NA_GEMM_SHAPE_TEST(1, 2048, 2048)
+NA_GEMM_SHAPE_TEST(1, 4096, 256)
+NA_GEMM_SHAPE_TEST(1, 4096, 4096)
+NA_GEMM_SHAPE_TEST(1024, 4096, 128)
+NA_GEMM_SHAPE_TEST(257, 2048, 128)
+NA_GEMM_SHAPE_TEST(33792, 4096, 4096)
+NA_GEMM_SHAPE_TEST(33792, 32, 4096)
+NA_GEMM_SHAPE_TEST(257, 2048, 2048)
+NA_GEMM_SHAPE_TEST(257, 32, 2048)
+NA_GEMM_SHAPE_TEST(33792, 2048, 4096)
+NA_GEMM_SHAPE_TEST(33792, 4096, 2048)
+NA_GEMM_SHAPE_TEST(33792, 16384, 4096)
+NA_GEMM_SHAPE_TEST(33792, 4096, 16384)
+NA_GEMM_SHAPE_TEST(257, 8192, 2048)
+NA_GEMM_SHAPE_TEST(257, 2048, 8192)
+NA_GEMM_SHAPE_TEST(33792, 128, 4096)
+NA_GEMM_SHAPE_TEST(257, 128, 2048)
 
 TEST_CASE("gemm no transpose")
 {

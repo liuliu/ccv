@@ -331,4 +331,3 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     command_batch->finishCommand(encoder);
   }
 }
-
