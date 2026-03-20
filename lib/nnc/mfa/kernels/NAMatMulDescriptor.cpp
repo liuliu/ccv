@@ -59,7 +59,7 @@ uint16_t NAMatMulDescriptor::splitK() const noexcept {
     assert(this->matrixDimensions[2] < 65536); // It seems without split K, MPP have issues with K >= 65536.
     return 1;
   }
-  if ((uint64_t)this->matrixDimensions[0] * this->matrixDimensions[1] >= (uint64_t(1) << 28)) { // Avoid the split-K scratch offset hitting the 2^31-byte bug.
+  if ((uint64_t)this->matrixDimensions[0] * this->matrixDimensions[1] > (uint64_t(1) << 29)) { // Avoid the split-K scratch offset hitting the 2^31-byte bug.
     return 1;
   }
   if (this->matrixDimensions[2] > 3072 * 4) {
