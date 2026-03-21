@@ -10,12 +10,16 @@ static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
 }
 
+static uint32_t groupM(const uint32_t M) noexcept {
+  return (M >= 4096) ? 4096 : 0;
+}
+
 bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   auto lhsMatrixDimensions = matrixDimensions;
   auto rhsMatrixDimensions = rhs.matrixDimensions;
   if (loadM) {
-    lhsMatrixDimensions[0] = 0;
-    rhsMatrixDimensions[0] = 0;
+    lhsMatrixDimensions[0] = groupM(lhsMatrixDimensions[0]);
+    rhsMatrixDimensions[0] = groupM(rhsMatrixDimensions[0]);
   }
   return
   (batchDimension == rhs.batchDimension) &&
@@ -34,9 +38,7 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, hash.batchDimension);
-  if (!hash.loadM) {
-    combine_32(seed, hash.matrixDimensions[0]);
-  }
+  combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   if (hash.batchStrides.has_value()) {
@@ -57,9 +59,6 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
 uint16_t NAMatMulDescriptor::splitK() const noexcept {
   if ((this->matrixDimensions[1] % 64) != 0) { // If cannot divide by 64, we cannot have splitK.
     assert(this->matrixDimensions[2] < 65536); // It seems without split K, MPP have issues with K >= 65536.
-    return 1;
-  }
-  if ((uint64_t)this->matrixDimensions[0] * this->matrixDimensions[1] > (uint64_t(1) << 29)) { // Avoid the split-K scratch offset hitting the 2^31-byte bug.
     return 1;
   }
   if (this->matrixDimensions[2] > 3072 * 4) {
@@ -209,7 +208,8 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   };
 
   uint16_t splitK = this->splitK();
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM);
+  const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM, groupMValue);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 

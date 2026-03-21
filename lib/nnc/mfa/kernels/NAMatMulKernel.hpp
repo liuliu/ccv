@@ -36,6 +36,8 @@ struct NAMatMulKernel {
 
   bool loadM;
 
+  uint32_t groupM;
+
   /// The number of threads per group.
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState, const NAMatMulDescriptor &descriptor) const noexcept;
 

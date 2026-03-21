@@ -13,7 +13,8 @@ bool NAMatMulKernelDescriptor::operator==(const NAMatMulKernelDescriptor& rhs) c
   (executionSIMDGroups == rhs.executionSIMDGroups) &&
   simd_all(transposeState == rhs.transposeState) &&
   (useBias == rhs.useBias) &&
-  (loadM == rhs.loadM);
+  (loadM == rhs.loadM) &&
+  (groupM == rhs.groupM);
 }
 
 std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernelDescriptor& hash) const noexcept {
@@ -25,12 +26,13 @@ std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernel
   combine_32(seed, pack_32(simd::ushort2 { hash.splitK, hash.executionSIMDGroups }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
+  combine_32(seed, hash.groupM);
   return seed;
 }
 
 // MARK: - Initializer
 
-NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM) noexcept {
+NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM) noexcept {
   this->blockDimensions = blockDimensions;
   this->memoryPrecisions = memoryPrecisions;
   this->registerPrecisions = registerPrecisions;
@@ -39,5 +41,5 @@ NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions
   this->transposeState = transposeState;
   this->useBias = useBias;
   this->loadM = loadM;
+  this->groupM = groupM;
 }
-

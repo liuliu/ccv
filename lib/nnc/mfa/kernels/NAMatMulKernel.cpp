@@ -42,6 +42,7 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
   transposeState = descriptor.transposeState;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
+  groupM = descriptor.groupM;
 
   /// The number of threads per group.
   source = createSource();
@@ -90,6 +91,7 @@ using namespace mpp::tensor_ops;
   source.SetValue("BLOCK_DIMENSIONS_K", std::to_string(blockDimensions[2]));
   source.SetValue("BLOCK_DIMENSIONS_K_2", std::to_string(blockDimensions[2] * 2));
   source.SetValue("SPLIT_K", std::to_string(splitK));
+  source.SetValue("GROUP_M", std::to_string(groupM));
 
   source += createConstants();
 
@@ -190,11 +192,11 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   } else {
     source.SetValue("A_SLICE", std::to_string(blockDimensions[2]) + ", " + std::to_string(blockDimensions[0]));
     source.SetValue("A_MATRIX_SIZE", "K, M");
-    source.SetValue("A_TILE_0_SIZE", "0, tgid.y * " + std::to_string(blockDimensions[0]));
-    source.SetValue("A_TILE_K1_SIZE", "k, tgid.y * " + std::to_string(blockDimensions[0]));
-    source.SetValue("A_TILE_K2_SIZE", "k + " + std::to_string(blockDimensions[2]) + ", tgid.y * " + std::to_string(blockDimensions[0]));
-    source.SetValue("A_TILE_LAST_K2_SIZE", "K / " + std::to_string(blockDimensions[2] * 2) + " * " + std::to_string(blockDimensions[2] * 2) + ", tgid.y * " + std::to_string(blockDimensions[0]));
-    source.SetValue("A_TILE_LAST_K_SIZE", "K / " + std::to_string(blockDimensions[2]) + " * " + std::to_string(blockDimensions[2]) + ", tgid.y * " + std::to_string(blockDimensions[0]));
+    source.SetValue("A_TILE_0_SIZE", "0, M_group_offset");
+    source.SetValue("A_TILE_K1_SIZE", "k, M_group_offset");
+    source.SetValue("A_TILE_K2_SIZE", "k + " + std::to_string(blockDimensions[2]) + ", M_group_offset");
+    source.SetValue("A_TILE_LAST_K2_SIZE", "K / " + std::to_string(blockDimensions[2] * 2) + " * " + std::to_string(blockDimensions[2] * 2) + ", M_group_offset");
+    source.SetValue("A_TILE_LAST_K_SIZE", "K / " + std::to_string(blockDimensions[2]) + " * " + std::to_string(blockDimensions[2]) + ", M_group_offset");
     source.SetValue("A_RESIDUAL_SLICE", "dynamic_extent, " + std::to_string(blockDimensions[0]));
   }
   if (transposed('B')) {
@@ -219,17 +221,12 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   createInitializeC(&source);
   if (splitK > 1) {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1] * splitK) + " + k_split_idx * " + std::to_string(blockDimensions[1]));
-    source.SetValue("BLOCK_DIMENSIONS_M_SPLIT_K", std::to_string(blockDimensions[0] * splitK));
-  } else {
+    } else {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1]));
-    source.SetValue("BLOCK_DIMENSIONS_M_SPLIT_K", std::to_string(blockDimensions[0]));
   }
   source += R"(
 
   // Construct shader allocated tensors. This is easier since we can just bind buffer directly with Metal 3 APIs.
-  auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>({{A_MATRIX_SIZE}}));
-  auto B = tensor<device {{MEMORY_NAME_B}},  dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>({{B_MATRIX_SIZE}}));
-  auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M));
 )";
   if (splitK > 1) {
     source += R"(
@@ -250,10 +247,57 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   }
 )";
   }
+  source += R"(
+  const uint M_block_start = tgid.y * {{BLOCK_DIMENSIONS_M}};
+  const uint M_block_size = M - M_block_start;
+)";
+  if (groupM > 0) {
+    source += R"(
+  // Rebase A / C to shared M-row groups so large-M threadgroups avoid the
+  // 2^31 scratch-offset cliff without forcing every threadgroup onto a unique
+  // base pointer.
+  const uint M_group_start = M_block_start / {{GROUP_M}} * {{GROUP_M}};
+  const uint M_group_offset = M_block_start - M_group_start;
+  const uint M_group_size = M - M_group_start;
+)";
+  } else {
+    source += R"(
+  const uint M_group_start = M_block_start;
+  const uint M_group_offset = 0;
+  const uint M_group_size = M - M_group_start;
+)";
+  }
+  if (!transposed('A')) {
+    source += R"(
+  A_buf = A_buf + M_group_start * K;
+)";
+  }
+  if (splitK > 1) {
+    source += R"(
+  C_buf = C_buf + M_group_start * N * {{SPLIT_K}};
+)";
+  } else {
+    source += R"(
+  C_buf = C_buf + M_group_start * N;
+)";
+  }
+  if (!transposed('A')) {
+    source += R"(
+  auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));
+)";
+  } else {
+    source += R"(
+  auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>({{A_MATRIX_SIZE}}));
+)";
+  }
+  source += R"(
+  auto B = tensor<device {{MEMORY_NAME_B}},  dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>({{B_MATRIX_SIZE}}));
+  auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size));
+)";
   if (useBias) {
     if (transposeState[2]) {
       source += R"(
-  bias_buf = bias_buf + tgid.y * {{BLOCK_DIMENSIONS_M}};
+  bias_buf = bias_buf + M_block_start;
 )";
     } else {
       source += R"(
@@ -353,7 +397,13 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       auto mB = B.slice<{{B_RESIDUAL_SLICE}}>({{B_TILE_LAST_K_SIZE}});
       matmul_op.run(mA, mB, cT);
     }
-    auto mC = C.slice<{{BLOCK_DIMENSIONS_N}}, {{BLOCK_DIMENSIONS_M}}>({{SPLIT_K_STORE_OFFSET}}, tgid.y * {{BLOCK_DIMENSIONS_M}});
+)";
+  source += R"(
+)";
+  source += R"(
+    auto mC = C.slice<{{BLOCK_DIMENSIONS_N}}, {{BLOCK_DIMENSIONS_M}}>({{SPLIT_K_STORE_OFFSET}}, M_group_offset);
+)";
+  source += R"(
     cT.store(mC);
   } else {
     // Use dynamic slice for this edge case.
@@ -381,9 +431,13 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   }
   source += R"(
     // Since OS 26.2, cT.store(mC) is no longer safe store (not respecting C size). Doing this manually.
-    auto mC = C_buf + tgid.y * {{BLOCK_DIMENSIONS_M_SPLIT_K}} * N + {{SPLIT_K_STORE_OFFSET}};
+)";
+  source += R"(
+    auto mC = C_buf + M_group_offset * {{SPLIT_K}} * N + {{SPLIT_K_STORE_OFFSET}};
+)";
+  source += R"(
     const int N_edge = N - tgid.x * {{BLOCK_DIMENSIONS_N}};
-    const int M_edge = M - tgid.y * {{BLOCK_DIMENSIONS_M}};
+    const int M_edge = M_block_size;
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
       if(cT.is_valid_element(k)) {
