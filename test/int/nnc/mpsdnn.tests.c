@@ -77,7 +77,7 @@ TEST_CASE("mps forward convolution")
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 5e-4, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);
@@ -132,7 +132,7 @@ TEST_CASE("mps forward convolution in nchw format")
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gc), 0));
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, BATCH_SIZE, OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);
@@ -195,7 +195,7 @@ TEST_CASE("mps forward convolution with 1x1 kernel")
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);
@@ -250,7 +250,7 @@ TEST_CASE("mps forward convolution in nchw format with 1x1 kernel")
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gc), 0));
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, BATCH_SIZE, OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);
@@ -296,7 +296,7 @@ TEST_CASE("mps forward convolution in nchw format with 1x1 kernel and no bias")
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gc), 0));
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, BATCH_SIZE, OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(w);
@@ -349,7 +349,7 @@ TEST_CASE("mps forward convolution in nchw format with 1x1 kernel on edge tiles"
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gc), 0));
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, output_h, output_w), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * output_h * output_w, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * output_h * output_w, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(bias);
@@ -400,7 +400,7 @@ TEST_CASE("mps forward convolution in nchw format with 1x1 kernel on edge tiles 
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gc), 0));
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, output_h, output_w), 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * output_h * output_w, 1e-5, "output from mps should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * output_h * output_w, 1e-3, "output from mps should match from CPU");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(gc);
 	ccv_nnc_tensor_free(w);

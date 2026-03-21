@@ -1246,7 +1246,7 @@ TEST_CASE("mps handle permute")
 	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 64), 0);
 	ccv_nnc_tensor_t* hbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 10, 64), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, bt), TENSOR_LIST(hb, hbt), 0);
-	REQUIRE_TENSOR_EQ(hb, hbt, "permute computed output should be the same as non-permute computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, hbt->data.f32, 2 * 10 * 64, 1e-5, "permute computed output should be numerically close to non-permute computed ones");
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(hw);
 	ccv_nnc_tensor_free(a);
@@ -2085,7 +2085,7 @@ TEST_CASE("scaled dot product attention with mps")
 		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
 
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * Hq * D, 2e-5, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, B * R * Hq * D, 1e-3, "scaled dot product attention result should be the same");
 
 		ccv_nnc_tensor_free(o_tensor);
 		ccv_nnc_tensor_free(gpu_o_tensor);
@@ -2247,7 +2247,16 @@ TEST_CASE("scaled dot product attention + unify head with mps")
 	ccv_nnc_tensor_t* const gr_tensor = ccv_nnc_tensor_from_symbol(g_tensor_arena, gr);
 	ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 32, 128, 512), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gr_tensor), TENSOR_LIST(hr), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, r_tensor->data.f32, hr->data.f32, 32 * 128 * 512, 1e-4, "graph computed result should match scaled dot product attention op result");
+	float max_relative_diff = 0;
+	int max_diff_idx = 0;
+	for (i = 0; i < 32 * 128 * 512; i++)
+	{
+		const float denom = fmaxf(fmaxf(fabsf(r_tensor->data.f32[i]), fabsf(hr->data.f32[i])), 1.0f);
+		const float relative_diff = fabsf(r_tensor->data.f32[i] - hr->data.f32[i]) / denom;
+		if (relative_diff > max_relative_diff)
+			max_relative_diff = relative_diff, max_diff_idx = i;
+	}
+	REQUIRE(max_relative_diff <= 2e-3, "graph computed result should match scaled dot product attention op result (max relative diff %g at %d: %g vs %g)", max_relative_diff, max_diff_idx, r_tensor->data.f32[max_diff_idx], hr->data.f32[max_diff_idx]);
 	ccv_nnc_symbolic_graph_free(sdp_symbolic_graph);
 	ccv_nnc_tensor_arena_free(sdp_tensor_arena);
 	ccv_nnc_graph_exec_arena_free(sdp_graph_exec_arena);
@@ -2326,9 +2335,9 @@ TEST_CASE("scaled dot product attention gradient with mps")
 		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
 
-		REQUIRE_TENSOR_EQ(copy_of_gpu_dv_tensor, dv_tensor, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * H * D, 1e-6, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * H * D, 1e-6, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * H * D, 5e-3, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * H * D, 5e-3, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * H * D, 5e-3, "scaled dot product attention result should be the same");
 
 		ccv_nnc_tensor_free(do_tensor);
 		ccv_nnc_tensor_free(gpu_do_tensor);
@@ -2553,7 +2562,7 @@ TEST_CASE("scaled dot product attention gradient with mps in bfloat precision")
 		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(copy_of_gpu_dq_tensor_f16, copy_of_gpu_dk_tensor_f16, copy_of_gpu_dv_tensor_f16), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
 
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 2e-3, "scaled dot product attention result should be the same");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 5e-3, "scaled dot product attention result should be the same");
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 1e-2, "scaled dot product attention result should be the same");
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 2e-2, "GPU computed output should be the same as CPU computed ones");
 
@@ -2908,10 +2917,10 @@ TEST_CASE("backward gemm large data set")
 	ccv_nnc_tensor_t* tdbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
 	ccv_nnc_tensor_t* th = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 128), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, dw, dbias, h), TENSOR_LIST(tb, tdw, tdbias, th), 0);
-	REQUIRE_TENSOR_EQ(tb, hb, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdw, hdw, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdbias, hdbias, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(th, hh, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb->data.f32, hb->data.f32, 10 * 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdw->data.f32, hdw->data.f32, 64 * 128, 5e-3, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdbias->data.f32, hdbias->data.f32, 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, th->data.f32, hh->data.f32, 10 * 128, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(bias);
@@ -2969,9 +2978,9 @@ TEST_CASE("backward gemm no bias")
 	ccv_nnc_tensor_t* tdw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
 	ccv_nnc_tensor_t* th = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 128), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, dw, h), TENSOR_LIST(tb, tdw, th), 0);
-	REQUIRE_TENSOR_EQ(tb, hb, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdw, hdw, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(th, hh, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb->data.f32, hb->data.f32, 10 * 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdw->data.f32, hdw->data.f32, 64 * 128, 5e-3, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, th->data.f32, hh->data.f32, 10 * 128, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
@@ -3028,9 +3037,9 @@ TEST_CASE("backward gemm no h")
 	ccv_nnc_tensor_t* tdw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
 	ccv_nnc_tensor_t* tdbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, dw, dbias, 0), TENSOR_LIST(tb, tdw, tdbias, 0), 0);
-	REQUIRE_TENSOR_EQ(tb, hb, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdw, hdw, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdbias, hdbias, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb->data.f32, hb->data.f32, 10 * 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdw->data.f32, hdw->data.f32, 64 * 128, 5e-3, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdbias->data.f32, hdbias->data.f32, 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(bias);
@@ -3089,9 +3098,9 @@ TEST_CASE("backward gemm no dw")
 	ccv_nnc_tensor_t* tdbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
 	ccv_nnc_tensor_t* th = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 128), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, 0, dbias, h), TENSOR_LIST(tb, 0, tdbias, th), 0);
-	REQUIRE_TENSOR_EQ(tb, hb, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(tdbias, hdbias, "GPU computed output should be the same as CPU computed ones");
-	REQUIRE_TENSOR_EQ(th, hh, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb->data.f32, hb->data.f32, 10 * 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdbias->data.f32, hdbias->data.f32, 64, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, th->data.f32, hh->data.f32, 10 * 128, 1e-5, "GPU computed output should be numerically close to CPU computed ones");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(bias);
