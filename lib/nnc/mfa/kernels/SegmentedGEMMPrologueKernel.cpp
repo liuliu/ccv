@@ -50,7 +50,7 @@ constant uint N_block [[function_constant(4)]];
 
 constant uint threadgroup_size [[function_constant(5)]];
 constant uint threadgroup_memory_allocation [[function_constant(6)]];
-constant bool dispatch_m_major [[function_constant(7)]];
+constant bool morton_order [[function_constant(7)]];
 
 kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  device int *indices [[buffer(1)]],
@@ -121,8 +121,12 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
 )";
   if (splitK > 1) {
     source += R"(
-  if (dispatch_m_major) {
-    cmd.concurrent_dispatch_threadgroups(uint3((count + M_block - 1) / M_block * {{SPLIT_K}}, (N + N_block - 1) / N_block, 1), uint3(threadgroup_size, 1, 1));
+  if (morton_order) {
+    const uint M_blocks = (count + M_block - 1) / M_block;
+    const uint N_blocks = (N + N_block - 1) / N_block;
+    const uint M_block_bits = M_blocks <= 1 ? 0 : 32 - clz(M_blocks - 1);
+    const uint N_block_bits = N_blocks <= 1 ? 0 : 32 - clz(N_blocks - 1);
+    cmd.concurrent_dispatch_threadgroups(uint3((1u << (M_block_bits + N_block_bits)) * {{SPLIT_K}}, 1, 1), uint3(threadgroup_size, 1, 1));
   } else {
     cmd.concurrent_dispatch_threadgroups(uint3((N + N_block - 1) / N_block * {{SPLIT_K}}, (count + M_block - 1) / M_block, 1), uint3(threadgroup_size, 1, 1));
   }
@@ -140,8 +144,12 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
 )";
   } else {
     source += R"(
-  if (dispatch_m_major) {
-    cmd.concurrent_dispatch_threadgroups(uint3((count + M_block - 1) / M_block, (N + N_block - 1) / N_block, 1), uint3(threadgroup_size, 1, 1));
+  if (morton_order) {
+    const uint M_blocks = (count + M_block - 1) / M_block;
+    const uint N_blocks = (N + N_block - 1) / N_block;
+    const uint M_block_bits = M_blocks <= 1 ? 0 : 32 - clz(M_blocks - 1);
+    const uint N_block_bits = N_blocks <= 1 ? 0 : 32 - clz(N_blocks - 1);
+    cmd.concurrent_dispatch_threadgroups(uint3(1u << (M_block_bits + N_block_bits), 1, 1), uint3(threadgroup_size, 1, 1));
   } else {
     cmd.concurrent_dispatch_threadgroups(uint3((N + N_block - 1) / N_block, (count + M_block - 1) / M_block, 1), uint3(threadgroup_size, 1, 1));
   }

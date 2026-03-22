@@ -68,7 +68,6 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     gemmDesc.useBias = params.fused_bias;
-    gemmDesc.dispatchMMajor = NAMatMulDescriptor::preferDispatchMMajor(params.M, params.N, params.K);
     gemmDesc.loadM = true;
     gemmDesc.supportIndirectCommandBuffers = false;
 
@@ -143,7 +142,6 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     gemmDesc.useBias = params.fused_bias;
-    gemmDesc.dispatchMMajor = NAMatMulDescriptor::preferDispatchMMajor(params.M, params.N, params.K);
     gemmDesc.loadM = true;
     gemmDesc.supportIndirectCommandBuffers = false;
   

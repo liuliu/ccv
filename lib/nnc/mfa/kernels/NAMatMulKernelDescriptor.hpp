@@ -3,6 +3,7 @@
 
 #include "GEMMOperandPrecision.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
+#include <cstdint>
 #include <simd/simd.h>
 
 struct NAMatMulDescriptor;

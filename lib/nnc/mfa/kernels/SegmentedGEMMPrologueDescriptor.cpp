@@ -10,7 +10,7 @@ bool SegmentedGEMMPrologueDescriptor::operator==(const SegmentedGEMMPrologueDesc
   simd_all(blockDimensions == rhs.blockDimensions) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   threadgroupSize == rhs.threadgroupSize &&
-  dispatchMMajor == rhs.dispatchMMajor &&
+  mortonOrder == rhs.mortonOrder &&
   splitK == rhs.splitK &&
   threadgroupMemoryAllocation == rhs.threadgroupMemoryAllocation &&
   useBias == rhs.useBias;
@@ -26,7 +26,7 @@ std::size_t std::hash<SegmentedGEMMPrologueDescriptor>::operator()(const Segment
   combine_32(seed, hash.blockDimensions[1]);
   combine_32(seed, hash.blockDimensions[2]);
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.dispatchMMajor, 0, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.mortonOrder, 0, 0 }));
   combine_32(seed, hash.threadgroupMemoryAllocation);
   combine_32(seed, hash.threadgroupSize);
   return seed;
@@ -72,8 +72,8 @@ std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMProl
     uint32_t threadgroupMemoryAllocation = this->threadgroupMemoryAllocation;
     constants->setConstantValue(&threadgroupMemoryAllocation, MTL::DataTypeUInt, 6);
 
-    bool dispatchMMajor = this->dispatchMMajor;
-    constants->setConstantValue(&dispatchMMajor, MTL::DataTypeBool, 7);
+    bool mortonOrder = this->mortonOrder;
+    constants->setConstantValue(&mortonOrder, MTL::DataTypeBool, 7);
 
     NS::String* swiftName = NS::String::string("segmented_gemm_prologue", NS::UTF8StringEncoding);
     NS::Error* error = nil;

@@ -5,6 +5,18 @@
 
 #include <algorithm>
 
+static uint32_t ceilLog2(uint64_t x) noexcept {
+  if (x <= 1)
+    return 0;
+  --x;
+  uint32_t bits = 0;
+  while (x > 0) {
+    x >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
 std::string NAMatMulKernel::memoryName(char operand) const noexcept {
   switch (operand) {
   case 'A':
@@ -63,11 +75,13 @@ MTL::Size NAMatMulKernel::threadgroupsPerGrid(const NAMatMulDescriptor &descript
   [=](int64_t target, uint16_t granularity) -> int64_t {
     return (target + int64_t(granularity) - 1) / int64_t(granularity);
   };
-  if (descriptor.dispatchMMajor) {
-    return MTL::Size(ceilDivide(int64_t(descriptor.matrixDimensions[0]), blockDimensions[0]) * splitK, ceilDivide(int64_t(descriptor.matrixDimensions[1]), blockDimensions[1]), descriptor.batchDimension);
-  } else {
-    return MTL::Size(ceilDivide(int64_t(descriptor.matrixDimensions[1]), blockDimensions[1]) * splitK, ceilDivide(int64_t(descriptor.matrixDimensions[0]), blockDimensions[0]), descriptor.batchDimension);
-  }
+  const int64_t M_tiles =
+      ceilDivide(int64_t(descriptor.matrixDimensions[0]), blockDimensions[0]);
+  const int64_t N_tiles =
+      ceilDivide(int64_t(descriptor.matrixDimensions[1]), blockDimensions[1]);
+  const uint32_t M_bits = ceilLog2(M_tiles);
+  const uint32_t N_bits = ceilLog2(N_tiles);
+  return MTL::Size((int64_t(1) << (M_bits + N_bits)) * splitK, 1, descriptor.batchDimension);
 }
 
 #pragma mark - Source
@@ -81,6 +95,46 @@ std::string NAMatMulKernel::createSource() const noexcept {
 
 using namespace metal;
 using namespace mpp::tensor_ops;
+
+)";
+  source += R"(
+inline uint compact_morton_even_bits(uint x) {
+  x &= 0x55555555u;
+  x = (x | (x >> 1)) & 0x33333333u;
+  x = (x | (x >> 2)) & 0x0f0f0f0fu;
+  x = (x | (x >> 4)) & 0x00ff00ffu;
+  x = (x | (x >> 8)) & 0x0000ffffu;
+  return x;
+}
+
+inline uint2 morton_decode_2d(uint code) {
+  return uint2(compact_morton_even_bits(code),
+               compact_morton_even_bits(code >> 1));
+}
+
+inline uint lower_bits_mask(uint bit_count) {
+  if (bit_count == 0)
+    return 0;
+  return (1u << bit_count) - 1;
+}
+
+inline uint2 morton_decode_rectangular_2d(uint code,
+                                          uint x_bits,
+                                          uint y_bits) {
+  const uint paired_bits = min(x_bits, y_bits);
+  const uint paired_code = code & lower_bits_mask(paired_bits * 2);
+  uint2 tile = morton_decode_2d(paired_code);
+  uint tail = code >> (paired_bits * 2);
+  if (x_bits > paired_bits) {
+    const uint x_extra_bits = x_bits - paired_bits;
+    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;
+    tail >>= x_extra_bits;
+  }
+  if (y_bits > paired_bits) {
+    tile.y |= tail << paired_bits;
+  }
+  return tile;
+}
 
 )";
 
@@ -230,20 +284,34 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   if (splitK > 1) {
     source += R"(
-  uint k_split_idx;
-  if (swap_mn_order) {
-    k_split_idx = tgid.x / ((M + {{BLOCK_DIMENSIONS_M}} - 1) / {{BLOCK_DIMENSIONS_M}});
-    tgid.x = tgid.x % ((M + {{BLOCK_DIMENSIONS_M}} - 1) / {{BLOCK_DIMENSIONS_M}});
-    tgid.xy = tgid.yx;
-  } else {
-    k_split_idx = tgid.x / ((N + {{BLOCK_DIMENSIONS_N}} - 1) / {{BLOCK_DIMENSIONS_N}});
-    tgid.x = tgid.x % ((N + {{BLOCK_DIMENSIONS_N}} - 1) / {{BLOCK_DIMENSIONS_N}});
+  const uint M_tiles = (M + {{BLOCK_DIMENSIONS_M}} - 1) / {{BLOCK_DIMENSIONS_M}};
+  const uint N_tiles = (N + {{BLOCK_DIMENSIONS_N}} - 1) / {{BLOCK_DIMENSIONS_N}};
+  const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);
+  const uint N_tile_bits = N_tiles <= 1 ? 0 : 32 - clz(N_tiles - 1);
+  const uint tile_codes = 1u << (M_tile_bits + N_tile_bits);
+  uint k_split_idx = tgid.x / tile_codes;
+  uint2 morton_tile =
+      morton_decode_rectangular_2d(tgid.x % tile_codes,
+                                   N_tile_bits,
+                                   M_tile_bits);
+  tgid.x = morton_tile.x;
+  tgid.y = morton_tile.y;
+  if (tgid.x >= N_tiles || tgid.y >= M_tiles) {
+    return;
   }
 )";
   } else {
     source += R"(
-  if (swap_mn_order) {
-    tgid.xy = tgid.yx;
+  const uint M_tiles = (M + {{BLOCK_DIMENSIONS_M}} - 1) / {{BLOCK_DIMENSIONS_M}};
+  const uint N_tiles = (N + {{BLOCK_DIMENSIONS_N}} - 1) / {{BLOCK_DIMENSIONS_N}};
+  const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);
+  const uint N_tile_bits = N_tiles <= 1 ? 0 : 32 - clz(N_tiles - 1);
+  uint2 morton_tile =
+      morton_decode_rectangular_2d(tgid.x, N_tile_bits, M_tile_bits);
+  tgid.x = morton_tile.x;
+  tgid.y = morton_tile.y;
+  if (tgid.x >= N_tiles || tgid.y >= M_tiles) {
+    return;
   }
 )";
   }
@@ -531,9 +599,6 @@ std::string NAMatMulKernel::createConstants() const noexcept {
   std::string constants = R"(
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
-
-// Whether we swap MN order (hence need to swap tgid.xy)
-constant bool swap_mn_order [[function_constant(10)]];
 // Specify the batch / batch strides at PSO creation time.
 constant bool batched [[function_constant(11)]];
 

@@ -37,8 +37,8 @@ struct SegmentedGEMMPrologueDescriptor {
   /// The threadgroup memory for the GEMM kernel.
   uint32_t threadgroupMemoryAllocation;
 
-  /// Whether to dispatch with M or N for the GEMM kernel.
-  bool dispatchMMajor;
+  /// Whether the GEMM kernel uses Morton-order linearized threadgroup dispatch.
+  bool mortonOrder;
 
   /// Whether this GEMM kernel has a separate splitK reduction kernel.
   uint16_t splitK;
@@ -55,4 +55,3 @@ struct std::hash<SegmentedGEMMPrologueDescriptor>
 };
 
 #endif
-

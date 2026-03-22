@@ -38,9 +38,6 @@ struct NAMatMulDescriptor {
 
   bool useBias;
 
-  // Whether to use M as the major dispatch axis (x-axis). When M is large, this is beneficial.
-  bool dispatchMMajor;
-
   /// Whether load M from a buffer.
   bool loadM;
 
@@ -52,8 +49,6 @@ struct NAMatMulDescriptor {
   uint16_t splitK() const noexcept;
 
   std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept;
-
-  static bool preferDispatchMMajor(const uint32_t M, const uint32_t N, const uint32_t K) noexcept;
 };
 
 template<>
@@ -63,4 +58,3 @@ struct std::hash<NAMatMulDescriptor>
 };
 
 #endif
-

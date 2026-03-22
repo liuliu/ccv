@@ -29,7 +29,6 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
   (useBias == rhs.useBias) &&
-  (dispatchMMajor == rhs.dispatchMMajor) &&
   (loadM == rhs.loadM) &&
   (supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers);
 }
@@ -49,7 +48,7 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
   }
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.dispatchMMajor, hash.loadM, hash.supportIndirectCommandBuffers }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.loadM, hash.supportIndirectCommandBuffers, 0 }));
   if (hash.registerPrecisionC.has_value()) {
     combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
   }
@@ -70,10 +69,6 @@ uint16_t NAMatMulDescriptor::splitK() const noexcept {
     return 2; // Use split by 2 if we can end up with >= 2048 per split.
   }
   return 1;
-}
-
-bool NAMatMulDescriptor::preferDispatchMMajor(const uint32_t M, const uint32_t N, const uint32_t K) noexcept {
-  return M > 1024 || M > N;
 }
 
 std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept {
@@ -106,9 +101,6 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
     uint32_t K = this->matrixDimensions[2];
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
-
-    bool swapMN = this->dispatchMMajor;
-    constants->setConstantValue(&swapMN, MTL::DataTypeBool, 10);
     bool batched = this->batchDimension > 1;
     constants->setConstantValue(&batched, MTL::DataTypeBool, 11);
     simd::uint4 batchStrides = this->batchStrides.value_or(simd::uint4(0));

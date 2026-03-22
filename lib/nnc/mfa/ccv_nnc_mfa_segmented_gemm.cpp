@@ -66,7 +66,6 @@ size_t ccv_nnc_mfa_segmented_gemm_reserved_scratch_size(ccv_nnc_mfa_segmented_ge
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     gemmDesc.useBias = params.fused_bias;
-    gemmDesc.dispatchMMajor = NAMatMulDescriptor::preferDispatchMMajor(params.M, params.N, params.K);
     gemmDesc.loadM = true;
     gemmDesc.supportIndirectCommandBuffers = true;
 
@@ -170,7 +169,6 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     gemmDesc.useBias = params.fused_bias;
-    gemmDesc.dispatchMMajor = NAMatMulDescriptor::preferDispatchMMajor(params.M, params.N, params.K);
     gemmDesc.loadM = true;
     gemmDesc.supportIndirectCommandBuffers = true;
 
@@ -187,7 +185,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
 
     prologueDesc.threadgroupSize = int64_t(gemmKernel->threadgroupSize(gemmPipeline.get(), gemmDesc));
     prologueDesc.threadgroupMemoryAllocation = 0;
-    prologueDesc.dispatchMMajor = gemmDesc.dispatchMMajor;
+    prologueDesc.mortonOrder = true;
     prologueDesc.blockDimensions = gemmKernel->blockDimensions;
     prologueDesc.splitK = gemmKernel->splitK;
     auto pipelineValue = shaderCache.findKernel<SegmentedGEMMPrologueKernel, SegmentedGEMMPrologueDescriptor, SegmentedGEMMPrologueKernelDescriptor>(prologueDesc, context->device.get(), dprops);
@@ -293,7 +291,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
 
     prologueDesc.threadgroupSize = gemmKernel->threadgroupSize;
     prologueDesc.threadgroupMemoryAllocation = gemmKernel->threadgroupMemoryAllocation;
-    prologueDesc.dispatchMMajor = false;
+    prologueDesc.mortonOrder = false;
     prologueDesc.splitK = 1;
     prologueDesc.blockDimensions = gemmKernel->blockDimensions;
     auto pipelineValue = shaderCache.findKernel<SegmentedGEMMPrologueKernel, SegmentedGEMMPrologueDescriptor, SegmentedGEMMPrologueKernelDescriptor>(prologueDesc, context->device.get(), dprops);
@@ -344,4 +342,3 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     command_batch->finishCommand(gemmEncoder);
   }
 }
-
