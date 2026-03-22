@@ -3795,6 +3795,110 @@ TEST_CASE("backward gemm with transpose a and b batch 2, batch b, no bias")
 	ccv_nnc_tensor_free(gdb);
 }
 
+TEST_CASE("mps segmented gemm")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 11);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 384, 256), 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hindices->data.i32[0] = 1;
+	hindices->data.i32[1] = 0;
+	hindices->data.i32[2] = 2;
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	hcounts->data.i32[0] = 129;
+	hcounts->data.i32[1] = 131;
+	hcounts->data.i32[2] = 124;
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 128, 256), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 384, 128), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 384, 128), 0);
+	int i;
+	for (i = 0; i < 3 * 128 * 256; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 256;
+	for (i = 0; i < 384 * 256; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 384, 256), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 3), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 128, 256), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 384, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(a, indices, counts, w), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw), TENSOR_LIST(bt), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, 384 * 128, 3e-4, "segmented GEMM result should match CPU reference");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("mps segmented gemm with bias in half precision, split-k")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 13);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 272, 4096), 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2), 0);
+	hindices->data.i32[0] = 1;
+	hindices->data.i32[1] = 0;
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2), 0);
+	hcounts->data.i32[0] = 136;
+	hcounts->data.i32[1] = 136;
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128, 4096), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 272, 128), 0);
+	ccv_nnc_tensor_t* const hb16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 272, 128), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 272, 128), 0);
+	int i;
+	for (i = 0; i < 2 * 128 * 4096; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 4096;
+	for (i = 0; i < 2 * 128; i++)
+		hbias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 128;
+	for (i = 0; i < 272 * 4096; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 272, 4096), 0);
+	ccv_nnc_tensor_t* const hw16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 128, 4096), 0);
+	ccv_nnc_tensor_t* const hbias16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ha16, hw16, hbias16), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 272, 4096), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 128, 4096), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 128), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 272, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hindices, hcounts, hw16, hbias16), TENSOR_LIST(a, indices, counts, w, bias), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb16), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hw, hbias), TENSOR_LIST(bt), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, 272 * 128, 2e-2, "half-precision segmented GEMM result should match CPU reference");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hb16);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hw16);
+	ccv_nnc_tensor_free(hbias16);
+}
+
 // Derived from shapes.txt NA lines, assuming the call shape is C = A @ B^T.
 NA_GEMM_SHAPE_TEST(306, 2048, 3840)
 NA_GEMM_SHAPE_TEST(306, 4096, 3840)
