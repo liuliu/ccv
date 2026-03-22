@@ -51,6 +51,7 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
   registerPrecisions = descriptor.registerPrecisions;
   splitK = descriptor.splitK;
   executionSIMDGroups = descriptor.executionSIMDGroups;
+  threadBarrierOverK = descriptor.threadBarrierOverK;
   transposeState = descriptor.transposeState;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
@@ -277,9 +278,34 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   createInitializeC(&source);
   if (splitK > 1) {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1] * splitK) + " + k_split_idx * " + std::to_string(blockDimensions[1]));
-    } else {
+  } else {
     source.SetValue("SPLIT_K_STORE_OFFSET", "tgid.x * " + std::to_string(blockDimensions[1]));
   }
+  std::string barrierAfterFullChunk;
+  const std::string blockDimensionsK2 = std::to_string(blockDimensions[2] * 2);
+  if (threadBarrierOverK) {
+    barrierAfterFullChunk =
+        "        if (k + " + blockDimensionsK2 + " < K) {\n"
+        "          threadgroup_barrier(mem_flags::mem_none);\n"
+        "        }\n";
+  }
+  std::string barrierAfterLeadingSplitChunk;
+  std::string barrierAfterMiddleSplitChunk;
+  if (threadBarrierOverK) {
+    barrierAfterLeadingSplitChunk =
+        "        if (k + " + blockDimensionsK2 + " < K_split) {\n"
+        "          threadgroup_barrier(mem_flags::mem_none);\n"
+        "        }\n";
+    barrierAfterMiddleSplitChunk =
+        "        if (i_k + " + blockDimensionsK2 + " < K_split) {\n"
+        "          threadgroup_barrier(mem_flags::mem_none);\n"
+        "        }\n";
+  }
+  source.SetValue("BARRIER_AFTER_FULL_CHUNK", barrierAfterFullChunk);
+  source.SetValue("BARRIER_AFTER_LEADING_SPLIT_CHUNK",
+                  barrierAfterLeadingSplitChunk);
+  source.SetValue("BARRIER_AFTER_MIDDLE_SPLIT_CHUNK",
+                  barrierAfterMiddleSplitChunk);
   source += R"(
 
   // Construct shader allocated tensors. This is easier since we can just bind buffer directly with Metal 3 APIs.
@@ -434,6 +460,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
         auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
         matmul_op.run(mA0, mB0, cT);
         matmul_op.run(mA1, mB1, cT);
+{{BARRIER_AFTER_LEADING_SPLIT_CHUNK}}
       }
     }
 )";
@@ -452,6 +479,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
         auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
         matmul_op.run(mA0, mB0, cT);
         matmul_op.run(mA1, mB1, cT);
+{{BARRIER_AFTER_MIDDLE_SPLIT_CHUNK}}
       }
     }
 )";
@@ -467,6 +495,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
         auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
         matmul_op.run(mA0, mB0, cT);
         matmul_op.run(mA1, mB1, cT);
+{{BARRIER_AFTER_FULL_CHUNK}}
       }
     }
 )";
@@ -481,6 +510,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       auto mB1 = B.slice<{{B_SLICE}}>({{B_TILE_K2_SIZE}});
       matmul_op.run(mA0, mB0, cT);
       matmul_op.run(mA1, mB1, cT);
+{{BARRIER_AFTER_FULL_CHUNK}}
     }
 )";
   }

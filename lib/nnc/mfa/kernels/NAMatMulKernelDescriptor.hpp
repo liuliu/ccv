@@ -160,6 +160,9 @@ struct NAMatMulKernelDescriptor {
 
   /// How many SIMD groups cooperatively doing the tensor ops.
   uint16_t executionSIMDGroups;
+
+  /// Place a threadgroup barrier between full unrolled K-chunks.
+  bool threadBarrierOverK;
   
   /// Required. Whether each of the inputs deviates from row-major order.
   ///
@@ -188,7 +191,7 @@ struct NAMatMulKernelDescriptor {
   NAMatMulKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept;
+  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept;
   
   bool operator==(const NAMatMulKernelDescriptor& rhs) const;
 };

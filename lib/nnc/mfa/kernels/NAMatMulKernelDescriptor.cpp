@@ -11,6 +11,7 @@ bool NAMatMulKernelDescriptor::operator==(const NAMatMulKernelDescriptor& rhs) c
   registerPrecisions == rhs.registerPrecisions &&
   (splitK == rhs.splitK) &&
   (executionSIMDGroups == rhs.executionSIMDGroups) &&
+  (threadBarrierOverK == rhs.threadBarrierOverK) &&
   simd_all(transposeState == rhs.transposeState) &&
   (useBias == rhs.useBias) &&
   (loadM == rhs.loadM) &&
@@ -24,7 +25,7 @@ std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernel
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
   combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.splitK, hash.executionSIMDGroups }));
+  combine_64(seed, pack_64(simd::ushort4 { hash.splitK, hash.executionSIMDGroups, uint16_t(hash.threadBarrierOverK), 0 }));
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
   combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
   combine_32(seed, hash.groupM);
@@ -34,12 +35,13 @@ std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernel
 
 // MARK: - Initializer
 
-NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept {
+NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept {
   this->blockDimensions = blockDimensions;
   this->memoryPrecisions = memoryPrecisions;
   this->registerPrecisions = registerPrecisions;
   this->splitK = splitK;
   this->executionSIMDGroups = executionSIMDGroups;
+  this->threadBarrierOverK = threadBarrierOverK;
   this->transposeState = transposeState;
   this->useBias = useBias;
   this->loadM = loadM;

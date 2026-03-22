@@ -48,6 +48,8 @@ struct NAMatMulDescriptor {
 
   uint16_t splitK() const noexcept;
 
+  static bool threadBarrierOverK(uint32_t K, uint16_t splitK) noexcept;
+
   std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept;
 };
 

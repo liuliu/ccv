@@ -30,6 +30,8 @@ struct NAMatMulKernel {
 
   uint16_t executionSIMDGroups;
 
+  bool threadBarrierOverK;
+
   simd::uchar3 transposeState;
 
   bool useBias;

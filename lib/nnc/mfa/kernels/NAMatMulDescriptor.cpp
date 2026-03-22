@@ -75,6 +75,19 @@ uint16_t NAMatMulDescriptor::splitK() const noexcept {
   return 1;
 }
 
+bool NAMatMulDescriptor::threadBarrierOverK(uint32_t K, uint16_t splitKValue) noexcept {
+  // Benchmark-guided policy:
+  // - splitK == 2 lost on the tested 4096-6144 K range where it is selected.
+  // - splitK == 1, 4, and 8 start to benefit once K is very large.
+  if (K < 16384) {
+    return false;
+  }
+  if (splitKValue == 2) {
+    return false;
+  }
+  return true;
+}
+
 std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAMatMulKernelDescriptor, std::unique_ptr<NAMatMulKernel>> *const libraryCache) const noexcept {
   // The caller is not responsible for calling 'delete' on this pointer. The
   // reference is saved in the 'libraryCache'. It will be deallocated whenever
@@ -204,9 +217,10 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   };
 
   uint16_t splitK = this->splitK();
+  const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK);
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
   const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue);
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 
