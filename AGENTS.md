@@ -20,8 +20,8 @@ all test case(s) passed, congratulations!
 ## Verified on this workspace
 
 - `make debug -j4`: success
-- `./mpsdnn.tests`: success (`82/82`, `EXIT:0`)
-- `./mpsblas.tests`: success (`61/61`, `EXIT:0`)
+- `./mpsdnn.tests`: success (`108/108`, `EXIT:0`)
+- `./mpsblas.tests`: success (`130/130`, `EXIT:0`)
 
 ## Note for sandboxed agent runs
 
@@ -104,6 +104,14 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
   - Validate GPU outputs by comparing against CPU reference implementation outputs, using the same command and compatible tensor formats.
   - Cover both `NCHW` and `NHWC` layouts when backend support exists.
   - Use tolerance-based comparisons for floating-point parity (`REQUIRE_ARRAY_EQ_WITH_TOLERANCE`).
+- MPS SDPA test notes:
+  - For the `scaled dot product attention + unify head` integration test in `test/int/nnc/mpsblas.tests.c`, prefer a relative-difference check over a pure max-absolute-difference check.
+  - In the current workspace, the intermediate attention output drift was small (`~4.5e-4` max abs diff), but the downstream `512`-wide unify-head projection amplified that to about `0.2` max abs diff in the final output.
+  - A robust comparison there is `fabs(a - b) / max(max(fabs(a), fabs(b)), 1)` with a threshold around `2e-3`.
+- MPS SDPA NA-attention gating note:
+  - The neural-accelerator attention path lowers the head tile to the MPP `matmul2d` `N` dimension, which must be a multiple of `8` or `16`.
+  - Small head dimensions such as `D = 4` can compile-fail on the NA path even though the generic MFA / non-NA path is valid.
+  - In `lib/nnc/cmd/scaled_dot_product_attention/mps/ccv_nnc_scaled_dot_product_attention_mps.m`, gate `use_neural_accelerators` conservatively for SDPA so `D <= 128` only uses NA attention when `(D % 8) == 0`.
 - `grid_sample` integration test specifics:
   - NCHW path can be guarded by `CCV_NNC_BACKEND_GPU_CUDNN || CCV_NNC_BACKEND_MPS`.
   - NHWC path is currently guarded by `CCV_NNC_BACKEND_MPS` (cuDNN implementation path is NCHW-only internally).
