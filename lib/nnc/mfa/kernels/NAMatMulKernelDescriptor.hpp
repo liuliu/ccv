@@ -180,12 +180,15 @@ struct NAMatMulKernelDescriptor {
   /// Rebase A / C to shared M-row groups. 0 disables grouping.
   uint32_t groupM;
 
+  /// Rebase transposed B to shared N-column groups. 0 disables grouping.
+  uint32_t groupN;
+
   // MARK: - Functionality from GEMMDescriptor
   
   NAMatMulKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM) noexcept;
+  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept;
   
   bool operator==(const NAMatMulKernelDescriptor& rhs) const;
 };

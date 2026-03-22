@@ -14,6 +14,10 @@ static uint32_t groupM(const uint32_t M) noexcept {
   return (M >= 4096) ? 4096 : 0;
 }
 
+static uint32_t groupN(const uint32_t N) noexcept {
+  return (N >= 4096) ? 4096 : 0;
+}
+
 bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   auto lhsMatrixDimensions = matrixDimensions;
   auto rhsMatrixDimensions = rhs.matrixDimensions;
@@ -201,7 +205,8 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
 
   uint16_t splitK = this->splitK();
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM, groupMValue);
+  const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 

@@ -55,6 +55,7 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
   groupM = descriptor.groupM;
+  groupN = descriptor.groupN;
 
   /// The number of threads per group.
   source = createSource();
@@ -146,6 +147,7 @@ inline uint2 morton_decode_rectangular_2d(uint code,
   source.SetValue("BLOCK_DIMENSIONS_K_2", std::to_string(blockDimensions[2] * 2));
   source.SetValue("SPLIT_K", std::to_string(splitK));
   source.SetValue("GROUP_M", std::to_string(groupM));
+  source.SetValue("GROUP_N", std::to_string(groupN));
 
   source += createConstants();
 
@@ -255,12 +257,12 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   }
   if (transposed('B')) {
     source.SetValue("B_SLICE", std::to_string(blockDimensions[2]) + ", " + std::to_string(blockDimensions[1]));
-    source.SetValue("B_MATRIX_SIZE", "K, N");
-    source.SetValue("B_TILE_0_SIZE", "0, tgid.x * " + std::to_string(blockDimensions[1]));
-    source.SetValue("B_TILE_K1_SIZE", "k, tgid.x * " + std::to_string(blockDimensions[1]));
-    source.SetValue("B_TILE_K2_SIZE", "k + " + std::to_string(blockDimensions[2]) + ", tgid.x * " + std::to_string(blockDimensions[1]));
-    source.SetValue("B_TILE_LAST_K2_SIZE", "K / " + std::to_string(blockDimensions[2] * 2) + " * " + std::to_string(blockDimensions[2] * 2) + ", tgid.x * " + std::to_string(blockDimensions[1]));
-    source.SetValue("B_TILE_LAST_K_SIZE", "K / " + std::to_string(blockDimensions[2]) + " * " + std::to_string(blockDimensions[2]) + ", tgid.x * " + std::to_string(blockDimensions[1]));
+    source.SetValue("B_MATRIX_SIZE", "K, N_group_size");
+    source.SetValue("B_TILE_0_SIZE", "0, N_group_offset");
+    source.SetValue("B_TILE_K1_SIZE", "k, N_group_offset");
+    source.SetValue("B_TILE_K2_SIZE", "k + " + std::to_string(blockDimensions[2]) + ", N_group_offset");
+    source.SetValue("B_TILE_LAST_K2_SIZE", "K / " + std::to_string(blockDimensions[2] * 2) + " * " + std::to_string(blockDimensions[2] * 2) + ", N_group_offset");
+    source.SetValue("B_TILE_LAST_K_SIZE", "K / " + std::to_string(blockDimensions[2]) + " * " + std::to_string(blockDimensions[2]) + ", N_group_offset");
     source.SetValue("B_RESIDUAL_SLICE", "dynamic_extent, " + std::to_string(blockDimensions[1]));
   } else {
     source.SetValue("B_SLICE", std::to_string(blockDimensions[1]) + ", " + std::to_string(blockDimensions[2]));
@@ -335,6 +337,29 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   const uint M_group_size = M - M_group_start;
 )";
   }
+  if (transposed('B')) {
+    if (groupN > 0) {
+      source += R"(
+  // Rebase transposed B to shared N-column groups for the same reason as
+  // groupM: keep neighboring threadgroups on stable base pointers when N is
+  // large without changing the global C layout.
+  const uint N_block_start = tgid.x * {{BLOCK_DIMENSIONS_N}};
+  const uint N_group_start = N_block_start / {{GROUP_N}} * {{GROUP_N}};
+  const uint N_group_offset = N_block_start - N_group_start;
+  const uint N_group_size = N - N_group_start;
+)";
+    } else {
+      source += R"(
+  const uint N_block_start = tgid.x * {{BLOCK_DIMENSIONS_N}};
+  const uint N_group_start = N_block_start;
+  const uint N_group_offset = 0;
+  const uint N_group_size = N - N_group_start;
+)";
+    }
+    source += R"(
+  B_buf = B_buf + N_group_start * K;
+)";
+  }
   if (!transposed('A')) {
     source += R"(
   A_buf = A_buf + M_group_start * K;
@@ -358,8 +383,16 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>({{A_MATRIX_SIZE}}));
 )";
   }
-  source += R"(
+  if (transposed('B')) {
+    source += R"(
+  auto B = tensor<device {{MEMORY_NAME_B}},  dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));
+)";
+  } else {
+    source += R"(
   auto B = tensor<device {{MEMORY_NAME_B}},  dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>({{B_MATRIX_SIZE}}));
+)";
+  }
+  source += R"(
   auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size));
 )";
   if (useBias) {
