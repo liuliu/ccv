@@ -106,6 +106,7 @@ enum {
 	CCV_NNC_GEMM_32F = 0x1, /**< For GEMM (or similar op), whether prefer to use FP32 for accumulator. */
 	CCV_NNC_GEMM_32TF = 0x2, /**< For GEMM (or similar op), whether prefer to use TF32 for accumulator. */
 	CCV_NNC_GEMM_16F = 0x4, /**< For GEMM (or similar op), whether prefer to use FP16 for accumulator. */
+	CCV_NNC_GEMM_8I = 0x8, /**< For GEMM (or similar op), whether prefer to use INT8 inputs / accumulators when supported. */
 };
 
 /**
@@ -275,7 +276,7 @@ typedef struct {
 		struct {
 			float scale; /**< [scaled_dot_product_attention.scale] The scale we multiple to the dot product of Q & K */
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
-			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32. */
+			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32, and whether to opt into quantized attention on supported backends. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 		} scaled_dot_product_attention;
 		struct {

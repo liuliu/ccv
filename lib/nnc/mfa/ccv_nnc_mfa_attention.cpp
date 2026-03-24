@@ -12,6 +12,9 @@ using namespace ccv::nnc;
 #include "kernels/NAAttentionKernel.hpp"
 #include "kernels/NAAttentionKernelDescriptor.hpp"
 #include "kernels/NAAttentionDescriptor.hpp"
+#include "kernels/NAInt8AttentionKernel.hpp"
+#include "kernels/NAInt8AttentionKernelDescriptor.hpp"
+#include "kernels/NAInt8AttentionDescriptor.hpp"
 
 // MARK: - C
 
@@ -61,6 +64,120 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
         }
       }
+    }
+    if (params.type == 0 && params.use_neural_accelerators && params.use_quantized_attention) {
+      NAInt8AttentionDescriptor attentionDesc;
+      switch (params.data_type) {
+      case MTL::DataTypeHalf:
+        attentionDesc.ioPrecision = GEMMOperandPrecision::FP16;
+        break;
+      case MTL::DataTypeBFloat:
+        attentionDesc.ioPrecision = GEMMOperandPrecision::BF16;
+        break;
+      case MTL::DataTypeFloat:
+        attentionDesc.ioPrecision = GEMMOperandPrecision::FP32;
+        break;
+      default:
+        CCV_NNC_MFA_PRECONDITION(false);
+      }
+      attentionDesc.matrixDimensions[0] = hash.R;
+      attentionDesc.matrixDimensions[1] = hash.C;
+      attentionDesc.matrixDimensions[2] = hash.D;
+      attentionDesc.Hq = hash.Hq;
+      attentionDesc.Hk = hash.Hk;
+      attentionDesc.batchDimension = batch_sizes[0];
+      attentionDesc.scale = hash.alpha;
+      if (params.batched) {
+        attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
+        attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
+        attentionDesc.batchStrides[AttentionOperand::V] = hash.C * hash.D * hash.Hk;
+        attentionDesc.batchStrides[AttentionOperand::O] = hash.R * hash.D * hash.Hq;
+      }
+      auto pool = NS::AutoreleasePool::alloc()->init();
+      auto &shaderCache = context->kernel_cache;
+      DeviceProperties dprops = DeviceProperties();
+      auto pipelineValue = shaderCache.findKernel<NAInt8AttentionKernel, NAInt8AttentionDescriptor, NAInt8AttentionKernelDescriptor>(attentionDesc, context->device.get(), dprops);
+      pool->drain();
+      auto kernel = pipelineValue->kernel;
+      auto pipeline = pipelineValue->pipeline;
+      auto quantizeQPipeline = pipelineValue->second;
+      auto quantizeKPipeline = pipelineValue->third;
+      auto quantizeVPipeline = pipelineValue->fourth;
+
+      auto align_up =
+      [&](size_t value) -> size_t {
+        return (value + 255) & ~((size_t)255);
+      };
+      auto reserve =
+      [&](size_t* total, size_t size) -> size_t {
+        const size_t offset = *total;
+        *total = align_up(*total + size);
+        return offset;
+      };
+
+      const uint32_t batchDimension = attentionDesc.batchDimension;
+      const uint32_t qTiles = (hash.R + kernel->blockDimensions[0] - 1) / kernel->blockDimensions[0];
+      const uint32_t kTiles = (hash.C + kernel->blockDimensions[1] - 1) / kernel->blockDimensions[1];
+      const uint32_t qBatchStride = hash.R * hash.D * hash.Hq;
+      const uint32_t kvBatchStride = hash.C * hash.D * hash.Hk;
+      const uint32_t qScaleBatchStride = hash.Hq * qTiles;
+      const uint32_t kvScaleBatchStride = hash.Hk * kTiles;
+      const size_t qInt8Bytes = (size_t)batchDimension * qBatchStride * sizeof(int8_t);
+      const size_t kInt8Bytes = (size_t)batchDimension * kvBatchStride * sizeof(int8_t);
+      const size_t vInt8Bytes = (size_t)batchDimension * kvBatchStride * sizeof(int8_t);
+      const size_t qScaleBytes = (size_t)batchDimension * qScaleBatchStride * sizeof(float);
+      const size_t kScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
+      const size_t vScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
+      const size_t lBytes = (size_t)batchDimension * hash.Hq * hash.R * sizeof(float);
+      size_t scratchSize = 0;
+      const size_t qInt8Offset = reserve(&scratchSize, qInt8Bytes);
+      const size_t kInt8Offset = reserve(&scratchSize, kInt8Bytes);
+      const size_t vInt8Offset = reserve(&scratchSize, vInt8Bytes);
+      const size_t qScaleOffset = reserve(&scratchSize, qScaleBytes);
+      const size_t kScaleOffset = reserve(&scratchSize, kScaleBytes);
+      const size_t vScaleOffset = reserve(&scratchSize, vScaleBytes);
+      const bool needsScratchL = !tensors[5];
+      const size_t lOffset = needsScratchL ? reserve(&scratchSize, lBytes) : 0;
+      auto scratch = context->request_scratch(scratchSize);
+      auto lBuffer = tensors[5] ? tensors[5] : scratch;
+      const size_t lBufferOffset = tensors[5] ? tensor_offsets[5] : lOffset;
+
+      auto encodeQuantize =
+      [&](NS::SharedPtr<MTL::ComputePipelineState> quantizePipeline, uint16_t threads, MTL::Buffer* source, size_t sourceOffset, size_t int8Offset, size_t scaleOffset, uint32_t scaleTiles, uint32_t heads) {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(quantizePipeline.get());
+        encoder->useResource(source, MTL::ResourceUsageRead);
+        encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        encoder->setBuffer(source, sourceOffset, 0);
+        encoder->setBuffer(scratch, int8Offset, 1);
+        encoder->setBuffer(scratch, scaleOffset, 2);
+        encoder->dispatchThreadgroups(MTL::Size(scaleTiles, heads, batchDimension), MTL::Size(threads, 1, 1));
+        command_batch->finishCommand(encoder);
+      };
+
+      encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq);
+      encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk);
+      encodeQuantize(quantizeVPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[2], tensor_offsets[2], vInt8Offset, vScaleOffset, kTiles, hash.Hk);
+
+      auto encoder = command_batch->startCommand();
+      encoder->setComputePipelineState(pipeline.get());
+      encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(), 0);
+      encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+      encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+      encoder->useResource(lBuffer, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+      encoder->setBuffer(scratch, qInt8Offset, 0);
+      encoder->setBuffer(scratch, kInt8Offset, 1);
+      encoder->setBuffer(scratch, vInt8Offset, 2);
+      encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+      encoder->setBuffer(lBuffer, lBufferOffset, 4);
+      encoder->setBuffer(scratch, qScaleOffset, 5);
+      encoder->setBuffer(scratch, kScaleOffset, 6);
+      encoder->setBuffer(scratch, vScaleOffset, 7);
+      encoder->dispatchThreadgroups(
+          kernel->threadgroupsPerGrid(batchDimension, hash.R),
+          MTL::Size(kernel->threadgroupSize(pipeline.get()), 1, 1));
+      command_batch->finishCommand(encoder);
+      return;
     }
     if (params.type == 0 && params.use_neural_accelerators) {
       NAAttentionDescriptor attentionDesc;
@@ -551,6 +668,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   masked = params.masked;
   upcast = params.upcast;
   type = params.type;
+  use_quantized_attention = params.use_quantized_attention;
 }
 
 bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
@@ -569,7 +687,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (batched == hash.batched) &&
   (masked == hash.masked) &&
   (upcast == hash.upcast) &&
-  (type == hash.type);
+  (type == hash.type) &&
+  (use_quantized_attention == hash.use_quantized_attention);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
@@ -588,6 +707,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .batched = " << bool(hash.batched) << ',';
   os << " .masked = " << bool(hash.masked) << ", ";
   os << " .upcast = " << bool(hash.upcast) << " ";
+  os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
   os << " .type = " << hash.type << " ";
   os << "}";
   return os;
@@ -601,6 +721,7 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.upcast, hash.type })}));
+  combine_32(seed, hash.use_quantized_attention);
   return seed;
 }
 
