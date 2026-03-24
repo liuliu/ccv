@@ -950,6 +950,10 @@ void ccv_nnc_set_device_permutation(const int type, const int* const device_map,
  * @param path_to_write The file path to write binary artifacts. Whether it is a file or directory is implementation dependent.
  */
 void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
+
+enum {
+	CCV_NNC_QX_8I_ROWWISE = 0x900,
+};
 /**
  * Quantize a given memory region of a given datatype / memory resides, into nbits palette.
  * @param input The input memory region, it can be CCV_64F, CCV_32F or CCV_16F.
@@ -975,6 +979,31 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_palettize(const void* input, const int datatype,
  * @param output_length How many elements in the output.
  */
 void ccv_nnc_depalettize(const void* input, const int datatype, const int memory_type, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length);
+/**
+ * Quantize a given memory region of a given datatype / memory resides, into row-wise int8 + scale.
+ * The row-wise split is based on the innermost dimension, thus @p row_length is required.
+ * @param input The input memory region, it can be CCV_64F, CCV_32F, CCV_16F or CCV_16BF.
+ * @param datatype The datatype of the input memory region.
+ * @param memory_type Where the memory resides. Right now only support CPU_MEMORY.
+ * @param input_length How many elements in the input.
+ * @param row_length The number of elements in each row.
+ * @param output The output memory region.
+ * @param output_length The maximum size of the output in bytes.
+ * @return The actual length in bytes of the output.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length);
+/**
+ * Dequantize a memory region from row-wise int8 + scale.
+ * The row-wise split is based on the innermost dimension, thus @p row_length is required.
+ * @param input The input memory region.
+ * @param datatype The datatype of the output memory region and row-wise scales.
+ * @param memory_type Where the memory resides. Right now only support CPU_MEMORY.
+ * @param input_length The size of the input in bytes.
+ * @param row_length The number of elements in each row.
+ * @param output The output memory region.
+ * @param output_length How many elements in the output.
+ */
+void ccv_nnc_dequantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length);
 
 /** @} */
 

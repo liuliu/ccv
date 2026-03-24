@@ -995,3 +995,184 @@ void ccv_nnc_depalettize(const void* input, const int datatype, const int memory
 #endif
 	}
 }
+
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+	assert(row_length > 0);
+	assert(input_length % row_length == 0);
+	const size_t row_count = input_length / row_length;
+	const size_t scale_offset = (input_length + 127) & -128;
+	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	assert(output_length >= scale_offset + scale_size);
+	int8_t* const q = (int8_t*)output;
+	uint8_t* const u8 = (uint8_t*)output;
+	if (datatype == CCV_16F)
+	{
+		const uint16_t* const f16 = (const uint16_t*)input;
+		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			double max_abs = 0;
+			size_t j;
+			for (j = 0; j < row_length; j++)
+			{
+				float v;
+				ccv_half_precision_to_float(f16 + row_start + j, &v, 1);
+				max_abs = ccv_max(max_abs, fabs(v));
+			}
+			const float scale_f = (float)(max_abs / 127.);
+			ccv_float_to_half_precision(&scale_f, scales + i, 1);
+			if (scale_f == 0)
+				memset(q + row_start, 0, row_length);
+			else {
+				const double inv_scale = 1. / scale_f;
+				for (j = 0; j < row_length; j++)
+				{
+					float v;
+					ccv_half_precision_to_float(f16 + row_start + j, &v, 1);
+					const int iv = (int)lrint(v * inv_scale);
+					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
+				}
+			}
+		} parallel_endfor
+	} else if (datatype == CCV_16BF) {
+		const uint16_t* const bf16 = (const uint16_t*)input;
+		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			double max_abs = 0;
+			size_t j;
+			for (j = 0; j < row_length; j++)
+			{
+				float v;
+				ccv_bfloat_to_float(bf16 + row_start + j, &v, 1);
+				max_abs = ccv_max(max_abs, fabs(v));
+			}
+			const float scale_f = (float)(max_abs / 127.);
+			ccv_float_to_bfloat(&scale_f, scales + i, 1);
+			if (scale_f == 0)
+				memset(q + row_start, 0, row_length);
+			else {
+				const double inv_scale = 1. / scale_f;
+				for (j = 0; j < row_length; j++)
+				{
+					float v;
+					ccv_bfloat_to_float(bf16 + row_start + j, &v, 1);
+					const int iv = (int)lrint(v * inv_scale);
+					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
+				}
+			}
+		} parallel_endfor
+	} else if (datatype == CCV_32F) {
+		const float* const f32 = (const float*)input;
+		float* const scales = (float*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			double max_abs = 0;
+			size_t j;
+			for (j = 0; j < row_length; j++)
+				max_abs = ccv_max(max_abs, fabs(f32[row_start + j]));
+			scales[i] = (float)(max_abs / 127.);
+			if (scales[i] == 0)
+				memset(q + row_start, 0, row_length);
+			else {
+				const double inv_scale = 1. / scales[i];
+				for (j = 0; j < row_length; j++)
+				{
+					const int iv = (int)lrint(f32[row_start + j] * inv_scale);
+					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
+				}
+			}
+		} parallel_endfor
+	} else {
+		assert(datatype == CCV_64F);
+		const double* const f64 = (const double*)input;
+		double* const scales = (double*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			double max_abs = 0;
+			size_t j;
+			for (j = 0; j < row_length; j++)
+				max_abs = ccv_max(max_abs, fabs(f64[row_start + j]));
+			scales[i] = max_abs / 127.;
+			if (scales[i] == 0)
+				memset(q + row_start, 0, row_length);
+			else {
+				const double inv_scale = 1. / scales[i];
+				for (j = 0; j < row_length; j++)
+				{
+					const int iv = (int)lrint(f64[row_start + j] * inv_scale);
+					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
+				}
+			}
+		} parallel_endfor
+	}
+	return scale_offset + scale_size;
+}
+
+void ccv_nnc_dequantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+	assert(row_length > 0);
+	assert(output_length % row_length == 0);
+	const size_t row_count = output_length / row_length;
+	const size_t scale_offset = (output_length + 127) & -128;
+	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	assert(input_length >= scale_offset + scale_size);
+	const int8_t* const q = (const int8_t*)input;
+	const uint8_t* const u8 = (const uint8_t*)input;
+	if (datatype == CCV_16F)
+	{
+		uint16_t* const f16 = (uint16_t*)output;
+		const uint16_t* const scales = (const uint16_t*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			float scale_f;
+			ccv_half_precision_to_float(scales + i, &scale_f, 1);
+			size_t j;
+			for (j = 0; j < row_length; j++)
+			{
+				const float v = q[row_start + j] * scale_f;
+				ccv_float_to_half_precision(&v, f16 + row_start + j, 1);
+			}
+		} parallel_endfor
+	} else if (datatype == CCV_16BF) {
+		uint16_t* const bf16 = (uint16_t*)output;
+		const uint16_t* const scales = (const uint16_t*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			float scale_f;
+			ccv_bfloat_to_float(scales + i, &scale_f, 1);
+			size_t j;
+			for (j = 0; j < row_length; j++)
+			{
+				const float v = q[row_start + j] * scale_f;
+				ccv_float_to_bfloat(&v, bf16 + row_start + j, 1);
+			}
+		} parallel_endfor
+	} else if (datatype == CCV_32F) {
+		float* const f32 = (float*)output;
+		const float* const scales = (const float*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			const float scale = scales[i];
+			size_t j;
+			for (j = 0; j < row_length; j++)
+				f32[row_start + j] = q[row_start + j] * scale;
+		} parallel_endfor
+	} else {
+		assert(datatype == CCV_64F);
+		double* const f64 = (double*)output;
+		const double* const scales = (const double*)(u8 + scale_offset);
+		parallel_for(i, (int)row_count) {
+			const size_t row_start = (size_t)i * row_length;
+			const double scale = scales[i];
+			size_t j;
+			for (j = 0; j < row_length; j++)
+				f64[row_start + j] = q[row_start + j] * scale;
+		} parallel_endfor
+	}
+}

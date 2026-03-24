@@ -11,6 +11,53 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("allocate row-wise int8 tensor with source-precision scales")
+{
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 10, 20, 30)), 0);
+	REQUIRE_EQ(6848, ccv_nnc_tensor_data_size(tensor->info), "should be this size");
+	ccv_nnc_tensor_free(tensor);
+}
+
+TEST_CASE("quantize float to row-wise int8 and dequantize on CPU losslessly")
+{
+	float values[32];
+	static const int8_t q[8] = {-127, -96, -64, -32, 0, 32, 64, 127};
+	static const float scales[4] = {0.5, 1.0, 2.0, 4.0};
+	int i, j;
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 8; j++)
+			values[i * 8 + j] = q[j] * scales[i];
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 4, 8)), 0);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	REQUIRE_EQ(144, output_size, "output size should match");
+	float dequantized[32];
+	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 32);
+	REQUIRE_ARRAY_EQ(float, values, dequantized, 32, "should be lossless");
+	ccv_nnc_tensor_free(tensor);
+}
+
+TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")
+{
+	float values_f32[32];
+	uint16_t values_bf16[32];
+	uint16_t expected_bf16[32];
+	static const int8_t q[8] = {-127, -96, -64, -32, 0, 32, 64, 127};
+	static const float scales[4] = {0.5, 1.0, 2.0, 4.0};
+	int i, j;
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 8; j++)
+			values_f32[i * 8 + j] = q[j] * scales[i];
+	ccv_float_to_bfloat(values_f32, values_bf16, 32);
+	memcpy(expected_bf16, values_bf16, sizeof(expected_bf16));
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, 4, 8)), 0);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values_bf16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, 32, 8, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	REQUIRE_EQ(136, output_size, "output size should match");
+	uint16_t dequantized[32];
+	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_16BF, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 32);
+	REQUIRE_ARRAY_EQ(uint16_t, expected_bf16, dequantized, 32, "should be lossless");
+	ccv_nnc_tensor_free(tensor);
+}
+
 TEST_CASE("quantize double to 4-bit and dequantize on GPU losslessly")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));

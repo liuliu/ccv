@@ -217,19 +217,42 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_palettize(const ccv_nnc_tens
 	return new_params;
 }
 
+static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_tensor_param_t params)
+{
+	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
+	ccv_nnc_tensor_param_t new_params = params;
+	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE;
+	new_params.reserved = 0;
+	return new_params;
+}
+
 static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tensor_param_t params)
 {
 	const ssize_t count = (ssize_t)ccv_nnc_tensor_count(params);
 	ssize_t data_size;
 	if (CCV_GET_DATA_TYPE(params.datatype) == CCV_QX)
 	{
-		// Our QX right now only does palettization. Hence, we need to get the palette datatype.
-		const int palette_datatype = (params.datatype & 0xff) << 12;
-		const int number_in_blocks = params.reserved;
-		const int num_blocks = (int)((count + number_in_blocks - 1) / number_in_blocks);
-		const int qbits = (params.datatype & 0xf00) >> 8;
-		assert(qbits >= 4 && qbits <= 8);
-		data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(palette_datatype) * num_blocks + (count * qbits + 7) / 8;
+		const int qx_datatype = (params.datatype & 0xff) << 12;
+		const int qx_subtype = params.datatype & 0xf00;
+		if (qx_subtype >= 0x400 && qx_subtype <= 0x800)
+		{
+			const int number_in_blocks = params.reserved;
+			const int num_blocks = (int)((count + number_in_blocks - 1) / number_in_blocks);
+			const int qbits = qx_subtype >> 8;
+			assert(qbits >= 4 && qbits <= 8);
+			data_size = (ssize_t)(1 << qbits) * CCV_GET_DATA_TYPE_SIZE(qx_datatype) * num_blocks + (count * qbits + 7) / 8;
+		} else if (qx_subtype == CCV_NNC_QX_8I_ROWWISE) {
+			const int nd = ccv_nnc_tensor_nd(params.dim);
+			const int row_length = params.dim[nd - 1];
+			assert(row_length > 0);
+			assert(count % row_length == 0);
+			const ssize_t row_count = count / row_length;
+			const ssize_t scale_offset = (count + 127) & -128;
+			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+		} else {
+			assert(0);
+			data_size = 0;
+		}
 	} else
 		data_size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * count;
 	return data_size;
