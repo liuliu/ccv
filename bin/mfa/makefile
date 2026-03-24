@@ -44,7 +44,7 @@ NA_BASELINE_ATTENTION_OBJS = \
 all: $(TARGETS)
 
 clean:
-	rm -f gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(TARGETS)
+	rm -f dump_na_source.o gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(TARGETS) dump_na_source
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -53,8 +53,10 @@ na_gemm_splitk_bench: na_gemm_splitk_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 na_int8_attention_bench: na_int8_attention_bench.o $(COMMON_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
-
 na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+dump_na_source: dump_na_source.o $(COMMON_OBJS) NAMatMulKernelDescriptor.local.o NAMatMulKernel.local.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 conv3d_layout_scaffold: conv3d_layout_scaffold.o $(COMMON_OBJS)
@@ -82,8 +84,10 @@ na_gemm_splitk_bench.o: na_gemm_splitk_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 na_int8_attention_bench.o: na_int8_attention_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
-
 na_int8_matmul_bench.o: na_int8_matmul_bench.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+dump_na_source.o: dump_na_source.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 conv3d_layout_scaffold.o: conv3d_layout_scaffold.cpp
