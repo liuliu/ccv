@@ -60,7 +60,6 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("BLOCK_M", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_N", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_K", std::to_string(blockDimensions[2]));
-  source.SetValue("BLOCK_K_2", std::to_string(blockDimensions[2] * 2));
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("QUANT_THREADS", std::to_string(activationQuantizeThreads));
   source.SetValue("QUANT_SIMDGROUPS", std::to_string(activationQuantizeThreads / 32));
@@ -241,7 +240,6 @@ kernel void int8_matmul(
 )";
   }
   source += R"(
-
   auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));
   auto B = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));
   if (N_block_start + {{BLOCK_N}} - 1 < N && M_block_start + {{BLOCK_M}} - 1 < M) {
@@ -264,17 +262,9 @@ kernel void int8_matmul(
         cT[i] = 0;
     }
     #pragma clang loop unroll(full)
-    for (uint k = 0; k + {{BLOCK_K_2}} <= K; k += {{BLOCK_K_2}}) {
-      auto mA0 = A.slice<{{BLOCK_K}}, {{BLOCK_M}}>(k, M_group_offset);
-      auto mB0 = B.slice<{{BLOCK_K}}, {{BLOCK_N}}>(k, N_group_offset);
-      auto mA1 = A.slice<{{BLOCK_K}}, {{BLOCK_M}}>(k + {{BLOCK_K}}, M_group_offset);
-      auto mB1 = B.slice<{{BLOCK_K}}, {{BLOCK_N}}>(k + {{BLOCK_K}}, N_group_offset);
-      matmul_op.run(mA0, mB0, cT);
-      matmul_op.run(mA1, mB1, cT);
-    }
-    if (K % {{BLOCK_K_2}} >= {{BLOCK_K}}) {
-      auto mA = A.slice<{{BLOCK_K}}, {{BLOCK_M}}>(K / {{BLOCK_K_2}} * {{BLOCK_K_2}}, M_group_offset);
-      auto mB = B.slice<{{BLOCK_K}}, {{BLOCK_N}}>(K / {{BLOCK_K_2}} * {{BLOCK_K_2}}, N_group_offset);
+    for (uint k = 0; k + {{BLOCK_K}} <= K; k += {{BLOCK_K}}) {
+      auto mA = A.slice<{{BLOCK_K}}, {{BLOCK_M}}>(k, M_group_offset);
+      auto mB = B.slice<{{BLOCK_K}}, {{BLOCK_N}}>(k, N_group_offset);
       matmul_op.run(mA, mB, cT);
     }
     if (K % {{BLOCK_K}} != 0) {
