@@ -23,9 +23,7 @@ struct NAInt8AttentionKernel {
   unsigned short Hq;
   unsigned short Hk;
   uint16_t executionSIMDGroups;
-  bool checkCEdge1;
-  bool useInt8QK;
-  bool useQKScales;
+  bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;
   float scale;

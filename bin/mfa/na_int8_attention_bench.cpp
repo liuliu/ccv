@@ -54,8 +54,6 @@ struct VariantConfig {
   uint16_t q_quant_threads_override = 0;
   uint16_t kv_quant_threads_override = 0;
   bool int8_thread_barrier_over_c = true;
-  bool int8_qk_scales = true;
-  bool int8_qk = true;
   bool quantize_only = false;
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
@@ -92,8 +90,6 @@ struct Int8Pipeline {
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   simd::ushort3 block_dimensions = simd::ushort3 { 0, 0, 0 };
   uint16_t execution_simd_groups = 0;
-  bool use_int8_qk = true;
-  bool use_qk_scales = true;
   bool thread_barrier_over_c = false;
 };
 
@@ -291,23 +287,6 @@ std::vector<float> decode_values(
   return values;
 }
 
-const char* qk_precision_name(bool int8_qk)
-{
-  return int8_qk ? "int8" : "fp16";
-}
-
-bool use_qk_scales(const VariantConfig& variant)
-{
-  return variant.int8_qk_scales;
-}
-
-const char* qk_scale_mode_name(bool enabled)
-{
-  if (enabled)
-    return "tile";
-  return "none";
-}
-
 bool start_metal_capture(MTL::CommandQueue* command_queue, const char* path)
 {
   auto descriptor = NS::TransferPtr(MTL::CaptureDescriptor::alloc()->init());
@@ -389,11 +368,6 @@ uint16_t create_int8_execution_simd_groups(const AttentionCase& attention, uint1
   if (override_value != 0)
     return override_value;
   return attention.D > 192 ? 16 : 4;
-}
-
-bool create_check_c_edge_1(const AttentionCase& attention, simd::ushort3 block_dimensions)
-{
-  return (attention.C % (block_dimensions[1] * 2)) > block_dimensions[1];
 }
 
 QuantizePipelines create_quantize_pipelines(
@@ -983,7 +957,8 @@ BaselinePipeline create_baseline_pipeline(
   const simd::ushort3 block_dimensions = create_baseline_block_dimensions(attention);
   const uint16_t execution_simd_groups =
       create_baseline_execution_simd_groups(variant.baseline_execution_simd_groups_override);
-  const bool check_c_edge_1 = create_check_c_edge_1(attention, block_dimensions);
+  const bool check_c_edge_1 =
+      (attention.C % (block_dimensions[1] * 2)) > block_dimensions[1];
   const NAAttentionKernelDescriptor kernel_descriptor(
       block_dimensions,
       attention.D,
@@ -1034,20 +1009,14 @@ Int8Pipeline create_int8_pipeline(
       variant.int8_block_d_override);
   bundle.execution_simd_groups =
       create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-  bundle.use_int8_qk = variant.int8_qk;
-  bundle.use_qk_scales = use_qk_scales(variant);
   bundle.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
-  CCV_NNC_MFA_PRECONDITION(bundle.use_int8_qk);
-  const bool check_c_edge_1 = create_check_c_edge_1(attention, bundle.block_dimensions);
   const NAInt8AttentionKernelDescriptor kernel_descriptor(
       bundle.block_dimensions,
       attention.D,
       attention.Hq,
       attention.Hk,
       bundle.execution_simd_groups,
-      check_c_edge_1,
-      bundle.use_int8_qk,
-      bundle.use_qk_scales,
+      (attention.C % bundle.block_dimensions[1]) != 0,
       bundle.thread_barrier_over_c,
       create_io_precision(variant.input_precision),
       create_scale(attention));
@@ -1297,7 +1266,6 @@ void compute_int8_reference_row(
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
-    bool use_qk_scales,
     uint32_t batch,
     uint32_t query_head,
     uint32_t row,
@@ -1309,12 +1277,12 @@ void compute_int8_reference_row(
   const uint32_t q_tiles = quantized.q_scale_tiles;
   const uint32_t k_tiles = quantized.k_scale_tiles;
   const uint32_t q_tile = q_tiles == 1 ? 0 : (row / block_dimensions[0]);
-  const float q_scale = use_qk_scales ? quantized.q_scale[((size_t)batch * attention.Hq + query_head) * q_tiles + q_tile] : 1.0f;
+  const float q_scale = quantized.q_scale[((size_t)batch * attention.Hq + query_head) * q_tiles + q_tile];
   std::vector<float> scores(attention.C);
   float max_score = -std::numeric_limits<float>::infinity();
   for (uint32_t column = 0; column < attention.C; ++column) {
     const uint32_t k_tile = k_tiles == 1 ? 0 : (column / block_dimensions[1]);
-    const float k_scale = use_qk_scales ? quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile] : 1.0f;
+    const float k_scale = quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile];
     float dot = 0;
     for (uint32_t dim = 0; dim < attention.D; ++dim) {
       dot += ((float)quantized.q_int8[q_index(attention, batch, row, query_head, dim)] * q_scale) *
@@ -1360,7 +1328,6 @@ ValidationStats validate_int8_outputs(
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
-    bool use_qk_scales,
     const std::vector<float>& o_values,
     const float* l_raw)
 {
@@ -1387,7 +1354,7 @@ ValidationStats validate_int8_outputs(
     for (const auto head : head_points) {
       for (const auto row : row_points) {
         float reference_l = 0;
-        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, use_qk_scales, batch, head, row, &reference_l, &reference_o);
+        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, batch, head, row, &reference_l, &reference_o);
         const float actual_l = l_raw[l_index(attention, batch, head, row)];
         const double abs_l = std::fabs(reference_l - actual_l);
         const double rel_l = abs_l / std::max<double>(std::max(std::fabs(reference_l), std::fabs(actual_l)), 1.0);
@@ -1507,10 +1474,12 @@ int main(int argc, char** argv)
     // full-only.
   }
   if (argc >= 16) {
-    variant.int8_qk = std::strcmp(argv[15], "fp16") != 0;
+    // Retired QK-precision argument slot. Intentionally accepted and ignored
+    // because the production kernel always uses int8 QK.
   }
   if (argc >= 17) {
-    variant.int8_qk_scales = std::strtoul(argv[16], nullptr, 10) != 0;
+    // Retired QK-scale-mode argument slot. Intentionally accepted and ignored
+    // because the production kernel always uses tiled Q/K scales.
   }
   if (argc >= 18) {
     // Retired bench-only cooperative/two-pass argument slot. Intentionally
@@ -1543,11 +1512,6 @@ int main(int argc, char** argv)
         (uint16_t)std::strtoul(argv[24], nullptr, 10);
   }
 
-  if (!variant.int8_qk) {
-    std::cerr << "fp16 QK is not implemented in this scaffold; use the baseline path\n";
-    return 1;
-  }
-
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
   if (!device) {
@@ -1564,11 +1528,11 @@ int main(int argc, char** argv)
 
   const auto q_values = make_data<float>(
       (size_t)attention.batch * attention.R * attention.Hq * attention.D,
-      (!use_qk_scales(variant) && variant.int8_qk) ? 1.0f : 0.03125f,
+      0.03125f,
       1);
   const auto k_values = make_data<float>(
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
-      (!use_qk_scales(variant) && variant.int8_qk) ? 1.0f : 0.02734375f,
+      0.02734375f,
       2);
   const auto v_values = make_data<float>(
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
@@ -1592,8 +1556,6 @@ int main(int argc, char** argv)
     int8_pipeline.block_dimensions = block_dimensions;
     int8_pipeline.execution_simd_groups =
         create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-    int8_pipeline.use_int8_qk = variant.int8_qk;
-    int8_pipeline.use_qk_scales = use_qk_scales(variant);
     int8_pipeline.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
   }
   auto quantize_pipelines = create_quantize_pipelines(
@@ -1639,9 +1601,8 @@ int main(int argc, char** argv)
   auto k_scale_buffer = NS::TransferPtr(device->newBuffer(k_scale_bytes, kPrivateResourceOptions));
   auto o_buffer = NS::TransferPtr(device->newBuffer(o_bytes, kPrivateResourceOptions));
   auto l_buffer = NS::TransferPtr(device->newBuffer(l_bytes, kPrivateResourceOptions));
-  const bool use_int8_qk = int8_pipeline.use_int8_qk;
-  auto* qk_q_buffer = use_int8_qk ? q_int8_buffer.get() : q_buffer.get();
-  auto* qk_k_buffer = use_int8_qk ? k_int8_buffer.get() : k_buffer.get();
+  auto* qk_q_buffer = q_int8_buffer.get();
+  auto* qk_k_buffer = k_int8_buffer.get();
   auto* pv_v_buffer = v_int8_buffer.get();
 
   upload_buffer(command_queue.get(), q_stage.get(), q_buffer.get(), q_bytes);
@@ -1730,9 +1691,9 @@ int main(int argc, char** argv)
             << " warmup=" << config.warmup_iterations
             << " timed=" << config.timed_iterations
             << " inputPrecision=" << input_precision_name(variant.input_precision)
-            << " qkPrecision=" << qk_precision_name(variant.int8_qk)
+            << " qkPrecision=int8"
             << " vPrecision=int8"
-            << " qkScales=" << qk_scale_mode_name(variant.int8_qk_scales)
+            << " qkScales=tile"
             << " baselineSimdgroups=" << (variant.quantize_only ? 0 : baseline.kernel->executionSIMDGroups)
             << " int8Simdgroups=" << int8_pipeline.execution_simd_groups
             << " qQuantThreads=" << quantize_pipelines.q_threads
@@ -1746,9 +1707,9 @@ int main(int argc, char** argv)
               << " blockD=" << int8_pipeline.block_dimensions[2]
               << " simdgroups=" << int8_pipeline.execution_simd_groups
               << " inputPrecision=" << input_precision_name(variant.input_precision)
-              << " qkPrecision=" << qk_precision_name(int8_pipeline.use_int8_qk)
+              << " qkPrecision=int8"
               << " vPrecision=int8"
-              << " qkScales=" << qk_scale_mode_name(int8_pipeline.use_qk_scales)
+              << " qkScales=tile"
               << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
               << '\n';
   }
@@ -1879,7 +1840,6 @@ int main(int argc, char** argv)
       block_dimensions,
       quantized,
       v_values,
-      int8_pipeline.use_qk_scales,
       o_values,
       static_cast<const float*>(l_stage->contents()));
   print_validation(validation);

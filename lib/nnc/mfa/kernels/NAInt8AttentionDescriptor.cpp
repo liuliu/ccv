@@ -42,17 +42,15 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
 NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() const noexcept {
   const uint16_t blockD = matrixDimensions[2] >= 192 ? 64 : 32;
   const simd::ushort3 blockDimensions { 16, 64, blockD };
-  const bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
   const uint16_t executionSIMDGroups = matrixDimensions[2] > 192 ? 16 : 4;
+  const bool has_c_remainder = (matrixDimensions[1] % blockDimensions[1]) != 0;
   return NAInt8AttentionKernelDescriptor(
       blockDimensions,
       (unsigned short)matrixDimensions[2],
       Hq,
       Hk,
       executionSIMDGroups,
-      checkCEdge1,
-      true,
-      true,
+      has_c_remainder,
       true,
       ioPrecision,
       scale);

@@ -8,9 +8,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     Hq == rhs.Hq &&
     Hk == rhs.Hk &&
     executionSIMDGroups == rhs.executionSIMDGroups &&
-    checkCEdge1 == rhs.checkCEdge1 &&
-    useInt8QK == rhs.useInt8QK &&
-    useQKScales == rhs.useQKScales &&
+    hasCRemainder == rhs.hasCRemainder &&
     threadBarrierOverC == rhs.threadBarrierOverC &&
     ioPrecision == rhs.ioPrecision &&
     scale == rhs.scale;
@@ -23,11 +21,11 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
   combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.executionSIMDGroups }));
   combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
   combine_32(seed, pack_32(simd::ushort2 {
-      (uint16_t)(hash.checkCEdge1 ? 1 : 0),
-      (uint16_t)((hash.useInt8QK ? 1 : 0) | (hash.useQKScales ? 2 : 0)) }));
+      (uint16_t)(hash.hasCRemainder ? 1 : 0),
+      (uint16_t)(hash.threadBarrierOverC ? 1 : 0) }));
   combine_32(seed, pack_32(simd::ushort2 {
-      (uint16_t)(hash.threadBarrierOverC ? 1 : 0),
-      (uint16_t)hash.ioPrecision.value }));
+      (uint16_t)hash.ioPrecision.value,
+      0 }));
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }
@@ -38,9 +36,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     unsigned short Hq,
     unsigned short Hk,
     uint16_t executionSIMDGroups,
-    bool checkCEdge1,
-    bool useInt8QK,
-    bool useQKScales,
+    bool hasCRemainder,
     bool threadBarrierOverC,
     GEMMOperandPrecision ioPrecision,
     float scale) noexcept
@@ -50,9 +46,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->Hq = Hq;
   this->Hk = Hk;
   this->executionSIMDGroups = executionSIMDGroups;
-  this->checkCEdge1 = checkCEdge1;
-  this->useInt8QK = useInt8QK;
-  this->useQKScales = useQKScales;
+  this->hasCRemainder = hasCRemainder;
   this->threadBarrierOverC = threadBarrierOverC;
   this->ioPrecision = ioPrecision;
   this->scale = scale;
