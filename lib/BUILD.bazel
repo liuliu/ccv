@@ -415,6 +415,7 @@ objc_library(
 	name = "nnc_mps_compat",
 	non_arc_srcs = [
 		"nnc/mps/ccv_nnc_mps.m",
+		"nnc/mps/ccv_nnc_palettize.m",
 	],
 	hdrs = [
 		"nnc/mps/ccv_nnc_mps.h",
