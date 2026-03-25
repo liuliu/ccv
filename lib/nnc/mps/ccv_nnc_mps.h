@@ -35,6 +35,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_mps_queue_watermark(void);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
+ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
 
 #ifdef __OBJC__
 
@@ -66,7 +67,6 @@ typedef struct {
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
-ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
 MPSGraphDevice* ccv_nnc_default_mps_device(void);
 CCV_WARN_UNUSED(MTLCommandBatch*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context);

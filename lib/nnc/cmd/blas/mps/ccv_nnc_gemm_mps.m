@@ -143,6 +143,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
+		const int a_qx_subtype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? (a->info.datatype & 0xf00) : 0;
+		const int w_qx_subtype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? (w->info.datatype & 0xf00) : 0;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
 			(a_datatype == b->info.datatype) &&
@@ -202,11 +204,34 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_gemv = !is_batched && ((a_rows == 1 && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
+		const int use_scaled_gemm = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE);
+		if (a_qx_subtype == CCV_NNC_QX_8I_ROWWISE) {
+			assert(0);
+		}
+		if (use_scaled_gemm)
+		{
+			assert(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX);
+			assert(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX);
+			assert(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX);
+			assert(!is_transpose_a);
+			assert(is_transpose_w);
+			assert(is_contiguous);
+			assert(is_same_dtype);
+			assert(is_supported_dtype);
+			assert(!is_batched);
+			assert(!is_downcast);
+			assert(ccv_nnc_mfa_context_supported(context));
+			assert(!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA));
+			assert(!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
+			assert(!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS));
+			assert(ccv_nnc_mfa_has_neural_accelerators(context));
+			assert(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		}
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && (is_mfa_gemv || !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
 
 		size_t a_data_size = 0;
-		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800)
 		{
 			ccv_nnc_tensor_param_t a_params = a->info;
 			const int palette_datatype = (a_params.datatype & 0xff) << 12;
@@ -216,7 +241,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
 		}
 		size_t w_data_size = 0;
-		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800)
 		{
 			ccv_nnc_tensor_param_t w_params = w->info;
 			const int palette_datatype = (w_params.datatype & 0xff) << 12;
@@ -224,6 +249,39 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			depalettize_w_params.datatype = palette_datatype;
 			depalettize_w_params.reserved = 0;
 			w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+		}
+
+		if (use_scaled_gemm)
+		{
+			ccv_nnc_mfa_scaled_gemm_params_t params = {
+				.data_type = mtl_data_type,
+				.M = (uint32_t)b_rows,
+				.N = (uint32_t)b_cols,
+				.K = (uint32_t)w_rows,
+				.fused_bias = (bias ? 1 : 0),
+				.use_neural_accelerators = 1,
+			};
+			ccv_nnc_mfa_prepare_scaled_gemm(context, params);
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias)
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias_buffer,
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			ccv_nnc_mfa_encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
 		}
 
 		if (METAL_LOG_LEVEL(context) >= 3)

@@ -20,6 +20,7 @@ COMMON_OBJS = \
 	Conv3DKernel.local.o
 
 NA_GEMM_OBJS = \
+	NAInt8MatMulDescriptor.local.o \
 	NAMatMulDescriptor.local.o \
 	NAMatMulKernelDescriptor.local.o \
 	NAMatMulKernel.local.o \
@@ -145,6 +146,9 @@ Conv3DKernel.local.o: ../../lib/nnc/mfa/kernels/Conv3DKernel.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAMatMulDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAInt8MatMulDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulDescriptor.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAMatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulKernelDescriptor.cpp

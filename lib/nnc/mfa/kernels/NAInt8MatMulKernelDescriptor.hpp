@@ -1,13 +1,16 @@
 #ifndef NAInt8MatMulKernelDescriptor_hpp
 #define NAInt8MatMulKernelDescriptor_hpp
 
+#include "GEMMOperandPrecision.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include <simd/simd.h>
 
 struct NAInt8MatMulKernelDescriptor {
   simd::ushort3 blockDimensions;
   uint16_t executionSIMDGroups;
-  bool outputFloat;
+  GEMMOperandPrecision ioPrecision;
+  bool useBias;
+  uint16_t activationQuantizeThreads;
   uint32_t groupM;
   uint32_t groupN;
 
@@ -15,7 +18,9 @@ struct NAInt8MatMulKernelDescriptor {
   NAInt8MatMulKernelDescriptor(
       simd::ushort3 blockDimensions,
       uint16_t executionSIMDGroups,
-      bool outputFloat,
+      GEMMOperandPrecision ioPrecision,
+      bool useBias,
+      uint16_t activationQuantizeThreads,
       uint32_t groupM,
       uint32_t groupN) noexcept;
 

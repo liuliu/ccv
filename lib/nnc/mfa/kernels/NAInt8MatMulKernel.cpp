@@ -26,7 +26,9 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
 {
   blockDimensions = descriptor.blockDimensions;
   executionSIMDGroups = descriptor.executionSIMDGroups;
-  outputFloat = descriptor.outputFloat;
+  ioPrecision = descriptor.ioPrecision;
+  useBias = descriptor.useBias;
+  activationQuantizeThreads = descriptor.activationQuantizeThreads;
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
 
@@ -60,8 +62,11 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("BLOCK_K", std::to_string(blockDimensions[2]));
   source.SetValue("BLOCK_K_2", std::to_string(blockDimensions[2] * 2));
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
+  source.SetValue("QUANT_THREADS", std::to_string(activationQuantizeThreads));
+  source.SetValue("QUANT_SIMDGROUPS", std::to_string(activationQuantizeThreads / 32));
   source.SetValue("GROUP_M", std::to_string(groupM));
   source.SetValue("GROUP_N", std::to_string(groupN));
+  source.SetValue("IO_TYPE", ioPrecision.name());
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -112,19 +117,91 @@ constant uint M [[function_constant(0)]];
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 
+inline float quantize_reduce_max(float value,
+                                 threadgroup float* scratch,
+                                 ushort sgid,
+                                 ushort lane_id)
+{
+  value = max(value, simd_shuffle_xor(value, 16));
+  value = max(value, simd_shuffle_xor(value, 8));
+  value = max(value, simd_shuffle_xor(value, 4));
+  value = max(value, simd_shuffle_xor(value, 2));
+  value = max(value, simd_shuffle_xor(value, 1));
+  if (lane_id == 0)
+    scratch[sgid] = value;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgid == 0) {
+    value = lane_id < {{QUANT_SIMDGROUPS}} ? scratch[lane_id] : 0.0f;
+    value = max(value, simd_shuffle_xor(value, 16));
+    value = max(value, simd_shuffle_xor(value, 8));
+    value = max(value, simd_shuffle_xor(value, 4));
+    value = max(value, simd_shuffle_xor(value, 2));
+    value = max(value, simd_shuffle_xor(value, 1));
+    if (lane_id == 0)
+      scratch[0] = value;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return scratch[0];
+}
+
+kernel void quantize_activation(
+    device const {{IO_TYPE}}* src [[buffer(0)]],
+    device int8_t* dst [[buffer(1)]],
+    device {{IO_TYPE}}* scales [[buffer(2)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[{{QUANT_SIMDGROUPS}}];
+  const uint row = tgid.x;
+  if (row >= M)
+    return;
+  float local_max = 0.0f;
+  const uint base = row * K;
+  if ((K % 4) == 0) {
+    const uint vectors_per_row = K / 4;
+    device const {{IO_TYPE}}4* src4 = reinterpret_cast<device const {{IO_TYPE}}4*>(src);
+    device char4* dst4 = reinterpret_cast<device char4*>(dst);
+    const uint vector_base = row * vectors_per_row;
+    for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
+      const float4 value = float4(src4[vector_base + i]);
+      local_max = max(local_max, max(max(fabs(value[0]), fabs(value[1])), max(fabs(value[2]), fabs(value[3]))));
+    }
+    const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
+    const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
+    const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+    if (tid == 0)
+      scales[row] = ({{IO_TYPE}})scale;
+    for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
+      const int4 rounded = int4(rint(float4(src4[vector_base + i]) * inv_scale));
+      dst4[vector_base + i] = char4(clamp(rounded, int4(-127), int4(127)));
+    }
+  } else {
+    for (uint i = tid; i < K; i += {{QUANT_THREADS}})
+      local_max = max(local_max, fabs((float)src[base + i]));
+    const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
+    const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
+    const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+    if (tid == 0)
+      scales[row] = ({{IO_TYPE}})scale;
+    for (uint i = tid; i < K; i += {{QUANT_THREADS}}) {
+      const int rounded = (int)rint((float)src[base + i] * inv_scale);
+      dst[base + i] = (int8_t)clamp(rounded, -127, 127);
+    }
+  }
+}
+
 kernel void int8_matmul(
     device int8_t *A_buf [[buffer(0)]],
     device int8_t *B_buf [[buffer(1)]],
+    device {{IO_TYPE}} *C_buf [[buffer(2)]],
+    device const {{IO_TYPE}} *A_scale_buf [[buffer(3)]],
+    device const {{IO_TYPE}} *B_scale_buf [[buffer(4)]],
 )";
-  if (outputFloat) {
+  if (useBias) {
     source += R"(
-    device half *C_buf [[buffer(2)]],
-    device const half *A_scale_buf [[buffer(3)]],
-    device const half *B_scale_buf [[buffer(4)]],
-)";
-  } else {
-    source += R"(
-    device int32_t *C_buf [[buffer(2)]],
+    device const {{IO_TYPE}} *bias_buf [[buffer(5)]],
 )";
   }
   source += R"(
@@ -155,24 +232,18 @@ kernel void int8_matmul(
   A_buf += M_group_start * K;
   B_buf += N_group_start * K;
   C_buf += M_group_start * N;
-)";
-  if (outputFloat) {
-    source += R"(
   A_scale_buf += M_group_start;
   B_scale_buf += N_group_start;
+)";
+  if (useBias) {
+    source += R"(
+  bias_buf += N_group_start;
 )";
   }
   source += R"(
 
   auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));
   auto B = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));
-)";
-  if (!outputFloat) {
-    source += R"(
-  auto C = tensor<device int32_t, dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N, M_group_size));
-)";
-  }
-  source += R"(
   if (N_block_start + {{BLOCK_N}} - 1 < N && M_block_start + {{BLOCK_M}} - 1 < M) {
     constexpr auto matmul_descriptor = matmul2d_descriptor(
         {{BLOCK_M}},
@@ -220,9 +291,6 @@ kernel void int8_matmul(
       auto mB = B.slice<dynamic_extent, {{BLOCK_N}}>(K / {{BLOCK_K}} * {{BLOCK_K}}, N_group_offset);
       residual_op.run(mA, mB, cT);
     }
-)";
-  if (outputFloat) {
-    source += R"(
     auto mC = C_buf + M_group_offset * N + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
@@ -230,17 +298,17 @@ kernel void int8_matmul(
         auto idx = cT.get_multidimensional_index(i);
         const uint row = M_group_offset + idx[1];
         const uint col = N_group_offset + idx[0];
-        mC[idx[1] * N + idx[0]] = (half)((float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col]);
-      }
-    }
+        float value = (float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col];
 )";
-  } else {
+  if (useBias) {
     source += R"(
-    auto mC = C.slice<{{BLOCK_N}}, {{BLOCK_M}}>(N_block_start, M_group_offset);
-    cT.store(mC);
+        value += (float)bias_buf[col];
 )";
   }
   source += R"(
+        mC[idx[1] * N + idx[0]] = ({{IO_TYPE}})value;
+      }
+    }
   } else {
     constexpr auto matmul_descriptor = matmul2d_descriptor(
         {{BLOCK_M}},
@@ -260,37 +328,26 @@ kernel void int8_matmul(
         cT[i] = 0;
     }
     matmul_op.run(mA, mB, cT);
-)";
-  if (outputFloat) {
-    source += R"(
     auto mC = C_buf + M_group_offset * N + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
         auto idx = cT.get_multidimensional_index(i);
         if (idx[0] < N_block_size && idx[1] < M_block_size) {
-          mC[idx[1] * N + idx[0]] = (half)((float)cT[i] *
+          float value = (float)cT[i] *
               (float)A_scale_buf[M_group_offset + idx[1]] *
-              (float)B_scale_buf[N_group_offset + idx[0]]);
-        }
-      }
-    }
+              (float)B_scale_buf[N_group_offset + idx[0]];
 )";
-  } else {
+  if (useBias) {
     source += R"(
-    auto mC = C_buf + M_group_offset * N + N_block_start;
-    #pragma clang loop unroll(full)
-    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
-      if (cT.is_valid_element(i)) {
-        auto idx = cT.get_multidimensional_index(i);
-        if (idx[0] < N_block_size && idx[1] < M_block_size) {
-          mC[idx[1] * N + idx[0]] = cT[i];
-        }
-      }
-    }
+          value += (float)bias_buf[N_group_offset + idx[0]];
 )";
   }
   source += R"(
+          mC[idx[1] * N + idx[0]] = ({{IO_TYPE}})value;
+        }
+      }
+    }
   }
 }
 )";

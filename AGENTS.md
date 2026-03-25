@@ -118,6 +118,9 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
 - Variable naming convention preference:
   - Prefer `<tensor>_nd` style names (for example, `a_nd`, `b_nd`, `w_nd`) as the default rule.
   - `adim` / `bdim` / `astride`-style names are acceptable as specific shape/stride-array exceptions, not the general naming pattern.
+- Assertion-only conditional style:
+  - Do not write `if (...) assert(...);`.
+  - Always brace assertion-only conditionals as `if (...) { assert(...); }` so release builds do not change control flow when assertions compile out.
 - `ctags` usage expectation and workflow:
   - `ctags` should be available and used to discover reusable helpers before introducing local utility functions.
   - Practical flow:

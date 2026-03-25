@@ -233,7 +233,9 @@ DynamicPipeline create_dynamic_pipeline(
   const NAInt8MatMulKernelDescriptor kernel_descriptor(
       variant.block_dimensions,
       variant.execution_simd_groups,
-      true,
+      GEMMOperandPrecision::FP16,
+      false,
+      variant.activation_quant_threads,
       groupM(bench.M),
       groupN(bench.N));
   bundle.kernel = std::make_unique<NAInt8MatMulKernel>(kernel_descriptor, device);
