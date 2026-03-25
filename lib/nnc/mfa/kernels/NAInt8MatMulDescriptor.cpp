@@ -6,6 +6,12 @@
 
 namespace {
 
+static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std::string& pathToWrite) noexcept {
+  NS::Error *error = nil;
+  binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
+  CCV_NNC_MFA_CHECK_ERROR(error);
+}
+
 static uint32_t groupM(const uint32_t M) noexcept {
   return (M >= 4096) ? 4096 : 0;
 }
@@ -54,9 +60,6 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept
 {
   (void)dprops;
-  (void)binaryArchivesToRead;
-  (void)binaryArchiveToWrite;
-  (void)pathToWrite;
 
   auto createKernel =
   [=](const NAInt8MatMulKernelDescriptor& descriptor) -> NAInt8MatMulKernel* {
@@ -83,7 +86,19 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     CCV_NNC_MFA_CHECK_ERROR(error);
     auto pipelineDescriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
     pipelineDescriptor->setComputeFunction(function.get());
-    auto pipeline = device->newComputePipelineState(pipelineDescriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+    MTL::ComputePipelineState* pipeline = nullptr;
+    if (binaryArchivesToRead) {
+      pipelineDescriptor->setBinaryArchives(binaryArchivesToRead);
+      pipeline = device->newComputePipelineState(pipelineDescriptor.get(), MTL::PipelineOptionFailOnBinaryArchiveMiss, nullptr, &error);
+    }
+    if (pipeline == nullptr) {
+      error = nil;
+      pipeline = device->newComputePipelineState(pipelineDescriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
+      if (binaryArchiveToWrite != nullptr) {
+        binaryArchiveToWrite->addComputePipelineFunctions(pipelineDescriptor.get(), &error);
+        serializeBinaries(binaryArchiveToWrite, pathToWrite);
+      }
+    }
     CCV_NNC_MFA_CHECK_ERROR(error);
     return pipeline;
   };

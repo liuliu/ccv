@@ -20,10 +20,6 @@ static std::string dot_product_scale(float rsqrt_d) {
   return high_precision_to_string(log_base_2_e * rsqrt_d);
 }
 
-static std::string raw_score_scale(float rsqrt_d) {
-  return high_precision_to_string(rsqrt_d);
-}
-
 static uint32_t ceilLog2(uint64_t x) noexcept {
   if (x <= 1)
     return 0;
@@ -51,9 +47,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   useInt8QK = descriptor.useInt8QK;
   useQKScales = descriptor.useQKScales;
   threadBarrierOverC = descriptor.threadBarrierOverC;
-  mortonOrder = descriptor.mortonOrder;
   ioPrecision = descriptor.ioPrecision;
-  mode = descriptor.mode;
   scale = descriptor.scale;
 
   source = createSource();
@@ -65,18 +59,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
 }
 
 unsigned short NAInt8AttentionKernel::threadgroupMemoryAllocation() const noexcept {
-  if (mode == NAInt8AttentionKernelMode::qk_only ||
-      mode == NAInt8AttentionKernelMode::softmax_stats)
-  {
-    return 0;
-  }
-  if (mode == NAInt8AttentionKernelMode::full)
-    return 0;
-  const uint32_t simdgroup_buffers = executionSIMDGroups;
-  const uint32_t total_bytes =
-      blockDimensions[0] * blockDimensions[1] * simdgroup_buffers * sizeof(_Float16);
-  CCV_NNC_MFA_PRECONDITION(total_bytes <= std::numeric_limits<unsigned short>::max());
-  return (unsigned short)total_bytes;
+  return 0;
 }
 
 uint16_t NAInt8AttentionKernel::threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept {
@@ -89,8 +72,6 @@ MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, ui
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
     };
   const int64_t row_groups = ceilDivide(rowDimension, blockDimensions[0] * executionSIMDGroups);
-  if (!mortonOrder)
-    return MTL::Size(row_groups * Hq * batchDimension, 1, 1);
   const uint32_t row_bits = ceilLog2(row_groups);
   const uint32_t head_bits = ceilLog2(Hq);
   return MTL::Size(int64_t(1) << (row_bits + head_bits), 1, batchDimension);
@@ -390,16 +371,12 @@ kernel void int8_attention(
   source.SetValue("HQ", std::to_string(Hq));
   source.SetValue("MATMUL_SIMDGROUPS", "1");
   source.SetValue("THREAD_BARRIER_OVER_C", std::to_string(threadBarrierOverC ? 1 : 0));
-  source.SetValue("MORTON_ORDER", std::to_string(mortonOrder ? 1 : 0));
   source += R"(
     threadgroup uchar *threadgroup_block [[threadgroup(0)]],
     ushort tid [[thread_index_in_threadgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]
   ) {
-)";
-  if (mortonOrder) {
-    source += R"(
   const uint row_group_count = (R + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
   const uint row_group_bits = ceil_log2_u32(row_group_count);
   const uint head_bits = ceil_log2_u32({{HQ}});
@@ -410,11 +387,6 @@ kernel void int8_attention(
     return;
   }
 )";
-  } else {
-    source += R"(
-  tgid = { (tgid.x / {{HQ}}) % ((R + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})), tgid.x % {{HQ}}, tgid.x / {{HQ}} / ((R + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})) };
-)";
-  }
   source += R"(
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
   if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R) {
@@ -534,7 +506,6 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
   source.SetValue("HEAD_DIMENSION_REMAINDER", std::to_string(headDimension % blockDimensions[2]));
   source.SetValue("DOT_SCALE", dot_product_scale(scale));
-  source.SetValue("RAW_SCALE", raw_score_scale(scale));
   source.SetValue("PV_RIGHT_MEMORY_NAME", "int8_t");
   if ((headDimension % blockDimensions[2]) % 32 == 0) {
     source.SetValue("HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V", std::to_string(headDimension % blockDimensions[2]));
@@ -546,6 +517,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   } else {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
   }
+  if (blockDimensions[1] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[1]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
   const unsigned short kBlocks =
       (headDimension + blockDimensions[2] - 1) / blockDimensions[2];
   if (Hq != Hk) {
@@ -553,37 +529,22 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   } else {
     source.SetValue("H_HK_RATIO", "");
   }
-  const bool uses_qk = mode != NAInt8AttentionKernelMode::pv_only;
-  const bool stats_only_mode = mode == NAInt8AttentionKernelMode::softmax_stats;
-  const bool uses_pv = mode != NAInt8AttentionKernelMode::qk_only &&
-      !stats_only_mode;
-  const bool full_mode = mode == NAInt8AttentionKernelMode::full;
-  const bool qk_only_mode = mode == NAInt8AttentionKernelMode::qk_only;
-  const bool raw_mode = mode == NAInt8AttentionKernelMode::qk_pv_raw;
-  const bool int8_pv_mode = mode == NAInt8AttentionKernelMode::pv_only;
 
-  if (blockDimensions[1] % 32 == 0) {
-    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[1]));
-  } else {
-    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
-  }
-
-  if (full_mode) {
-    CCV_NNC_MFA_PRECONDITION(useInt8QK);
-    source += R"(
+  CCV_NNC_MFA_PRECONDITION(useInt8QK);
+  source += R"(
   auto Q = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
   auto K = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
   auto V = tensor<device {{PV_RIGHT_MEMORY_NAME}}, dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
   constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<qk_desc, execution_simdgroups<1>> matmul_qk_op;
 )";
-    if (headDimension % blockDimensions[2] > 0) {
-      source += R"(
+  if (headDimension % blockDimensions[2] > 0) {
+    source += R"(
   constexpr auto qk_desc_remainder = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<qk_desc_remainder, execution_simdgroups<1>> matmul_qk_op_remainder;
 )";
-    }
-    source += R"(
+  }
+  source += R"(
   auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
   auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
   auto cS_0 = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), int32_t>();
@@ -608,11 +569,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   using pv_int8_left_tensor_t = decltype(matmul_pv_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
   auto cOq = matmul_pv_int8_op.get_destination_cooperative_tensor<pv_int8_left_tensor_t, decltype(mV), int32_t>();
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
-    }
-    source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
+  }
+  source += R"(
   for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     const float block_scale = {{QK_SCALE_FACTOR_0}}{{DOT_SCALE}};
     #pragma clang loop unroll(full)
@@ -628,17 +589,17 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       matmul_qk_op.run(mQ, mK_0, cS_0);
     }
 )";
-    if (headDimension % blockDimensions[2] > 0) {
-      source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
-      source += R"(
+  if (headDimension % blockDimensions[2] > 0) {
+    source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
+    source += R"(
     {
       auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
       auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
       matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
     }
 )";
-    }
-    source += R"(
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
@@ -665,11 +626,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
         if (cO_0.is_valid_element(k)) {
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
-    }
-    source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
+  }
+  source += R"(
         }
       }
     } else {
@@ -679,11 +640,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           auto it = cO_0.get_iterator(k);
           auto dst_it = correction.map_iterator(it);
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
-    }
-    source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+  }
+  source += R"(
         }
       }
     }
@@ -703,8 +664,6 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cL[k] += cL_new[k];
       }
     }
-)";
-    source += R"(
     thread pv_int8_left_tensor_t& cP_q_0 = reinterpret_cast<thread pv_int8_left_tensor_t&>(cS_0);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
@@ -714,10 +673,10 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source += R"(
     auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
     matmul_pv_int8_op.run(cP_q_0, mV_0_{{LOOP_INDEX}}, cOq);
     #pragma clang loop unroll(full)
@@ -727,8 +686,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-    }
-    source += R"(
+  }
+  source += R"(
     if ({{THREAD_BARRIER_OVER_C}} &&
         c + {{BLOCK_DIMENSIONS_TRAVERSAL}} < C &&
         (((c / {{BLOCK_DIMENSIONS_TRAVERSAL}}) & 1) == 1)) {
@@ -747,22 +706,22 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           auto dst_it = cL.map_iterator(it);
           auto L_reciprocal = fast::divide(1, *dst_it);
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-        source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
+      source += R"(
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
 )";
-      } else {
-        source += R"(
+    } else {
+      source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
             O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
           }
 )";
-      }
     }
-    source += R"(
+  }
+  source += R"(
         }
       }
     }
@@ -784,22 +743,22 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         auto L_reciprocal = fast::divide(1, *dst_it);
         auto idx = cO_0.get_multidimensional_index(k);
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-        source += R"(
+  for (unsigned short i = 0; i < kBlocks; ++i) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
+      source += R"(
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
 )";
-      } else {
-        source += R"(
+    } else {
+      source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
         }
 )";
-      }
     }
-    source += R"(
+  }
+  source += R"(
       }
     }
     #pragma clang loop unroll(full)
@@ -811,452 +770,4 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     }
   }
 )";
-    return;
-  }
-
-  if (uses_qk) {
-    if (useInt8QK) {
-      source += R"(
-  auto Q = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
-  auto K = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
-)";
-    } else {
-      source += R"(
-  auto Q = tensor<device {{QK_MEMORY_NAME}}, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
-  auto K = tensor<device {{QK_MEMORY_NAME}}, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
-)";
-    }
-  }
-  if (uses_pv) {
-    source += R"(
-  auto V = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
-)";
-    source += R"(
-  threadgroup half *P_buf = (threadgroup half*)threadgroup_block + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sgid;
-)";
-    source += R"(
-  auto P = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(P_buf, extents<int32_t, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
-)";
-  }
-  if (uses_qk) {
-    source += R"(
-  constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
-  matmul2d<qk_desc, execution_simdgroups<{{MATMUL_SIMDGROUPS}}>> matmul_qk_op;
-)";
-    if (headDimension % blockDimensions[2] > 0) {
-      source += R"(
-  constexpr auto qk_desc_remainder = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
-  matmul2d<qk_desc_remainder, execution_simdgroups<{{MATMUL_SIMDGROUPS}}>> matmul_qk_op_remainder;
-)";
-    }
-    source += R"(
-  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
-)";
-    if (useInt8QK) {
-      source += R"(
-  auto cS = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), int32_t>();
-)";
-    } else {
-      source += R"(
-  auto cS = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-)";
-    }
-    if (stats_only_mode || (useInt8QK && raw_mode)) {
-      source += R"(
-  auto cP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-)";
-    }
-    if (stats_only_mode) {
-      source += R"(
-  auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-  auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-  auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
-    if (cM.is_valid_element(k)) {
-      cM[k] = -numeric_limits<float>::infinity();
-      cL[k] = numeric_limits<float>::denorm_min();
-    }
-  }
-)";
-    } else if (qk_only_mode) {
-      if (useInt8QK) {
-        source += R"(
-  auto cChecksum = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), int32_t>();
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cChecksum.get_capacity(); ++k) {
-    if (cChecksum.is_valid_element(k)) {
-      cChecksum[k] = 0;
-    }
-  }
-)";
-      } else {
-        source += R"(
-  auto cChecksum = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cChecksum.get_capacity(); ++k) {
-    if (cChecksum.is_valid_element(k)) {
-      cChecksum[k] = 0;
-    }
-  }
-)";
-      }
-    }
-  }
-  if (uses_pv) {
-    source += R"(
-  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(0, 0);
-  constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
-  matmul2d<pv_desc, execution_simdgroups<{{MATMUL_SIMDGROUPS}}>> matmul_pv_op;
-)";
-    if (raw_mode) {
-      source += "  auto cP_raw = matmul_pv_op.get_left_input_cooperative_tensor<half, {{PV_RIGHT_MEMORY_NAME}}, float>();\n";
-    } else if (int8_pv_mode) {
-      source += "  auto cP_raw = matmul_pv_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>();\n";
-    }
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      if (raw_mode) {
-        source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP_raw), decltype(mV), float>();\n";
-      } else if (int8_pv_mode) {
-        source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP_raw), decltype(mV), int32_t>();\n";
-      } else {
-        source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();\n";
-      }
-    }
-    source += R"(
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-    if (cO_0.is_valid_element(k)) {
-)";
-      for (unsigned short i = 0; i < kBlocks; ++i) {
-        source.SetValue("LOOP_INDEX", std::to_string(i));
-        source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
-      }
-    source += R"(
-    }
-  }
-)";
-  }
-  source += R"(
-  for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
-)";
-  if (uses_qk) {
-    if (useInt8QK) {
-      if (stats_only_mode) {
-        source += R"(
-    const float block_scale = {{QK_SCALE_FACTOR_0}}{{DOT_SCALE}};
-)";
-      } else {
-        source += R"(
-    const float block_scale = {{QK_SCALE_FACTOR_0}}{{RAW_SCALE}};
-)";
-      }
-    } else {
-      if (stats_only_mode) {
-        source += R"(
-    const float block_scale = {{DOT_SCALE}};
-)";
-      } else {
-        source += R"(
-    const float block_scale = {{RAW_SCALE}};
-)";
-      }
-    }
-    source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
-      if (cS.is_valid_element(k)) {
-        cS[k] = 0;
-      }
-    }
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
-      auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-      auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
-      matmul_qk_op.run(mQ, mK, cS);
-    }
-)";
-    if (headDimension % blockDimensions[2] > 0) {
-      source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
-      source += R"(
-    {
-      auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-      auto mK = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
-      matmul_qk_op_remainder.run(mQ, mK, cS);
-    }
-)";
-    }
-  }
-  if (stats_only_mode) {
-    source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
-      if (cP.is_valid_element(k)) {
-        auto idx = cP.get_multidimensional_index(k);
-        if (c + idx[0] >= C) {
-          cP[k] = -numeric_limits<float>::infinity();
-        } else {
-          cP[k] = (float)cS[k] * block_scale;
-        }
-      }
-    }
-    auto cM_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-    reduce_rows(cP, cM_new, reduction_operation::max, -numeric_limits<float>::infinity());
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
-      if (cM.is_valid_element(k)) {
-        correction[k] = 1;
-        const float M_new = cM_new[k];
-        if (M_new > cM[k]) {
-          correction[k] = fast::exp2(cM[k] - M_new);
-          cM[k] = M_new;
-        }
-      }
-    }
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
-      if (cP.is_valid_element(k)) {
-        if (!isfinite(cP[k])) {
-          cP[k] = 0;
-        } else {
-          auto it = cP.get_iterator(k);
-          auto dst_it = cM.map_iterator(it);
-          cP[k] = fast::exp2(cP[k] - *dst_it);
-        }
-      }
-    }
-    auto cL_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
-    reduce_rows(cP, cL_new, reduction_operation::sum, (float)0);
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cL.get_capacity(); ++k) {
-      if (cL.is_valid_element(k)) {
-        cL[k] = cL[k] * correction[k] + cL_new[k];
-      }
-    }
-)";
-  } else if (qk_only_mode) {
-    if (useInt8QK) {
-      source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
-      if (cS.is_valid_element(k)) {
-        auto idx = cS.get_multidimensional_index(k);
-        if (idx[0] == 0 && c + idx[0] < C) {
-          auto it = cS.get_iterator(k);
-          auto dst_it = cChecksum.map_iterator(it);
-          *dst_it += cS[k];
-        }
-      }
-    }
-)";
-    } else {
-      source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
-      if (cS.is_valid_element(k)) {
-        auto idx = cS.get_multidimensional_index(k);
-        if (idx[0] == 0 && c + idx[0] < C) {
-          auto it = cS.get_iterator(k);
-          auto dst_it = cChecksum.map_iterator(it);
-          *dst_it += cS[k] * block_scale;
-        }
-      }
-    }
-)";
-    }
-  } else if (raw_mode) {
-    if (useInt8QK) {
-      source += R"(
-    simdgroup_barrier(mem_flags::mem_none);
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
-      if (cP.is_valid_element(k)) {
-        auto idx = cP.get_multidimensional_index(k);
-        const bool valid_column = c + idx[0] < C;
-        cP_raw[k] = valid_column ? (half)((float)cS[k] * block_scale) : (half)0;
-      }
-    }
-)";
-    } else {
-      source += R"(
-    simdgroup_barrier(mem_flags::mem_none);
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
-      if (cS.is_valid_element(k)) {
-        auto idx = cS.get_multidimensional_index(k);
-        const bool valid_column = c + idx[0] < C;
-        cP_raw[k] = valid_column ? (half)(cS[k] * block_scale) : (half)0;
-      }
-    }
-)";
-    }
-  } else if (int8_pv_mode) {
-    source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP_raw.get_capacity(); ++k) {
-      if (cP_raw.is_valid_element(k)) {
-        auto idx = cP_raw.get_multidimensional_index(k);
-        const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + idx[1];
-        const uint column = c + idx[0];
-        if (column >= C) {
-          cP_raw[k] = (int8_t)0;
-        } else {
-          const int value = (int)((row * 13 + column * 7 + tgid.y * 5) % 29) - 14;
-          cP_raw[k] = (int8_t)value;
-        }
-      }
-    }
-)";
-  } else {
-    source += R"(
-    #pragma clang loop unroll(full)
-    for (ushort row_idx = 0; row_idx < {{BLOCK_DIMENSIONS_PARALLELIZATION}}; ++row_idx) {
-      #pragma clang loop unroll(full)
-      for (ushort column_idx = 0; column_idx < {{BLOCK_DIMENSIONS_TRAVERSAL}}; ++column_idx) {
-        const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + row_idx;
-        const uint column = c + column_idx;
-        if (column >= C) {
-          P_buf[column_idx + row_idx * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = (half)0;
-        } else {
-          const int value = (int)((row * 13 + column * 7 + tgid.y * 5) % 29) - 14;
-          P_buf[column_idx + row_idx * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = (half)(value * 0.0625f);
-        }
-      }
-    }
-)";
-  }
-  if (uses_pv) {
-    if (!raw_mode && !int8_pv_mode) {
-      source += R"(
-    simdgroup_barrier(mem_flags::mem_threadgroup);
-)";
-    }
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      if (raw_mode) {
-        source += R"(
-    auto mV_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
-    matmul_pv_op.run(cP_raw, mV_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
-)";
-      } else if (int8_pv_mode) {
-        source += R"(
-    auto mV_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
-    matmul_pv_op.run(cP_raw, mV_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
-)";
-      } else {
-        source += R"(
-    auto mV_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
-    matmul_pv_op.run(P, mV_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
-)";
-      }
-    }
-  }
-  source += R"(
-  }
-)";
-  if (stats_only_mode) {
-    source += R"(
-  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
-  if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
-      if (cM.is_valid_element(k)) {
-        auto idx = cM.get_multidimensional_index(k);
-        if (idx[0] < (int)R_remainder) {
-          L[idx[0]] = cM[k] + fast::log2(cL[k]);
-        }
-      }
-    }
-  } else {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
-      if (cM.is_valid_element(k)) {
-        auto idx = cM.get_multidimensional_index(k);
-        L[idx[0]] = cM[k] + fast::log2(cL[k]);
-      }
-    }
-  }
-")";
-  } else if (qk_only_mode) {
-    source += R"(
-  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
-  if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cChecksum.get_capacity(); ++k) {
-      if (cChecksum.is_valid_element(k)) {
-        auto idx = cChecksum.get_multidimensional_index(k);
-        if (idx[0] < (int)R_remainder) {
-          L[idx[0]] = (float)cChecksum[k];
-        }
-      }
-    }
-  } else {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cChecksum.get_capacity(); ++k) {
-      if (cChecksum.is_valid_element(k)) {
-        auto idx = cChecksum.get_multidimensional_index(k);
-        L[idx[0]] = (float)cChecksum[k];
-      }
-    }
-  }
-)";
-  } else {
-    source += R"(
-  auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
-  if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto idx = cO_0.get_multidimensional_index(k);
-        if (idx[1] < (int)R_remainder) {
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-        source += R"(
-          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})cO_{{LOOP_INDEX}}[k];
-)";
-      } else {
-        source += R"(
-          if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
-            O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})cO_{{LOOP_INDEX}}[k];
-          }
-)";
-      }
-    }
-    source += R"(
-        }
-      }
-    }
-  } else {
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto idx = cO_0.get_multidimensional_index(k);
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-        source += R"(
-        O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})cO_{{LOOP_INDEX}}[k];
-)";
-      } else {
-        source += R"(
-        if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
-          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})cO_{{LOOP_INDEX}}[k];
-        }
-)";
-      }
-    }
-    source += R"(
-      }
-    }
-  }
-)";
-  }
 }

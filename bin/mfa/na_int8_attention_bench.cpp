@@ -54,11 +54,9 @@ struct VariantConfig {
   uint16_t q_quant_threads_override = 0;
   uint16_t kv_quant_threads_override = 0;
   bool int8_thread_barrier_over_c = true;
-  bool int8_morton_order = true;
   bool int8_qk_scales = true;
   bool int8_qk = true;
   bool quantize_only = false;
-  NAInt8AttentionKernelMode int8_mode = NAInt8AttentionKernelMode::full;
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
 };
@@ -82,25 +80,6 @@ struct ValidationStats {
   double max_rel_l = 0;
 };
 
-struct RawValidationStats {
-  bool passed = false;
-  bool full_reference = false;
-  size_t checked_batches = 0;
-  size_t checked_heads = 0;
-  size_t checked_rows = 0;
-  double max_abs_o = 0;
-  double max_rel_o = 0;
-};
-
-struct OutputSanityStats {
-  bool passed = false;
-  const char* target = "";
-  size_t elements = 0;
-  double sum = 0;
-  double sum_abs = 0;
-  double max_abs = 0;
-};
-
 struct BaselinePipeline {
   NAAttentionDescriptor descriptor;
   AttentionOperands<GEMMOperandPrecision> memory_precisions;
@@ -116,8 +95,6 @@ struct Int8Pipeline {
   bool use_int8_qk = true;
   bool use_qk_scales = true;
   bool thread_barrier_over_c = false;
-  bool morton_order = false;
-  NAInt8AttentionKernelMode mode = NAInt8AttentionKernelMode::full;
 };
 
 struct QuantizePipelines {
@@ -312,43 +289,6 @@ std::vector<float> decode_values(
     std::memcpy(values.data(), raw, count * sizeof(float));
   }
   return values;
-}
-
-const char* mode_name(NAInt8AttentionKernelMode mode)
-{
-  switch (mode) {
-  case NAInt8AttentionKernelMode::full:
-    return "full";
-  case NAInt8AttentionKernelMode::qk_only:
-    return "qk-only";
-  case NAInt8AttentionKernelMode::pv_only:
-    return "pv-only";
-  case NAInt8AttentionKernelMode::qk_pv_raw:
-    return "qk-pv-raw";
-  case NAInt8AttentionKernelMode::softmax_stats:
-    return "softmax-stats";
-  }
-  return "unknown";
-}
-
-NAInt8AttentionKernelMode parse_mode(const char* text)
-{
-  if (!std::strcmp(text, "quantize-only") || !std::strcmp(text, "quantize_only"))
-    return NAInt8AttentionKernelMode::full;
-  if (!std::strcmp(text, "full"))
-    return NAInt8AttentionKernelMode::full;
-  if (!std::strcmp(text, "qk-only") || !std::strcmp(text, "qk_only"))
-    return NAInt8AttentionKernelMode::qk_only;
-  if (!std::strcmp(text, "pv-only") || !std::strcmp(text, "pv_only"))
-    return NAInt8AttentionKernelMode::pv_only;
-  if (!std::strcmp(text, "qk-pv-raw") || !std::strcmp(text, "qk_pv_raw"))
-    return NAInt8AttentionKernelMode::qk_pv_raw;
-  if (!std::strcmp(text, "softmax-stats") || !std::strcmp(text, "softmax_stats"))
-    return NAInt8AttentionKernelMode::softmax_stats;
-  if (!std::strcmp(text, "single-block-full") || !std::strcmp(text, "single_block_full"))
-    return NAInt8AttentionKernelMode::full;
-  std::cerr << "unknown mode: " << text << '\n';
-  std::exit(1);
 }
 
 const char* qk_precision_name(bool int8_qk)
@@ -998,9 +938,7 @@ double run_quantize_and_int8_once(
   {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.pipeline.get());
-    uint32_t threadgroup_memory_length = 0;
-    if (!(bundle.mode == NAInt8AttentionKernelMode::full && attention.C % bundle.block_dimensions[1] == 0))
-      threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
+    const uint32_t threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
     encoder->setThreadgroupMemoryLength(threadgroup_memory_length, 0);
     encoder->setBuffer(q_int8_buffer, 0, 0);
     encoder->setBuffer(k_int8_buffer, 0, 1);
@@ -1099,11 +1037,7 @@ Int8Pipeline create_int8_pipeline(
   bundle.use_int8_qk = variant.int8_qk;
   bundle.use_qk_scales = use_qk_scales(variant);
   bundle.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
-  bundle.morton_order = variant.int8_morton_order;
-  bundle.mode = variant.int8_mode;
-  if (bundle.mode == NAInt8AttentionKernelMode::full) {
-    CCV_NNC_MFA_PRECONDITION(bundle.use_int8_qk);
-  }
+  CCV_NNC_MFA_PRECONDITION(bundle.use_int8_qk);
   const bool check_c_edge_1 = create_check_c_edge_1(attention, bundle.block_dimensions);
   const NAInt8AttentionKernelDescriptor kernel_descriptor(
       bundle.block_dimensions,
@@ -1115,9 +1049,7 @@ Int8Pipeline create_int8_pipeline(
       bundle.use_int8_qk,
       bundle.use_qk_scales,
       bundle.thread_barrier_over_c,
-      bundle.morton_order,
       create_io_precision(variant.input_precision),
-      bundle.mode,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
@@ -1290,9 +1222,7 @@ double run_int8_once(
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(bundle.pipeline.get());
-  uint32_t threadgroup_memory_length = 0;
-  if (!(bundle.mode == NAInt8AttentionKernelMode::full && attention.C % bundle.block_dimensions[1] == 0))
-    threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
+  const uint32_t threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
   encoder->setThreadgroupMemoryLength(threadgroup_memory_length, 0);
   encoder->setBuffer(q_buffer, 0, 0);
   encoder->setBuffer(k_buffer, 0, 1);
@@ -1410,50 +1340,6 @@ void compute_int8_reference_row(
   }
 }
 
-void compute_raw_reference_row(
-    const AttentionCase& attention,
-    simd::ushort3 block_dimensions,
-    const QuantizedQK& quantized,
-    const std::vector<float>& q_values,
-    const std::vector<float>& k_values,
-    const std::vector<float>& v_values,
-    bool use_int8_qk,
-    bool use_qk_scales,
-    uint32_t batch,
-    uint32_t query_head,
-    uint32_t row,
-    std::vector<float>* o_values)
-{
-  const uint32_t head_ratio = attention.Hq / attention.Hk;
-  const uint32_t kv_head = query_head / head_ratio;
-  const uint32_t q_tiles = quantized.q_scale_tiles;
-  const uint32_t k_tiles = quantized.k_scale_tiles;
-  const uint32_t q_tile = q_tiles == 1 ? 0 : (row / block_dimensions[0]);
-  o_values->assign(attention.D, 0.0f);
-  for (uint32_t column = 0; column < attention.C; ++column) {
-    float score = 0;
-    if (use_int8_qk) {
-      const uint32_t k_tile = k_tiles == 1 ? 0 : (column / block_dimensions[1]);
-      const float q_scale = use_qk_scales ? quantized.q_scale[((size_t)batch * attention.Hq + query_head) * q_tiles + (q_tiles == 1 ? 0 : q_tile)] : 1.0f;
-      const float k_scale = use_qk_scales ? quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile] : 1.0f;
-      for (uint32_t dim = 0; dim < attention.D; ++dim) {
-        score += ((float)quantized.q_int8[q_index(attention, batch, row, query_head, dim)] * q_scale) *
-            ((float)quantized.k_int8[kv_index(attention, batch, column, kv_head, dim)] * k_scale);
-      }
-    } else {
-      for (uint32_t dim = 0; dim < attention.D; ++dim) {
-        score += q_values[q_index(attention, batch, row, query_head, dim)] *
-            k_values[kv_index(attention, batch, column, kv_head, dim)];
-      }
-    }
-    score *= create_scale(attention);
-    const half_float staged_score = (half_float)score;
-    for (uint32_t dim = 0; dim < attention.D; ++dim) {
-      (*o_values)[dim] += (float)staged_score * v_values[kv_index(attention, batch, column, kv_head, dim)];
-    }
-  }
-}
-
 std::vector<uint32_t> make_sample_points(uint32_t dimension, const std::vector<uint32_t>& suggestions)
 {
   std::vector<uint32_t> sample_points;
@@ -1525,133 +1411,16 @@ ValidationStats validate_int8_outputs(
   return stats;
 }
 
-RawValidationStats validate_raw_outputs(
-    const AttentionCase& attention,
-    simd::ushort3 block_dimensions,
-    const QuantizedQK& quantized,
-    const std::vector<float>& q_values,
-    const std::vector<float>& k_values,
-    const std::vector<float>& v_values,
-    bool use_int8_qk,
-    bool use_qk_scales,
-    const std::vector<float>& o_values)
-{
-  RawValidationStats stats;
-  const uint64_t reference_work = (uint64_t)attention.batch * attention.Hq * attention.R * attention.C * attention.D;
-  stats.full_reference = reference_work <= (1ull << 22);
-  std::vector<uint32_t> batch_points;
-  std::vector<uint32_t> head_points;
-  std::vector<uint32_t> row_points;
-  if (stats.full_reference) {
-    batch_points.resize(attention.batch);
-    std::iota(batch_points.begin(), batch_points.end(), 0);
-    head_points.resize(attention.Hq);
-    std::iota(head_points.begin(), head_points.end(), 0);
-    row_points.resize(attention.R);
-    std::iota(row_points.begin(), row_points.end(), 0);
-  } else {
-    batch_points = make_sample_points(attention.batch, { 0 });
-    head_points = make_sample_points(attention.Hq, { 0, 1, 7, 15, 31 });
-    row_points = make_sample_points(attention.R, { 0, 1, 15, 16, 255, 256, 4095, 4096 });
-  }
-  std::vector<float> reference_o;
-  for (const auto batch : batch_points) {
-    for (const auto head : head_points) {
-      for (const auto row : row_points) {
-        compute_raw_reference_row(
-            attention,
-            block_dimensions,
-            quantized,
-            q_values,
-            k_values,
-            v_values,
-            use_int8_qk,
-            use_qk_scales,
-            batch,
-            head,
-            row,
-            &reference_o);
-        for (uint32_t dim = 0; dim < attention.D; ++dim) {
-          const float actual_o = o_values[o_index(attention, batch, row, head, dim)];
-          const double abs_o = std::fabs(reference_o[dim] - actual_o);
-          const double rel_o = abs_o / std::max<double>(std::max(std::fabs(reference_o[dim]), std::fabs(actual_o)), 1.0);
-          stats.max_abs_o = std::max(stats.max_abs_o, abs_o);
-          stats.max_rel_o = std::max(stats.max_rel_o, rel_o);
-        }
-      }
-    }
-  }
-  stats.checked_batches = batch_points.size();
-  stats.checked_heads = head_points.size();
-  stats.checked_rows = row_points.size();
-  stats.passed = (stats.max_abs_o <= 2e-1 || stats.max_rel_o <= 2e-3);
-  return stats;
-}
-
-OutputSanityStats validate_partial_outputs(
-    const AttentionCase& attention,
-    NAInt8AttentionKernelMode mode,
-    const std::vector<float>& o_values,
-    const float* l_raw)
-{
-  OutputSanityStats stats;
-  switch (mode) {
-  case NAInt8AttentionKernelMode::qk_only:
-  case NAInt8AttentionKernelMode::softmax_stats:
-    stats.target = "L";
-    stats.elements = (size_t)attention.batch * attention.Hq * attention.R;
-    for (size_t i = 0; i < stats.elements; ++i) {
-      const double value = l_raw[i];
-      if (!std::isfinite(value))
-        return stats;
-      stats.sum += value;
-      stats.sum_abs += std::fabs(value);
-      stats.max_abs = std::max(stats.max_abs, std::fabs(value));
-    }
-    stats.passed = true;
-    return stats;
-  case NAInt8AttentionKernelMode::pv_only:
-  case NAInt8AttentionKernelMode::qk_pv_raw:
-    stats.target = "O";
-    stats.elements = (size_t)attention.batch * attention.Hq * attention.R * attention.D;
-    for (size_t i = 0; i < stats.elements; ++i) {
-      const double value = (double)o_values[i];
-      if (!std::isfinite(value))
-        return stats;
-      stats.sum += value;
-      stats.sum_abs += std::fabs(value);
-      stats.max_abs = std::max(stats.max_abs, std::fabs(value));
-    }
-    stats.passed = true;
-    return stats;
-  case NAInt8AttentionKernelMode::full:
-    CCV_NNC_MFA_PRECONDITION(false);
-  }
-  return stats;
-}
-
-double benchmark_flops(const AttentionCase& attention, NAInt8AttentionKernelMode mode)
+double benchmark_flops(const AttentionCase& attention)
 {
   const double qk_flops =
       2.0 * (double)attention.batch * attention.Hq * attention.R * attention.C * attention.D;
-  switch (mode) {
-  case NAInt8AttentionKernelMode::full:
-    return qk_flops * 2.0;
-  case NAInt8AttentionKernelMode::qk_only:
-    return qk_flops;
-  case NAInt8AttentionKernelMode::pv_only:
-    return qk_flops;
-  case NAInt8AttentionKernelMode::qk_pv_raw:
-    return qk_flops * 2.0;
-  case NAInt8AttentionKernelMode::softmax_stats:
-    return qk_flops;
-  }
-  return qk_flops;
+  return qk_flops * 2.0;
 }
 
-void print_stats(const char* label, const AttentionCase& attention, const Stats& stats, NAInt8AttentionKernelMode mode)
+void print_stats(const char* label, const AttentionCase& attention, const Stats& stats)
 {
-  const double flops = benchmark_flops(attention, mode);
+  const double flops = benchmark_flops(attention);
   std::cout << std::fixed;
   std::cout << label
             << " avg_ms=" << std::setprecision(3) << stats.average_seconds * 1e3
@@ -1684,29 +1453,6 @@ void print_validation(const ValidationStats& stats)
             << " max_rel_o=" << stats.max_rel_o
             << " max_abs_l=" << stats.max_abs_l
             << " max_rel_l=" << stats.max_rel_l
-            << '\n';
-}
-
-void print_raw_validation(const RawValidationStats& stats)
-{
-  std::cout << "raw-validation"
-            << " mode=" << (stats.full_reference ? "full" : "sampled")
-            << " batches=" << stats.checked_batches
-            << " heads=" << stats.checked_heads
-            << " rows=" << stats.checked_rows
-            << " max_abs_o=" << stats.max_abs_o
-            << " max_rel_o=" << stats.max_rel_o
-            << '\n';
-}
-
-void print_sanity(const OutputSanityStats& stats)
-{
-  std::cout << "sanity"
-            << " target=" << stats.target
-            << " elements=" << stats.elements
-            << " sum=" << stats.sum
-            << " sum_abs=" << stats.sum_abs
-            << " max_abs=" << stats.max_abs
             << '\n';
 }
 
@@ -1756,7 +1502,9 @@ int main(int argc, char** argv)
   if (argc >= 15) {
     if (!std::strcmp(argv[14], "quantize-only") || !std::strcmp(argv[14], "quantize_only"))
       variant.quantize_only = true;
-    variant.int8_mode = parse_mode(argv[14]);
+    // Retired stripped-mode argument slot. Intentionally accepted and ignored
+    // to keep older command lines usable while the production kernel stays
+    // full-only.
   }
   if (argc >= 16) {
     variant.int8_qk = std::strcmp(argv[15], "fp16") != 0;
@@ -1780,8 +1528,8 @@ int main(int argc, char** argv)
         std::strtoul(argv[20], nullptr, 10) != 0;
   }
   if (argc >= 22) {
-    variant.int8_morton_order =
-        std::strtoul(argv[21], nullptr, 10) != 0;
+    // Retired Morton-order override slot. Intentionally accepted and ignored
+    // because Morton order is always on in the production kernel.
   }
   if (argc >= 23) {
     variant.input_precision = parse_input_precision(argv[22]);
@@ -1795,13 +1543,8 @@ int main(int argc, char** argv)
         (uint16_t)std::strtoul(argv[24], nullptr, 10);
   }
 
-  if (variant.int8_mode == NAInt8AttentionKernelMode::full && !variant.int8_qk) {
-    std::cerr << "full mode with fp16 QK is not implemented in this scaffold; use the baseline path or a stripped mode\n";
-    return 1;
-  }
-  if (variant.input_precision != InputPrecision::fp16 &&
-      variant.int8_mode != NAInt8AttentionKernelMode::full) {
-    std::cerr << "bf16/fp32 benchmarking is only wired for full mode in this scaffold\n";
+  if (!variant.int8_qk) {
+    std::cerr << "fp16 QK is not implemented in this scaffold; use the baseline path\n";
     return 1;
   }
 
@@ -1852,8 +1595,6 @@ int main(int argc, char** argv)
     int8_pipeline.use_int8_qk = variant.int8_qk;
     int8_pipeline.use_qk_scales = use_qk_scales(variant);
     int8_pipeline.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
-    int8_pipeline.morton_order = variant.int8_morton_order;
-    int8_pipeline.mode = variant.int8_mode;
   }
   auto quantize_pipelines = create_quantize_pipelines(
       device.get(),
@@ -1988,7 +1729,6 @@ int main(int argc, char** argv)
             << " D=" << attention.D
             << " warmup=" << config.warmup_iterations
             << " timed=" << config.timed_iterations
-            << " mode=" << mode_name(variant.int8_mode)
             << " inputPrecision=" << input_precision_name(variant.input_precision)
             << " qkPrecision=" << qk_precision_name(variant.int8_qk)
             << " vPrecision=int8"
@@ -1998,7 +1738,6 @@ int main(int argc, char** argv)
             << " qQuantThreads=" << quantize_pipelines.q_threads
             << " kvQuantThreads=" << quantize_pipelines.kv_threads
             << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
-            << " mortonOrder=" << (int8_pipeline.morton_order ? "true" : "false")
             << '\n';
   if (!variant.quantize_only) {
     std::cout << "int8-kernel"
@@ -2006,13 +1745,11 @@ int main(int argc, char** argv)
               << " blockC=" << int8_pipeline.block_dimensions[1]
               << " blockD=" << int8_pipeline.block_dimensions[2]
               << " simdgroups=" << int8_pipeline.execution_simd_groups
-              << " mode=" << mode_name(int8_pipeline.mode)
               << " inputPrecision=" << input_precision_name(variant.input_precision)
               << " qkPrecision=" << qk_precision_name(int8_pipeline.use_int8_qk)
               << " vPrecision=int8"
               << " qkScales=" << qk_scale_mode_name(int8_pipeline.use_qk_scales)
               << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
-              << " mortonOrder=" << (int8_pipeline.morton_order ? "true" : "false")
               << '\n';
   }
 
@@ -2137,50 +1874,19 @@ int main(int argc, char** argv)
   download_buffer(command_queue.get(), o_buffer.get(), o_stage.get(), o_bytes);
   download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
   const auto o_values = decode_values(o_stage->contents(), o_count, variant.input_precision);
-  if (int8_pipeline.mode == NAInt8AttentionKernelMode::full) {
-    const auto validation = validate_int8_outputs(
-        attention,
-        block_dimensions,
-        quantized,
-        v_values,
-        int8_pipeline.use_qk_scales,
-        o_values,
-        static_cast<const float*>(l_stage->contents()));
-    print_validation(validation);
-    if (!validation.passed) {
-      std::cerr << "validation failed\n";
-      pool->drain();
-      return 1;
-    }
-  } else if (int8_pipeline.mode == NAInt8AttentionKernelMode::qk_pv_raw) {
-    const auto raw_validation = validate_raw_outputs(
-        attention,
-        int8_pipeline.block_dimensions,
-        quantized,
-        q_values,
-        k_values,
-        v_values,
-        int8_pipeline.use_int8_qk,
-        int8_pipeline.use_qk_scales,
-        o_values);
-    print_raw_validation(raw_validation);
-    if (!raw_validation.passed) {
-      std::cerr << "raw validation failed\n";
-      pool->drain();
-      return 1;
-    }
-  } else {
-    const auto sanity = validate_partial_outputs(
-        attention,
-        int8_pipeline.mode,
-        o_values,
-        static_cast<const float*>(l_stage->contents()));
-    print_sanity(sanity);
-    if (!sanity.passed) {
-      std::cerr << "sanity check failed\n";
-      pool->drain();
-      return 1;
-    }
+  const auto validation = validate_int8_outputs(
+      attention,
+      block_dimensions,
+      quantized,
+      v_values,
+      int8_pipeline.use_qk_scales,
+      o_values,
+      static_cast<const float*>(l_stage->contents()));
+  print_validation(validation);
+  if (!validation.passed) {
+    std::cerr << "validation failed\n";
+    pool->drain();
+    return 1;
   }
 
   if (variant.capture_path && variant.capture_path[0]) {
@@ -2287,10 +1993,10 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  print_stats("baseline", attention, baseline_stats, NAInt8AttentionKernelMode::full);
-  print_stats("quantize", attention, quantize_stats, NAInt8AttentionKernelMode::full);
-  print_stats(mode_name(int8_pipeline.mode), attention, int8_stats, int8_pipeline.mode);
-  print_stats("quantize+int8", attention, quantize_and_int8_stats, int8_pipeline.mode);
+  print_stats("baseline", attention, baseline_stats);
+  print_stats("quantize", attention, quantize_stats);
+  print_stats("full", attention, int8_stats);
+  print_stats("quantize+int8", attention, quantize_and_int8_stats);
   std::cout << "speedup"
             << " avg=" << baseline_stats.average_seconds / int8_stats.average_seconds
             << " median=" << baseline_stats.median_seconds / int8_stats.median_seconds

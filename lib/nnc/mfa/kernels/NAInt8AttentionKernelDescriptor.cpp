@@ -12,9 +12,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     useInt8QK == rhs.useInt8QK &&
     useQKScales == rhs.useQKScales &&
     threadBarrierOverC == rhs.threadBarrierOverC &&
-    mortonOrder == rhs.mortonOrder &&
     ioPrecision == rhs.ioPrecision &&
-    mode == rhs.mode &&
     scale == rhs.scale;
 }
 
@@ -29,8 +27,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
       (uint16_t)((hash.useInt8QK ? 1 : 0) | (hash.useQKScales ? 2 : 0)) }));
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.threadBarrierOverC ? 1 : 0),
-      (uint16_t)(hash.mortonOrder ? 1 : 0) }));
-  combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.ioPrecision.value, (uint16_t)hash.mode }));
+      (uint16_t)hash.ioPrecision.value }));
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }
@@ -45,9 +42,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     bool useInt8QK,
     bool useQKScales,
     bool threadBarrierOverC,
-    bool mortonOrder,
     GEMMOperandPrecision ioPrecision,
-    NAInt8AttentionKernelMode mode,
     float scale) noexcept
 {
   this->blockDimensions = blockDimensions;
@@ -59,8 +54,6 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->useInt8QK = useInt8QK;
   this->useQKScales = useQKScales;
   this->threadBarrierOverC = threadBarrierOverC;
-  this->mortonOrder = mortonOrder;
   this->ioPrecision = ioPrecision;
-  this->mode = mode;
   this->scale = scale;
 }

@@ -11,6 +11,9 @@ class CodeWriter;
 struct NAInt8AttentionKernel {
   static constexpr uint16_t qQuantizeThreads = 128;
   static constexpr uint16_t kvQuantizeThreads = 256;
+  // Debug note: keep the production kernel full-only and Morton-ordered.
+  // If stripped debug modes are needed again, reintroduce them in the bench
+  // harness and source generator together instead of widening this surface.
 
   NS::SharedPtr<MTL::Library> library;
   std::string source;
@@ -24,9 +27,7 @@ struct NAInt8AttentionKernel {
   bool useInt8QK;
   bool useQKScales;
   bool threadBarrierOverC;
-  bool mortonOrder;
   GEMMOperandPrecision ioPrecision;
-  NAInt8AttentionKernelMode mode;
   float scale;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
