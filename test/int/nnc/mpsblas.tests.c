@@ -445,6 +445,17 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA")
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16F, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
 	REQUIRE(max_rel < 2e-3, "quantized NAInt8MatMul with bias should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_32F, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
+	REQUIRE(max_rel < 2e-3, "quantized NAInt8MatMul with bias should match row-wise quantized fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
+	{
+		max_abs = 0;
+		max_rel = 0;
+		REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16BF, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
+		REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul with bias should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	}
 }
 
 #define _STRINGIFY(x) #x

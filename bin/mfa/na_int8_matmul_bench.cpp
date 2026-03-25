@@ -38,6 +38,9 @@ struct VariantConfig {
   simd::ushort3 block_dimensions = simd::ushort3 { 128, 128, 128 };
   uint16_t execution_simd_groups = 8;
   uint16_t activation_quant_threads = 256;
+  uint32_t group_m = UINT32_MAX;
+  uint32_t group_n = UINT32_MAX;
+  uint16_t split_k = 1;
 };
 
 struct Stats {
@@ -76,6 +79,16 @@ struct BaselinePipeline {
 struct DynamicPipeline {
   std::unique_ptr<NAInt8MatMulKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+};
+
+struct RawPipeline {
+  NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+};
+
+struct SplitKPipeline {
+  NS::SharedPtr<MTL::ComputePipelineState> partial_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> dequant_pipeline;
+  uint16_t threadgroup_size = 0;
 };
 
 struct QuantizePipeline {
@@ -158,6 +171,16 @@ uint32_t groupN(uint32_t N) noexcept
   return N >= 4096 ? 4096 : 0;
 }
 
+uint32_t groupM(const BenchmarkCase& bench, const VariantConfig& variant) noexcept
+{
+  return variant.group_m == UINT32_MAX ? groupM(bench.M) : variant.group_m;
+}
+
+uint32_t groupN(const BenchmarkCase& bench, const VariantConfig& variant) noexcept
+{
+  return variant.group_n == UINT32_MAX ? groupN(bench.N) : variant.group_n;
+}
+
 BaselinePipeline create_baseline_pipeline(
     MTL::Device* device,
     const BenchmarkCase& bench)
@@ -236,8 +259,8 @@ DynamicPipeline create_dynamic_pipeline(
       GEMMOperandPrecision::FP16,
       false,
       variant.activation_quant_threads,
-      groupM(bench.M),
-      groupN(bench.N));
+      groupM(bench, variant),
+      groupN(bench, variant));
   bundle.kernel = std::make_unique<NAInt8MatMulKernel>(kernel_descriptor, device);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
@@ -258,6 +281,423 @@ DynamicPipeline create_dynamic_pipeline(
   CCV_NNC_MFA_CHECK_ERROR(error);
   return bundle;
 }
+
+RawPipeline create_raw_pipeline(
+    MTL::Device* device,
+    const BenchmarkCase& bench,
+    const VariantConfig& variant)
+{
+  std::ostringstream source;
+  source
+      << "#include <metal_stdlib>\n"
+      << "#include <metal_tensor>\n"
+      << "#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>\n"
+      << "using namespace metal;\n"
+      << "using namespace mpp::tensor_ops;\n"
+      << "constant uint M [[function_constant(0)]];\n"
+      << "constant uint N [[function_constant(1)]];\n"
+      << "constant uint K [[function_constant(2)]];\n"
+      << "inline uint compact_morton_even_bits(uint x) {\n"
+      << "  x &= 0x55555555u;\n"
+      << "  x = (x | (x >> 1)) & 0x33333333u;\n"
+      << "  x = (x | (x >> 2)) & 0x0f0f0f0fu;\n"
+      << "  x = (x | (x >> 4)) & 0x00ff00ffu;\n"
+      << "  x = (x | (x >> 8)) & 0x0000ffffu;\n"
+      << "  return x;\n"
+      << "}\n"
+      << "inline uint2 morton_decode_2d(uint code) {\n"
+      << "  return uint2(compact_morton_even_bits(code), compact_morton_even_bits(code >> 1));\n"
+      << "}\n"
+      << "inline uint lower_bits_mask(uint bit_count) {\n"
+      << "  if (bit_count == 0)\n"
+      << "    return 0;\n"
+      << "  return (1u << bit_count) - 1;\n"
+      << "}\n"
+      << "inline uint2 morton_decode_rectangular_2d(uint code, uint x_bits, uint y_bits) {\n"
+      << "  const uint paired_bits = min(x_bits, y_bits);\n"
+      << "  const uint paired_code = code & lower_bits_mask(paired_bits * 2);\n"
+      << "  uint2 tile = morton_decode_2d(paired_code);\n"
+      << "  uint tail = code >> (paired_bits * 2);\n"
+      << "  if (x_bits > paired_bits) {\n"
+      << "    const uint x_extra_bits = x_bits - paired_bits;\n"
+      << "    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;\n"
+      << "    tail >>= x_extra_bits;\n"
+      << "  }\n"
+      << "  if (y_bits > paired_bits)\n"
+      << "    tile.y |= tail << paired_bits;\n"
+      << "  return tile;\n"
+      << "}\n"
+      << "kernel void int8_matmul_raw(\n"
+      << "    device int8_t *A_buf [[buffer(0)]],\n"
+      << "    device int8_t *B_buf [[buffer(1)]],\n"
+      << "    device int *C_buf [[buffer(2)]],\n"
+      << "    uint3 tgid [[threadgroup_position_in_grid]])\n"
+      << "{\n"
+      << "  const uint M_tiles = (M + " << variant.block_dimensions[0] << " - 1) / " << variant.block_dimensions[0] << ";\n"
+      << "  const uint N_tiles = (N + " << variant.block_dimensions[1] << " - 1) / " << variant.block_dimensions[1] << ";\n"
+      << "  const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);\n"
+      << "  const uint N_tile_bits = N_tiles <= 1 ? 0 : 32 - clz(N_tiles - 1);\n"
+      << "  uint2 morton_tile = morton_decode_rectangular_2d(tgid.x, N_tile_bits, M_tile_bits);\n"
+      << "  tgid.x = morton_tile.x;\n"
+      << "  tgid.y = morton_tile.y;\n"
+      << "  if (tgid.x >= N_tiles || tgid.y >= M_tiles)\n"
+      << "    return;\n"
+      << "  const uint M_block_start = tgid.y * " << variant.block_dimensions[0] << ";\n"
+      << "  const uint M_block_size = min((uint)" << variant.block_dimensions[0] << ", M - M_block_start);\n"
+      << "  const uint N_block_start = tgid.x * " << variant.block_dimensions[1] << ";\n"
+      << "  const uint N_block_size = min((uint)" << variant.block_dimensions[1] << ", N - N_block_start);\n"
+      << "  const uint M_group_start = " << groupM(bench, variant) << " ? (M_block_start / " << groupM(bench, variant) << ") * " << groupM(bench, variant) << " : M_block_start;\n"
+      << "  const uint M_group_offset = M_block_start - M_group_start;\n"
+      << "  const uint M_group_size = M - M_group_start;\n"
+      << "  const uint N_group_start = " << groupN(bench, variant) << " ? (N_block_start / " << groupN(bench, variant) << ") * " << groupN(bench, variant) << " : N_block_start;\n"
+      << "  const uint N_group_offset = N_block_start - N_group_start;\n"
+      << "  const uint N_group_size = N - N_group_start;\n"
+      << "  A_buf += M_group_start * K;\n"
+      << "  B_buf += N_group_start * K;\n"
+      << "  C_buf += M_group_start * N;\n"
+      << "  auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));\n"
+      << "  auto B = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));\n"
+      << "  if (N_block_start + " << variant.block_dimensions[1] << " - 1 < N && M_block_start + " << variant.block_dimensions[0] << " - 1 < M) {\n"
+      << "    constexpr auto matmul_descriptor = matmul2d_descriptor(\n"
+      << "        " << variant.block_dimensions[0] << ",\n"
+      << "        " << variant.block_dimensions[1] << ",\n"
+      << "        " << variant.block_dimensions[2] << ",\n"
+      << "        false,\n"
+      << "        true,\n"
+      << "        true,\n"
+      << "        matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "    matmul2d<matmul_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> matmul_op;\n"
+      << "    auto mA = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(0, M_group_offset);\n"
+      << "    auto mB = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(0, N_group_offset);\n"
+      << "    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), int32_t>();\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i))\n"
+      << "        cT[i] = 0;\n"
+      << "    }\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (uint k = 0; k + " << variant.block_dimensions[2] << " <= K; k += " << variant.block_dimensions[2] << ") {\n"
+      << "      auto mAk = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(k, M_group_offset);\n"
+      << "      auto mBk = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(k, N_group_offset);\n"
+      << "      matmul_op.run(mAk, mBk, cT);\n"
+      << "    }\n"
+      << "    if (K % " << variant.block_dimensions[2] << " != 0) {\n"
+      << "      constexpr auto residual_descriptor = matmul2d_descriptor(\n"
+      << "          " << variant.block_dimensions[0] << ",\n"
+      << "          " << variant.block_dimensions[1] << ",\n"
+      << "          dynamic_length_v<int>,\n"
+      << "          false,\n"
+      << "          true,\n"
+      << "          true,\n"
+      << "          matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "      matmul2d<residual_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> residual_op;\n"
+      << "      auto mAr = A.slice<dynamic_extent, " << variant.block_dimensions[0] << ">(K / " << variant.block_dimensions[2] << " * " << variant.block_dimensions[2] << ", M_group_offset);\n"
+      << "      auto mBr = B.slice<dynamic_extent, " << variant.block_dimensions[1] << ">(K / " << variant.block_dimensions[2] << " * " << variant.block_dimensions[2] << ", N_group_offset);\n"
+      << "      residual_op.run(mAr, mBr, cT);\n"
+      << "    }\n"
+      << "    auto mC = C_buf + M_group_offset * N + N_block_start;\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i)) {\n"
+      << "        auto idx = cT.get_multidimensional_index(i);\n"
+      << "        mC[idx[1] * N + idx[0]] = cT[i];\n"
+      << "      }\n"
+      << "    }\n"
+      << "  } else {\n"
+      << "    constexpr auto matmul_descriptor = matmul2d_descriptor(\n"
+      << "        " << variant.block_dimensions[0] << ",\n"
+      << "        " << variant.block_dimensions[1] << ",\n"
+      << "        dynamic_length_v<int>,\n"
+      << "        false,\n"
+      << "        true,\n"
+      << "        true,\n"
+      << "        matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "    matmul2d<matmul_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> matmul_op;\n"
+      << "    auto mA = A.slice(0, M_group_offset);\n"
+      << "    auto mB = B.slice(0, N_group_offset);\n"
+      << "    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), int32_t>();\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i))\n"
+      << "        cT[i] = 0;\n"
+      << "    }\n"
+      << "    matmul_op.run(mA, mB, cT);\n"
+      << "    auto mC = C_buf + M_group_offset * N + N_block_start;\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i)) {\n"
+      << "        auto idx = cT.get_multidimensional_index(i);\n"
+      << "        if (idx[0] < N_block_size && idx[1] < M_block_size)\n"
+      << "          mC[idx[1] * N + idx[0]] = cT[i];\n"
+      << "      }\n"
+      << "    }\n"
+      << "  }\n"
+      << "}\n";
+
+  auto string = NS::String::string(source.str().c_str(), NS::UTF8StringEncoding);
+  NS::Error* error = nil;
+  auto library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+
+  auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  const uint32_t M = bench.M;
+  const uint32_t N = bench.N;
+  const uint32_t K = bench.K;
+  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
+  constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
+
+  auto function_name = NS::String::string("int8_matmul_raw", NS::UTF8StringEncoding);
+  auto function = NS::TransferPtr(library->newFunction(function_name, constants.get(), &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+  descriptor->setComputeFunction(function.get());
+
+  RawPipeline pipeline;
+  pipeline.pipeline = NS::TransferPtr(device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  return pipeline;
+}
+
+SplitKPipeline create_splitk_pipeline(
+    MTL::Device* device,
+    const BenchmarkCase& bench,
+    const VariantConfig& variant)
+{
+  CCV_NNC_MFA_PRECONDITION(variant.split_k > 1);
+  std::ostringstream source;
+  source
+      << "#include <metal_stdlib>\n"
+      << "#include <metal_tensor>\n"
+      << "#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>\n"
+      << "using namespace metal;\n"
+      << "using namespace mpp::tensor_ops;\n"
+      << "constant uint M [[function_constant(0)]];\n"
+      << "constant uint N [[function_constant(1)]];\n"
+      << "constant uint K [[function_constant(2)]];\n"
+      << "constant uint SPLIT_K [[function_constant(3)]];\n"
+      << "inline uint compact_morton_even_bits(uint x) {\n"
+      << "  x &= 0x55555555u;\n"
+      << "  x = (x | (x >> 1)) & 0x33333333u;\n"
+      << "  x = (x | (x >> 2)) & 0x0f0f0f0fu;\n"
+      << "  x = (x | (x >> 4)) & 0x00ff00ffu;\n"
+      << "  x = (x | (x >> 8)) & 0x0000ffffu;\n"
+      << "  return x;\n"
+      << "}\n"
+      << "inline uint2 morton_decode_2d(uint code) {\n"
+      << "  return uint2(compact_morton_even_bits(code), compact_morton_even_bits(code >> 1));\n"
+      << "}\n"
+      << "inline uint lower_bits_mask(uint bit_count) {\n"
+      << "  if (bit_count == 0)\n"
+      << "    return 0;\n"
+      << "  return (1u << bit_count) - 1;\n"
+      << "}\n"
+      << "inline uint2 morton_decode_rectangular_2d(uint code, uint x_bits, uint y_bits) {\n"
+      << "  const uint paired_bits = min(x_bits, y_bits);\n"
+      << "  const uint paired_code = code & lower_bits_mask(paired_bits * 2);\n"
+      << "  uint2 tile = morton_decode_2d(paired_code);\n"
+      << "  uint tail = code >> (paired_bits * 2);\n"
+      << "  if (x_bits > paired_bits) {\n"
+      << "    const uint x_extra_bits = x_bits - paired_bits;\n"
+      << "    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;\n"
+      << "    tail >>= x_extra_bits;\n"
+      << "  }\n"
+      << "  if (y_bits > paired_bits)\n"
+      << "    tile.y |= tail << paired_bits;\n"
+      << "  return tile;\n"
+      << "}\n"
+      << "constant uint BLOCK_N [[function_constant(4)]];\n"
+      << "kernel void int8_matmul_splitk(\n"
+      << "    device int8_t *A_buf [[buffer(0)]],\n"
+      << "    device int8_t *B_buf [[buffer(1)]],\n"
+      << "    device int *C_accum [[buffer(2)]],\n"
+      << "    uint3 tgid [[threadgroup_position_in_grid]])\n"
+      << "{\n"
+      << "  const uint M_tiles = (M + " << variant.block_dimensions[0] << " - 1) / " << variant.block_dimensions[0] << ";\n"
+      << "  const uint N_tiles = (N + " << variant.block_dimensions[1] << " - 1) / " << variant.block_dimensions[1] << ";\n"
+      << "  const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);\n"
+      << "  const uint N_tile_bits = N_tiles <= 1 ? 0 : 32 - clz(N_tiles - 1);\n"
+      << "  const uint tile_codes = 1u << (M_tile_bits + N_tile_bits);\n"
+      << "  const uint split_index = tgid.x / tile_codes;\n"
+      << "  uint2 morton_tile = morton_decode_rectangular_2d(tgid.x % tile_codes, N_tile_bits, M_tile_bits);\n"
+      << "  tgid.x = morton_tile.x;\n"
+      << "  tgid.y = morton_tile.y;\n"
+      << "  if (split_index >= SPLIT_K || tgid.x >= N_tiles || tgid.y >= M_tiles)\n"
+      << "    return;\n"
+      << "  const uint M_block_start = tgid.y * " << variant.block_dimensions[0] << ";\n"
+      << "  const uint M_block_size = min((uint)" << variant.block_dimensions[0] << ", M - M_block_start);\n"
+      << "  const uint N_block_start = tgid.x * " << variant.block_dimensions[1] << ";\n"
+      << "  const uint N_block_size = min((uint)" << variant.block_dimensions[1] << ", N - N_block_start);\n"
+      << "  const uint M_group_start = " << groupM(bench, variant) << " ? (M_block_start / " << groupM(bench, variant) << ") * " << groupM(bench, variant) << " : M_block_start;\n"
+      << "  const uint M_group_offset = M_block_start - M_group_start;\n"
+      << "  const uint M_group_size = M - M_group_start;\n"
+      << "  const uint N_group_start = " << groupN(bench, variant) << " ? (N_block_start / " << groupN(bench, variant) << ") * " << groupN(bench, variant) << " : N_block_start;\n"
+      << "  const uint N_group_offset = N_block_start - N_group_start;\n"
+      << "  const uint N_group_size = N - N_group_start;\n"
+      << "  const uint K_split = K / SPLIT_K / " << variant.block_dimensions[2] << " * " << variant.block_dimensions[2] << ";\n"
+      << "  A_buf += M_group_start * K;\n"
+      << "  B_buf += N_group_start * K;\n"
+      << "  C_accum += M_group_start * N * SPLIT_K;\n"
+      << "  auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));\n"
+      << "  auto B = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));\n"
+      << "  if (N_block_start + " << variant.block_dimensions[1] << " - 1 < N && M_block_start + " << variant.block_dimensions[0] << " - 1 < M) {\n"
+      << "    constexpr auto matmul_descriptor = matmul2d_descriptor(\n"
+      << "        " << variant.block_dimensions[0] << ",\n"
+      << "        " << variant.block_dimensions[1] << ",\n"
+      << "        " << variant.block_dimensions[2] << ",\n"
+      << "        false,\n"
+      << "        true,\n"
+      << "        true,\n"
+      << "        matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "    matmul2d<matmul_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> matmul_op;\n"
+      << "    auto mA = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(0, M_group_offset);\n"
+      << "    auto mB = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(0, N_group_offset);\n"
+      << "    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), int32_t>();\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i))\n"
+      << "        cT[i] = 0;\n"
+      << "    }\n"
+      << "    if (split_index == 0) {\n"
+      << "      #pragma clang loop unroll(full)\n"
+      << "      for (uint k = 0; k < K_split; k += " << variant.block_dimensions[2] << ") {\n"
+      << "        auto mAk = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(k, M_group_offset);\n"
+      << "        auto mBk = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(k, N_group_offset);\n"
+      << "        matmul_op.run(mAk, mBk, cT);\n"
+      << "      }\n"
+      << "    } else if (split_index + 1 < SPLIT_K) {\n"
+      << "      const uint k_start = split_index * K_split;\n"
+      << "      #pragma clang loop unroll(full)\n"
+      << "      for (uint i_k = 0; i_k < K_split; i_k += " << variant.block_dimensions[2] << ") {\n"
+      << "        const uint k = k_start + i_k;\n"
+      << "        auto mAk = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(k, M_group_offset);\n"
+      << "        auto mBk = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(k, N_group_offset);\n"
+      << "        matmul_op.run(mAk, mBk, cT);\n"
+      << "      }\n"
+      << "    } else {\n"
+      << "      const uint k_tail_start = (SPLIT_K - 1) * K_split;\n"
+      << "      #pragma clang loop unroll(full)\n"
+      << "      for (uint k = k_tail_start; k + " << variant.block_dimensions[2] << " <= K; k += " << variant.block_dimensions[2] << ") {\n"
+      << "        auto mAk = A.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[0] << ">(k, M_group_offset);\n"
+      << "        auto mBk = B.slice<" << variant.block_dimensions[2] << ", " << variant.block_dimensions[1] << ">(k, N_group_offset);\n"
+      << "        matmul_op.run(mAk, mBk, cT);\n"
+      << "      }\n"
+      << "      if (K % " << variant.block_dimensions[2] << " != 0) {\n"
+      << "        constexpr auto residual_descriptor = matmul2d_descriptor(\n"
+      << "            " << variant.block_dimensions[0] << ",\n"
+      << "            " << variant.block_dimensions[1] << ",\n"
+      << "            dynamic_length_v<int>,\n"
+      << "            false,\n"
+      << "            true,\n"
+      << "            true,\n"
+      << "            matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "        matmul2d<residual_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> residual_op;\n"
+      << "        auto mAr = A.slice<dynamic_extent, " << variant.block_dimensions[0] << ">(K / " << variant.block_dimensions[2] << " * " << variant.block_dimensions[2] << ", M_group_offset);\n"
+      << "        auto mBr = B.slice<dynamic_extent, " << variant.block_dimensions[1] << ">(K / " << variant.block_dimensions[2] << " * " << variant.block_dimensions[2] << ", N_group_offset);\n"
+      << "        residual_op.run(mAr, mBr, cT);\n"
+      << "      }\n"
+      << "    }\n"
+      << "    auto mC = C_accum + M_group_offset * N * SPLIT_K + N_block_start * SPLIT_K + split_index * " << variant.block_dimensions[1] << ";\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i)) {\n"
+      << "        auto idx = cT.get_multidimensional_index(i);\n"
+      << "        mC[idx[1] * N * SPLIT_K + idx[0]] = cT[i];\n"
+      << "      }\n"
+      << "    }\n"
+      << "  } else {\n"
+      << "    constexpr auto matmul_descriptor = matmul2d_descriptor(\n"
+      << "        " << variant.block_dimensions[0] << ",\n"
+      << "        " << variant.block_dimensions[1] << ",\n"
+      << "        dynamic_length_v<int>,\n"
+      << "        false,\n"
+      << "        true,\n"
+      << "        true,\n"
+      << "        matmul2d_descriptor::mode::multiply_accumulate);\n"
+      << "    matmul2d<matmul_descriptor, execution_simdgroups<" << variant.execution_simd_groups << ">> matmul_op;\n"
+      << "    auto mA = A.slice(0, M_group_offset);\n"
+      << "    auto mB = B.slice(0, N_group_offset);\n"
+      << "    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), int32_t>();\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i))\n"
+      << "        cT[i] = 0;\n"
+      << "    }\n"
+      << "    if (split_index == 0) {\n"
+      << "      auto mA0 = A.slice(0, M_group_offset);\n"
+      << "      auto mB0 = B.slice(0, N_group_offset);\n"
+      << "      matmul_op.run(mA0, mB0, cT);\n"
+      << "    }\n"
+      << "    auto mC = C_accum + M_group_offset * N * SPLIT_K + N_block_start * SPLIT_K + split_index * " << variant.block_dimensions[1] << ";\n"
+      << "    #pragma clang loop unroll(full)\n"
+      << "    for (unsigned short i = 0; i < cT.get_capacity(); ++i) {\n"
+      << "      if (cT.is_valid_element(i)) {\n"
+      << "        auto idx = cT.get_multidimensional_index(i);\n"
+      << "        if (idx[0] < N_block_size && idx[1] < M_block_size) {\n"
+      << "          mC[idx[1] * N * SPLIT_K + idx[0]] = cT[i];\n"
+      << "        }\n"
+      << "      }\n"
+      << "    }\n"
+      << "  }\n"
+      << "}\n"
+      << "kernel void reduce_dequant_accumulator(\n"
+      << "    device const int *C_accum [[buffer(0)]],\n"
+      << "    device half *C_out [[buffer(1)]],\n"
+      << "    device const half *A_scale [[buffer(2)]],\n"
+      << "    device const half *B_scale [[buffer(3)]],\n"
+      << "    uint gid [[thread_position_in_grid]])\n"
+      << "{\n"
+      << "  const uint total = M * N;\n"
+      << "  if (gid >= total)\n"
+      << "    return;\n"
+      << "  const uint row = gid / N;\n"
+      << "  const uint col = gid - row * N;\n"
+      << "  const uint accum_offset = row * N * SPLIT_K + (col / BLOCK_N) * BLOCK_N * SPLIT_K + (col % BLOCK_N);\n"
+      << "  int accumulator = C_accum[accum_offset];\n"
+      << "  #pragma clang loop unroll(full)\n"
+      << "  for (uint k = 1; k < SPLIT_K; ++k)\n"
+      << "    accumulator += C_accum[accum_offset + k * BLOCK_N];\n"
+      << "  C_out[gid] = half((float)accumulator * (float)A_scale[row] * (float)B_scale[col]);\n"
+      << "}\n";
+
+  auto string = NS::String::string(source.str().c_str(), NS::UTF8StringEncoding);
+  NS::Error* error = nil;
+  auto library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+
+  auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  const uint32_t M = bench.M;
+  const uint32_t N = bench.N;
+  const uint32_t K = bench.K;
+  const uint32_t split_k = variant.split_k;
+  const uint32_t block_n = variant.block_dimensions[1];
+  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
+  constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
+  constants->setConstantValue(&split_k, MTL::DataTypeUInt, NS::UInteger(3));
+  constants->setConstantValue(&block_n, MTL::DataTypeUInt, NS::UInteger(4));
+
+  auto partial_name = NS::String::string("int8_matmul_splitk", NS::UTF8StringEncoding);
+  auto partial_fn = NS::TransferPtr(library->newFunction(partial_name, constants.get(), &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  auto partial_desc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+  partial_desc->setComputeFunction(partial_fn.get());
+
+  auto dequant_name = NS::String::string("reduce_dequant_accumulator", NS::UTF8StringEncoding);
+  auto dequant_fn = NS::TransferPtr(library->newFunction(dequant_name, constants.get(), &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  auto dequant_desc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+  dequant_desc->setComputeFunction(dequant_fn.get());
+
+  SplitKPipeline pipeline;
+  pipeline.partial_pipeline = NS::TransferPtr(device->newComputePipelineState(partial_desc.get(), MTL::PipelineOptionNone, nullptr, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  pipeline.dequant_pipeline = NS::TransferPtr(device->newComputePipelineState(dequant_desc.get(), MTL::PipelineOptionNone, nullptr, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  pipeline.threadgroup_size = 256;
+  return pipeline;
+}
+
 
 QuantizePipeline create_quantize_pipeline(
     MTL::Device* device,
@@ -488,6 +928,30 @@ double run_dynamic_once(
   return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
 }
 
+double run_raw_once(
+    MTL::CommandQueue* command_queue,
+    const BenchmarkCase& bench,
+    const DynamicPipeline& dynamic,
+    const RawPipeline& raw,
+    MTL::Buffer* buffer_a_q,
+    MTL::Buffer* buffer_b_q,
+    MTL::Buffer* buffer_c_i32)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(raw.pipeline.get());
+  encoder->setBuffer(buffer_a_q, 0, 0);
+  encoder->setBuffer(buffer_b_q, 0, 1);
+  encoder->setBuffer(buffer_c_i32, 0, 2);
+  encoder->dispatchThreadgroups(
+      dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N),
+      MTL::Size(dynamic.kernel->threadgroupSize(raw.pipeline.get()), 1, 1));
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
 double run_quantize_and_dynamic_once(
     MTL::CommandQueue* command_queue,
     const BenchmarkCase& bench,
@@ -523,6 +987,51 @@ double run_quantize_and_dynamic_once(
     encoder->dispatchThreadgroups(
         dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N),
         MTL::Size(dynamic.kernel->threadgroupSize(dynamic.pipeline.get()), 1, 1));
+    encoder->endEncoding();
+  }
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_splitk_once(
+    MTL::CommandQueue* command_queue,
+    const BenchmarkCase& bench,
+    const DynamicPipeline& dynamic,
+    const SplitKPipeline& splitk,
+    const VariantConfig& variant,
+    MTL::Buffer* buffer_a_q,
+    MTL::Buffer* buffer_b_q,
+    MTL::Buffer* buffer_c_accum,
+    MTL::Buffer* buffer_c,
+    MTL::Buffer* buffer_a_scale,
+    MTL::Buffer* buffer_b_scale)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(splitk.partial_pipeline.get());
+    encoder->setBuffer(buffer_a_q, 0, 0);
+    encoder->setBuffer(buffer_b_q, 0, 1);
+    encoder->setBuffer(buffer_c_accum, 0, 2);
+    const auto base_grid = dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N);
+    encoder->dispatchThreadgroups(
+        MTL::Size(base_grid.width * variant.split_k, base_grid.height, base_grid.depth),
+        MTL::Size(dynamic.kernel->threadgroupSize(splitk.partial_pipeline.get()), 1, 1));
+    encoder->endEncoding();
+  }
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(splitk.dequant_pipeline.get());
+    encoder->setBuffer(buffer_c_accum, 0, 0);
+    encoder->setBuffer(buffer_c, 0, 1);
+    encoder->setBuffer(buffer_a_scale, 0, 2);
+    encoder->setBuffer(buffer_b_scale, 0, 3);
+    const uint32_t total = bench.M * bench.N;
+    const uint16_t threadgroup_size = splitk.threadgroup_size;
+    encoder->dispatchThreads(
+        MTL::Size(total, 1, 1),
+        MTL::Size(threadgroup_size, 1, 1));
     encoder->endEncoding();
   }
   command_buffer->commit();
@@ -592,6 +1101,21 @@ float compute_quantized_reference_value(
         (int32_t)a_quantized.values[a_index(bench, row, k)] *
         (int32_t)b_quantized.values[b_index(bench, col, k)];
   accumulator *= a_quantized.scales[row] * b_quantized.scales[col];
+  return accumulator;
+}
+
+int32_t compute_quantized_reference_accumulator(
+    const BenchmarkCase& bench,
+    const RowwiseQuantizedMatrix& a_quantized,
+    const RowwiseQuantizedMatrix& b_quantized,
+    uint32_t row,
+    uint32_t col)
+{
+  int32_t accumulator = 0;
+  for (uint32_t k = 0; k < bench.K; ++k)
+    accumulator +=
+        (int32_t)a_quantized.values[a_index(bench, row, k)] *
+        (int32_t)b_quantized.values[b_index(bench, col, k)];
   return accumulator;
 }
 
@@ -679,6 +1203,27 @@ void print_validation(const char* label, const ValidationStats& stats)
             << '\n';
 }
 
+bool validate_raw_output(
+    const BenchmarkCase& bench,
+    const RowwiseQuantizedMatrix& a_quantized,
+    const RowwiseQuantizedMatrix& b_quantized,
+    const int32_t* output,
+    double* max_abs_diff)
+{
+  *max_abs_diff = 0;
+  const auto row_points = make_sample_points(bench.M, { 0, 1, 127, 128, 1023, 1024, 4095, 4096 });
+  const auto col_points = make_sample_points(bench.N, { 0, 1, 63, 64, 1023, 1024, 4095, 4096 });
+  for (const auto row : row_points)
+    for (const auto col : col_points) {
+      const int32_t reference = compute_quantized_reference_accumulator(bench, a_quantized, b_quantized, row, col);
+      const int32_t actual = output[c_index(bench, row, col)];
+      *max_abs_diff = std::max(*max_abs_diff, std::fabs((double)reference - (double)actual));
+      if (reference != actual)
+        return false;
+    }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -707,6 +1252,12 @@ int main(int argc, char** argv)
     variant.execution_simd_groups = (uint16_t)std::strtoul(argv[9], nullptr, 10);
   if (argc >= 11)
     variant.activation_quant_threads = (uint16_t)std::strtoul(argv[10], nullptr, 10);
+  if (argc >= 12)
+    variant.group_m = (uint32_t)std::strtoul(argv[11], nullptr, 10);
+  if (argc >= 13)
+    variant.group_n = (uint32_t)std::strtoul(argv[12], nullptr, 10);
+  if (argc >= 14)
+    variant.split_k = (uint16_t)std::strtoul(argv[13], nullptr, 10);
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -737,6 +1288,10 @@ int main(int argc, char** argv)
   const size_t b_scale_bytes = b_quantized_reference.scales.size() * sizeof(half_float);
   const size_t c_half_bytes = (size_t)bench.M * bench.N * sizeof(half_float);
   const size_t c_dynamic_half_bytes = (size_t)bench.M * bench.N * sizeof(half_float);
+  const size_t c_raw_i32_bytes = (size_t)bench.M * bench.N * sizeof(int32_t);
+  const size_t c_splitk_i32_bytes = (size_t)bench.M * bench.N * variant.split_k * sizeof(int32_t);
+  const bool benchmark_raw = c_raw_i32_bytes <= (size_t(512) << 20);
+  const bool benchmark_splitk = variant.split_k > 1 && c_splitk_i32_bytes <= (size_t(512) << 20);
 
   std::vector<half_float> b_half_scales(b_quantized_reference.scales.size());
   std::transform(b_quantized_reference.scales.begin(), b_quantized_reference.scales.end(), b_half_scales.begin(), [](float value) {
@@ -751,6 +1306,15 @@ int main(int argc, char** argv)
   auto a_int8_stage = NS::TransferPtr(device->newBuffer(a_int8_bytes, kSharedResourceOptions));
   auto a_scale_stage = NS::TransferPtr(device->newBuffer(a_scale_bytes, kSharedResourceOptions));
   auto c_dynamic_half_stage = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_raw_i32_stage;
+  if (benchmark_raw)
+    c_raw_i32_stage = NS::TransferPtr(device->newBuffer(c_raw_i32_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_splitk_i32_stage;
+  if (benchmark_splitk)
+    c_splitk_i32_stage = NS::TransferPtr(device->newBuffer(c_splitk_i32_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_splitk_half_stage;
+  if (benchmark_splitk)
+    c_splitk_half_stage = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kSharedResourceOptions));
 
   auto a_half_buffer = NS::TransferPtr(device->newBuffer(a_half_bytes, kPrivateResourceOptions));
   auto b_half_buffer = NS::TransferPtr(device->newBuffer(b_half_bytes, kPrivateResourceOptions));
@@ -760,6 +1324,15 @@ int main(int argc, char** argv)
   auto b_scale_buffer = NS::TransferPtr(device->newBuffer(b_scale_bytes, kPrivateResourceOptions));
   auto c_half_buffer = NS::TransferPtr(device->newBuffer(c_half_bytes, kPrivateResourceOptions));
   auto c_dynamic_half_buffer = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_raw_i32_buffer;
+  if (benchmark_raw)
+    c_raw_i32_buffer = NS::TransferPtr(device->newBuffer(c_raw_i32_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_splitk_i32_buffer;
+  if (benchmark_splitk)
+    c_splitk_i32_buffer = NS::TransferPtr(device->newBuffer(c_splitk_i32_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_splitk_half_buffer;
+  if (benchmark_splitk)
+    c_splitk_half_buffer = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kPrivateResourceOptions));
 
   upload_buffer(command_queue.get(), a_half_stage.get(), a_half_buffer.get(), a_half_bytes);
   upload_buffer(command_queue.get(), b_half_stage.get(), b_half_buffer.get(), b_half_bytes);
@@ -769,6 +1342,12 @@ int main(int argc, char** argv)
   auto baseline = create_baseline_pipeline(device.get(), bench);
   auto quantize = create_quantize_pipeline(device.get(), bench, variant);
   auto dynamic = create_dynamic_pipeline(device.get(), bench, variant);
+  RawPipeline raw;
+  if (benchmark_raw)
+    raw = create_raw_pipeline(device.get(), bench, variant);
+  SplitKPipeline splitk;
+  if (benchmark_splitk)
+    splitk = create_splitk_pipeline(device.get(), bench, variant);
 
   std::cout << "shape"
             << " M=" << bench.M
@@ -781,6 +1360,10 @@ int main(int argc, char** argv)
             << " blockK=" << variant.block_dimensions[2]
             << " simdgroups=" << variant.execution_simd_groups
             << " quantThreads=" << variant.activation_quant_threads
+            << " groupM=" << groupM(bench, variant)
+            << " groupN=" << groupN(bench, variant)
+            << " rawInt32=" << (benchmark_raw ? 1 : 0)
+            << " splitK=" << variant.split_k
             << '\n';
 
   const double quantize_validation_seconds =
@@ -852,6 +1435,82 @@ int main(int argc, char** argv)
       false);
   print_validation("float-reference", accuracy_validation);
 
+  ValidationStats splitk_validation;
+  if (benchmark_splitk) {
+    const double splitk_validation_seconds =
+        run_splitk_once(
+            command_queue.get(),
+            bench,
+            dynamic,
+            splitk,
+            variant,
+            a_int8_buffer.get(),
+            b_int8_buffer.get(),
+            c_splitk_i32_buffer.get(),
+            c_splitk_half_buffer.get(),
+            a_scale_buffer.get(),
+            b_scale_buffer.get());
+    if (!(splitk_validation_seconds > 0)) {
+      std::cerr << "splitK int8 matmul dispatch failed\n";
+      pool->drain();
+      return 1;
+    }
+    download_buffer(command_queue.get(), c_splitk_half_buffer.get(), c_splitk_half_stage.get(), c_dynamic_half_bytes);
+    std::vector<float> c_splitk_output((size_t)bench.M * bench.N);
+    {
+      const auto* c_half_output = (const half_float*)c_splitk_half_stage->contents();
+      std::transform(c_half_output, c_half_output + c_splitk_output.size(), c_splitk_output.begin(), [](half_float value) {
+        return (float)value;
+      });
+    }
+    splitk_validation = validate_output(
+        bench,
+        a_float_values,
+        b_float_values,
+        a_quantized_reference,
+        b_quantized_reference,
+        c_splitk_output.data(),
+        true,
+        true);
+    print_validation("splitk-validation", splitk_validation);
+    if (!splitk_validation.passed) {
+      std::cerr << "splitK int8 matmul exact validation failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
+  if (benchmark_raw) {
+    const double raw_validation_seconds =
+        run_raw_once(
+            command_queue.get(),
+            bench,
+            dynamic,
+            raw,
+            a_int8_buffer.get(),
+            b_int8_buffer.get(),
+            c_raw_i32_buffer.get());
+    if (!(raw_validation_seconds > 0)) {
+      std::cerr << "raw int32 matmul dispatch failed\n";
+      pool->drain();
+      return 1;
+    }
+    download_buffer(command_queue.get(), c_raw_i32_buffer.get(), c_raw_i32_stage.get(), c_raw_i32_bytes);
+    double max_abs_diff = 0;
+    const bool raw_valid = validate_raw_output(
+        bench,
+        a_quantized_reference,
+        b_quantized_reference,
+        (const int32_t*)c_raw_i32_stage->contents(),
+        &max_abs_diff);
+    std::cout << "raw-validation max_abs_diff=" << max_abs_diff << '\n';
+    if (!raw_valid) {
+      std::cerr << "raw int32 matmul validation failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
   Stats baseline_stats;
   if (!benchmark(config, [&]() {
         return run_baseline_once(command_queue.get(), baseline, a_half_buffer.get(), b_half_buffer.get(), c_half_buffer.get());
@@ -887,6 +1546,46 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  Stats raw_stats;
+  if (benchmark_raw) {
+    if (!benchmark(config, [&]() {
+          return run_raw_once(
+              command_queue.get(),
+              bench,
+              dynamic,
+              raw,
+              a_int8_buffer.get(),
+              b_int8_buffer.get(),
+              c_raw_i32_buffer.get());
+        }, &raw_stats)) {
+      std::cerr << "raw int32 benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
+  Stats splitk_stats;
+  if (benchmark_splitk) {
+    if (!benchmark(config, [&]() {
+          return run_splitk_once(
+              command_queue.get(),
+              bench,
+              dynamic,
+              splitk,
+              variant,
+              a_int8_buffer.get(),
+              b_int8_buffer.get(),
+              c_splitk_i32_buffer.get(),
+              c_splitk_half_buffer.get(),
+              a_scale_buffer.get(),
+              b_scale_buffer.get());
+        }, &splitk_stats)) {
+      std::cerr << "splitK benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
   Stats combined_stats;
   if (!benchmark(config, [&]() {
         return run_quantize_and_dynamic_once(
@@ -908,12 +1607,26 @@ int main(int argc, char** argv)
 
   print_stats("baseline-fp16", bench, baseline_stats);
   print_stats("quantize-activation", bench, quantize_stats);
+  if (benchmark_raw)
+    print_stats("int8-int8-raw-int32", bench, raw_stats);
+  else
+    std::cout << "int8-int8-raw-int32 skipped=1 reason=buffer_too_large\n";
   print_stats("int8-int8-inline-dequant", bench, dynamic_stats);
+  if (benchmark_splitk)
+    print_stats("int8-int8-splitk-inline-dequant", bench, splitk_stats);
+  else if (variant.split_k > 1)
+    std::cout << "int8-int8-splitk-inline-dequant skipped=1 reason=buffer_too_large\n";
   print_stats("quantize-plus-int8", bench, combined_stats);
-  std::cout << "speedup"
-            << " kernel_avg=" << baseline_stats.average_seconds / dynamic_stats.average_seconds
-            << " kernel_median=" << baseline_stats.median_seconds / dynamic_stats.median_seconds
-            << " end_to_end_avg=" << baseline_stats.average_seconds / combined_stats.average_seconds
+  std::cout << "speedup";
+  if (benchmark_raw)
+    std::cout << " raw_kernel_avg=" << baseline_stats.average_seconds / raw_stats.average_seconds
+              << " raw_kernel_median=" << baseline_stats.median_seconds / raw_stats.median_seconds;
+  std::cout << " kernel_avg=" << baseline_stats.average_seconds / dynamic_stats.average_seconds
+            << " kernel_median=" << baseline_stats.median_seconds / dynamic_stats.median_seconds;
+  if (benchmark_splitk)
+    std::cout << " splitk_kernel_avg=" << baseline_stats.average_seconds / splitk_stats.average_seconds
+              << " splitk_kernel_median=" << baseline_stats.median_seconds / splitk_stats.median_seconds;
+  std::cout << " end_to_end_avg=" << baseline_stats.average_seconds / combined_stats.average_seconds
             << " end_to_end_median=" << baseline_stats.median_seconds / combined_stats.median_seconds
             << '\n';
   std::cout.flush();

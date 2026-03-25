@@ -12,6 +12,13 @@ static size_t align_up(const size_t value, const size_t alignment) noexcept {
   return (value + alignment - 1) & ~(alignment - 1);
 }
 
+typedef struct {
+  size_t q_bytes;
+  size_t scale_offset;
+  size_t scale_bytes;
+  size_t scratch_bytes;
+} ccv_nnc_mfa_activation_quant_layout_t;
+
 static GEMMOperandPrecision io_precision(uint64_t data_type) noexcept {
   switch (data_type) {
     case MTL::DataTypeHalf:
@@ -26,6 +33,24 @@ static GEMMOperandPrecision io_precision(uint64_t data_type) noexcept {
   }
 }
 
+static ccv_nnc_mfa_activation_quant_layout_t activation_quant_layout(ccv_nnc_mfa_scaled_gemm_params_t params) noexcept
+{
+  const size_t q_bytes = (size_t)params.M * params.K * sizeof(int8_t);
+  const size_t scale_offset = align_up(q_bytes, 256);
+  const size_t scale_bytes = (size_t)params.M * io_precision(params.data_type).size();
+  return (ccv_nnc_mfa_activation_quant_layout_t){
+    .q_bytes = q_bytes,
+    .scale_offset = scale_offset,
+    .scale_bytes = scale_bytes,
+    .scratch_bytes = align_up(scale_offset + scale_bytes, 256),
+  };
+}
+
+static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols) noexcept
+{
+  return align_up((size_t)rows * cols * sizeof(int8_t), 128);
+}
+
 }
 
 void ccv_nnc_mfa_prepare_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params)
@@ -38,10 +63,7 @@ size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_scaled_gemm_par
 {
   if (!params.use_neural_accelerators)
     return 0;
-  const size_t a_q_bytes = (size_t)params.M * params.K * sizeof(int8_t);
-  const size_t a_scale_offset = align_up(a_q_bytes, 256);
-  const size_t a_scale_bytes = (size_t)params.M * io_precision(params.data_type).size();
-  return align_up(a_scale_offset + a_scale_bytes, 256);
+  return activation_quant_layout(params).scratch_bytes;
 }
 
 void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
@@ -66,11 +88,9 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   auto matmulPipeline = pipelineValue->pipeline;
   auto quantizePipeline = pipelineValue->second;
 
-  const size_t a_q_bytes = (size_t)params.M * params.K * sizeof(int8_t);
-  const size_t a_scale_offset = align_up(a_q_bytes, 256);
-  const size_t a_scale_bytes = (size_t)params.M * matmulDesc.ioPrecision.size();
-  auto scratch = context->request_scratch(align_up(a_scale_offset + a_scale_bytes, 256));
-  const size_t b_scale_offset = align_up((size_t)params.N * params.K * sizeof(int8_t), 128);
+  const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
+  auto scratch = context->request_scratch(a_layout.scratch_bytes);
+  const size_t b_scale_offset = rowwise_8i_scale_offset(params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();
@@ -79,7 +99,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
     encoder->setBuffer(scratch, 0, 1);
-    encoder->setBuffer(scratch, a_scale_offset, 2);
+    encoder->setBuffer(scratch, a_layout.scale_offset, 2);
     encoder->dispatchThreadgroups(
         MTL::Size(params.M, 1, 1),
         MTL::Size(kernel->activationQuantizeThreads, 1, 1));
@@ -97,7 +117,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->setBuffer(scratch, 0, 0);
     encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
     encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
-    encoder->setBuffer(scratch, a_scale_offset, 3);
+    encoder->setBuffer(scratch, a_layout.scale_offset, 3);
     encoder->setBuffer(tensors[1], tensor_offsets[1] + b_scale_offset, 4);
     if (num_tensors >= 4)
       encoder->setBuffer(tensors[3], tensor_offsets[3], 5);
