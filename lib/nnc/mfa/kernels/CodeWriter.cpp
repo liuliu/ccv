@@ -48,4 +48,3 @@ void CodeWriter::AppendIdent(std::stringstream &stream) {
     stream.write(pad_.c_str(), static_cast<std::streamsize>(pad_.size()));
   }
 }
-

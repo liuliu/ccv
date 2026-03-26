@@ -11,6 +11,8 @@ class CodeWriter;
 struct NAInt8AttentionKernel {
   static constexpr uint16_t qQuantizeThreads = 128;
   static constexpr uint16_t kvQuantizeThreads = 256;
+  static constexpr uint16_t smallSequenceVMeanThreads = 256;
+  static constexpr uint16_t largeSequenceVMeanThreads = 128;
   // Debug note: keep the production kernel full-only and Morton-ordered.
   // If stripped debug modes are needed again, reintroduce them in the bench
   // harness and source generator together instead of widening this surface.
@@ -23,6 +25,7 @@ struct NAInt8AttentionKernel {
   unsigned short Hq;
   unsigned short Hk;
   uint16_t executionSIMDGroups;
+  uint16_t vMeanThreads;
   bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;

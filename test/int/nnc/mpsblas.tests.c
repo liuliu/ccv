@@ -2810,7 +2810,7 @@ TEST_CASE("scaled dot product attention with quantized NA mps for non-multiple-o
 	const int R = 128;
 	const int H = 24;
 	const int Cs[] = { 130, 224 };
-	const int Ds[] = { 128, 224 };
+	const int Ds[] = { 128, 130, 224 };
 	const int datatypes[] = { CCV_16F, CCV_16BF, CCV_32F };
 	const float tolerances[] = { 4e-2, 5e-2, 4e-2 };
 	const char* datatype_names[] = { "16F", "16BF", "32F" };

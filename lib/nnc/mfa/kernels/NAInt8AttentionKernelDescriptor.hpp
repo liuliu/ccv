@@ -11,6 +11,7 @@ struct NAInt8AttentionKernelDescriptor {
   unsigned short Hq;
   unsigned short Hk;
   uint16_t executionSIMDGroups;
+  uint16_t vMeanThreads;
   bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;
@@ -23,6 +24,7 @@ struct NAInt8AttentionKernelDescriptor {
       unsigned short Hq,
       unsigned short Hk,
       uint16_t executionSIMDGroups,
+      uint16_t vMeanThreads,
       bool hasCRemainder,
       bool threadBarrierOverC,
       GEMMOperandPrecision ioPrecision,

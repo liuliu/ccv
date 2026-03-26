@@ -16,6 +16,20 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8AttentionKernelDescriptor.hpp"
 #include "kernels/NAInt8AttentionDescriptor.hpp"
 
+static uint32_t ccv_nnc_mfa_ceil_log2_u32(uint32_t x)
+{
+  if (x <= 1) {
+    return 0;
+  }
+  --x;
+  uint32_t bits = 0;
+  while (x > 0) {
+    x >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
 // MARK: - C
 
 void ccv_nnc_mfa_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
@@ -103,7 +117,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       auto quantizeQPipeline = pipelineValue->second;
       auto quantizeKPipeline = pipelineValue->third;
       auto quantizeVPipeline = pipelineValue->fourth;
-
+      auto computeVMeanPipeline = pipelineValue->fifth;
       auto align_up =
       [&](size_t value) -> size_t {
         return (value + 255) & ~((size_t)255);
@@ -128,6 +142,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const size_t qScaleBytes = (size_t)batchDimension * qScaleBatchStride * sizeof(float);
       const size_t kScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
       const size_t vScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
+      const size_t vMeanBytes =
+          (size_t)batchDimension * hash.Hk * hash.D * sizeof(float);
       const size_t lBytes = (size_t)batchDimension * hash.Hq * hash.R * sizeof(float);
       size_t scratchSize = 0;
       const size_t qInt8Offset = reserve(&scratchSize, qInt8Bytes);
@@ -136,6 +152,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const size_t qScaleOffset = reserve(&scratchSize, qScaleBytes);
       const size_t kScaleOffset = reserve(&scratchSize, kScaleBytes);
       const size_t vScaleOffset = reserve(&scratchSize, vScaleBytes);
+      const size_t vMeanOffset = reserve(&scratchSize, vMeanBytes);
       const bool needsScratchL = !tensors[5];
       const size_t lOffset = needsScratchL ? reserve(&scratchSize, lBytes) : 0;
       auto scratch = context->request_scratch(scratchSize);
@@ -157,7 +174,34 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
 
       encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq);
       encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk);
-      encodeQuantize(quantizeVPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[2], tensor_offsets[2], vInt8Offset, vScaleOffset, kTiles, hash.Hk);
+      {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(computeVMeanPipeline.get());
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+        encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
+        encoder->setBuffer(scratch, vMeanOffset, 1);
+        const uint32_t meanTiles = (hash.D % 4) == 0 ? (hash.D / 4) : hash.D;
+        const uint32_t meanTileBits = ccv_nnc_mfa_ceil_log2_u32(meanTiles);
+        const uint32_t headBits = ccv_nnc_mfa_ceil_log2_u32(hash.Hk);
+        const uint32_t mortonCodes = 1u << (meanTileBits + headBits);
+        encoder->dispatchThreadgroups(
+            MTL::Size(mortonCodes, 1, batchDimension),
+            MTL::Size(kernel->vMeanThreads, 1, 1));
+        command_batch->finishCommand(encoder);
+      }
+      {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(quantizeVPipeline.get());
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+        encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
+        encoder->setBuffer(scratch, vInt8Offset, 1);
+        encoder->setBuffer(scratch, vScaleOffset, 2);
+        encoder->setBuffer(scratch, vMeanOffset, 3);
+        encoder->dispatchThreadgroups(MTL::Size(kTiles, hash.Hk, batchDimension), MTL::Size(NAInt8AttentionKernel::kvQuantizeThreads, 1, 1));
+        command_batch->finishCommand(encoder);
+      }
 
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
@@ -173,6 +217,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->setBuffer(scratch, qScaleOffset, 5);
       encoder->setBuffer(scratch, kScaleOffset, 6);
       encoder->setBuffer(scratch, vScaleOffset, 7);
+      encoder->setBuffer(scratch, vMeanOffset, 8);
       encoder->dispatchThreadgroups(
           kernel->threadgroupsPerGrid(batchDimension, hash.R),
           MTL::Size(kernel->threadgroupSize(pipeline.get()), 1, 1));

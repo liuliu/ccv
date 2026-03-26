@@ -53,10 +53,14 @@ struct VariantConfig {
   uint16_t int8_block_d_override = 0;
   uint16_t q_quant_threads_override = 0;
   uint16_t kv_quant_threads_override = 0;
+  uint16_t v_mean_threads_override = 0;
+  uint16_t v_mean_barrier_every_override = 0;
   bool int8_thread_barrier_over_c = true;
+  bool center_v = false;
   bool quantize_only = false;
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
+  float v_bias = 0.0f;
 };
 
 struct Stats {
@@ -94,11 +98,22 @@ struct Int8Pipeline {
 };
 
 struct QuantizePipelines {
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_morton_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_1024_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_clear_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_atomic_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_tile_mean_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_tile_absmax_pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> q_pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> k_pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> v_pipeline;
   uint16_t q_threads = 0;
   uint16_t kv_threads = 0;
+  uint16_t v_mean_threads = 0;
+  uint16_t v_mean_barrier_every = 0;
+  bool center_v = false;
+  bool center_v_atomic = false;
 };
 
 struct QuantizedQK {
@@ -181,6 +196,53 @@ std::vector<T> make_data(size_t size, float scale, int phase)
     values[i] = static_cast<T>(centered * scale);
   }
   return values;
+}
+
+void add_bias(std::vector<float>& values, float bias)
+{
+  if (bias == 0)
+    return;
+  for (size_t i = 0; i < values.size(); ++i)
+    values[i] += bias;
+}
+
+std::vector<float> compute_v_mean(
+    const AttentionCase& attention,
+    const std::vector<float>& v_values)
+{
+  std::vector<float> v_mean((size_t)attention.batch * attention.Hk * attention.D, 0.0f);
+  const float reciprocal = 1.0f / (float)attention.C;
+  for (uint32_t batch = 0; batch < attention.batch; ++batch) {
+    for (uint32_t head = 0; head < attention.Hk; ++head) {
+      for (uint32_t dim = 0; dim < attention.D; ++dim) {
+        float sum = 0;
+        for (uint32_t column = 0; column < attention.C; ++column)
+          sum += v_values[kv_index(attention, batch, column, head, dim)];
+        v_mean[((size_t)batch * attention.Hk + head) * attention.D + dim] = sum * reciprocal;
+      }
+    }
+  }
+  return v_mean;
+}
+
+std::vector<float> subtract_v_mean(
+    const AttentionCase& attention,
+    const std::vector<float>& v_values,
+    const std::vector<float>& v_mean)
+{
+  std::vector<float> centered(v_values.size());
+  for (uint32_t batch = 0; batch < attention.batch; ++batch) {
+    for (uint32_t head = 0; head < attention.Hk; ++head) {
+      for (uint32_t column = 0; column < attention.C; ++column) {
+        for (uint32_t dim = 0; dim < attention.D; ++dim) {
+          const size_t index = kv_index(attention, batch, column, head, dim);
+          const float mean = v_mean[((size_t)batch * attention.Hk + head) * attention.D + dim];
+          centered[index] = v_values[index] - mean;
+        }
+      }
+    }
+  }
+  return centered;
 }
 
 float create_scale(const AttentionCase& attention)
@@ -376,20 +438,29 @@ QuantizePipelines create_quantize_pipelines(
     simd::ushort3 block_dimensions,
     InputPrecision input_precision,
     uint16_t q_quant_threads,
-    uint16_t kv_quant_threads)
+    uint16_t kv_quant_threads,
+    uint16_t v_mean_threads,
+    uint16_t v_mean_barrier_every,
+    bool center_v)
 {
   QuantizePipelines bundle;
   bundle.q_threads = q_quant_threads != 0 ? q_quant_threads : kDefaultQQuantizeThreads;
   bundle.kv_threads = kv_quant_threads != 0 ? kv_quant_threads : kDefaultKVQuantizeThreads;
+  bundle.v_mean_threads = v_mean_threads != 0 ? v_mean_threads : bundle.kv_threads;
+  bundle.v_mean_barrier_every = v_mean_barrier_every;
+  bundle.center_v = center_v;
   const std::string source_type = create_io_precision(input_precision).name();
   const bool vectorize_quantize = (attention.D % 4) == 0;
+  bundle.center_v_atomic = false;
   std::ostringstream source;
   source << R"(
+#include <metal_atomic>
 #include <metal_stdlib>
 using namespace metal;
 
 constant uint R = )" << attention.R << R"(;
 constant uint C = )" << attention.C << R"(;
+constant uint B = )" << attention.batch << R"(;
 constant uint Hq = )" << attention.Hq << R"(;
 constant uint Hk = )" << attention.Hk << R"(;
 constant uint D = )" << attention.D << R"(;
@@ -399,9 +470,12 @@ constant uint Q_TILES = ((R + BLOCK_R - 1) / BLOCK_R);
 constant uint K_TILES = ((C + BLOCK_C - 1) / BLOCK_C);
 constant uint Q_QUANT_THREADS = )" << bundle.q_threads << R"(;
 constant uint KV_QUANT_THREADS = )" << bundle.kv_threads << R"(;
+constant uint V_MEAN_THREADS = )" << bundle.v_mean_threads << R"(;
+constant uint V_MEAN_BARRIER_EVERY = )" << bundle.v_mean_barrier_every << R"(;
 constant uint QUANTIZE_SIMD_LANES = 32;
 constant uint Q_QUANTIZE_SIMDGROUPS = Q_QUANT_THREADS / QUANTIZE_SIMD_LANES;
 constant uint KV_QUANTIZE_SIMDGROUPS = KV_QUANT_THREADS / QUANTIZE_SIMD_LANES;
+constant uint V_MEAN_SIMDGROUPS = V_MEAN_THREADS / QUANTIZE_SIMD_LANES;
 
 inline float quantize_reduce_max_q(float value,
                                  threadgroup float* scratch,
@@ -456,11 +530,307 @@ inline float quantize_reduce_max_kv(float value,
   threadgroup_barrier(mem_flags::mem_threadgroup);
   return scratch[0];
 }
+
+inline float quantize_reduce_sum_kv(float value,
+                                 threadgroup float* scratch,
+                                 ushort sgid,
+                                 ushort lane_id)
+{
+  value += simd_shuffle_xor(value, 16);
+  value += simd_shuffle_xor(value, 8);
+  value += simd_shuffle_xor(value, 4);
+  value += simd_shuffle_xor(value, 2);
+  value += simd_shuffle_xor(value, 1);
+  if (lane_id == 0)
+    scratch[sgid] = value;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgid == 0) {
+    value = lane_id < KV_QUANTIZE_SIMDGROUPS ? scratch[lane_id] : 0.0f;
+    value += simd_shuffle_xor(value, 16);
+    value += simd_shuffle_xor(value, 8);
+    value += simd_shuffle_xor(value, 4);
+    value += simd_shuffle_xor(value, 2);
+    value += simd_shuffle_xor(value, 1);
+    if (lane_id == 0)
+      scratch[0] = value;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return scratch[0];
+}
 )";
   if (vectorize_quantize) {
     source << R"(
 
 using io_vec4 = vec<)" << source_type << R"(, 4>;
+
+template <typename T>
+struct bench_atomic {
+  atomic<T> val;
+};
+
+inline float4 quantize_reduce_sum4_kv(float4 value,
+                                   threadgroup float4* scratch,
+                                   ushort sgid,
+                                   ushort lane_id)
+{
+  value[0] += simd_shuffle_xor(value[0], 16);
+  value[1] += simd_shuffle_xor(value[1], 16);
+  value[2] += simd_shuffle_xor(value[2], 16);
+  value[3] += simd_shuffle_xor(value[3], 16);
+  value[0] += simd_shuffle_xor(value[0], 8);
+  value[1] += simd_shuffle_xor(value[1], 8);
+  value[2] += simd_shuffle_xor(value[2], 8);
+  value[3] += simd_shuffle_xor(value[3], 8);
+  value[0] += simd_shuffle_xor(value[0], 4);
+  value[1] += simd_shuffle_xor(value[1], 4);
+  value[2] += simd_shuffle_xor(value[2], 4);
+  value[3] += simd_shuffle_xor(value[3], 4);
+  value[0] += simd_shuffle_xor(value[0], 2);
+  value[1] += simd_shuffle_xor(value[1], 2);
+  value[2] += simd_shuffle_xor(value[2], 2);
+  value[3] += simd_shuffle_xor(value[3], 2);
+  value[0] += simd_shuffle_xor(value[0], 1);
+  value[1] += simd_shuffle_xor(value[1], 1);
+  value[2] += simd_shuffle_xor(value[2], 1);
+  value[3] += simd_shuffle_xor(value[3], 1);
+  if (lane_id == 0)
+    scratch[sgid] = value;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgid == 0) {
+    value = lane_id < KV_QUANTIZE_SIMDGROUPS ? scratch[lane_id] : float4(0.0f);
+    value[0] += simd_shuffle_xor(value[0], 16);
+    value[1] += simd_shuffle_xor(value[1], 16);
+    value[2] += simd_shuffle_xor(value[2], 16);
+    value[3] += simd_shuffle_xor(value[3], 16);
+    value[0] += simd_shuffle_xor(value[0], 8);
+    value[1] += simd_shuffle_xor(value[1], 8);
+    value[2] += simd_shuffle_xor(value[2], 8);
+    value[3] += simd_shuffle_xor(value[3], 8);
+    value[0] += simd_shuffle_xor(value[0], 4);
+    value[1] += simd_shuffle_xor(value[1], 4);
+    value[2] += simd_shuffle_xor(value[2], 4);
+    value[3] += simd_shuffle_xor(value[3], 4);
+    value[0] += simd_shuffle_xor(value[0], 2);
+    value[1] += simd_shuffle_xor(value[1], 2);
+    value[2] += simd_shuffle_xor(value[2], 2);
+    value[3] += simd_shuffle_xor(value[3], 2);
+    value[0] += simd_shuffle_xor(value[0], 1);
+    value[1] += simd_shuffle_xor(value[1], 1);
+    value[2] += simd_shuffle_xor(value[2], 1);
+    value[3] += simd_shuffle_xor(value[3], 1);
+    if (lane_id == 0)
+      scratch[0] = value;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return scratch[0];
+}
+
+inline uint compact_morton_even_bits(uint x) {
+  x &= 0x55555555u;
+  x = (x | (x >> 1)) & 0x33333333u;
+  x = (x | (x >> 2)) & 0x0f0f0f0fu;
+  x = (x | (x >> 4)) & 0x00ff00ffu;
+  x = (x | (x >> 8)) & 0x0000ffffu;
+  return x;
+}
+
+inline uint2 morton_decode_2d(uint code) {
+  return uint2(compact_morton_even_bits(code),
+               compact_morton_even_bits(code >> 1));
+}
+
+inline uint lower_bits_mask(uint bit_count) {
+  if (bit_count == 0)
+    return 0;
+  return (1u << bit_count) - 1;
+}
+
+inline uint2 morton_decode_rectangular_2d(uint code,
+                                          uint x_bits,
+                                          uint y_bits) {
+  const uint paired_bits = min(x_bits, y_bits);
+  const uint paired_code = code & lower_bits_mask(paired_bits * 2);
+  uint2 tile = morton_decode_2d(paired_code);
+  uint tail = code >> (paired_bits * 2);
+  if (x_bits > paired_bits) {
+    const uint x_extra_bits = x_bits - paired_bits;
+    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;
+    tail >>= x_extra_bits;
+  }
+  if (y_bits > paired_bits) {
+    tile.y |= tail << paired_bits;
+  }
+  return tile;
+}
+
+inline uint ceil_log2_u32(uint x) {
+  if (x <= 1)
+    return 0;
+  x -= 1;
+  uint bits = 0;
+  while (x > 0) {
+    x >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
+inline float reduce_sum_1024(float value,
+                          threadgroup float* scratch,
+                          ushort sgid,
+                          ushort lane_id)
+{
+  value += simd_shuffle_xor(value, 16);
+  value += simd_shuffle_xor(value, 8);
+  value += simd_shuffle_xor(value, 4);
+  value += simd_shuffle_xor(value, 2);
+  value += simd_shuffle_xor(value, 1);
+  if (lane_id == 0)
+    scratch[sgid] = value;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgid == 0) {
+    value = scratch[lane_id];
+    value += simd_shuffle_xor(value, 16);
+    value += simd_shuffle_xor(value, 8);
+    value += simd_shuffle_xor(value, 4);
+    value += simd_shuffle_xor(value, 2);
+    value += simd_shuffle_xor(value, 1);
+    if (lane_id == 0)
+      scratch[0] = value;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return scratch[0];
+}
+
+kernel void clear_v_mean_sum(
+    device float* sum [[buffer(0)]],
+    uint gid [[thread_position_in_grid]])
+{
+  if (gid < B * Hk * D)
+    sum[gid] = 0.0f;
+}
+
+kernel void compute_v_mean_atomic(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device bench_atomic<float>* sum_buf [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float4 scratch[KV_QUANTIZE_SIMDGROUPS];
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  const uint vec_dim = tgid.x;
+  const uint head = tgid.y;
+  const uint tile = tgid.z % K_TILES;
+  const uint batch = tgid.z / K_TILES;
+  const uint col_start = tile * BLOCK_C;
+  const uint col_end = min(C, col_start + BLOCK_C);
+  float4 local_sum = float4(0.0f);
+  for (uint column = col_start + tid; column < col_end; column += KV_QUANT_THREADS) {
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    local_sum += float4(src4[index / 4]);
+  }
+  const float4 reduced = quantize_reduce_sum4_kv(local_sum, scratch, sgid, lane_id) * (1.0f / float(C));
+  if (tid == 0) {
+    const uint offset = ((batch * Hk + head) * D + vec_dim * 4);
+    atomic_fetch_add_explicit(&(sum_buf[offset + 0].val), reduced[0], memory_order_relaxed);
+    atomic_fetch_add_explicit(&(sum_buf[offset + 1].val), reduced[1], memory_order_relaxed);
+    atomic_fetch_add_explicit(&(sum_buf[offset + 2].val), reduced[2], memory_order_relaxed);
+    atomic_fetch_add_explicit(&(sum_buf[offset + 3].val), reduced[3], memory_order_relaxed);
+  }
+}
+
+kernel void compute_v_mean(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float4 scratch[V_MEAN_SIMDGROUPS];
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  device float4* mean4 = reinterpret_cast<device float4*>(mean);
+  const uint vec_dim = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  float4 local_sum = float4(0.0f);
+  const uint iterations = (C + V_MEAN_THREADS - 1) / V_MEAN_THREADS;
+  for (uint iteration = 0; iteration < iterations; ++iteration) {
+    const uint column = iteration * V_MEAN_THREADS + tid;
+    if (column < C) {
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    local_sum += float4(src4[index / 4]);
+    }
+    if (V_MEAN_BARRIER_EVERY > 0 &&
+        ((iteration + 1) % V_MEAN_BARRIER_EVERY) == 0 &&
+        (iteration + 1) < iterations)
+      threadgroup_barrier(mem_flags::mem_none);
+  }
+  const float4 reduced = quantize_reduce_sum4_kv(local_sum, scratch, sgid, lane_id);
+  if (tid == 0)
+    mean4[((batch * Hk + head) * D + vec_dim * 4) / 4] =
+        reduced * (1.0f / float(C));
+}
+
+kernel void compute_v_mean_morton(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float4 scratch[V_MEAN_SIMDGROUPS];
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  device float4* mean4 = reinterpret_cast<device float4*>(mean);
+  const uint mean_tiles = D / 4;
+  const uint vec_bits = ceil_log2_u32(mean_tiles);
+  const uint head_bits = ceil_log2_u32(Hk);
+  const uint2 morton = morton_decode_rectangular_2d(tgid.x, vec_bits, head_bits);
+  const uint vec_dim = morton.x;
+  const uint head = morton.y;
+  const uint batch = tgid.z;
+  if (vec_dim >= mean_tiles || head >= Hk)
+    return;
+  float4 local_sum = float4(0.0f);
+  const uint iterations = (C + V_MEAN_THREADS - 1) / V_MEAN_THREADS;
+  for (uint iteration = 0; iteration < iterations; ++iteration) {
+    const uint column = iteration * V_MEAN_THREADS + tid;
+    if (column < C) {
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    local_sum += float4(src4[index / 4]);
+    }
+    if (V_MEAN_BARRIER_EVERY > 0 &&
+        ((iteration + 1) % V_MEAN_BARRIER_EVERY) == 0 &&
+        (iteration + 1) < iterations)
+      threadgroup_barrier(mem_flags::mem_none);
+  }
+  const float4 reduced = quantize_reduce_sum4_kv(local_sum, scratch, sgid, lane_id);
+  if (tid == 0)
+    mean4[((batch * Hk + head) * D + vec_dim * 4) / 4] =
+        reduced * (1.0f / float(C));
+}
+
+kernel void compute_v_mean_1024(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[32];
+  const uint dim = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint index = (((batch * C + tid) * Hk + head) * D + dim);
+  const float local_sum = float(src[index]);
+  const float reduced = reduce_sum_1024(local_sum, scratch, sgid, lane_id);
+  if (tid == 0)
+    mean[((batch * Hk + head) * D) + dim] = reduced * (1.0f / 1024.0f);
+}
 
 kernel void quantize_q(
     device const )" << source_type << R"(* src [[buffer(0)]],
@@ -546,6 +916,124 @@ kernel void quantize_k(
   }
 }
 
+kernel void compute_v_tile_absmax(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* scales [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[KV_QUANTIZE_SIMDGROUPS];
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint vectors_per_row = D / 4;
+  const uint total_vectors = cols * vectors_per_row;
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  float local_max = 0.0f;
+  for (uint i = tid; i < total_vectors; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / vectors_per_row;
+    const uint vec_dim = i % vectors_per_row;
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    const float4 value = float4(src4[index / 4]);
+    local_max = max(local_max, max(max(fabs(value[0]), fabs(value[1])),
+        max(fabs(value[2]), fabs(value[3]))));
+  }
+  const float max_abs = quantize_reduce_max_kv(local_max, scratch, sgid, lane_id);
+  if (tid == 0)
+    scales[((batch * Hk + head) * K_TILES) + tile] = max_abs;
+}
+
+kernel void compute_v_tile_mean(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device )" << source_type << R"(* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float4 scratch[KV_QUANTIZE_SIMDGROUPS];
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  device io_vec4* mean4 = reinterpret_cast<device io_vec4*>(mean);
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint vectors_per_row = D / 4;
+  const uint vec_dim = tid % vectors_per_row;
+  const uint vec_stride = KV_QUANT_THREADS / vectors_per_row;
+  const uint worker = tid / vectors_per_row;
+  for (uint vec = vec_dim; vec < vectors_per_row; vec += vectors_per_row) {
+    float4 local_sum = float4(0.0f);
+    for (uint column = col_start + worker; column < col_start + cols; column += vec_stride) {
+      const uint index = (((batch * C + column) * Hk + head) * D + vec * 4);
+      local_sum += float4(src4[index / 4]);
+    }
+    const float4 reduced = quantize_reduce_sum4_kv(local_sum, scratch, sgid, lane_id);
+    if (tid == vec)
+      mean4[(((batch * Hk + head) * K_TILES + tile) * D + vec * 4) / 4] =
+          io_vec4(reduced * (1.0f / float(cols)));
+  }
+}
+
+)";
+    if (center_v) {
+      source << R"(
+
+kernel void quantize_v(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device int8_t* dst [[buffer(1)]],
+    device float* scales [[buffer(2)]],
+    device const float* mean [[buffer(3)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[KV_QUANTIZE_SIMDGROUPS];
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint vectors_per_row = D / 4;
+  const uint total_vectors = cols * vectors_per_row;
+  device const io_vec4* src4 = reinterpret_cast<device const io_vec4*>(src);
+  device const float4* mean4 = reinterpret_cast<device const float4*>(mean);
+  device char4* dst4 = reinterpret_cast<device char4*>(dst);
+  float local_max = 0.0f;
+  for (uint i = tid; i < total_vectors; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / vectors_per_row;
+    const uint vec_dim = i % vectors_per_row;
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    const float4 value = float4(src4[index / 4]) -
+        float4(mean4[((batch * Hk + head) * D + vec_dim * 4) / 4]);
+    local_max = max(local_max, max(max(fabs(value[0]), fabs(value[1])),
+        max(fabs(value[2]), fabs(value[3]))));
+  }
+  const float max_abs = quantize_reduce_max_kv(local_max, scratch, sgid, lane_id);
+  const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+  if (tid == 0)
+    scales[((batch * Hk + head) * K_TILES) + tile] = scale;
+  for (uint i = tid; i < total_vectors; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / vectors_per_row;
+    const uint vec_dim = i % vectors_per_row;
+    const uint index = (((batch * C + column) * Hk + head) * D + vec_dim * 4);
+    const float4 value = float4(src4[index / 4]) -
+        float4(mean4[((batch * Hk + head) * D + vec_dim * 4) / 4]);
+    const int4 rounded = int4(rint(value * inv_scale));
+    dst4[index / 4] = char4(clamp(rounded, int4(-127), int4(127)));
+  }
+}
+)";
+    } else {
+      source << R"(
+
 kernel void quantize_v(
     device const )" << source_type << R"(* src [[buffer(0)]],
     device int8_t* dst [[buffer(1)]],
@@ -588,8 +1076,39 @@ kernel void quantize_v(
   }
 }
 )";
+    }
   } else {
     source << R"(
+
+kernel void compute_v_mean(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[V_MEAN_SIMDGROUPS];
+  const uint dim = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  float local_sum = 0.0f;
+  const uint iterations = (C + V_MEAN_THREADS - 1) / V_MEAN_THREADS;
+  for (uint iteration = 0; iteration < iterations; ++iteration) {
+    const uint column = iteration * V_MEAN_THREADS + tid;
+    if (column < C) {
+    const uint index = (((batch * C + column) * Hk + head) * D + dim);
+    local_sum += (float)src[index];
+    }
+    if (V_MEAN_BARRIER_EVERY > 0 &&
+        ((iteration + 1) % V_MEAN_BARRIER_EVERY) == 0 &&
+        (iteration + 1) < iterations)
+      threadgroup_barrier(mem_flags::mem_none);
+  }
+  const float sum = quantize_reduce_sum_kv(local_sum, scratch, sgid, lane_id);
+  if (tid == 0)
+    mean[((batch * Hk + head) * D) + dim] = sum * (1.0f / float(C));
+}
 
 kernel void quantize_q(
     device const )" << source_type << R"(* src [[buffer(0)]],
@@ -665,6 +1184,112 @@ kernel void quantize_k(
   }
 }
 
+kernel void compute_v_tile_absmax(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device float* scales [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[KV_QUANTIZE_SIMDGROUPS];
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint total = cols * D;
+  float local_max = 0.0f;
+  for (uint i = tid; i < total; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / D;
+    const uint dim = i % D;
+    const uint index = (((batch * C + column) * Hk + head) * D + dim);
+    local_max = max(local_max, fabs((float)src[index]));
+  }
+  const float max_abs = quantize_reduce_max_kv(local_max, scratch, sgid, lane_id);
+  if (tid == 0)
+    scales[((batch * Hk + head) * K_TILES) + tile] = max_abs;
+}
+
+kernel void compute_v_tile_mean(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device )" << source_type << R"(* mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[KV_QUANTIZE_SIMDGROUPS];
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint dim = tid % D;
+  const uint worker = tid / D;
+  const uint vec_stride = KV_QUANT_THREADS / D;
+  if (vec_stride == 0)
+    return;
+  for (uint d = dim; d < D; d += D) {
+    float local_sum = 0.0f;
+    for (uint column = col_start + worker; column < col_start + cols; column += vec_stride) {
+      const uint index = (((batch * C + column) * Hk + head) * D + d);
+      local_sum += (float)src[index];
+    }
+    const float sum = quantize_reduce_sum_kv(local_sum, scratch, sgid, lane_id);
+    if (tid == d)
+      mean[(((batch * Hk + head) * K_TILES + tile) * D) + d] =
+          )" << source_type << R"((sum * (1.0f / float(cols)));
+  }
+}
+
+)";
+    if (center_v) {
+      source << R"(
+
+kernel void quantize_v(
+    device const )" << source_type << R"(* src [[buffer(0)]],
+    device int8_t* dst [[buffer(1)]],
+    device float* scales [[buffer(2)]],
+    device const )" << source_type << R"(* mean [[buffer(3)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  threadgroup float scratch[KV_QUANTIZE_SIMDGROUPS];
+  const uint tile = tgid.x;
+  const uint head = tgid.y;
+  const uint batch = tgid.z;
+  const uint col_start = tile * BLOCK_C;
+  const uint cols = min(BLOCK_C, C - col_start);
+  const uint total = cols * D;
+  float local_max = 0.0f;
+  for (uint i = tid; i < total; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / D;
+    const uint dim = i % D;
+    const uint index = (((batch * C + column) * Hk + head) * D + dim);
+    const float value = (float)src[index] - (float)mean[((batch * Hk + head) * D) + dim];
+    local_max = max(local_max, fabs(value));
+  }
+  const float max_abs = quantize_reduce_max_kv(local_max, scratch, sgid, lane_id);
+  const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+  if (tid == 0)
+    scales[((batch * Hk + head) * K_TILES) + tile] = scale;
+  for (uint i = tid; i < total; i += KV_QUANT_THREADS) {
+    const uint column = col_start + i / D;
+    const uint dim = i % D;
+    const uint index = (((batch * C + column) * Hk + head) * D + dim);
+    const float value = (float)src[index] - (float)mean[((batch * Hk + head) * D) + dim];
+    const int rounded = (int)rint(value * inv_scale);
+    dst[index] = (int8_t)clamp(rounded, -127, 127);
+  }
+}
+)";
+    } else {
+      source << R"(
+
 kernel void quantize_v(
     device const )" << source_type << R"(* src [[buffer(0)]],
     device int8_t* dst [[buffer(1)]],
@@ -702,6 +1327,7 @@ kernel void quantize_v(
   }
 }
 )";
+    }
   }
 
   auto string = NS::String::string(source.str().c_str(), NS::UTF8StringEncoding);
@@ -717,9 +1343,29 @@ kernel void quantize_v(
     return NS::TransferPtr(device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
   };
 
+  if (center_v) {
+    bundle.v_mean_pipeline = create_pipeline("compute_v_mean");
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    if (vectorize_quantize) {
+      bundle.v_mean_morton_pipeline = create_pipeline("compute_v_mean_morton");
+      CCV_NNC_MFA_CHECK_ERROR(error);
+    }
+    if (attention.C == 1024) {
+      bundle.v_mean_1024_pipeline = create_pipeline("compute_v_mean_1024");
+      CCV_NNC_MFA_CHECK_ERROR(error);
+    }
+    bundle.v_mean_clear_pipeline = create_pipeline("clear_v_mean_sum");
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    bundle.v_mean_atomic_pipeline = create_pipeline("compute_v_mean_atomic");
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
   bundle.q_pipeline = create_pipeline("quantize_q");
   CCV_NNC_MFA_CHECK_ERROR(error);
   bundle.k_pipeline = create_pipeline("quantize_k");
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  bundle.v_tile_absmax_pipeline = create_pipeline("compute_v_tile_absmax");
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  bundle.v_tile_mean_pipeline = create_pipeline("compute_v_tile_mean");
   CCV_NNC_MFA_CHECK_ERROR(error);
   bundle.v_pipeline = create_pipeline("quantize_v");
   CCV_NNC_MFA_CHECK_ERROR(error);
@@ -771,6 +1417,41 @@ void download_buffer(
   command_buffer->waitUntilCompleted();
 }
 
+void encode_v_mean(
+    MTL::CommandBuffer* command_buffer,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer);
+
+void encode_v_quantize(
+    MTL::CommandBuffer* command_buffer,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_int8_buffer,
+    MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer);
+
+double run_v_tile_absmax_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_scale_buffer);
+
+double run_v_tile_mean_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_tile_mean_buffer);
+
 double run_quantize_once(
     MTL::CommandQueue* command_queue,
     const AttentionCase& attention,
@@ -784,7 +1465,9 @@ double run_quantize_once(
     MTL::Buffer* k_scale_buffer,
     MTL::Buffer* v_buffer,
     MTL::Buffer* v_int8_buffer,
-    MTL::Buffer* v_scale_buffer)
+    MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer)
 {
   const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
@@ -813,15 +1496,8 @@ double run_quantize_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
-    encoder->setComputePipelineState(pipelines.v_pipeline.get());
-    encoder->setBuffer(v_buffer, 0, 0);
-    encoder->setBuffer(v_int8_buffer, 0, 1);
-    encoder->setBuffer(v_scale_buffer, 0, 2);
-    encoder->dispatchThreadgroups(
-        MTL::Size(k_tiles, attention.Hk, attention.batch),
-        MTL::Size(pipelines.kv_threads, 1, 1));
-    encoder->endEncoding();
+    encode_v_mean(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
+    encode_v_quantize(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
   }
   command_buffer->commit();
   command_buffer->waitUntilCompleted();
@@ -854,6 +1530,250 @@ double run_quantize_stage_once(
   return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
 }
 
+void encode_v_mean(
+    MTL::CommandBuffer* command_buffer,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer)
+{
+  if (!pipelines.center_v)
+    return;
+  const uint32_t mean_tiles = (attention.D % 4) == 0 ? (attention.D / 4) : attention.D;
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  if (pipelines.v_mean_morton_pipeline && (attention.D % 4) == 0) {
+    uint32_t vec_bits = 0;
+    uint32_t x = mean_tiles <= 1 ? 0 : mean_tiles - 1;
+    while (x > 0) {
+      x >>= 1;
+      ++vec_bits;
+    }
+    uint32_t head_bits = 0;
+    x = attention.Hk <= 1 ? 0 : attention.Hk - 1;
+    while (x > 0) {
+      x >>= 1;
+      ++head_bits;
+    }
+    const uint32_t morton_codes = 1u << (vec_bits + head_bits);
+    encoder->setComputePipelineState(pipelines.v_mean_morton_pipeline.get());
+    encoder->setBuffer(v_buffer, 0, 0);
+    encoder->setBuffer(v_mean_buffer, 0, 1);
+    encoder->dispatchThreadgroups(
+        MTL::Size(morton_codes, 1, attention.batch),
+        MTL::Size(pipelines.v_mean_threads, 1, 1));
+    encoder->endEncoding();
+    return;
+  }
+  encoder->setComputePipelineState(pipelines.v_mean_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_mean_buffer, 0, 1);
+  encoder->dispatchThreadgroups(
+      MTL::Size(mean_tiles, attention.Hk, attention.batch),
+      MTL::Size(pipelines.v_mean_threads, 1, 1));
+  encoder->endEncoding();
+}
+
+void encode_v_quantize(
+    MTL::CommandBuffer* command_buffer,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_int8_buffer,
+    MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer)
+{
+  const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipelines.v_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_int8_buffer, 0, 1);
+  encoder->setBuffer(v_scale_buffer, 0, 2);
+  if (pipelines.center_v)
+    encoder->setBuffer(v_mean_buffer, 0, 3);
+  encoder->dispatchThreadgroups(
+      MTL::Size(k_tiles, attention.Hk, attention.batch),
+      MTL::Size(pipelines.kv_threads, 1, 1));
+  encoder->endEncoding();
+}
+
+double run_quantize_v_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_int8_buffer,
+    MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  encode_v_mean(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
+  encode_v_quantize(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_mean_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  encode_v_mean(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_mean_1024_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_buffer)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipelines.v_mean_1024_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_mean_buffer, 0, 1);
+  encoder->dispatchThreadgroups(
+      MTL::Size(attention.D, attention.Hk, attention.batch),
+      MTL::Size(1024, 1, 1));
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_mean_morton_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_buffer)
+{
+  const uint32_t mean_tiles = attention.D / 4;
+  uint32_t vec_bits = 0;
+  uint32_t x = mean_tiles <= 1 ? 0 : mean_tiles - 1;
+  while (x > 0) {
+    x >>= 1;
+    ++vec_bits;
+  }
+  uint32_t head_bits = 0;
+  x = attention.Hk <= 1 ? 0 : attention.Hk - 1;
+  while (x > 0) {
+    x >>= 1;
+    ++head_bits;
+  }
+  const uint32_t morton_codes = 1u << (vec_bits + head_bits);
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipelines.v_mean_morton_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_mean_buffer, 0, 1);
+  encoder->dispatchThreadgroups(
+      MTL::Size(morton_codes, 1, attention.batch),
+      MTL::Size(pipelines.v_mean_threads, 1, 1));
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_mean_atomic_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_mean_sum_buffer)
+{
+  const uint32_t mean_tiles = (attention.D % 4) == 0 ? (attention.D / 4) : attention.D;
+  const uint32_t flat_threads = 256;
+  const uint32_t flat_total = attention.batch * attention.Hk * attention.D;
+  const uint32_t flat_groups = (flat_total + flat_threads - 1) / flat_threads;
+  const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(pipelines.v_mean_clear_pipeline.get());
+    encoder->setBuffer(v_mean_sum_buffer, 0, 0);
+    encoder->dispatchThreadgroups(
+        MTL::Size(flat_groups, 1, 1),
+        MTL::Size(flat_threads, 1, 1));
+    encoder->endEncoding();
+  }
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(pipelines.v_mean_atomic_pipeline.get());
+    encoder->setBuffer(v_buffer, 0, 0);
+    encoder->setBuffer(v_mean_sum_buffer, 0, 1);
+    encoder->dispatchThreadgroups(
+        MTL::Size(mean_tiles, attention.Hk, attention.batch * k_tiles),
+        MTL::Size(pipelines.kv_threads, 1, 1));
+    encoder->endEncoding();
+  }
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_tile_absmax_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_scale_buffer)
+{
+  const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipelines.v_tile_absmax_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_scale_buffer, 0, 1);
+  encoder->dispatchThreadgroups(
+      MTL::Size(k_tiles, attention.Hk, attention.batch),
+      MTL::Size(pipelines.kv_threads, 1, 1));
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_v_tile_mean_once(
+    MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
+    simd::ushort3 block_dimensions,
+    const QuantizePipelines& pipelines,
+    MTL::Buffer* v_buffer,
+    MTL::Buffer* v_tile_mean_buffer)
+{
+  const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipelines.v_tile_mean_pipeline.get());
+  encoder->setBuffer(v_buffer, 0, 0);
+  encoder->setBuffer(v_tile_mean_buffer, 0, 1);
+  encoder->dispatchThreadgroups(
+      MTL::Size(k_tiles, attention.Hk, attention.batch),
+      MTL::Size(pipelines.kv_threads, 1, 1));
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
 double run_quantize_and_int8_once(
     MTL::CommandQueue* command_queue,
     const AttentionCase& attention,
@@ -869,6 +1789,8 @@ double run_quantize_and_int8_once(
     MTL::Buffer* v_buffer,
     MTL::Buffer* v_int8_buffer,
     MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* v_mean_sum_buffer,
     MTL::Buffer* o_buffer,
     MTL::Buffer* l_buffer)
 {
@@ -899,15 +1821,8 @@ double run_quantize_and_int8_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
-    encoder->setComputePipelineState(quantize_pipelines.v_pipeline.get());
-    encoder->setBuffer(v_buffer, 0, 0);
-    encoder->setBuffer(v_int8_buffer, 0, 1);
-    encoder->setBuffer(v_scale_buffer, 0, 2);
-    encoder->dispatchThreadgroups(
-        MTL::Size(k_tiles, attention.Hk, attention.batch),
-        MTL::Size(quantize_pipelines.kv_threads, 1, 1));
-    encoder->endEncoding();
+    encode_v_mean(command_buffer.get(), attention, block_dimensions, quantize_pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
+    encode_v_quantize(command_buffer.get(), attention, block_dimensions, quantize_pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
   }
   {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
@@ -922,6 +1837,7 @@ double run_quantize_and_int8_once(
     encoder->setBuffer(q_scale_buffer, 0, 5);
     encoder->setBuffer(k_scale_buffer, 0, 6);
     encoder->setBuffer(v_scale_buffer, 0, 7);
+    encoder->setBuffer(v_mean_buffer, 0, 8);
     encoder->dispatchThreadgroups(
         bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
         MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -1010,12 +1926,17 @@ Int8Pipeline create_int8_pipeline(
   bundle.execution_simd_groups =
       create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
   bundle.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
+  const uint16_t v_mean_threads =
+      attention.C <= 20480 ?
+      NAInt8AttentionKernel::smallSequenceVMeanThreads :
+      NAInt8AttentionKernel::largeSequenceVMeanThreads;
   const NAInt8AttentionKernelDescriptor kernel_descriptor(
       bundle.block_dimensions,
       attention.D,
       attention.Hq,
       attention.Hk,
       bundle.execution_simd_groups,
+      v_mean_threads,
       (attention.C % bundle.block_dimensions[1]) != 0,
       bundle.thread_barrier_over_c,
       create_io_precision(variant.input_precision),
@@ -1036,6 +1957,7 @@ Int8Pipeline create_int8_pipeline(
   const uint32_t k_scale_batch_stride = attention.batch > 1 ? attention.Hk * k_tiles : 0;
   const uint32_t q_scale_batch_stride = attention.batch > 1 ? attention.Hq * q_tiles : 0;
   const uint32_t v_scale_batch_stride = attention.batch > 1 ? attention.Hk * k_tiles : 0;
+  const uint32_t v_mean_batch_stride = attention.batch > 1 ? attention.Hk * attention.D : 0;
   constants->setConstantValue(&q_batch_stride, MTL::DataTypeUInt, NS::UInteger(2));
   constants->setConstantValue(&k_batch_stride, MTL::DataTypeUInt, NS::UInteger(3));
   constants->setConstantValue(&v_batch_stride, MTL::DataTypeUInt, NS::UInteger(4));
@@ -1043,6 +1965,7 @@ Int8Pipeline create_int8_pipeline(
   constants->setConstantValue(&q_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(6));
   constants->setConstantValue(&k_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(7));
   constants->setConstantValue(&v_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(8));
+  constants->setConstantValue(&v_mean_batch_stride, MTL::DataTypeUInt, NS::UInteger(9));
 
   NS::Error* error = nil;
   auto kernel_name = NS::String::string("int8_attention", NS::UTF8StringEncoding);
@@ -1186,7 +2109,8 @@ double run_int8_once(
     MTL::Buffer* l_buffer,
     MTL::Buffer* q_scale_buffer,
     MTL::Buffer* k_scale_buffer,
-    MTL::Buffer* v_scale_buffer)
+    MTL::Buffer* v_scale_buffer,
+    MTL::Buffer* v_mean_buffer)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
@@ -1201,6 +2125,7 @@ double run_int8_once(
   encoder->setBuffer(q_scale_buffer, 0, 5);
   encoder->setBuffer(k_scale_buffer, 0, 6);
   encoder->setBuffer(v_scale_buffer, 0, 7);
+  encoder->setBuffer(v_mean_buffer, 0, 8);
   encoder->dispatchThreadgroups(
       bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -1511,6 +2436,20 @@ int main(int argc, char** argv)
     variant.kv_quant_threads_override =
         (uint16_t)std::strtoul(argv[24], nullptr, 10);
   }
+  if (argc >= 26) {
+    variant.center_v = std::strtoul(argv[25], nullptr, 10) != 0;
+  }
+  if (argc >= 27) {
+    variant.v_bias = std::strtof(argv[26], nullptr);
+  }
+  if (argc >= 28) {
+    variant.v_mean_threads_override =
+        (uint16_t)std::strtoul(argv[27], nullptr, 10);
+  }
+  if (argc >= 29) {
+    variant.v_mean_barrier_every_override =
+        (uint16_t)std::strtoul(argv[28], nullptr, 10);
+  }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -1534,13 +2473,34 @@ int main(int argc, char** argv)
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
       0.02734375f,
       2);
-  const auto v_values = make_data<float>(
+  auto v_values = make_data<float>(
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
       0.0234375f,
       3);
+  add_bias(v_values, variant.v_bias);
+  const auto v_mean_values = variant.center_v ? compute_v_mean(attention, v_values) : std::vector<float>();
   const auto q_encoded = encode_values(q_values, variant.input_precision);
   const auto k_encoded = encode_values(k_values, variant.input_precision);
   const auto v_encoded = encode_values(v_values, variant.input_precision);
+  const auto q_reference_values =
+      decode_values(q_encoded.data(), q_values.size(), variant.input_precision);
+  const auto k_reference_values =
+      decode_values(k_encoded.data(), k_values.size(), variant.input_precision);
+  const auto v_input_values =
+      decode_values(v_encoded.data(), v_values.size(), variant.input_precision);
+  const auto v_mean_fallback_values =
+      std::vector<float>((size_t)attention.batch * attention.Hk * attention.D, 0.0f);
+  const auto& v_mean_storage_values =
+      variant.center_v ? v_mean_values : v_mean_fallback_values;
+  const auto v_mean_encoded =
+      encode_values(v_mean_storage_values, InputPrecision::fp32);
+  const auto v_mean_quant_values =
+      decode_values(v_mean_encoded.data(), v_mean_storage_values.size(), InputPrecision::fp32);
+  const auto v_quant_values =
+      variant.center_v ? subtract_v_mean(attention, v_input_values, v_mean_quant_values) : v_input_values;
+  const auto v_quant_encoded = encode_values(v_quant_values, variant.input_precision);
+  const auto v_quant_reference_values =
+      decode_values(v_quant_encoded.data(), v_quant_values.size(), variant.input_precision);
 
   const simd::ushort3 block_dimensions = create_int8_block_dimensions(
       attention,
@@ -1564,8 +2524,11 @@ int main(int argc, char** argv)
       block_dimensions,
       variant.input_precision,
       variant.q_quant_threads_override,
-      variant.kv_quant_threads_override);
-  auto quantized = quantize_qk(attention, block_dimensions, q_values, k_values, v_values);
+      variant.kv_quant_threads_override,
+      variant.v_mean_threads_override,
+      variant.v_mean_barrier_every_override,
+      variant.center_v);
+  auto quantized = quantize_qk(attention, block_dimensions, q_reference_values, k_reference_values, v_quant_reference_values);
 
   const size_t q_bytes = q_encoded.size();
   const size_t q_int8_bytes = quantized.q_int8.size() * sizeof(int8_t);
@@ -1576,6 +2539,13 @@ int main(int argc, char** argv)
   const size_t k_scale_bytes = quantized.k_scale.size() * sizeof(float);
   const size_t v_int8_bytes = quantized.v_int8.size() * sizeof(int8_t);
   const size_t v_scale_bytes = quantized.v_scale.size() * sizeof(float);
+  const size_t v_mean_bytes = v_mean_encoded.size();
+  const size_t v_tile_mean_bytes =
+      (size_t)attention.batch * attention.Hk *
+      ((attention.C + block_dimensions[1] - 1) / block_dimensions[1]) *
+      attention.D * sizeof(float);
+  const size_t v_mean_sum_bytes =
+      variant.center_v ? (size_t)attention.batch * attention.Hk * attention.D * sizeof(float) : 0;
   const size_t o_count = (size_t)attention.batch * attention.R * attention.Hq * attention.D;
   const size_t o_bytes = o_count * input_precision_size(variant.input_precision);
   const size_t l_bytes = (size_t)attention.batch * attention.Hq * attention.R * sizeof(float);
@@ -1584,6 +2554,7 @@ int main(int argc, char** argv)
   auto q_scale_stage = NS::TransferPtr(device->newBuffer(quantized.q_scale.data(), q_scale_bytes, kSharedResourceOptions));
   auto k_stage = NS::TransferPtr(device->newBuffer(k_encoded.data(), k_bytes, kSharedResourceOptions));
   auto v_stage = NS::TransferPtr(device->newBuffer(v_encoded.data(), v_bytes, kSharedResourceOptions));
+  auto v_mean_stage = NS::TransferPtr(device->newBuffer(v_mean_encoded.data(), v_mean_bytes, kSharedResourceOptions));
   auto v_int8_stage = NS::TransferPtr(device->newBuffer(quantized.v_int8.data(), v_int8_bytes, kSharedResourceOptions));
   auto v_scale_stage = NS::TransferPtr(device->newBuffer(quantized.v_scale.data(), v_scale_bytes, kSharedResourceOptions));
   auto k_int8_stage = NS::TransferPtr(device->newBuffer(quantized.k_int8.data(), k_int8_bytes, kSharedResourceOptions));
@@ -1597,6 +2568,11 @@ int main(int argc, char** argv)
   auto v_buffer = NS::TransferPtr(device->newBuffer(v_bytes, kPrivateResourceOptions));
   auto v_int8_buffer = NS::TransferPtr(device->newBuffer(v_int8_bytes, kPrivateResourceOptions));
   auto v_scale_buffer = NS::TransferPtr(device->newBuffer(v_scale_bytes, kPrivateResourceOptions));
+  auto v_tile_mean_buffer = NS::TransferPtr(device->newBuffer(v_tile_mean_bytes, kPrivateResourceOptions));
+  auto v_mean_buffer = NS::TransferPtr(device->newBuffer(v_mean_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> v_mean_sum_buffer;
+  if (v_mean_sum_bytes > 0)
+    v_mean_sum_buffer = NS::TransferPtr(device->newBuffer(v_mean_sum_bytes, kPrivateResourceOptions));
   auto k_int8_buffer = NS::TransferPtr(device->newBuffer(k_int8_bytes, kPrivateResourceOptions));
   auto k_scale_buffer = NS::TransferPtr(device->newBuffer(k_scale_bytes, kPrivateResourceOptions));
   auto o_buffer = NS::TransferPtr(device->newBuffer(o_bytes, kPrivateResourceOptions));
@@ -1610,6 +2586,7 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), q_scale_stage.get(), q_scale_buffer.get(), q_scale_bytes);
   upload_buffer(command_queue.get(), k_stage.get(), k_buffer.get(), k_bytes);
   upload_buffer(command_queue.get(), v_stage.get(), v_buffer.get(), v_bytes);
+  upload_buffer(command_queue.get(), v_mean_stage.get(), v_mean_buffer.get(), v_mean_bytes);
   upload_buffer(command_queue.get(), v_int8_stage.get(), v_int8_buffer.get(), v_int8_bytes);
   upload_buffer(command_queue.get(), v_scale_stage.get(), v_scale_buffer.get(), v_scale_bytes);
   upload_buffer(command_queue.get(), k_int8_stage.get(), k_int8_buffer.get(), k_int8_bytes);
@@ -1628,7 +2605,9 @@ int main(int argc, char** argv)
       k_scale_buffer.get(),
       v_buffer.get(),
       v_int8_buffer.get(),
-      v_scale_buffer.get());
+      v_scale_buffer.get(),
+      v_mean_buffer.get(),
+      v_mean_sum_buffer.get());
   if (!(quantize_validation_seconds > 0)) {
     std::cerr << "quantize validation dispatch failed\n";
     pool->drain();
@@ -1667,6 +2646,14 @@ int main(int argc, char** argv)
       k_scale_download,
       v_scale_download,
       v_int8_download);
+  const bool quantization_passed =
+      quant_validation.max_abs_q_scale == 0 &&
+      quant_validation.max_abs_k_scale == 0 &&
+      quant_validation.mismatched_q == 0 &&
+      quant_validation.mismatched_k == 0 &&
+      (variant.center_v ?
+          quant_validation.max_abs_v_scale <= 1e-6 :
+          (quant_validation.max_abs_v_scale == 0 && quant_validation.mismatched_v == 0));
   std::cout << "quant-validation"
             << " max_abs_q_scale=" << quant_validation.max_abs_q_scale
             << " max_abs_k_scale=" << quant_validation.max_abs_k_scale
@@ -1675,7 +2662,7 @@ int main(int argc, char** argv)
             << " mismatched_k=" << quant_validation.mismatched_k
             << " mismatched_v=" << quant_validation.mismatched_v
             << '\n';
-  if (!quant_validation.passed) {
+  if (!quantization_passed) {
     std::cerr << "quantization validation failed\n";
     pool->drain();
     return 1;
@@ -1698,7 +2685,11 @@ int main(int argc, char** argv)
             << " int8Simdgroups=" << int8_pipeline.execution_simd_groups
             << " qQuantThreads=" << quantize_pipelines.q_threads
             << " kvQuantThreads=" << quantize_pipelines.kv_threads
+            << " vMeanThreads=" << quantize_pipelines.v_mean_threads
+            << " vMeanBarrierEvery=" << quantize_pipelines.v_mean_barrier_every
             << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
+            << " centerV=" << (variant.center_v ? "true" : "false")
+            << " vBias=" << variant.v_bias
             << '\n';
   if (!variant.quantize_only) {
     std::cout << "int8-kernel"
@@ -1711,6 +2702,8 @@ int main(int argc, char** argv)
               << " vPrecision=int8"
               << " qkScales=tile"
               << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
+              << " centerV=" << (variant.center_v ? "true" : "false")
+              << " vBias=" << variant.v_bias
               << '\n';
   }
 
@@ -1764,21 +2757,136 @@ int main(int argc, char** argv)
     if (!benchmark(
             config,
             [&]() {
-              return run_quantize_stage_once(
+              return run_quantize_v_once(
                   command_queue.get(),
-                  quantize_pipelines.v_pipeline.get(),
-                  quantize_pipelines.kv_threads,
+                  attention,
+                  block_dimensions,
+                  quantize_pipelines,
                   v_buffer.get(),
                   v_int8_buffer.get(),
                   v_scale_buffer.get(),
-                  k_tiles,
-                  attention.Hk,
-                  attention.batch);
+                  v_mean_buffer.get(),
+                  v_mean_sum_buffer.get());
             },
             &quantize_v_stats)) {
       std::cerr << "quantize-v benchmark failed\n";
       pool->drain();
       return 1;
+    }
+
+    Stats v_tile_absmax_stats;
+    if (!benchmark(
+            config,
+            [&]() {
+              return run_v_tile_absmax_once(
+                  command_queue.get(),
+                  attention,
+                  block_dimensions,
+                  quantize_pipelines,
+                  v_buffer.get(),
+                  v_scale_buffer.get());
+            },
+            &v_tile_absmax_stats)) {
+      std::cerr << "compute-v-tile-absmax benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+
+    Stats v_tile_mean_stats;
+    if (!benchmark(
+            config,
+            [&]() {
+              return run_v_tile_mean_once(
+                  command_queue.get(),
+                  attention,
+                  block_dimensions,
+                  quantize_pipelines,
+                  v_buffer.get(),
+                  v_tile_mean_buffer.get());
+            },
+            &v_tile_mean_stats)) {
+      std::cerr << "compute-v-tile-mean benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+
+    Stats v_mean_stats;
+    if (variant.center_v) {
+      if (!benchmark(
+              config,
+              [&]() {
+                return run_v_mean_once(
+                    command_queue.get(),
+                    attention,
+                    block_dimensions,
+                    quantize_pipelines,
+                    v_buffer.get(),
+                    v_mean_buffer.get(),
+                    v_mean_sum_buffer.get());
+              },
+              &v_mean_stats)) {
+        std::cerr << "compute-v-mean benchmark failed\n";
+        pool->drain();
+        return 1;
+      }
+    }
+
+    Stats v_mean_1024_stats;
+    if (variant.center_v && attention.C == 1024 && quantize_pipelines.v_mean_1024_pipeline) {
+      if (!benchmark(
+              config,
+              [&]() {
+                return run_v_mean_1024_once(
+                    command_queue.get(),
+                    attention,
+                    quantize_pipelines,
+                    v_buffer.get(),
+                    v_mean_buffer.get());
+              },
+              &v_mean_1024_stats)) {
+        std::cerr << "compute-v-mean-1024 benchmark failed\n";
+        pool->drain();
+        return 1;
+      }
+    }
+
+    Stats v_mean_morton_stats;
+    if (variant.center_v && quantize_pipelines.v_mean_morton_pipeline) {
+      if (!benchmark(
+              config,
+              [&]() {
+                return run_v_mean_morton_once(
+                    command_queue.get(),
+                    attention,
+                    quantize_pipelines,
+                    v_buffer.get(),
+                    v_mean_buffer.get());
+              },
+              &v_mean_morton_stats)) {
+        std::cerr << "compute-v-mean-morton benchmark failed\n";
+        pool->drain();
+        return 1;
+      }
+    }
+
+    Stats v_mean_atomic_stats;
+    if (variant.center_v) {
+      if (!benchmark(
+              config,
+              [&]() {
+                return run_v_mean_atomic_once(
+                    command_queue.get(),
+                    attention,
+                    block_dimensions,
+                    quantize_pipelines,
+                    v_buffer.get(),
+                    v_mean_sum_buffer.get());
+              },
+              &v_mean_atomic_stats)) {
+        std::cerr << "compute-v-mean-atomic benchmark failed\n";
+        pool->drain();
+        return 1;
+      }
     }
 
     Stats quantize_all_stats;
@@ -1798,7 +2906,9 @@ int main(int argc, char** argv)
                   k_scale_buffer.get(),
                   v_buffer.get(),
                   v_int8_buffer.get(),
-                  v_scale_buffer.get());
+                  v_scale_buffer.get(),
+                  v_mean_buffer.get(),
+                  v_mean_sum_buffer.get());
             },
             &quantize_all_stats)) {
       std::cerr << "quantize-all benchmark failed\n";
@@ -1808,6 +2918,16 @@ int main(int argc, char** argv)
 
     print_time_stats("quantize-q", quantize_q_stats);
     print_time_stats("quantize-k", quantize_k_stats);
+    print_time_stats("compute-v-tile-absmax", v_tile_absmax_stats);
+    print_time_stats("compute-v-tile-mean", v_tile_mean_stats);
+    if (variant.center_v)
+      print_time_stats("compute-v-mean", v_mean_stats);
+    if (variant.center_v && quantize_pipelines.v_mean_morton_pipeline)
+      print_time_stats("compute-v-mean-morton", v_mean_morton_stats);
+    if (variant.center_v && attention.C == 1024 && quantize_pipelines.v_mean_1024_pipeline)
+      print_time_stats("compute-v-mean-1024", v_mean_1024_stats);
+    if (variant.center_v)
+      print_time_stats("compute-v-mean-atomic", v_mean_atomic_stats);
     print_time_stats("quantize-v", quantize_v_stats);
     print_time_stats("quantize-all", quantize_all_stats);
     std::cout.flush();
@@ -1826,7 +2946,8 @@ int main(int argc, char** argv)
       l_buffer.get(),
       q_scale_buffer.get(),
       k_scale_buffer.get(),
-      v_scale_buffer.get());
+      v_scale_buffer.get(),
+      v_mean_buffer.get());
   if (!(validation_seconds > 0)) {
     std::cerr << "int8 validation dispatch failed\n";
     pool->drain();
@@ -1839,7 +2960,7 @@ int main(int argc, char** argv)
       attention,
       block_dimensions,
       quantized,
-      v_values,
+      v_input_values,
       o_values,
       static_cast<const float*>(l_stage->contents()));
   print_validation(validation);
@@ -1866,7 +2987,8 @@ int main(int argc, char** argv)
         l_buffer.get(),
         q_scale_buffer.get(),
         k_scale_buffer.get(),
-        v_scale_buffer.get());
+        v_scale_buffer.get(),
+        v_mean_buffer.get());
     stop_metal_capture();
     if (!(captured_seconds > 0)) {
       std::cerr << "captured int8 dispatch failed\n";
@@ -1892,7 +3014,7 @@ int main(int argc, char** argv)
   if (!benchmark(
           config,
           [&]() {
-            return run_int8_once(command_queue.get(), attention, int8_pipeline, qk_q_buffer, qk_k_buffer, pv_v_buffer, o_buffer.get(), l_buffer.get(), q_scale_buffer.get(), k_scale_buffer.get(), v_scale_buffer.get());
+            return run_int8_once(command_queue.get(), attention, int8_pipeline, qk_q_buffer, qk_k_buffer, pv_v_buffer, o_buffer.get(), l_buffer.get(), q_scale_buffer.get(), k_scale_buffer.get(), v_scale_buffer.get(), v_mean_buffer.get());
           },
           &int8_stats)) {
     std::cerr << "int8 benchmark failed\n";
@@ -1917,7 +3039,9 @@ int main(int argc, char** argv)
                 k_scale_buffer.get(),
                 v_buffer.get(),
                 v_int8_buffer.get(),
-                v_scale_buffer.get());
+                v_scale_buffer.get(),
+                v_mean_buffer.get(),
+                v_mean_sum_buffer.get());
           },
           &quantize_stats)) {
     std::cerr << "quantize benchmark failed\n";
@@ -1944,6 +3068,8 @@ int main(int argc, char** argv)
                 v_buffer.get(),
                 v_int8_buffer.get(),
                 v_scale_buffer.get(),
+                v_mean_buffer.get(),
+                v_mean_sum_buffer.get(),
                 o_buffer.get(),
                 l_buffer.get());
           },
