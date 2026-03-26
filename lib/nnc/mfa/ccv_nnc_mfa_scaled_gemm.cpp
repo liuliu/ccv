@@ -35,9 +35,9 @@ static GEMMOperandPrecision io_precision(uint64_t data_type) noexcept {
 
 static ccv_nnc_mfa_activation_quant_layout_t activation_quant_layout(ccv_nnc_mfa_scaled_gemm_params_t params) noexcept
 {
-  const size_t q_bytes = (size_t)params.M * params.K * sizeof(int8_t);
+  const size_t q_bytes = (size_t)params.batch_dimension * params.M * params.K * sizeof(int8_t);
   const size_t scale_offset = align_up(q_bytes, 256);
-  const size_t scale_bytes = (size_t)params.M * io_precision(params.data_type).size();
+  const size_t scale_bytes = (size_t)params.batch_dimension * params.M * io_precision(params.data_type).size();
   return (ccv_nnc_mfa_activation_quant_layout_t){
     .q_bytes = q_bytes,
     .scale_offset = scale_offset,
@@ -75,8 +75,19 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators);
 
   NAInt8MatMulDescriptor matmulDesc;
+  matmulDesc.batchDimension = params.batch_dimension;
   matmulDesc.ioPrecision = io_precision(params.data_type);
   matmulDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
+  if (params.batch_dimension > 1) {
+    simd::uint4 batchStrides;
+    batchStrides[0] = params.batch_stride_a;
+    batchStrides[1] = params.batch_stride_b;
+    batchStrides[2] = params.batch_stride_c;
+    batchStrides[3] = params.batch_stride_d;
+    matmulDesc.batchStrides = batchStrides;
+  } else {
+    matmulDesc.batchStrides = std::nullopt;
+  }
   matmulDesc.useBias = params.fused_bias;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
@@ -90,7 +101,8 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
 
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   auto scratch = context->request_scratch(a_layout.scratch_bytes);
-  const size_t b_scale_offset = rowwise_8i_scale_offset(params.N, params.K);
+  const uint32_t b_batches = (params.batch_dimension > 1 && params.batch_stride_b > 0) ? params.batch_dimension : 1;
+  const size_t b_scale_offset = rowwise_8i_scale_offset(b_batches * params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();
@@ -101,7 +113,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->setBuffer(scratch, 0, 1);
     encoder->setBuffer(scratch, a_layout.scale_offset, 2);
     encoder->dispatchThreadgroups(
-        MTL::Size(params.M, 1, 1),
+        MTL::Size(params.M, 1, params.batch_dimension),
         MTL::Size(kernel->activationQuantizeThreads, 1, 1));
     command_batch->finishCommand(encoder);
   }
@@ -122,7 +134,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     if (num_tensors >= 4)
       encoder->setBuffer(tensors[3], tensor_offsets[3], 5);
     encoder->dispatchThreadgroups(
-        kernel->threadgroupsPerGrid(params.M, params.N),
+        kernel->threadgroupsPerGrid(params.M, params.N, params.batch_dimension),
         MTL::Size(kernel->threadgroupSize(matmulPipeline.get()), 1, 1));
     command_batch->finishCommand(encoder);
   }

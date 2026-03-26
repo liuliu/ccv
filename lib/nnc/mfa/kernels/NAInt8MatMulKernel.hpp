@@ -23,7 +23,7 @@ struct NAInt8MatMulKernel {
   NAInt8MatMulKernel(NAInt8MatMulKernelDescriptor descriptor, MTL::Device *const device);
 
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
-  MTL::Size threadgroupsPerGrid(uint32_t M, uint32_t N) const noexcept;
+  MTL::Size threadgroupsPerGrid(uint32_t M, uint32_t N, uint32_t batchDimension) const noexcept;
 
 private:
   std::string createSource() const noexcept;

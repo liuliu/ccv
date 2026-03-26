@@ -8,6 +8,11 @@ typedef struct {
   uint32_t K;
   uint8_t fused_bias;
   uint8_t use_neural_accelerators;
+  uint32_t batch_dimension;
+  uint32_t batch_stride_a;
+  uint32_t batch_stride_b;
+  uint32_t batch_stride_c;
+  uint32_t batch_stride_d;
 } ccv_nnc_mfa_scaled_gemm_params_t;
 
 #ifdef __cplusplus

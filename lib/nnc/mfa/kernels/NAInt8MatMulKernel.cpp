@@ -43,7 +43,7 @@ uint16_t NAInt8MatMulKernel::threadgroupSize(MTL::ComputePipelineState *const pi
   return pipelineState->threadExecutionWidth() * executionSIMDGroups;
 }
 
-MTL::Size NAInt8MatMulKernel::threadgroupsPerGrid(uint32_t M, uint32_t N) const noexcept {
+MTL::Size NAInt8MatMulKernel::threadgroupsPerGrid(uint32_t M, uint32_t N, uint32_t batchDimension) const noexcept {
   auto ceilDivide =
     [=](int64_t target, uint16_t granularity) -> int64_t {
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
@@ -52,7 +52,7 @@ MTL::Size NAInt8MatMulKernel::threadgroupsPerGrid(uint32_t M, uint32_t N) const 
   const int64_t N_tiles = ceilDivide(int64_t(N), blockDimensions[1]);
   const uint32_t M_bits = ceilLog2(M_tiles);
   const uint32_t N_bits = ceilLog2(N_tiles);
-  return MTL::Size(int64_t(1) << (M_bits + N_bits), 1, 1);
+  return MTL::Size(int64_t(1) << (M_bits + N_bits), 1, batchDimension);
 }
 
 std::string NAInt8MatMulKernel::createSource() const noexcept {
@@ -115,6 +115,13 @@ inline uint2 morton_decode_rectangular_2d(uint code,
 constant uint M [[function_constant(0)]];
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
+constant bool batched [[function_constant(11)]];
+constant uint A_batch_stride [[function_constant(15)]];
+constant uint B_batch_stride [[function_constant(16)]];
+constant uint C_batch_stride [[function_constant(17)]];
+constant uint bias_batch_stride [[function_constant(18)]];
+constant uint A_scale_batch_stride [[function_constant(19)]];
+constant uint B_scale_batch_stride [[function_constant(20)]];
 
 inline float quantize_reduce_max(float value,
                                  threadgroup float* scratch,
@@ -156,6 +163,11 @@ kernel void quantize_activation(
   const uint row = tgid.x;
   if (row >= M)
     return;
+  if (batched) {
+    src += A_batch_stride * tgid.z;
+    dst += A_batch_stride * tgid.z;
+    scales += A_scale_batch_stride * tgid.z;
+  }
   float local_max = 0.0f;
   const uint base = row * K;
   if ((K % 4) == 0) {
@@ -228,6 +240,21 @@ kernel void int8_matmul(
   const uint N_group_offset = N_block_start - N_group_start;
   const uint N_group_size = N - N_group_start;
 
+  if (batched) {
+    A_buf += A_batch_stride * tgid.z;
+    B_buf += B_batch_stride * tgid.z;
+    C_buf += C_batch_stride * tgid.z;
+    A_scale_buf += A_scale_batch_stride * tgid.z;
+    B_scale_buf += B_scale_batch_stride * tgid.z;
+)";
+  if (useBias) {
+    source += R"(
+    bias_buf += bias_batch_stride * tgid.z;
+)";
+  }
+  source += R"(
+  }
+
   A_buf += M_group_start * K;
   B_buf += N_group_start * K;
   C_buf += M_group_start * N;
@@ -286,8 +313,8 @@ kernel void int8_matmul(
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
         auto idx = cT.get_multidimensional_index(i);
-        const uint row = M_group_offset + idx[1];
-        const uint col = N_group_offset + idx[0];
+        const uint row = M_group_offset + (uint)idx[1];
+        const uint col = N_group_offset + (uint)idx[0];
         float value = (float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col];
 )";
   if (useBias) {
@@ -323,18 +350,20 @@ kernel void int8_matmul(
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
         auto idx = cT.get_multidimensional_index(i);
-        if (idx[0] < N_block_size && idx[1] < M_block_size) {
+        const uint row = (uint)idx[1];
+        const uint col = (uint)idx[0];
+        if (col < N_block_size && row < M_block_size) {
           float value = (float)cT[i] *
-              (float)A_scale_buf[M_group_offset + idx[1]] *
-              (float)B_scale_buf[N_group_offset + idx[0]];
+              (float)A_scale_buf[M_group_offset + row] *
+              (float)B_scale_buf[N_group_offset + col];
 )";
   if (useBias) {
     source += R"(
-          value += (float)bias_buf[N_group_offset + idx[0]];
+          value += (float)bias_buf[N_group_offset + col];
 )";
   }
   source += R"(
-          mC[idx[1] * N + idx[0]] = ({{IO_TYPE}})value;
+          mC[row * N + col] = ({{IO_TYPE}})value;
         }
       }
     }

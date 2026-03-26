@@ -218,8 +218,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(is_contiguous);
 			assert(is_same_dtype);
 			assert(is_supported_dtype);
-			assert(!is_batched);
-			assert(!is_downcast);
+			assert(!is_batched || is_mfa_compatible_batch);
+			assert(!bias || bias_batch_size == 1 || bias_batch_size == b_batch_size);
 			assert(ccv_nnc_mfa_context_supported(context));
 			assert(!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA));
 			assert(!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
@@ -260,6 +260,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows,
 				.fused_bias = (bias ? 1 : 0),
 				.use_neural_accelerators = 1,
+				.batch_dimension = b_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
+				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemm(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

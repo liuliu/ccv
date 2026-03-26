@@ -1,6 +1,7 @@
 #ifndef MFA_NAINT8MATMULDESCRIPTOR_HPP_
 #define MFA_NAINT8MATMULDESCRIPTOR_HPP_
 
+#include <optional>
 #include <simd/simd.h>
 #include <utility>
 #include "PipelineValue.hpp"
@@ -11,8 +12,10 @@ struct NAInt8MatMulKernelDescriptor;
 struct NAInt8MatMulKernel;
 
 struct NAInt8MatMulDescriptor {
+  int64_t batchDimension = 1;
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
   simd::uint3 matrixDimensions;
+  std::optional<simd::uint4> batchStrides;
   bool useBias = false;
 
   bool operator==(const NAInt8MatMulDescriptor& rhs) const;
