@@ -17,6 +17,7 @@ struct NAInt8MatMulDescriptor {
   simd::uint3 matrixDimensions;
   std::optional<simd::uint4> batchStrides;
   bool useBias = false;
+  bool loadM = false;
 
   bool operator==(const NAInt8MatMulDescriptor& rhs) const;
 

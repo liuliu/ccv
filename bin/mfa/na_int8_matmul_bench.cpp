@@ -41,6 +41,7 @@ struct VariantConfig {
   uint32_t group_m = UINT32_MAX;
   uint32_t group_n = UINT32_MAX;
   uint16_t split_k = 1;
+  bool load_m = false;
 };
 
 struct Stats {
@@ -79,6 +80,7 @@ struct BaselinePipeline {
 struct DynamicPipeline {
   std::unique_ptr<NAInt8MatMulKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  bool load_m = false;
 };
 
 struct RawPipeline {
@@ -183,7 +185,8 @@ uint32_t groupN(const BenchmarkCase& bench, const VariantConfig& variant) noexce
 
 BaselinePipeline create_baseline_pipeline(
     MTL::Device* device,
-    const BenchmarkCase& bench)
+    const BenchmarkCase& bench,
+    bool load_m)
 {
   BaselinePipeline bundle;
   bundle.descriptor.batchDimension = 1;
@@ -198,7 +201,7 @@ BaselinePipeline create_baseline_pipeline(
   bundle.descriptor.batchStrides = std::nullopt;
   bundle.descriptor.transposeState = simd::uchar3 { 0, 1, 0 };
   bundle.descriptor.useBias = false;
-  bundle.descriptor.loadM = false;
+  bundle.descriptor.loadM = load_m;
   bundle.descriptor.supportIndirectCommandBuffers = false;
 
   const GEMMOperandPrecisions register_precisions = {
@@ -216,7 +219,7 @@ BaselinePipeline create_baseline_pipeline(
       false,
       bundle.descriptor.transposeState,
       false,
-      false,
+      load_m,
       groupM(bench.M),
       groupN(bench.N));
   bundle.kernel = std::make_unique<NAMatMulKernel>(kernel_descriptor, device);
@@ -227,7 +230,8 @@ BaselinePipeline create_baseline_pipeline(
   const uint32_t K = bench.K;
   const bool batched = false;
   const uint32_t zero = 0;
-  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  if (!load_m)
+    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
   constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
   constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
   constants->setConstantValue(&batched, MTL::DataTypeBool, NS::UInteger(11));
@@ -258,16 +262,19 @@ DynamicPipeline create_dynamic_pipeline(
       variant.execution_simd_groups,
       GEMMOperandPrecision::FP16,
       false,
+      variant.load_m,
       variant.activation_quant_threads,
       groupM(bench, variant),
       groupN(bench, variant));
   bundle.kernel = std::make_unique<NAInt8MatMulKernel>(kernel_descriptor, device);
+  bundle.load_m = variant.load_m;
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t M = bench.M;
   const uint32_t N = bench.N;
   const uint32_t K = bench.K;
-  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  if (!variant.load_m)
+    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
   constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
   constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
 
@@ -861,7 +868,8 @@ double run_baseline_once(
     const BaselinePipeline& bundle,
     MTL::Buffer* buffer_a,
     MTL::Buffer* buffer_b,
-    MTL::Buffer* buffer_c)
+    MTL::Buffer* buffer_c,
+    MTL::Buffer* buffer_load_m)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
@@ -869,6 +877,8 @@ double run_baseline_once(
   encoder->setBuffer(buffer_a, 0, 0);
   encoder->setBuffer(buffer_b, 0, 1);
   encoder->setBuffer(buffer_c, 0, 2);
+  if (bundle.descriptor.loadM)
+    encoder->setBytes(buffer_load_m->contents(), sizeof(uint32_t), 3);
   encoder->dispatchThreadgroups(
       bundle.kernel->threadgroupsPerGrid(bundle.descriptor),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get(), bundle.descriptor), 1, 1));
@@ -909,7 +919,8 @@ double run_dynamic_once(
     MTL::Buffer* buffer_b_q,
     MTL::Buffer* buffer_c,
     MTL::Buffer* buffer_a_scale,
-    MTL::Buffer* buffer_b_scale)
+    MTL::Buffer* buffer_b_scale,
+    MTL::Buffer* buffer_load_m)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
@@ -919,8 +930,10 @@ double run_dynamic_once(
   encoder->setBuffer(buffer_c, 0, 2);
   encoder->setBuffer(buffer_a_scale, 0, 3);
   encoder->setBuffer(buffer_b_scale, 0, 4);
+  if (bundle.load_m)
+    encoder->setBuffer(buffer_load_m, 0, 5);
   encoder->dispatchThreadgroups(
-      bundle.kernel->threadgroupsPerGrid(bench.M, bench.N),
+      bundle.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
   encoder->endEncoding();
   command_buffer->commit();
@@ -944,7 +957,7 @@ double run_raw_once(
   encoder->setBuffer(buffer_b_q, 0, 1);
   encoder->setBuffer(buffer_c_i32, 0, 2);
   encoder->dispatchThreadgroups(
-      dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N),
+      dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
       MTL::Size(dynamic.kernel->threadgroupSize(raw.pipeline.get()), 1, 1));
   encoder->endEncoding();
   command_buffer->commit();
@@ -962,7 +975,8 @@ double run_quantize_and_dynamic_once(
     MTL::Buffer* buffer_a_scale,
     MTL::Buffer* buffer_b_q,
     MTL::Buffer* buffer_b_scale,
-    MTL::Buffer* buffer_c)
+    MTL::Buffer* buffer_c,
+    MTL::Buffer* buffer_load_m)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   {
@@ -984,8 +998,10 @@ double run_quantize_and_dynamic_once(
     encoder->setBuffer(buffer_c, 0, 2);
     encoder->setBuffer(buffer_a_scale, 0, 3);
     encoder->setBuffer(buffer_b_scale, 0, 4);
+    if (dynamic.load_m)
+      encoder->setBuffer(buffer_load_m, 0, 5);
     encoder->dispatchThreadgroups(
-        dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N),
+        dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
         MTL::Size(dynamic.kernel->threadgroupSize(dynamic.pipeline.get()), 1, 1));
     encoder->endEncoding();
   }
@@ -1014,7 +1030,7 @@ double run_splitk_once(
     encoder->setBuffer(buffer_a_q, 0, 0);
     encoder->setBuffer(buffer_b_q, 0, 1);
     encoder->setBuffer(buffer_c_accum, 0, 2);
-    const auto base_grid = dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N);
+    const auto base_grid = dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N, 1);
     encoder->dispatchThreadgroups(
         MTL::Size(base_grid.width * variant.split_k, base_grid.height, base_grid.depth),
         MTL::Size(dynamic.kernel->threadgroupSize(splitk.partial_pipeline.get()), 1, 1));
@@ -1232,6 +1248,7 @@ int main(int argc, char** argv)
   BenchmarkCase bench;
   BenchmarkConfig config;
   VariantConfig variant;
+  bool baseline_load_m = false;
   if (argc >= 4) {
     bench.M = (uint32_t)std::strtoul(argv[1], nullptr, 10);
     bench.N = (uint32_t)std::strtoul(argv[2], nullptr, 10);
@@ -1258,6 +1275,10 @@ int main(int argc, char** argv)
     variant.group_n = (uint32_t)std::strtoul(argv[12], nullptr, 10);
   if (argc >= 14)
     variant.split_k = (uint16_t)std::strtoul(argv[13], nullptr, 10);
+  if (argc >= 15)
+    variant.load_m = std::strtoul(argv[14], nullptr, 10) != 0;
+  if (argc >= 16)
+    baseline_load_m = std::strtoul(argv[15], nullptr, 10) != 0;
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -1290,13 +1311,14 @@ int main(int argc, char** argv)
   const size_t c_dynamic_half_bytes = (size_t)bench.M * bench.N * sizeof(half_float);
   const size_t c_raw_i32_bytes = (size_t)bench.M * bench.N * sizeof(int32_t);
   const size_t c_splitk_i32_bytes = (size_t)bench.M * bench.N * variant.split_k * sizeof(int32_t);
-  const bool benchmark_raw = c_raw_i32_bytes <= (size_t(512) << 20);
-  const bool benchmark_splitk = variant.split_k > 1 && c_splitk_i32_bytes <= (size_t(512) << 20);
+  const bool benchmark_raw = !variant.load_m && c_raw_i32_bytes <= (size_t(512) << 20);
+  const bool benchmark_splitk = !variant.load_m && variant.split_k > 1 && c_splitk_i32_bytes <= (size_t(512) << 20);
 
   std::vector<half_float> b_half_scales(b_quantized_reference.scales.size());
   std::transform(b_quantized_reference.scales.begin(), b_quantized_reference.scales.end(), b_half_scales.begin(), [](float value) {
     return (half_float)value;
   });
+  const uint32_t runtime_m = bench.M;
 
   auto a_half_stage = NS::TransferPtr(device->newBuffer(a_half_values.data(), a_half_bytes, kSharedResourceOptions));
   auto b_half_stage = NS::TransferPtr(device->newBuffer(b_half_values.data(), b_half_bytes, kSharedResourceOptions));
@@ -1322,6 +1344,7 @@ int main(int argc, char** argv)
   auto b_int8_buffer = NS::TransferPtr(device->newBuffer(b_int8_bytes, kPrivateResourceOptions));
   auto a_scale_buffer = NS::TransferPtr(device->newBuffer(a_scale_bytes, kPrivateResourceOptions));
   auto b_scale_buffer = NS::TransferPtr(device->newBuffer(b_scale_bytes, kPrivateResourceOptions));
+  auto m_buffer = NS::TransferPtr(device->newBuffer(&runtime_m, sizeof(uint32_t), kSharedResourceOptions));
   auto c_half_buffer = NS::TransferPtr(device->newBuffer(c_half_bytes, kPrivateResourceOptions));
   auto c_dynamic_half_buffer = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kPrivateResourceOptions));
   NS::SharedPtr<MTL::Buffer> c_raw_i32_buffer;
@@ -1339,7 +1362,7 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), b_int8_stage.get(), b_int8_buffer.get(), b_int8_bytes);
   upload_buffer(command_queue.get(), b_scale_stage.get(), b_scale_buffer.get(), b_scale_bytes);
 
-  auto baseline = create_baseline_pipeline(device.get(), bench);
+  auto baseline = create_baseline_pipeline(device.get(), bench, baseline_load_m);
   auto quantize = create_quantize_pipeline(device.get(), bench, variant);
   auto dynamic = create_dynamic_pipeline(device.get(), bench, variant);
   RawPipeline raw;
@@ -1362,6 +1385,8 @@ int main(int argc, char** argv)
             << " quantThreads=" << variant.activation_quant_threads
             << " groupM=" << groupM(bench, variant)
             << " groupN=" << groupN(bench, variant)
+            << " loadM=" << (variant.load_m ? 1 : 0)
+            << " baselineLoadM=" << (baseline_load_m ? 1 : 0)
             << " rawInt32=" << (benchmark_raw ? 1 : 0)
             << " splitK=" << variant.split_k
             << '\n';
@@ -1395,7 +1420,8 @@ int main(int argc, char** argv)
           b_int8_buffer.get(),
           c_dynamic_half_buffer.get(),
           a_scale_buffer.get(),
-          b_scale_buffer.get());
+          b_scale_buffer.get(),
+          m_buffer.get());
   if (!(dynamic_validation_seconds > 0)) {
     std::cerr << "dynamic int8 matmul dispatch failed\n";
     pool->drain();
@@ -1513,7 +1539,7 @@ int main(int argc, char** argv)
 
   Stats baseline_stats;
   if (!benchmark(config, [&]() {
-        return run_baseline_once(command_queue.get(), baseline, a_half_buffer.get(), b_half_buffer.get(), c_half_buffer.get());
+        return run_baseline_once(command_queue.get(), baseline, a_half_buffer.get(), b_half_buffer.get(), c_half_buffer.get(), m_buffer.get());
       }, &baseline_stats)) {
     std::cerr << "baseline benchmark failed\n";
     pool->drain();
@@ -1539,7 +1565,8 @@ int main(int argc, char** argv)
             b_int8_buffer.get(),
             c_dynamic_half_buffer.get(),
             a_scale_buffer.get(),
-            b_scale_buffer.get());
+            b_scale_buffer.get(),
+            m_buffer.get());
       }, &dynamic_stats)) {
     std::cerr << "dynamic int8 benchmark failed\n";
     pool->drain();
@@ -1598,7 +1625,8 @@ int main(int argc, char** argv)
             a_scale_buffer.get(),
             b_int8_buffer.get(),
             b_scale_buffer.get(),
-            c_dynamic_half_buffer.get());
+            c_dynamic_half_buffer.get(),
+            m_buffer.get());
       }, &combined_stats)) {
     std::cerr << "combined benchmark failed\n";
     pool->drain();
@@ -1610,12 +1638,12 @@ int main(int argc, char** argv)
   if (benchmark_raw)
     print_stats("int8-int8-raw-int32", bench, raw_stats);
   else
-    std::cout << "int8-int8-raw-int32 skipped=1 reason=buffer_too_large\n";
+    std::cout << "int8-int8-raw-int32 skipped=1 reason=" << (variant.load_m ? "load_m" : "buffer_too_large") << '\n';
   print_stats("int8-int8-inline-dequant", bench, dynamic_stats);
   if (benchmark_splitk)
     print_stats("int8-int8-splitk-inline-dequant", bench, splitk_stats);
   else if (variant.split_k > 1)
-    std::cout << "int8-int8-splitk-inline-dequant skipped=1 reason=buffer_too_large\n";
+    std::cout << "int8-int8-splitk-inline-dequant skipped=1 reason=" << (variant.load_m ? "load_m" : "buffer_too_large") << '\n';
   print_stats("quantize-plus-int8", bench, combined_stats);
   std::cout << "speedup";
   if (benchmark_raw)

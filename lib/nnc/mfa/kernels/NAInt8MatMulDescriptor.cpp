@@ -23,12 +23,19 @@ static uint32_t groupN(const uint32_t N) noexcept {
 }
 
 bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const {
+  auto lhsMatrixDimensions = matrixDimensions;
+  auto rhsMatrixDimensions = rhs.matrixDimensions;
+  if (loadM) {
+    lhsMatrixDimensions[0] = groupM(lhsMatrixDimensions[0]);
+    rhsMatrixDimensions[0] = groupM(rhsMatrixDimensions[0]);
+  }
   return
     batchDimension == rhs.batchDimension &&
     ioPrecision == rhs.ioPrecision &&
     simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
     useBias == rhs.useBias &&
-    simd_all(matrixDimensions == rhs.matrixDimensions);
+    loadM == rhs.loadM &&
+    simd_all(lhsMatrixDimensions == rhsMatrixDimensions);
 }
 
 std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDescriptor& hash) const noexcept {
@@ -36,7 +43,7 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, hash.batchDimension);
   combine_32(seed, (uint32_t)hash.ioPrecision.value);
-  combine_32(seed, hash.matrixDimensions[0]);
+  combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   if (hash.batchStrides.has_value()) {
@@ -46,6 +53,7 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
     combine_32(seed, hash.batchStrides.value()[3]);
   }
   combine_32(seed, hash.useBias ? 1 : 0);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -55,6 +63,7 @@ NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const no
       8,
       ioPrecision,
       useBias,
+      loadM,
       256,
       groupM(matrixDimensions[0]),
       groupN(matrixDimensions[1]));
@@ -94,7 +103,8 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const uint32_t batchStrideBias = batchStrides[3];
     const uint32_t batchStrideAScale = batchStrides[0] > 0 ? M : 0;
     const uint32_t batchStrideBScale = batchStrides[1] > 0 ? N : 0;
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!this->loadM || strcmp(functionNameString, "quantize_activation") == 0)
+      constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&batched, MTL::DataTypeBool, NS::UInteger(11));

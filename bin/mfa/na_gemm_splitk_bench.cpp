@@ -61,6 +61,7 @@ PipelineBundle create_pipeline_bundle(
     MTL::Device* device,
     const BenchmarkCase& bench,
     uint16_t forced_split_k,
+    bool load_m,
     uint32_t group_m,
     uint32_t group_n)
 {
@@ -78,7 +79,7 @@ PipelineBundle create_pipeline_bundle(
   bundle.descriptor.batchStrides = std::nullopt;
   bundle.descriptor.transposeState = simd::uchar3{0, 1, 0};
   bundle.descriptor.useBias = false;
-  bundle.descriptor.loadM = true;
+  bundle.descriptor.loadM = load_m;
   bundle.descriptor.supportIndirectCommandBuffers = false;
 
   const GEMMOperandPrecisions register_precisions = {
@@ -287,6 +288,7 @@ int main(int argc, char** argv)
   BenchmarkCase bench;
   BenchmarkConfig config;
   int forced_split_k = 0;
+  bool load_m = true;
   if (argc >= 4) {
     bench.M = static_cast<uint32_t>(std::strtoul(argv[1], nullptr, 10));
     bench.N = static_cast<uint32_t>(std::strtoul(argv[2], nullptr, 10));
@@ -298,6 +300,9 @@ int main(int argc, char** argv)
   }
   if (argc >= 7) {
     forced_split_k = std::atoi(argv[6]);
+  }
+  if (argc >= 8) {
+    load_m = std::strtoul(argv[7], nullptr, 10) != 0;
   }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
@@ -319,6 +324,7 @@ int main(int argc, char** argv)
             << " K=" << bench.K
             << " warmup=" << config.warmup_iterations
             << " timed=" << config.timed_iterations
+            << " loadM=" << (load_m ? 1 : 0)
             << '\n';
 
   const size_t a_count = static_cast<size_t>(bench.M) * bench.K;
@@ -356,9 +362,10 @@ int main(int argc, char** argv)
         continue;
       }
       std::cerr << "running splitK=" << split_k
+                << " loadM=" << (load_m ? 1 : 0)
                 << " groupN=" << group_n << std::endl;
       auto bundle = create_pipeline_bundle(
-          device.get(), bench, split_k, group_m, group_n);
+          device.get(), bench, split_k, load_m, group_m, group_n);
       Stats stats;
       const bool valid = benchmark_variant(
           command_queue.get(),
@@ -383,7 +390,8 @@ int main(int argc, char** argv)
 
   for (const auto& result : results) {
     std::ostringstream label;
-    label << "groupM=" << group_m
+    label << "loadM=" << (load_m ? 1 : 0)
+          << " groupM=" << group_m
           << " groupN=" << result.group_n
           << " splitK=" << result.split_k
           << " threadBarrierOverK="

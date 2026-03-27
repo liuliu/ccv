@@ -28,6 +28,7 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   executionSIMDGroups = descriptor.executionSIMDGroups;
   ioPrecision = descriptor.ioPrecision;
   useBias = descriptor.useBias;
+  loadM = descriptor.loadM;
   activationQuantizeThreads = descriptor.activationQuantizeThreads;
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
@@ -215,9 +216,23 @@ kernel void int8_matmul(
     device const {{IO_TYPE}} *bias_buf [[buffer(5)]],
 )";
   }
+  if (loadM) {
+    source += useBias ? R"(
+    const device uint *loadM_buf [[buffer(6)]],
+)" : R"(
+    const device uint *loadM_buf [[buffer(5)]],
+)";
+  }
   source += R"(
     uint3 tgid [[threadgroup_position_in_grid]])
 {
+)";
+  if (loadM) {
+    source += R"(
+  const uint M = loadM_buf[0];
+)";
+  }
+  source += R"(
   const uint M_tiles = (M + {{BLOCK_M}} - 1) / {{BLOCK_M}};
   const uint N_tiles = (N + {{BLOCK_N}} - 1) / {{BLOCK_N}};
   const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);
