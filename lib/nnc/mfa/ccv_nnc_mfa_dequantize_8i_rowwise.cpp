@@ -44,7 +44,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise(ccv_nnc_mfa_context_t* context, cc
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
 
-	MTL::Size gridSize = kernel->gridSize();
+	MTL::Size gridSize = kernel->gridSize(descriptor.length);
 	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);
 	encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
 	command_batch->finishCommand(encoder);

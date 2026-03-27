@@ -16,12 +16,10 @@ struct Dequantize8iRowwiseKernel {
 
 	uint8_t vectorized;
 	GEMMOperandPrecision memoryPrecision;
-	uint32_t rowLength;
-	uint32_t length;
 
-	Dequantize8iRowwiseKernel(Dequantize8iRowwiseKernelDescriptor descriptor, uint32_t rowLength, uint32_t length, MTL::Device* const device);
+	Dequantize8iRowwiseKernel(Dequantize8iRowwiseKernelDescriptor descriptor, MTL::Device* const device);
 
-	MTL::Size gridSize() const noexcept;
+	MTL::Size gridSize(uint32_t length) const noexcept;
 
 private:
 	unsigned short createThreadgroupMemoryAllocation() const noexcept;

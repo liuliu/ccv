@@ -127,6 +127,13 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
     - List relevant helper functions from common headers: `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h`.
     - Filter by intent (example): `ctags -x --c-kinds=f lib/nnc/ccv_nnc_easy.h lib/nnc/ccv_nnc_internal.h | rg 'tensor_get_|tensor_hw|tensor_view_get_'`.
     - Reuse discovered existing helpers when possible, instead of adding local utility functions.
+- MFA cache / dispatch rule:
+  - Distinguish the two cache layers clearly:
+    - the kernel-object cache should only key source-generation properties;
+    - the pipeline / function-constant layer should carry shape-specific values such as `length`, `rowLength`, `scaleOffset`, etc.
+  - If a kernel's dispatch geometry depends on runtime shape, do not store that shape inside the cached kernel object.
+  - Instead, derive `gridSize(...)` from the current descriptor / params at encode time.
+  - Concrete example: `Dequantize8iRowwiseKernel` should stay shape-agnostic, and `gridSize(length)` should use the current `length`; otherwise a later larger dequant can silently reuse a stale smaller dispatch and leave the tail zeroed.
 - MFA Conv3D / `NAConv3D` implementation notes:
   - Frontend selection in `lib/nnc/cmd/convolution/mps/ccv_nnc_conv_mps.m` should keep `use_mfa_gemm` and `use_mfa_conv3d` separate.
   - Current `use_mfa_conv3d` support surface is intentionally narrow:

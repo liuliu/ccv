@@ -1,11 +1,9 @@
 #include "Dequantize8iRowwiseKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
-Dequantize8iRowwiseKernel::Dequantize8iRowwiseKernel(Dequantize8iRowwiseKernelDescriptor descriptor, uint32_t rowLength, uint32_t length, MTL::Device* const device) {
+Dequantize8iRowwiseKernel::Dequantize8iRowwiseKernel(Dequantize8iRowwiseKernelDescriptor descriptor, MTL::Device* const device) {
 	vectorized = descriptor.vectorized;
 	memoryPrecision = descriptor.memoryPrecision;
-	this->rowLength = rowLength;
-	this->length = length;
 
 	source = createSource();
 
@@ -20,7 +18,7 @@ Dequantize8iRowwiseKernel::Dequantize8iRowwiseKernel(Dequantize8iRowwiseKernelDe
 	}
 }
 
-MTL::Size Dequantize8iRowwiseKernel::gridSize() const noexcept {
+MTL::Size Dequantize8iRowwiseKernel::gridSize(uint32_t length) const noexcept {
 	const uint32_t elementCount = vectorized ? (length / 4) : length;
 	return MTL::Size((elementCount + 255) / 256, 1, 1);
 }

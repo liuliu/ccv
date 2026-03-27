@@ -29,7 +29,7 @@ std::pair<Dequantize8iRowwiseKernelDescriptor, PipelineValue<Dequantize8iRowwise
 		if (iterator != libraryCache->end()) {
 			return iterator->second.get();
 		} else {
-			Dequantize8iRowwiseKernel* kernel = new Dequantize8iRowwiseKernel(descriptor, rowLength, length, device);
+			Dequantize8iRowwiseKernel* kernel = new Dequantize8iRowwiseKernel(descriptor, device);
 			(*libraryCache)[descriptor] = std::unique_ptr<Dequantize8iRowwiseKernel>(kernel);
 			return kernel;
 		}
