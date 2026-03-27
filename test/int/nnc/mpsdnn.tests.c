@@ -262,6 +262,63 @@ TEST_CASE("mps forward convolution in nchw format with 1x1 kernel")
 	ccv_nnc_tensor_free(ga);
 }
 
+TEST_CASE("mps forward convolution in nchw format with row-wise 8i weight")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batch_size = 2;
+	const int input_dim = 8;
+	const int output_dim = 12;
+	const int spatial = 9;
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, input_dim, spatial, spatial), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, spatial, spatial), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, output_dim, 1, 1, input_dim);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert(cmd.backend >= 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
+	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, output_dim, input_dim, 1, 1), 0);
+	ccv_nnc_tensor_t* wq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NCHW(32F, output_dim, input_dim, 1, 1)), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_dim), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < batch_size * input_dim * spatial * spatial; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < output_dim * input_dim; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5f;
+	for (i = 0; i < output_dim; i++)
+		bias->data.f32[i] = (float)i / output_dim;
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_dim * input_dim, 1, wq->data.u8, ccv_nnc_tensor_data_size_without_padding(wq->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(wq->info), "row-wise 8i convolution weight should fit the tensor exactly");
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, input_dim, spatial, spatial), 0);
+	ccv_nnc_tensor_t* gwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NCHW(000, 32F, output_dim, input_dim, 1, 1)), 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, output_dim), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, output_dim, spatial, spatial), 0);
+	ccv_nnc_cmd_t move = CMD_DATA_TRANSFER_FORWARD();
+	move.backend = CCV_NNC_BACKEND_MPS;
+	assert(move.backend >= 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(a, wq, bias), TENSOR_LIST(ga, gwq, gbias), 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	cmd.algorithm = -1;
+	cmd = ccv_nnc_cmd_autotune(cmd, 1 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwq, gbias), TENSOR_LIST(gc), 0);
+	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gwq, gbias), TENSOR_LIST(gc), 0));
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, spatial, spatial), 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * spatial * spatial, 2e-3, "output from mps should match CPU when row-wise 8i weights are dequantized to dense scratch");
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(gbias);
+	ccv_nnc_tensor_free(gwq);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(wq);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("mps forward convolution in nchw format with 1x1 kernel and no bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));

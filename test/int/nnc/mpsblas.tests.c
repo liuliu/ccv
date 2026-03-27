@@ -678,6 +678,46 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA")
 	}
 }
 
+TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	double max_abs = 0;
+	double max_rel = 0;
+	const int status16f = _mps_forward_scaled_gemm_validate(CCV_16F, 0, &max_abs, &max_rel);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	}
+	REQUIRE_EQ(status16f, 0, "fallback row-wise 8i GEMM validation should run");
+	REQUIRE(max_rel < 2e-3, "fallback row-wise 8i GEMM should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	max_abs = 0;
+	max_rel = 0;
+	const int status32f = _mps_forward_scaled_gemm_validate(CCV_32F, 0, &max_abs, &max_rel);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	}
+	REQUIRE_EQ(status32f, 0, "fallback row-wise 8i GEMM validation should run");
+	REQUIRE(max_rel < 2e-3, "fallback row-wise 8i GEMM should match row-wise quantized fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+
+	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
+	{
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		max_abs = 0;
+		max_rel = 0;
+		const int status16bf = _mps_forward_scaled_gemm_validate(CCV_16BF, 0, &max_abs, &max_rel);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		}
+		REQUIRE_EQ(status16bf, 0, "fallback row-wise 8i GEMM validation should run");
+		REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	}
+}
+
 TEST_CASE("mps forward batched gemm with broadcast row-wise 8i weight NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -1575,6 +1615,73 @@ TEST_CASE("mps depalettize 8-bit float precision with partial block")
 	ccv_nnc_tensor_free(g_tensor);
 	ccv_nnc_tensor_free(gv_tensor);
 	ccv_nnc_tensor_free(v_tensor);
+}
+
+TEST_CASE("mps dequantize row-wise 8i half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 17;
+	const int cols = 64;
+	float* const values = ccmalloc(sizeof(float) * rows * cols);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		values[i] = ((i * 13) % 41 - 20) / 32.0f;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, rows, cols)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, rows, cols)), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+	ccv_nnc_dequantize_8i_rowwise(gq->data.u8, CCV_16F, CCV_TENSOR_GPU_MEMORY, qsize, cols, gout->data.u8, rows * cols);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	float* const expected_f32 = (float*)ccmalloc(sizeof(float) * rows * cols);
+	float* const actual_f32 = (float*)ccmalloc(sizeof(float) * rows * cols);
+	ccv_half_precision_to_float((uint16_t*)expected->data.f16, expected_f32, rows * cols);
+	ccv_half_precision_to_float((uint16_t*)actual->data.f16, actual_f32, rows * cols);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, rows * cols, 1e-3, "GPU row-wise 8i dequantize should match CPU dequantize");
+	ccfree(actual_f32);
+	ccfree(expected_f32);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+	ccfree(values);
+}
+
+TEST_CASE("mps dequantize row-wise 8i float precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 11;
+	const int cols = 128;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		source->data.f32[i] = ((i * 17) % 53 - 26) / 64.0f;
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, rows, cols)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f32, rows * cols);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, rows, cols)), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+	ccv_nnc_dequantize_8i_rowwise(gq->data.u8, CCV_32F, CCV_TENSOR_GPU_MEMORY, qsize, cols, gout->data.u8, rows * cols);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	REQUIRE_ARRAY_EQ(float, expected->data.f32, actual->data.f32, rows * cols, "GPU row-wise 8i dequantize should match CPU dequantize");
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
 }
 
 TEST_CASE("mps forward gemm no bias")

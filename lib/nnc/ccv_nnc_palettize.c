@@ -1115,9 +1115,21 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 void ccv_nnc_dequantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
-	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+	assert(memory_type == CCV_TENSOR_CPU_MEMORY || memory_type == CCV_TENSOR_GPU_MEMORY);
 	assert(row_length > 0);
 	assert(output_length % row_length == 0);
+	if (memory_type != CCV_TENSOR_CPU_MEMORY)
+	{
+#ifdef HAVE_CUDA
+		assert(0);
+#elif defined(HAVE_MPS)
+		assert(datatype != CCV_64F);
+		ccv_nnc_mps_dequantize_8i_rowwise(input, datatype, input_length, row_length, output, output_length, 0);
+#else
+		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+#endif
+		return;
+	}
 	const size_t row_count = output_length / row_length;
 	const size_t scale_offset = (output_length + 127) & -128;
 	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);

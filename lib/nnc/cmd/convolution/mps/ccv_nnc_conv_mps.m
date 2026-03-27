@@ -5,6 +5,82 @@
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 
+typedef struct {
+	int subtype;
+	ccv_nnc_mfa_depalettize_params_t depalettize_params;
+	ccv_nnc_mfa_dequantize_8i_rowwise_params_t dequantize_8i_rowwise_params;
+} ccv_nnc_mfa_qx_decode_params_t;
+
+static size_t _ccv_nnc_conv_qx_dense_data_size(const ccv_nnc_tensor_param_t params)
+{
+	const int subtype = params.datatype & 0xf00;
+	ccv_nnc_tensor_param_t dense_params = params;
+	dense_params.datatype = (params.datatype & 0xff) << 12;
+	dense_params.reserved = 0;
+	if ((subtype >= 0x400 && subtype <= 0x800) || subtype == CCV_NNC_QX_8I_ROWWISE)
+		return ccv_nnc_tensor_data_size(dense_params);
+	assert(0);
+	return 0;
+}
+
+static ccv_nnc_mfa_qx_decode_params_t _ccv_nnc_conv_mfa_qx_decode_params(const ccv_nnc_tensor_param_t params, const uint32_t mtl_data_type)
+{
+	const int subtype = params.datatype & 0xf00;
+	ccv_nnc_mfa_qx_decode_params_t decode_params = {
+		.subtype = subtype,
+	};
+	if (subtype >= 0x400 && subtype <= 0x800)
+	{
+		decode_params.depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
+			.data_type = mtl_data_type,
+			.qbits = (uint32_t)(subtype >> 8),
+			.number_in_blocks = (uint32_t)params.reserved,
+			.length = (uint64_t)ccv_nnc_tensor_count(params),
+		};
+	} else if (subtype == CCV_NNC_QX_8I_ROWWISE) {
+		const int nd = ccv_nnc_tensor_nd(params.dim);
+		decode_params.dequantize_8i_rowwise_params = (ccv_nnc_mfa_dequantize_8i_rowwise_params_t){
+			.data_type = mtl_data_type,
+			.row_length = (uint64_t)params.dim[nd - 1],
+			.length = (uint64_t)ccv_nnc_tensor_count(params),
+		};
+	} else {
+		assert(0);
+	}
+	return decode_params;
+}
+
+static void _ccv_nnc_conv_mfa_prepare_qx_decode(ccv_nnc_mfa_context_t* const context, const ccv_nnc_mfa_qx_decode_params_t params)
+{
+	if (params.subtype >= 0x400 && params.subtype <= 0x800)
+		ccv_nnc_mfa_prepare_depalettize(context, params.depalettize_params);
+	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE)
+		ccv_nnc_mfa_prepare_dequantize_8i_rowwise(context, params.dequantize_8i_rowwise_params);
+	else {
+		assert(0);
+	}
+}
+
+static void _ccv_nnc_conv_mfa_encode_qx_decode(ccv_nnc_mfa_context_t* const context, const ccv_nnc_mfa_qx_decode_params_t params, mtl_command_batch_t* const command_batch, mtl_buffer_t* const source, const size_t source_offset, mtl_buffer_t* const destination, const size_t destination_offset)
+{
+	mtl_buffer_t* tensors[3] = {
+		source,
+		destination,
+		NULL,
+	};
+	size_t tensor_offsets[2] = {
+		source_offset,
+		destination_offset,
+	};
+	if (params.subtype >= 0x400 && params.subtype <= 0x800)
+		ccv_nnc_mfa_encode_depalettize(context, params.depalettize_params, command_batch, tensors, tensor_offsets);
+	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE)
+		ccv_nnc_mfa_encode_dequantize_8i_rowwise(context, params.dequantize_8i_rowwise_params, command_batch, tensors, tensor_offsets);
+	else {
+		assert(0);
+	}
+}
+
 static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 2);
@@ -347,26 +423,13 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
-			ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+			ccv_nnc_mfa_qx_decode_params_t w_decode_params;
 			size_t scratch_offset = ccv_nnc_mfa_gemm_reserved_scratch_size(params);
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 			{
-				ccv_nnc_tensor_param_t w_params = w->info;
-				const int palette_datatype = (w_params.datatype & 0xff) << 12;
-				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-				depalettize_w_params.datatype = palette_datatype;
-				depalettize_w_params.reserved = 0;
-				const size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
-				const size_t count = ccv_nnc_tensor_count(w_params);
-				const int qbits = (w_params.datatype & 0xf00) >> 8;
-				const int number_in_blocks = w_params.reserved;
-				w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
-					.data_type = palette_datatype == CCV_16F ? 16 : 3,
-					.qbits = (uint32_t)qbits,
-					.number_in_blocks = (uint32_t)number_in_blocks,
-					.length = (uint64_t)count,
-				};
-				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				const size_t w_data_size = _ccv_nnc_conv_qx_dense_data_size(w->info);
+				w_decode_params = _ccv_nnc_conv_mfa_qx_decode_params(w->info, mtl_data_type);
+				_ccv_nnc_conv_mfa_prepare_qx_decode(context, w_decode_params);
 				w_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_data_size);
 				w_dataof = scratch_offset;
 			}
@@ -375,18 +438,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
-			{
-				mtl_buffer_t* tensors[3] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)w), // A
-					(mtl_buffer_t*)w_data, // B
-					NULL,
-				};
-				size_t tensor_offsets[2] = {
-					w->dataof, // A offset
-					scratch_offset, // B offset
-				};
-				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
-			}
+				_ccv_nnc_conv_mfa_encode_qx_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, (mtl_buffer_t*)w_data, scratch_offset);
 			mtl_buffer_t* bias_buffer = NULL;
 			if (bias) {
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
@@ -454,44 +506,20 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			};
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
-			ccv_nnc_mfa_depalettize_params_t w_depalettize_params;
+			ccv_nnc_mfa_qx_decode_params_t w_decode_params;
 			size_t scratch_offset = ccv_nnc_mfa_conv3d_reserved_scratch_size(params);
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 			{
-				ccv_nnc_tensor_param_t w_params = w->info;
-				const int palette_datatype = (w_params.datatype & 0xff) << 12;
-				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-				depalettize_w_params.datatype = palette_datatype;
-				depalettize_w_params.reserved = 0;
-				const size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
-				const size_t count = ccv_nnc_tensor_count(w_params);
-				const int qbits = (w_params.datatype & 0xf00) >> 8;
-				const int number_in_blocks = w_params.reserved;
-				w_depalettize_params = (ccv_nnc_mfa_depalettize_params_t){
-					.data_type = palette_datatype == CCV_16F ? 16 : 3,
-					.qbits = (uint32_t)qbits,
-					.number_in_blocks = (uint32_t)number_in_blocks,
-					.length = (uint64_t)count,
-				};
-				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				const size_t w_data_size = _ccv_nnc_conv_qx_dense_data_size(w->info);
+				w_decode_params = _ccv_nnc_conv_mfa_qx_decode_params(w->info, mtl_data_type);
+				_ccv_nnc_conv_mfa_prepare_qx_decode(context, w_decode_params);
 				w_data = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_data_size);
 				w_dataof = scratch_offset;
 			}
 			ccv_nnc_mfa_prepare_conv3d(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
-			{
-				mtl_buffer_t* tensors[3] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)w),
-					w_data,
-					NULL,
-				};
-				size_t tensor_offsets[2] = {
-					w->dataof,
-					scratch_offset,
-				};
-				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
-			}
+				_ccv_nnc_conv_mfa_encode_qx_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, w_data, scratch_offset);
 			mtl_buffer_t* tensors[5] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a),
 				w_data,
@@ -513,35 +541,13 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSCommandBuffer* command_buffer;
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 			{
-				ccv_nnc_tensor_param_t w_params = w->info;
-				const int palette_datatype = (w_params.datatype & 0xff) << 12;
-				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-				depalettize_w_params.datatype = palette_datatype;
-				depalettize_w_params.reserved = 0;
-				size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
-				const size_t count = ccv_nnc_tensor_count(w_params);
-				const int qbits = (w_params.datatype & 0xf00) >> 8;
-				const int number_in_blocks = w_params.reserved;
-				ccv_nnc_mfa_depalettize_params_t w_depalettize_params = {
-					.data_type = palette_datatype == CCV_16F ? 16 : 3,
-					.qbits = (uint32_t)qbits,
-					.number_in_blocks = (uint32_t)number_in_blocks,
-					.length = (uint64_t)count,
-				};
-				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				size_t w_data_size = _ccv_nnc_conv_qx_dense_data_size(w->info);
+				ccv_nnc_mfa_qx_decode_params_t w_decode_params = _ccv_nnc_conv_mfa_qx_decode_params(w->info, mtl_data_type);
+				_ccv_nnc_conv_mfa_prepare_qx_decode(context, w_decode_params);
 				w_data = ccv_nnc_mfa_request_scratch(context, w_data_size);
 				w_dataof = 0;
 				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-				mtl_buffer_t* tensors[3] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)w), // A
-					(mtl_buffer_t*)w_data, // B
-					NULL,
-				};
-				size_t tensor_offsets[2] = {
-					w->dataof, // A offset
-					0, // B offset
-				};
-				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				_ccv_nnc_conv_mfa_encode_qx_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, (mtl_buffer_t*)w_data, 0);
 				command_buffer = ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(stream_context, command_batch);
 			} else
 				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
@@ -637,41 +643,20 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = 0;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		const uint32_t mtl_data_type = ccv_nnc_mps_datatype(g->info.datatype);
 
 		if (h) {
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
 			if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 			{
-				ccv_nnc_tensor_param_t w_params = w->info;
-				const int palette_datatype = (w_params.datatype & 0xff) << 12;
-				ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-				depalettize_w_params.datatype = palette_datatype;
-				depalettize_w_params.reserved = 0;
-				size_t w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
-				const size_t count = ccv_nnc_tensor_count(w_params);
-				const int qbits = (w_params.datatype & 0xf00) >> 8;
-				const int number_in_blocks = w_params.reserved;
-				ccv_nnc_mfa_depalettize_params_t w_depalettize_params = {
-					.data_type = palette_datatype == CCV_16F ? 16 : 3,
-					.qbits = (uint32_t)qbits,
-					.number_in_blocks = (uint32_t)number_in_blocks,
-					.length = (uint64_t)count,
-				};
-				ccv_nnc_mfa_prepare_depalettize(context, w_depalettize_params);
+				size_t w_data_size = _ccv_nnc_conv_qx_dense_data_size(w->info);
+				ccv_nnc_mfa_qx_decode_params_t w_decode_params = _ccv_nnc_conv_mfa_qx_decode_params(w->info, mtl_data_type);
+				_ccv_nnc_conv_mfa_prepare_qx_decode(context, w_decode_params);
 				w_data = ccv_nnc_mfa_request_scratch(context, w_data_size);
 				w_dataof = 0;
 				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-				mtl_buffer_t* tensors[3] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)w), // A
-					(mtl_buffer_t*)w_data, // B
-					NULL,
-				};
-				size_t tensor_offsets[2] = {
-					w->dataof, // A offset
-					0, // B offset
-				};
-				ccv_nnc_mfa_encode_depalettize(context, w_depalettize_params, command_batch, tensors, tensor_offsets);
+				_ccv_nnc_conv_mfa_encode_qx_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, (mtl_buffer_t*)w_data, 0);
 				command_buffer = ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(stream_context, command_batch);
 			} else
 				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
