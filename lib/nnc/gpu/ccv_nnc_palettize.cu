@@ -321,6 +321,47 @@ __global__ void _ccv_nnc_q8_fast_s4(const int number_in_blocks, const uint8_t* c
 	}
 }
 
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_f16(const size_t count, const size_t row_length, const int8_t* const input, const __half* const scales, __half* const output)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const size_t row = i / row_length;
+		output[i] = __float2half_rn((float)input[i] * __half2float(scales[row]));
+	}
+}
+
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_bf16(const size_t count, const size_t row_length, const int8_t* const input, const __nv_bfloat16* const scales, __nv_bfloat16* const output)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const size_t row = i / row_length;
+		output[i] = __float2bfloat16((float)input[i] * __bfloat162float(scales[row]));
+	}
+}
+
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_f32(const size_t count, const size_t row_length, const int8_t* const input, const float* const scales, float* const output)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const size_t row = i / row_length;
+		output[i] = input[i] * scales[row];
+	}
+}
+
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_f64(const size_t count, const size_t row_length, const int8_t* const input, const double* const scales, double* const output)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const size_t row = i / row_length;
+		output[i] = input[i] * scales[row];
+	}
+}
+
+size_t ccv_nnc_compat_qx_dense_data_size(const ccv_nnc_tensor_param_t params)
+{
+	assert(CCV_GET_DATA_TYPE(params.datatype) == CCV_QX);
+	ccv_nnc_tensor_param_t dense_params = params;
+	dense_params.datatype = (params.datatype & 0xff) << 12;
+	dense_params.reserved = 0;
+	return ccv_nnc_tensor_data_size(dense_params);
+}
+
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
@@ -511,5 +552,43 @@ void ccv_nnc_compat_depalettize(const void* input, const int datatype, const siz
 			} else
 				_ccv_nnc_q8_fast<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, number_in_blocks, (uint8_t*)input, (double*)output);
 		}
+	}
+}
+
+void ccv_nnc_compat_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	assert(row_length > 0);
+	assert(output_length % row_length == 0);
+	const size_t row_count = output_length / row_length;
+	const size_t scale_offset = (output_length + 127) & ~(size_t)127;
+	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	assert(input_length >= scale_offset + scale_size);
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const int8_t* const q = (const int8_t*)input;
+	const uint8_t* const u8 = (const uint8_t*)input;
+	if (datatype == CCV_16F)
+		_ccv_nnc_dequantize_8i_rowwise_f16<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, row_length, q, (const __half*)(u8 + scale_offset), (__half*)output);
+	else if (datatype == CCV_16BF)
+		_ccv_nnc_dequantize_8i_rowwise_bf16<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, row_length, q, (const __nv_bfloat16*)(u8 + scale_offset), (__nv_bfloat16*)output);
+	else if (datatype == CCV_32F)
+		_ccv_nnc_dequantize_8i_rowwise_f32<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, row_length, q, (const float*)(u8 + scale_offset), (float*)output);
+	else
+		_ccv_nnc_dequantize_8i_rowwise_f64<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, row_length, q, (const double*)(u8 + scale_offset), (double*)output);
+}
+
+void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(CCV_GET_DATA_TYPE(params.datatype) == CCV_QX);
+	const size_t count = ccv_nnc_tensor_count(params);
+	const int datatype = (params.datatype & 0xff) << 12;
+	const int subtype = params.datatype & 0xf00;
+	if (subtype >= 0x400 && subtype <= 0x800)
+		ccv_nnc_compat_depalettize(input, datatype, ccv_nnc_tensor_data_size_without_padding(params), subtype >> 8, params.reserved, output, count, stream_context);
+	else if (subtype == CCV_NNC_QX_8I_ROWWISE) {
+		const int nd = ccv_nnc_tensor_nd(params.dim);
+		ccv_nnc_compat_dequantize_8i_rowwise(input, datatype, ccv_nnc_tensor_data_size_without_padding(params), params.dim[nd - 1], output, count, stream_context);
+	} else {
+		assert(0);
 	}
 }

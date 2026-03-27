@@ -260,6 +260,59 @@ TEST_CASE("gemm no transpose with bias and palettize weights")
 	ccv_nnc_tensor_free(gd);
 }
 
+TEST_CASE("gemm no transpose with bias and row-wise int8 weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	float ap[] = {
+		1, 2,
+		3, 4,
+		5, 6,
+		7, 8,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	float bp[] = {
+		7, 8, 9,
+		10, 11, 12,
+	};
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 2, 3)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+	ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_dequantize_8i_rowwise(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, 3, dq_b->data.u8, 6);
+	float dp[] = {
+		1, -1, 1,
+		1, -1, 1,
+		1, -1, 1,
+		1, -1, 1,
+	};
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(dp, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	ccv_nnc_tensor_t* const ct = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD();
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert(cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, dq_b, d), TENSOR_LIST(ct), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
+	ccv_nnc_tensor_t* gqb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, 2, 3)), 0);
+	ccv_nnc_tensor_t* gd = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 3), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, qb, d), TENSOR_LIST(ga, gqb, gd), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqb, gd), TENSOR_LIST(gc), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ct->data.f32, c->data.f32, 12, 1e-5, "result should match CPU with dequantized row-wise weights");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(qb);
+	ccv_nnc_tensor_free(dq_b);
+	ccv_nnc_tensor_free(d);
+	ccv_nnc_tensor_free(ct);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gqb);
+	ccv_nnc_tensor_free(gd);
+	ccv_nnc_tensor_free(gc);
+}
+
 TEST_CASE("backward gemm with no transpose")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
@@ -394,6 +447,74 @@ TEST_CASE("backward gemm with no transpose and palettize weights")
 	ccv_nnc_tensor_free(gg);
 	ccv_nnc_tensor_free(ga);
 	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gh);
+	ccv_nnc_tensor_free(gdb);
+	ccv_nnc_tensor_free(gdbias);
+}
+
+TEST_CASE("backward gemm with no transpose and row-wise int8 weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	float gp[] = {
+		1, 2, 3,
+		4, 5, 6,
+		7, 8, 9,
+		10, 11, 12,
+	};
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(gp, CPU_TENSOR_NHWC(32F, 4, 3), 0);
+	float ap[] = {
+		13, 14,
+		15, 16,
+		17, 18,
+		19, 20,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	float bp[] = {
+		21, 22, 23,
+		24, 25, 26,
+	};
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 2, 3)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+	ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_dequantize_8i_rowwise(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, 3, dq_b->data.u8, 6);
+	ccv_nnc_tensor_t* const ht = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const dbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const dbiast = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_BACKWARD();
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert(cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, dq_b), TENSOR_LIST(ht, dbt, dbiast), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const dbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* gg = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 3), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
+	ccv_nnc_tensor_t* gqb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, 2, 3)), 0);
+	ccv_nnc_tensor_t* gh = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 2), 0);
+	ccv_nnc_tensor_t* gdb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 3), 0);
+	ccv_nnc_tensor_t* gdbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, qb), TENSOR_LIST(gg, ga, gqb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gqb), TENSOR_LIST(gh, gdb, gdbias), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gh, gdb, gdbias), TENSOR_LIST(h, db, dbias), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ht->data.f32, h->data.f32, 8, 1e-5, "h should match CPU with dequantized row-wise weights");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbt->data.f32, db->data.f32, 6, 1e-5, "db should match CPU with dequantized row-wise weights");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbiast->data.f32, dbias->data.f32, 3, 1e-5, "dbias should match CPU with dequantized row-wise weights");
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(qb);
+	ccv_nnc_tensor_free(dq_b);
+	ccv_nnc_tensor_free(ht);
+	ccv_nnc_tensor_free(dbt);
+	ccv_nnc_tensor_free(dbiast);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(db);
+	ccv_nnc_tensor_free(dbias);
+	ccv_nnc_tensor_free(gg);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gqb);
 	ccv_nnc_tensor_free(gh);
 	ccv_nnc_tensor_free(gdb);
 	ccv_nnc_tensor_free(gdbias);

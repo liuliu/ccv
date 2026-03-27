@@ -58,6 +58,31 @@ TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")
 	ccv_nnc_tensor_free(tensor);
 }
 
+TEST_CASE("quantize float to row-wise int8 and dequantize on GPU losslessly")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	float values[32];
+	static const int8_t q[8] = {-127, -96, -64, -32, 0, 32, 64, 127};
+	static const float scales[4] = {0.5, 1.0, 2.0, 4.0};
+	int i, j;
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 8; j++)
+			values[i * 8 + j] = q[j] * scales[i];
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 4, 8)), 0);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	ccv_nnc_tensor_t* const g_tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, 4, 8)), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(g_tensor), 0);
+	ccv_nnc_tensor_t* const gv_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 8), 0);
+	ccv_nnc_dequantize_8i_rowwise(g_tensor->data.u8, CCV_32F, CCV_TENSOR_GPU_MEMORY, output_size, 8, gv_tensor->data.u8, 32);
+	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 8), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gv_tensor), TENSOR_LIST(v_tensor), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, values, v_tensor->data.f32, 32, 1e-6, "should be lossless");
+	ccv_nnc_tensor_free(v_tensor);
+	ccv_nnc_tensor_free(gv_tensor);
+	ccv_nnc_tensor_free(g_tensor);
+	ccv_nnc_tensor_free(tensor);
+}
+
 TEST_CASE("quantize double to 4-bit and dequantize on GPU losslessly")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));

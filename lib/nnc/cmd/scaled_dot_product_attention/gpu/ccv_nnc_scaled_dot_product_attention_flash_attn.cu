@@ -243,10 +243,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		{
 			ccv_nnc_tensor_param_t w_params = w->info;
 			w_datatype = (w_params.datatype & 0xff) << 12;
-			ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-			depalettize_w_params.datatype = w_datatype;
-			depalettize_w_params.reserved = 0;
-			w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+			w_data_size = ccv_nnc_compat_qx_dense_data_size(w_params);
 		}
 		const size_t cublas_size = ccv_nnc_cublas_workspace_size_in_bytes(inputs, input_size, outputs, output_size);
 		void* workspace = 0;
@@ -256,11 +253,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 		{
 			ccv_nnc_tensor_param_t w_params = w->info;
-			const size_t count = ccv_nnc_tensor_count(w_params);
-			const int qbits = (w_params.datatype & 0xf00) >> 8;
-			const int number_in_blocks = w_params.reserved;
 			w_data = (unsigned char*)workspace + cublas_size;
-			ccv_nnc_compat_depalettize(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
+			ccv_nnc_compat_decode_qx(w->data.u8, w_params, w_data, stream_context);
 		}
 		cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 		static const half one_f16 = 1;

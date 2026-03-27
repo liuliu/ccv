@@ -296,10 +296,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		ccv_nnc_tensor_param_t a_params = a->info;
 		a_datatype = (a_params.datatype & 0xff) << 12;
-		ccv_nnc_tensor_param_t depalettize_a_params = a_params;
-		depalettize_a_params.datatype = a_datatype;
-		depalettize_a_params.reserved = 0;
-		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
+		a_data_size = ccv_nnc_compat_qx_dense_data_size(a_params);
 	}
 	const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
 	size_t w_data_size = 0;
@@ -308,10 +305,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		ccv_nnc_tensor_param_t w_params = w->info;
 		w_datatype = (w_params.datatype & 0xff) << 12;
-		ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-		depalettize_w_params.datatype = w_datatype;
-		depalettize_w_params.reserved = 0;
-		w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+		w_data_size = ccv_nnc_compat_qx_dense_data_size(w_params);
 	}
 	const size_t cublas_size = ccv_nnc_cublas_workspace_size_in_bytes(inputs, input_size, outputs, output_size);
 	void* workspace = 0;
@@ -321,21 +315,15 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t a_params = a->info;
-		const size_t count = ccv_nnc_tensor_count(a_params);
-		const int qbits = (a_params.datatype & 0xf00) >> 8;
-		const int number_in_blocks = a_params.reserved;
 		a_data = (unsigned char*)workspace + cublas_size;
-		ccv_nnc_compat_depalettize(a->data.u8, a_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
+		ccv_nnc_compat_decode_qx(a->data.u8, a_params, a_data, stream_context);
 	}
 	unsigned char* w_data = w->data.u8;
 	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 	{
 		ccv_nnc_tensor_param_t w_params = w->info;
-		const size_t count = ccv_nnc_tensor_count(w_params);
-		const int qbits = (w_params.datatype & 0xf00) >> 8;
-		const int number_in_blocks = w_params.reserved;
 		w_data = (unsigned char*)workspace + cublas_size + a_data_size;
-		ccv_nnc_compat_depalettize(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
+		ccv_nnc_compat_decode_qx(w->data.u8, w_params, w_data, stream_context);
 	}
 	// Check if we can shortcut this and use dequantize_mul_mat_vec which will be faster for gmmv.
 	if (CCV_IS_TENSOR_CONTIGUOUS(a) && a_datatype == CCV_16F && a_batch_size == 1 &&
@@ -667,10 +655,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		ccv_nnc_tensor_param_t a_params = inputs[1]->info;
 		a_datatype = (a_params.datatype & 0xff) << 12;
-		ccv_nnc_tensor_param_t depalettize_a_params = a_params;
-		depalettize_a_params.datatype = a_datatype;
-		depalettize_a_params.reserved = 0;
-		a_data_size = ccv_nnc_tensor_data_size(depalettize_a_params);
+		a_data_size = ccv_nnc_compat_qx_dense_data_size(a_params);
 	}
 	size_t w_data_size = 0;
 	int w_datatype = inputs[2] ? inputs[2]->info.datatype : 0;
@@ -679,10 +664,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	{
 		ccv_nnc_tensor_param_t w_params = inputs[2]->info;
 		w_datatype = (w_params.datatype & 0xff) << 12;
-		ccv_nnc_tensor_param_t depalettize_w_params = w_params;
-		depalettize_w_params.datatype = w_datatype;
-		depalettize_w_params.reserved = 0;
-		w_data_size = ccv_nnc_tensor_data_size(depalettize_w_params);
+		w_data_size = ccv_nnc_compat_qx_dense_data_size(w_params);
 	}
 	void* workspace = 0;
 	if (a_data_size + w_data_size > 0)
@@ -694,11 +676,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
 		{
 			ccv_nnc_tensor_param_t a_params = a->info;
-			const size_t count = ccv_nnc_tensor_count(a_params);
-			const int qbits = (a_params.datatype & 0xf00) >> 8;
-			const int number_in_blocks = a_params.reserved;
 			a_data = (unsigned char*)workspace + cublas_size;
-			ccv_nnc_compat_depalettize(a->data.u8, a_datatype, ccv_nnc_tensor_data_size_without_padding(a_params), qbits, number_in_blocks, a_data, count, stream_context);
+			ccv_nnc_compat_decode_qx(a->data.u8, a_params, a_data, stream_context);
 		}
 		const int transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
 		const int transpose_w = ccv_nnc_is_matrix_transpose(dw->info, cmd.info.blas.transpose_b);
@@ -749,11 +728,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 		{
 			ccv_nnc_tensor_param_t w_params = w->info;
-			const size_t count = ccv_nnc_tensor_count(w_params);
-			const int qbits = (w_params.datatype & 0xf00) >> 8;
-			const int number_in_blocks = w_params.reserved;
 			w_data = (unsigned char*)workspace + cublas_size + a_data_size;
-			ccv_nnc_compat_depalettize(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w_params), qbits, number_in_blocks, w_data, count, stream_context);
+			ccv_nnc_compat_decode_qx(w->data.u8, w_params, w_data, stream_context);
 		}
 		const int transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 		int h_batch_size, h_rows, h_cols, h_batch_inc, h_rows_inc, h_cols_inc;
