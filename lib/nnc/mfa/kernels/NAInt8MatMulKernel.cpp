@@ -67,6 +67,7 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("GROUP_M", std::to_string(groupM));
   source.SetValue("GROUP_N", std::to_string(groupN));
   source.SetValue("IO_TYPE", ioPrecision.name());
+  source.SetValue("M_VALUE", loadM ? "M_dynamic" : "M");
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -229,11 +230,11 @@ kernel void int8_matmul(
 )";
   if (loadM) {
     source += R"(
-  const uint M = loadM_buf[0];
+  const uniform<uint> M_dynamic = make_uniform(loadM_buf[0]);
 )";
   }
   source += R"(
-  const uint M_tiles = (M + {{BLOCK_M}} - 1) / {{BLOCK_M}};
+  const uint M_tiles = ({{M_VALUE}} + {{BLOCK_M}} - 1) / {{BLOCK_M}};
   const uint N_tiles = (N + {{BLOCK_N}} - 1) / {{BLOCK_N}};
   const uint M_tile_bits = M_tiles <= 1 ? 0 : 32 - clz(M_tiles - 1);
   const uint N_tile_bits = N_tiles <= 1 ? 0 : 32 - clz(N_tiles - 1);
@@ -245,12 +246,12 @@ kernel void int8_matmul(
   }
 
   const uint M_block_start = tgid.y * {{BLOCK_M}};
-  const uint M_block_size = min((uint){{BLOCK_M}}, M - M_block_start);
+  const uint M_block_size = min((uint){{BLOCK_M}}, {{M_VALUE}} - M_block_start);
   const uint N_block_start = tgid.x * {{BLOCK_N}};
   const uint N_block_size = min((uint){{BLOCK_N}}, N - N_block_start);
   const uint M_group_start = {{GROUP_M}} ? (M_block_start / {{GROUP_M}}) * {{GROUP_M}} : M_block_start;
   const uint M_group_offset = M_block_start - M_group_start;
-  const uint M_group_size = M - M_group_start;
+  const uint M_group_size = {{M_VALUE}} - M_group_start;
   const uint N_group_start = {{GROUP_N}} ? (N_block_start / {{GROUP_N}}) * {{GROUP_N}} : N_block_start;
   const uint N_group_offset = N_block_start - N_group_start;
   const uint N_group_size = N - N_group_start;
@@ -284,7 +285,7 @@ kernel void int8_matmul(
   source += R"(
   auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));
   auto B = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(B_buf, dextents<int32_t, 2>(K, N_group_size));
-  if (N_block_start + {{BLOCK_N}} - 1 < N && M_block_start + {{BLOCK_M}} - 1 < M) {
+  if (N_block_start + {{BLOCK_N}} - 1 < N && M_block_start + {{BLOCK_M}} - 1 < {{M_VALUE}}) {
     constexpr auto matmul_descriptor = matmul2d_descriptor(
         {{BLOCK_M}},
         {{BLOCK_N}},

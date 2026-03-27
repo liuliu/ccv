@@ -212,7 +212,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   if (loadM) {
     source += R"(
-  const uint M = loadM[0];
+  const uniform<uint> M = make_uniform(loadM[0]);
 )";
   }
   source += R"(
@@ -600,7 +600,7 @@ kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
 )";
     if (loadM) {
       source += R"(
-  const uint M = loadM[0];
+  const uniform<uint> M = make_uniform(loadM[0]);
 )";
     }
     source += R"(
@@ -633,7 +633,7 @@ kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
 )";
     if (loadM) {
       source += R"(
-  const uint M = loadM[0];
+  const uniform<uint> M = make_uniform(loadM[0]);
 )";
     }
     source += R"(
