@@ -18,6 +18,7 @@ struct NAInt8MatMulDescriptor {
   std::optional<simd::uint4> batchStrides;
   bool useBias = false;
   bool loadM = false;
+  bool supportIndirectCommandBuffers = false;
 
   bool operator==(const NAInt8MatMulDescriptor& rhs) const;
 

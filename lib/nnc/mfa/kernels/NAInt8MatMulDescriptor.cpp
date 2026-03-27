@@ -3,6 +3,7 @@
 #include "NAInt8MatMulKernel.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include <cstring>
 
 namespace {
 
@@ -35,6 +36,7 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
     useBias == rhs.useBias &&
     loadM == rhs.loadM &&
+    supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers &&
     simd_all(lhsMatrixDimensions == rhsMatrixDimensions);
 }
 
@@ -54,6 +56,7 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   }
   combine_32(seed, hash.useBias ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
+  combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
   return seed;
 }
 
@@ -103,7 +106,8 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const uint32_t batchStrideBias = batchStrides[3];
     const uint32_t batchStrideAScale = batchStrides[0] > 0 ? M : 0;
     const uint32_t batchStrideBScale = batchStrides[1] > 0 ? N : 0;
-    if (!this->loadM || strcmp(functionNameString, "quantize_activation") == 0)
+    const bool quantizeActivation = (strcmp(functionNameString, "quantize_activation") == 0);
+    if (!this->loadM || quantizeActivation)
       constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
@@ -120,6 +124,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     CCV_NNC_MFA_CHECK_ERROR(error);
     auto pipelineDescriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
     pipelineDescriptor->setComputeFunction(function.get());
+    pipelineDescriptor->setSupportIndirectCommandBuffers(this->supportIndirectCommandBuffers);
     MTL::ComputePipelineState* pipeline = nullptr;
     if (binaryArchivesToRead) {
       pipelineDescriptor->setBinaryArchives(binaryArchivesToRead);

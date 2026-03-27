@@ -757,12 +757,214 @@ static int _mps_forward_scaled_gemm_compare_dense(const int datatype, const int 
 	return 0;
 }
 
+static float _mps_segmented_scaled_gemm_a_value(const int row, const int k)
+{
+	return (float)(((row * 17 + k * 13) % 61) - 30) / 128.0f;
+}
+
+static float _mps_segmented_scaled_gemm_w_value(const int segment, const int col, const int k)
+{
+	return (float)(((segment * 23 + col * 11 + k * 7) % 67) - 33) / 256.0f;
+}
+
+static float _mps_segmented_scaled_gemm_bias_value(const int segment, const int col)
+{
+	return (float)(((segment * 5 + col * 3) % 29) - 14) / 256.0f;
+}
+
+static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use_bias, const int force_fallback, double* const max_abs_ref, double* const max_rel_ref)
+{
+	const int total_m = 384;
+	const int n_dim = 128;
+	const int k_dim = 256;
+	const int segments = 3;
+	const int counts_data[] = {129, 131, 124};
+	const int indices_data[] = {1, 0, 2};
+	const ccv_nnc_tensor_param_t ha_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { total_m, k_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t hwd_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { segments, n_dim, k_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t hbias_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { segments, n_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t ga_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { total_m, k_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t gw_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { segments, n_dim, k_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t gbias_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { segments, n_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t gb_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { total_m, n_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t hb_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { total_m, n_dim, 0 },
+	};
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, hwd_params, 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(hwd_params), 0);
+	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, hbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(gw_params), 0);
+	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+	float* const a_values = (float*)ccmalloc(sizeof(float) * total_m * k_dim);
+	float* const w_values = (float*)ccmalloc(sizeof(float) * segments * n_dim * k_dim);
+	float* const bias_values = use_bias ? (float*)ccmalloc(sizeof(float) * segments * n_dim) : 0;
+	int i, j, k;
+	for (i = 0; i < total_m; i++)
+		for (k = 0; k < k_dim; k++)
+			a_values[i * k_dim + k] = _mps_segmented_scaled_gemm_a_value(i, k);
+	for (i = 0; i < segments; i++)
+		for (j = 0; j < n_dim; j++)
+			for (k = 0; k < k_dim; k++)
+				w_values[((i * n_dim) + j) * k_dim + k] = _mps_segmented_scaled_gemm_w_value(i, j, k);
+	if (use_bias)
+		for (i = 0; i < segments; i++)
+			for (j = 0; j < n_dim; j++)
+				bias_values[i * n_dim + j] = _mps_segmented_scaled_gemm_bias_value(i, j);
+	if (datatype == CCV_16F)
+	{
+		ccv_float_to_half_precision(a_values, (uint16_t*)ha->data.u8, total_m * k_dim);
+		ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, segments * n_dim * k_dim);
+		if (use_bias)
+			ccv_float_to_half_precision(bias_values, (uint16_t*)hbias->data.u8, segments * n_dim);
+	} else if (datatype == CCV_16BF) {
+		ccv_float_to_bfloat(a_values, (uint16_t*)ha->data.u8, total_m * k_dim);
+		ccv_float_to_bfloat(w_values, (uint16_t*)hwd->data.u8, segments * n_dim * k_dim);
+		if (use_bias)
+			ccv_float_to_bfloat(bias_values, (uint16_t*)hbias->data.u8, segments * n_dim);
+	} else {
+		memcpy(ha->data.f32, a_values, sizeof(float) * total_m * k_dim);
+		memcpy(hwd->data.f32, w_values, sizeof(float) * segments * n_dim * k_dim);
+		if (use_bias)
+			memcpy(hbias->data.f32, bias_values, sizeof(float) * segments * n_dim);
+	}
+	memcpy(hindices->data.i32, indices_data, sizeof(indices_data));
+	memcpy(hcounts->data.i32, counts_data, sizeof(counts_data));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
+		return -1;
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hwq, hbias), TENSOR_LIST(a, indices, counts, w, bias), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hwq), TENSOR_LIST(a, indices, counts, w), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (force_fallback)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+	if (force_fallback && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+
+	float* const a_ref = (float*)ccmalloc(sizeof(float) * total_m * k_dim);
+	float* const w_ref = (float*)ccmalloc(sizeof(float) * segments * n_dim * k_dim);
+	float* const bias_ref = use_bias ? (float*)ccmalloc(sizeof(float) * segments * n_dim) : 0;
+	float* const actual = (float*)ccmalloc(sizeof(float) * total_m * n_dim);
+	ccv_nnc_tensor_t* const ha_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, k_dim), 0);
+	ccv_nnc_tensor_t* const hw_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, segments, n_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hbias_ref = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, segments, n_dim), 0) : 0;
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, n_dim), 0);
+	if (force_fallback)
+		_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8, total_m * k_dim, a_ref);
+	else
+		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
+	_mps_forward_scaled_gemm_quantized_reference(datatype, hwd->data.u8, segments * n_dim, k_dim, w_ref);
+	if (use_bias)
+		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, segments * n_dim, bias_ref);
+	_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, total_m * n_dim, actual);
+	memcpy(ha_ref->data.f32, a_ref, sizeof(float) * total_m * k_dim);
+	memcpy(hw_ref->data.f32, w_ref, sizeof(float) * segments * n_dim * k_dim);
+	if (use_bias)
+		memcpy(hbias_ref->data.f32, bias_ref, sizeof(float) * segments * n_dim);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hindices, hcounts, hw_ref, hbias_ref), TENSOR_LIST(bt), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hindices, hcounts, hw_ref), TENSOR_LIST(bt), 0);
+	double max_abs = 0;
+	double max_rel = 0;
+	for (i = 0; i < total_m * n_dim; i++)
+	{
+		const double diff = fabs((double)actual[i] - (double)bt->data.f32[i]);
+		const double denom = ccv_max(1.0, ccv_max(fabs((double)actual[i]), fabs((double)bt->data.f32[i])));
+		max_abs = ccv_max(max_abs, diff);
+		max_rel = ccv_max(max_rel, diff / denom);
+	}
+	if (max_abs_ref)
+		*max_abs_ref = max_abs;
+	if (max_rel_ref)
+		*max_rel_ref = max_rel;
+	ccv_nnc_tensor_free(bt);
+	if (hbias_ref)
+		ccv_nnc_tensor_free(hbias_ref);
+	ccv_nnc_tensor_free(hw_ref);
+	ccv_nnc_tensor_free(ha_ref);
+	ccfree(actual);
+	if (bias_ref)
+		ccfree(bias_ref);
+	ccfree(w_ref);
+	ccfree(a_ref);
+	ccfree(a_values);
+	ccfree(w_values);
+	if (bias_values)
+		ccfree(bias_values);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(b);
+	if (bias)
+		ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(a);
+	if (hbias)
+		ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(hwd);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(ha);
+	return 0;
+}
+
 TEST_CASE("mps forward gemm with row-wise 8i weight NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(context));
 	double max_abs = 0;
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16F, 0, &max_abs, &max_rel), 0, "scaled GEMM validation should run");
@@ -771,21 +973,15 @@ TEST_CASE("mps forward gemm with row-wise 8i weight NA")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_32F, 0, &max_abs, &max_rel), 0, "scaled GEMM validation should run");
 	REQUIRE(max_rel < 2e-3, "quantized NAInt8MatMul should match row-wise quantized fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		max_abs = 0;
-		max_rel = 0;
-		REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16BF, 0, &max_abs, &max_rel), 0, "scaled GEMM validation should run");
-		REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	}
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16BF, 0, &max_abs, &max_rel), 0, "scaled GEMM validation should run");
+	REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(context));
 	double max_abs = 0;
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16F, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
@@ -794,20 +990,49 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_32F, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
 	REQUIRE(max_rel < 2e-3, "quantized NAInt8MatMul with bias should match row-wise quantized fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		max_abs = 0;
-		max_rel = 0;
-		REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16BF, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
-		REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul with bias should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	}
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate(CCV_16BF, 1, &max_abs, &max_rel), 0, "scaled GEMM validation with bias should run");
+	REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul with bias should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm with row-wise 8i weight NA")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16F, 0, 0, &max_abs, &max_rel), 0, "segmented row-wise 8i NA validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented row-wise 8i NA fp16 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_32F, 0, 0, &max_abs, &max_rel), 0, "segmented row-wise 8i NA validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented row-wise 8i NA fp32 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16BF, 0, 0, &max_abs, &max_rel), 0, "segmented row-wise 8i NA validation should run");
+	REQUIRE(max_rel < 6e-3, "segmented row-wise 8i NA bf16 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm with row-wise 8i weight and bias fallback dequantize")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16F, 1, 1, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i fp16 should match dense-A reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_32F, 1, 1, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i fp32 should match dense-A reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16BF, 1, 1, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i validation should run");
+	REQUIRE(max_rel < 6e-3, "segmented fallback row-wise 8i bf16 should match dense-A reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	double max_abs = 0;
@@ -829,25 +1054,20 @@ TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")
 	REQUIRE_EQ(status32f, 0, "fallback row-wise 8i GEMM validation should run");
 	REQUIRE(max_rel < 2e-3, "fallback row-wise 8i GEMM should match dense GPU fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-		max_abs = 0;
-		max_rel = 0;
-		const int status16bf = _mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 257, 384, 128, &max_abs, &max_rel);
-		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
-			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-		}
-		REQUIRE_EQ(status16bf, 0, "fallback row-wise 8i GEMM validation should run");
-		REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	max_abs = 0;
+	max_rel = 0;
+	const int status16bf = _mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 257, 384, 128, &max_abs, &max_rel);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	}
+	REQUIRE_EQ(status16bf, 0, "fallback row-wise 8i GEMM validation should run");
+	REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
 	const uint64_t old_flags = ccv_nnc_flags();
 	double max_abs = 0;
 	double max_rel = 0;
@@ -865,25 +1085,19 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	}
 	REQUIRE(max_rel < 2e-3, "fallback row-wise 8i GEMM with bias should match dense GPU fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		max_abs = 0;
-		max_rel = 0;
-		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-		REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, 257, 384, 128, &max_abs, &max_rel), 0, "fallback row-wise 8i GEMM with bias validation should run");
-		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
-			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-		}
-		REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM with bias should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, 257, 384, 128, &max_abs, &max_rel), 0, "fallback row-wise 8i GEMM with bias validation should run");
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	}
+	REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM with bias should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize large shapes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	static const int shapes[][3] = {
@@ -907,9 +1121,6 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize
 TEST_CASE("mps forward batched gemm with broadcast row-wise 8i weight NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(context));
 	double max_abs = 0;
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16F, 0, 0, 0, &max_abs, &max_rel), 0, "batched scaled GEMM validation should run");
@@ -918,21 +1129,15 @@ TEST_CASE("mps forward batched gemm with broadcast row-wise 8i weight NA")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_32F, 0, 0, 0, &max_abs, &max_rel), 0, "batched scaled GEMM validation should run");
 	REQUIRE(max_rel < 2e-3, "batched quantized NAInt8MatMul should match broadcast-weight fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		max_abs = 0;
-		max_rel = 0;
-		REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 0, 0, 0, &max_abs, &max_rel), 0, "batched scaled GEMM validation should run");
-		REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match broadcast-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	}
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 0, 0, 0, &max_abs, &max_rel), 0, "batched scaled GEMM validation should run");
+	REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match broadcast-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(context));
 	double max_abs = 0;
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16F, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
@@ -941,13 +1146,10 @@ TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA"
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_32F, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
 	REQUIRE(max_rel < 2e-3, "batched quantized NAInt8MatMul should match batched-weight fp32 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	if (ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-	{
-		max_abs = 0;
-		max_rel = 0;
-		REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
-		REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match batched-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
-	}
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
+	REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match batched-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 #define _STRINGIFY(x) #x
@@ -1873,9 +2075,6 @@ TEST_CASE("mps dequantize row-wise 8i float precision")
 TEST_CASE("mps dequantize row-wise 8i bfloat precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	const int rows = 257;
 	const int cols = 130;
 	float* const values = ccmalloc(sizeof(float) * rows * cols);
@@ -1914,9 +2113,6 @@ TEST_CASE("mps dequantize row-wise 8i bfloat precision")
 TEST_CASE("mps dequantize row-wise 8i bfloat precision large shapes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(context));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	static const int shapes[][2] = {
 		{3840, 3840},
 		{10240, 3840},
