@@ -1000,7 +1000,6 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cL[k] += cL_new[k];
       }
     }
-    thread pv_int8_left_tensor_t& cP_q_0 = reinterpret_cast<thread pv_int8_left_tensor_t&>(cS_0);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
