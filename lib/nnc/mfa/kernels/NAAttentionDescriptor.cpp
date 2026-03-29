@@ -41,7 +41,9 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   [=]() -> simd::ushort3 {
     unsigned short headDimension = createHeadDimension();
     unsigned short revisedHead = (headDimension + 15) / 16 * 16;
-    if (headDimension <= 128) {
+    if (type.value != AttentionKernelType::forward && lowPrecisionInputs && headDimension == 128) {
+      revisedHead = 64;
+    } else if (headDimension <= 128) {
       revisedHead = std::min(headDimension, revisedHead);
     } else {
       revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
@@ -69,11 +71,48 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   };
   auto createExecutionSIMDGroups = 
   [=]() -> uint16_t {
-    return lowPrecisionInputs ? 16 : 8;
+    return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
+  };
+  auto createBypassThreadgroupMemory =
+  [=]() -> bool {
+    if (type.value == AttentionKernelType::forward || !lowPrecisionInputs)
+      return false;
+    const unsigned short headDimension = createHeadDimension();
+    if (headDimension > 96)
+      return false;
+    const auto blockDimensions = createBlockDimensions();
+    switch (blockDimensions[1]) {
+    case 64:
+      switch (blockDimensions[2]) {
+      case 32:
+      case 40:
+      case 64:
+      case 80:
+      case 96:
+        return true;
+      default:
+        return false;
+      }
+    case 48:
+      switch (blockDimensions[2]) {
+      case 32:
+      case 40:
+      case 48:
+      case 64:
+      case 72:
+      case 80:
+      case 96:
+        return true;
+      default:
+        return false;
+      }
+    default:
+      return false;
+    }
   };
   auto blockDimensions = createBlockDimensions();
   bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
-  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale);
+  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory());
 }
 
 std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {
@@ -131,11 +170,32 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
   auto kernelDesc = kernelDescriptor(device, dprops);
   NAAttentionKernel* kernel = createKernel(kernelDesc);
   auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  NS::SharedPtr<MTL::ComputePipelineState> second;
+  if (type.value == AttentionKernelType::backwardQuery) {
+    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+    uint32_t rowDimension = matrixDimensions[0];
+    uint32_t columnDimension = matrixDimensions[1];
+    const uint32_t oBatchStride = batchStrides[AttentionOperand::O].value_or(0);
+    const uint32_t dOBatchStride = batchStrides[AttentionOperand::dO].value_or(0);
+    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
+    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    constants->setConstantValue(&oBatchStride, MTL::DataTypeUInt, 2 + AttentionOperand(AttentionOperand::O).bufferIndex());
+    constants->setConstantValue(&dOBatchStride, MTL::DataTypeUInt, 2 + AttentionOperand(AttentionOperand::dO).bufferIndex());
+    NS::String* swiftName = NS::String::string("compute_d", NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    auto pipelineDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    pipelineDesc->setComputeFunction(NS::TransferPtr
+    (kernel->library->newFunction(swiftName, constants.get(), &error)).get());
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    second = NS::TransferPtr(device->newComputePipelineState(pipelineDesc.get(), MTL::PipelineOptionNone, NULL, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
 
   // Force the user to retrieve the return value from the cache. We ensure
   // the cache takes ownership, and the pointer doesn't become a zombie
   // object.
   PipelineValue<NAAttentionKernel>* output = new PipelineValue<NAAttentionKernel> { kernel, pipeline };
+  output->second = second;
   return std::make_pair(kernelDesc, output);
 }
 
@@ -174,9 +234,16 @@ AttentionOperands<GEMMOperandPrecision> NAAttentionDescriptor::createMemoryPreci
     memoryPrecisions[AttentionOperand::D] = GEMMOperandPrecision::FP32;
   }
 
-  memoryPrecisions[AttentionOperand::dV] = GEMMOperandPrecision::FP32;
-  memoryPrecisions[AttentionOperand::dK] = GEMMOperandPrecision::FP32;
-  memoryPrecisions[AttentionOperand::dQ] = GEMMOperandPrecision::FP32;
+  if (lowPrecisionInputs) {
+    const auto lowPrecision = isBF16 ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP16;
+    memoryPrecisions[AttentionOperand::dV] = lowPrecision;
+    memoryPrecisions[AttentionOperand::dK] = lowPrecision;
+    memoryPrecisions[AttentionOperand::dQ] = lowPrecision;
+  } else {
+    memoryPrecisions[AttentionOperand::dV] = GEMMOperandPrecision::FP32;
+    memoryPrecisions[AttentionOperand::dK] = GEMMOperandPrecision::FP32;
+    memoryPrecisions[AttentionOperand::dQ] = GEMMOperandPrecision::FP32;
+  }
   
   return memoryPrecisions;
 }

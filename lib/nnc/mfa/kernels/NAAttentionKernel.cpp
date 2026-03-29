@@ -17,7 +17,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   executionSIMDGroups = descriptor.executionSIMDGroups;
   checkCEdge1 = descriptor.checkCEdge1;
   scale = descriptor.scale;
-  bypassThreadgroupMemory = false;
+  bypassThreadgroupMemory = descriptor.bypassThreadgroupMemory;
 
   source = createSource();
 
@@ -38,8 +38,28 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
 // MARK: - NAAttentionKernel
 
 unsigned short NAAttentionKernel::threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept {
-  unsigned short threadgroupMemoryAllocation = blockDimensions[0] * blockDimensions[1] * executionSIMDGroups * memoryPrecisions[AttentionOperand::O].value().size();
-  return threadgroupMemoryAllocation;
+  if (type.value == AttentionKernelType::forward) {
+    unsigned short threadgroupMemoryAllocation = blockDimensions[0] * blockDimensions[1] * executionSIMDGroups * memoryPrecisions[AttentionOperand::O].value().size();
+    return threadgroupMemoryAllocation;
+  }
+  if (bypassThreadgroupMemory)
+    return 0;
+  if (memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32) {
+    const uint16_t memorySize = memoryPrecisions[AttentionOperand::Q].value().size();
+    if ((type.value == AttentionKernelType::backwardQuery || type.value == AttentionKernelType::backwardKeyValue) && headDimension == blockDimensions[2] * 2) {
+      const unsigned short sharedTileBytes =
+          blockDimensions[2] *
+          (blockDimensions[1] * 4 + blockDimensions[0] * 4 * executionSIMDGroups) *
+          memorySize;
+      return sharedTileBytes;
+    }
+    const unsigned short sharedTileBytes =
+        blockDimensions[2] *
+        (blockDimensions[1] + blockDimensions[0] * 2 * executionSIMDGroups) *
+        memorySize;
+    return sharedTileBytes;
+  }
+  return 0;
 }
 
 /// The number of threads per group.
@@ -52,7 +72,14 @@ MTL::Size NAAttentionKernel::threadgroupsPerGrid(const NAAttentionDescriptor &de
   [=](int64_t target, uint16_t granularity) -> int64_t {
     return (target + int64_t(granularity) - 1) / int64_t(granularity);
   };
-  return MTL::Size(ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups) * Hq * descriptor.batchDimension, 1, 1);
+  switch (type.value) {
+  case AttentionKernelType::forward:
+  case AttentionKernelType::backwardQuery:
+    return MTL::Size(ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups) * Hq * descriptor.batchDimension, 1, 1);
+  case AttentionKernelType::backwardKeyValue:
+    return MTL::Size(ceilDivide(descriptor.matrixDimensions[1], blockDimensions[0] * executionSIMDGroups) * Hk * descriptor.batchDimension, 1, 1);
+  }
+  return MTL::Size(0, 0, 0);
 }
 
 std::string NAAttentionKernel::memoryName(AttentionOperand operand) const noexcept {
@@ -141,6 +168,10 @@ using namespace mpp::tensor_ops;
 
   createConstants(source);
 
+  if (type.value == AttentionKernelType::backwardQuery) {
+    source += createComputeD();
+  }
+
   source += R"(
     
     // Declare the function.
@@ -150,24 +181,40 @@ using namespace mpp::tensor_ops;
   switch (type.value) {
   case AttentionKernelType::forward:
     source.SetValue("DISPATCH_DIMENSION", "R");
+    source.SetValue("DISPATCH_HEADS", "Hq");
     break;
   case AttentionKernelType::backwardQuery:
     source.SetValue("DISPATCH_DIMENSION", "R");
+    source.SetValue("DISPATCH_HEADS", "Hq");
     break;
   case AttentionKernelType::backwardKeyValue:
     source.SetValue("DISPATCH_DIMENSION", "C");
+    source.SetValue("DISPATCH_HEADS", "Hk");
     break;
   }
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
-  source.SetValue("HQ", std::to_string(Hq));
-  source += R"(
+  if (type.value == AttentionKernelType::forward || !bypassThreadgroupMemory) {
+    source += R"(
       threadgroup uchar *threadgroup_block [[threadgroup(0)]],
-      
+)";
+  }
+  if (type.value == AttentionKernelType::forward) {
+    source += R"(
       ushort sgid [[simdgroup_index_in_threadgroup]],
       uint3 tgid [[threadgroup_position_in_grid]]
     ) {
-  tgid = { (tgid.x / {{HQ}}) % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})), tgid.x % {{HQ}}, tgid.x / {{HQ}} / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})) };
+)";
+  } else {
+    source += R"(
+      ushort tid [[thread_index_in_threadgroup]],
+      ushort sgid [[simdgroup_index_in_threadgroup]],
+      uint3 tgid [[threadgroup_position_in_grid]]
+    ) {
+)";
+  }
+  source += R"(
+  tgid = { (tgid.x / {{DISPATCH_HEADS}}) % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})), tgid.x % {{DISPATCH_HEADS}}, tgid.x / {{DISPATCH_HEADS}} / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})) };
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
   if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{DISPATCH_DIMENSION}}) {
     return;
@@ -179,8 +226,10 @@ using namespace mpp::tensor_ops;
     loopForward(source);
     break;
   case AttentionKernelType::backwardQuery:
+    loopBackwardQuery(source);
     break;
   case AttentionKernelType::backwardKeyValue:
+    loopBackwardKeyValue(source);
     break;
   }
   source += "}\n";
@@ -207,7 +256,7 @@ constant uint C [[function_constant(1)]];
     operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dQ};
     break;
   case AttentionKernelType::backwardKeyValue:
-    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
     break;
   }
   source.SetValue("HQ", std::to_string(Hq));
@@ -220,25 +269,31 @@ constant uint C [[function_constant(1)]];
   source += R"(
 constant uint Hq = {{HQ}};
 constant uint Hk = {{HK}};
+)";
+  if (type.value == AttentionKernelType::forward) {
+    source += R"(
 // In this special case, leaving the rest to the trailing block to process.
 constant uint C_remainder = (C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}) == {{BLOCK_DIMENSIONS_TRAVERSAL}} ? {{BLOCK_DIMENSIONS_TRAVERSAL}} : (C % {{BLOCK_DIMENSIONS_TRAVERSAL}});
 )";
-  if (checkCEdge1) {
-    source += R"(
+    if (checkCEdge1) {
+      source += R"(
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 constant uint C_edge_1 = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
 )";
-  } else {
-    // When we are not checking C_edge, C_edge makes sure we process entire blockDimensions.C * 2 block, rather than one of.
-    // And leaving the rest to the C_remainder path.
-    source += R"(
+    } else {
+      // When we are not checking C_edge, C_edge makes sure we process entire blockDimensions.C * 2 block, rather than one of.
+      // And leaving the rest to the C_remainder path.
+      source += R"(
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
 )";
-  }
-  source += R"(
+    }
+    source += R"(
 constant uint R_edge = R >= {{BLOCK_DIMENSIONS_PARALLELIZATION}} ? R + 1 - {{BLOCK_DIMENSIONS_PARALLELIZATION}} : 0;
 constant uint R_remainder = R % {{BLOCK_DIMENSIONS_PARALLELIZATION}};
 constant uint K_edge = {{HEAD_DIMENSION}} + 1 - {{BLOCK_DIMENSIONS_HEAD}};
+)";
+  }
+  source += R"(
 constant uint K_Hq = {{HEAD_DIMENSION}} * Hq;
 constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
 )";
@@ -258,10 +313,10 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
     operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L};
     break;
   case AttentionKernelType::backwardQuery:
-    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dQ};
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dQ};
     break;
   case AttentionKernelType::backwardKeyValue:
-    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
     break;
   }
   std::string output = "";
@@ -292,10 +347,10 @@ std::string NAAttentionKernel::createAdjustOffsets() const noexcept {
     operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L};
     break;
   case AttentionKernelType::backwardQuery:
-    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dQ};
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dQ};
     break;
   case AttentionKernelType::backwardKeyValue:
-    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::L, AttentionOperand::D, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
     break;
   }
   CodeWriter source;
@@ -374,6 +429,48 @@ static std::string dotProductScale(float rsqrtD, bool derivative) {
   } else {
     return high_precision_to_string(rsqrtD);
   }
+}
+
+std::string NAAttentionKernel::createComputeD() const noexcept {
+  CodeWriter source;
+  source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
+  source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
+  source.SetValue("MEMORY_NAME_D", memoryName(AttentionOperand::D));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source.SetValue("COMPUTE_D_THREADS", std::to_string(computeDThreads));
+  source.SetValue("DOT_SCALE_DERIVATIVE", dotProductScale(scale, true));
+  source += R"(
+
+kernel void compute_d(
+    device const {{MEMORY_NAME_O}}* O_buf [[buffer(3)]],
+    device const {{MEMORY_NAME_DO}}* dO_buf [[buffer(6)]],
+    device {{MEMORY_NAME_D}}* D_buf [[buffer(5)]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  const uint row = tgid.x % R;
+  const uint head = tgid.x / R;
+  O_buf += tgid.z * O_batch_stride;
+  dO_buf += tgid.z * dO_batch_stride;
+  D_buf += (tgid.z * Hq + head) * R;
+
+  const uint offset = row * K_Hq + head * {{HEAD_DIMENSION}};
+  float D_accumulator = 0;
+  for (uint d = lane_id; d < {{HEAD_DIMENSION}}; d += {{COMPUTE_D_THREADS}}) {
+    D_accumulator += (float)O_buf[offset + d] * (float)dO_buf[offset + d];
+  }
+  D_accumulator += simd_shuffle_xor(D_accumulator, 16);
+  D_accumulator += simd_shuffle_xor(D_accumulator, 8);
+  D_accumulator += simd_shuffle_xor(D_accumulator, 4);
+  D_accumulator += simd_shuffle_xor(D_accumulator, 2);
+  D_accumulator += simd_shuffle_xor(D_accumulator, 1);
+  if (lane_id == 0) {
+    D_buf[row] = ({{MEMORY_NAME_D}})(D_accumulator * {{DOT_SCALE_DERIVATIVE}});
+  }
+}
+
+)";
+  return source.ToString();
 }
 
 void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
@@ -931,6 +1028,667 @@ source += R"(
         float L_sram = cM[k] + fast::log2(cL[k]);
         L[idx[0]] = ({{MEMORY_NAME_L}})L_sram;
       }
+    }
+  }
+)";
+}
+
+void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
+  const bool lowPrecisionInputs = memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32;
+  const bool useThreadgroupSharing = lowPrecisionInputs && !bypassThreadgroupMemory;
+  const bool doubleHeadBlocks = lowPrecisionInputs && headDimension == blockDimensions[2] * 2;
+  source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
+  source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
+  source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
+  source.SetValue("MEMORY_NAME_DQ", memoryName(AttentionOperand::dQ));
+  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::Q));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  if (blockDimensions[2] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  source.SetValue("DOT_SCALE", dotProductScale(scale, false));
+  source.SetValue("DOT_SCALE_DERIVATIVE", dotProductScale(scale, true));
+  if (Hq != Hk) {
+    source.SetValue("H_HK_RATIO", "/ " + std::to_string(Hq / Hk));
+  } else {
+    source.SetValue("H_HK_RATIO", "");
+  }
+  source += R"(
+  auto Q = tensor<device {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
+  auto K = tensor<device {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto V = tensor<device {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto dO = tensor<device {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO_buf, dextents<int32_t, 2>(K_Hq, R));
+)";
+  source += R"(
+  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
+  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
+  constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc, execution_simdgroups<1>> matmul_qk_op;
+  auto cS = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  constexpr auto dsk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<dsk_desc, execution_simdgroups<1>> matmul_dsk_op;
+)";
+  if (doubleHeadBlocks && bypassThreadgroupMemory) {
+    source.SetValue("SECOND_HEAD_BLOCK_OFFSET", std::to_string(blockDimensions[2]));
+    source += R"(
+  auto mQ_0 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mdO_0 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mQ_1 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mdO_1 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
+  auto mV_0 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
+  auto mK_1 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, 0);
+  auto mV_1 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, 0);
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO_0), decltype(mV_0), float>();
+  auto cDQ_0 = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK_0), float>();
+  auto cDQ_1 = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK_1), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ_0.get_capacity(); ++k) {
+    if (cDQ_0.is_valid_element(k)) {
+      cDQ_0[k] = 0;
+      cDQ_1[k] = 0;
+    }
+  }
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto D = D_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
+      if (cS.is_valid_element(k)) {
+        cS[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c);
+    auto mV_0 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c);
+    auto mK_1 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, c);
+    auto mV_1 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, c);
+    matmul_qk_op.run(mQ_0, mK_0, cS);
+    matmul_qk_op.run(mQ_1, mK_1, cS);
+    matmul_qk_op.run(mdO_0, mV_0, cDP);
+    matmul_qk_op.run(mdO_1, mV_1, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cDS.get_capacity(); ++k) {
+      if (cDS.is_valid_element(k)) {
+        auto idx = cDS.get_multidimensional_index(k);
+        const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
+        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+      }
+    }
+    matmul_dsk_op.run(cDS, mK_0, cDQ_0);
+    matmul_dsk_op.run(cDS, mK_1, cDQ_1);
+  }
+  auto dQ = dQ_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ_0.get_capacity(); ++k) {
+    if (cDQ_0.is_valid_element(k)) {
+      auto idx = cDQ_0.get_multidimensional_index(k);
+      dQ[idx[0] + idx[1] * K_Hq] = ({{MEMORY_NAME_DQ}})cDQ_0[k];
+      dQ[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hq] = ({{MEMORY_NAME_DQ}})cDQ_1[k];
+    }
+  }
+)";
+    return;
+  }
+  if (doubleHeadBlocks) {
+    source.SetValue("SECOND_HEAD_BLOCK_OFFSET", std::to_string(blockDimensions[2]));
+    source += R"(
+  threadgroup uchar *Q0_shared_bytes = threadgroup_block + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}});
+  threadgroup uchar *dO0_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}});
+  threadgroup uchar *Q1_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}});
+  threadgroup uchar *dO1_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} * 2 + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}});
+  threadgroup uchar *K0_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_Q}}) + sizeof({{MEMORY_NAME_DO}})) * {{EXECUTION_SIMD_GROUPS}} * 2;
+  threadgroup uchar *V0_shared_bytes = K0_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_K}});
+  threadgroup uchar *K1_shared_bytes = V0_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_V}});
+  threadgroup uchar *V1_shared_bytes = K1_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_K}});
+  threadgroup {{MEMORY_NAME_Q}} *Q0_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q0_shared_bytes;
+  threadgroup {{MEMORY_NAME_DO}} *dO0_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO0_shared_bytes;
+  threadgroup {{MEMORY_NAME_Q}} *Q1_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q1_shared_bytes;
+  threadgroup {{MEMORY_NAME_DO}} *dO1_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO1_shared_bytes;
+  threadgroup {{MEMORY_NAME_K}} *K0_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K0_shared_bytes;
+  threadgroup {{MEMORY_NAME_V}} *V0_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V0_shared_bytes;
+  threadgroup {{MEMORY_NAME_K}} *K1_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K1_shared_bytes;
+  threadgroup {{MEMORY_NAME_V}} *V1_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V1_shared_bytes;
+  auto Q0_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto dO0_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto Q1_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto dO1_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto K0_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto V0_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto K1_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto V1_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(dO0_shared), decltype(V0_shared), float>();
+  auto cDQ_0 = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(K0_shared), float>();
+  auto cDQ_1 = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(K1_shared), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ_0.get_capacity(); ++k) {
+    if (cDQ_0.is_valid_element(k)) {
+      cDQ_0[k] = 0;
+      cDQ_1[k] = 0;
+    }
+  }
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+    const uint row_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+    const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + row_idx;
+    Q0_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+    dO0_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+    Q1_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + row * K_Hq];
+    dO1_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + row * K_Hq];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto D = D_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
+      if (cS.is_valid_element(k)) {
+        cS[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
+      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+      const uint col_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+      const uint col = c + col_idx;
+      K0_shared_buf[load_index] = K_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+      V0_shared_buf[load_index] = V_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+      K1_shared_buf[load_index] = K_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + col * K_Hk];
+      V1_shared_buf[load_index] = V_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + col * K_Hk];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    matmul_qk_op.run(Q0_shared, K0_shared, cS);
+    matmul_qk_op.run(Q1_shared, K1_shared, cS);
+    matmul_qk_op.run(dO0_shared, V0_shared, cDP);
+    matmul_qk_op.run(dO1_shared, V1_shared, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cDS.get_capacity(); ++k) {
+      if (cDS.is_valid_element(k)) {
+        auto idx = cDS.get_multidimensional_index(k);
+        const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
+        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+      }
+    }
+    matmul_dsk_op.run(cDS, K0_shared, cDQ_0);
+    matmul_dsk_op.run(cDS, K1_shared, cDQ_1);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  auto dQ = dQ_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ_0.get_capacity(); ++k) {
+    if (cDQ_0.is_valid_element(k)) {
+      auto idx = cDQ_0.get_multidimensional_index(k);
+      dQ[idx[0] + idx[1] * K_Hq] = ({{MEMORY_NAME_DQ}})cDQ_0[k];
+      dQ[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hq] = ({{MEMORY_NAME_DQ}})cDQ_1[k];
+    }
+  }
+)";
+    return;
+  }
+  if (useThreadgroupSharing) {
+    source += R"(
+  threadgroup uchar *Q_shared_bytes = threadgroup_block + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}});
+  threadgroup uchar *dO_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}});
+  threadgroup uchar *K_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_Q}}) + sizeof({{MEMORY_NAME_DO}})) * {{EXECUTION_SIMD_GROUPS}};
+  threadgroup {{MEMORY_NAME_Q}} *Q_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q_shared_bytes;
+  threadgroup {{MEMORY_NAME_DO}} *dO_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO_shared_bytes;
+  threadgroup {{MEMORY_NAME_K}} *K_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K_shared_bytes;
+  auto Q_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto dO_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto K_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDQ = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(K_shared), float>();
+  auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), float>();
+)";
+  } else {
+    source += R"(
+  auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), float>();
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDQ = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK), float>();
+)";
+  }
+  if (useThreadgroupSharing) {
+    source += R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ.get_capacity(); ++k) {
+    if (cDQ.is_valid_element(k)) {
+      cDQ[k] = 0;
+    }
+  }
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+    const uint row_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+    const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + row_idx;
+    Q_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+    dO_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto D = D_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
+      if (cS.is_valid_element(k)) {
+        cS[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
+      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+      const uint col_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+      K_shared_buf[load_index] = K_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + head_idx + (c + col_idx) * K_Hk];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    matmul_qk_op.run(Q_shared, K_shared, cS);
+    auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c);
+    matmul_qk_op.run(dO_shared, mV, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cDS.get_capacity(); ++k) {
+      if (cDS.is_valid_element(k)) {
+        auto idx = cDS.get_multidimensional_index(k);
+        const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
+        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+      }
+    }
+    matmul_dsk_op.run(cDS, K_shared, cDQ);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+)";
+  } else {
+    source += R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ.get_capacity(); ++k) {
+    if (cDQ.is_valid_element(k)) {
+      cDQ[k] = 0;
+    }
+  }
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto D = D_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS.get_capacity(); ++k) {
+      if (cS.is_valid_element(k)) {
+        cS[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c);
+    auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c);
+    matmul_qk_op.run(mQ, mK, cS);
+    matmul_qk_op.run(mdO, mV, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cDS.get_capacity(); ++k) {
+      if (cDS.is_valid_element(k)) {
+        auto idx = cDS.get_multidimensional_index(k);
+        const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
+        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+      }
+    }
+    matmul_dsk_op.run(cDS, mK, cDQ);
+)";
+  }
+  source += R"(
+  }
+  auto dQ = dQ_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDQ.get_capacity(); ++k) {
+    if (cDQ.is_valid_element(k)) {
+      auto idx = cDQ.get_multidimensional_index(k);
+      dQ[idx[0] + idx[1] * K_Hq] = ({{MEMORY_NAME_DQ}})cDQ[k];
+    }
+  }
+)";
+}
+
+void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept {
+  const bool lowPrecisionInputs = memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32;
+  const bool useThreadgroupSharing = lowPrecisionInputs && !bypassThreadgroupMemory;
+  const bool doubleHeadBlocks = lowPrecisionInputs && headDimension == blockDimensions[2] * 2;
+  source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
+  source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
+  source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
+  source.SetValue("MEMORY_NAME_DK", memoryName(AttentionOperand::dK));
+  source.SetValue("MEMORY_NAME_DV", memoryName(AttentionOperand::dV));
+  source.SetValue("MEMORY_NAME_P", memoryName(AttentionOperand::dO));
+  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::Q));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  if (blockDimensions[2] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  source.SetValue("DOT_SCALE", dotProductScale(scale, false));
+  source.SetValue("DOT_SCALE_DERIVATIVE", dotProductScale(scale, true));
+  source += R"(
+  auto Q = tensor<device {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
+  auto K = tensor<device {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto V = tensor<device {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto dO = tensor<device {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO_buf, dextents<int32_t, 2>(K_Hq, R));
+  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+)";
+  source += R"(
+  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  constexpr auto kqt_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<kqt_desc, execution_simdgroups<1>> matmul_kqt_op;
+  auto cST = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mK), decltype(mQ), float>();
+  constexpr auto pdo_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<pdo_desc, execution_simdgroups<1>> matmul_pdo_op;
+)";
+  if (doubleHeadBlocks && bypassThreadgroupMemory) {
+    source.SetValue("SECOND_HEAD_BLOCK_OFFSET", std::to_string(blockDimensions[2]));
+    source += R"(
+  auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mV_0 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mK_1 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mV_1 = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mQ_0 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  auto mdO_0 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  auto mQ_1 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, 0);
+  auto mdO_1 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, 0);
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV_0), decltype(mdO_0), float>();
+  auto cDV_0 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO_0), float>();
+  auto cDV_1 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO_1), float>();
+  auto cDK_0 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_0), float>();
+  auto cDK_1 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_1), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
+    if (cDV_0.is_valid_element(k)) {
+      cDV_0[k] = 0;
+      cDV_1[k] = 0;
+      cDK_0[k] = 0;
+      cDK_1[k] = 0;
+    }
+  }
+  for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
+      if (cST.is_valid_element(k)) {
+        cST[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    auto mQ_0 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    auto mdO_0 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    auto mQ_1 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, r);
+    auto mdO_1 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}}, r);
+    matmul_kqt_op.run(mK_0, mQ_0, cST);
+    matmul_kqt_op.run(mK_1, mQ_1, cST);
+    matmul_kqt_op.run(mV_0, mdO_0, cDP);
+    matmul_kqt_op.run(mV_1, mdO_1, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
+        const float L_value = (float)L_buf[r + idx[0]];
+        const float D_value = (float)D_buf[r + idx[0]];
+        const float P_value = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
+        cP[k] = P_value;
+        cDS[k] = P_value * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+      }
+    }
+    matmul_pdo_op.run(cP, mdO_0, cDV_0);
+    matmul_pdo_op.run(cP, mdO_1, cDV_1);
+    matmul_pdo_op.run(cDS, mQ_0, cDK_0);
+    matmul_pdo_op.run(cDS, mQ_1, cDK_1);
+  }
+  auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
+    if (cDV_0.is_valid_element(k)) {
+      auto idx = cDV_0.get_multidimensional_index(k);
+      dV[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DV}})cDV_0[k];
+      dV[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hk] = ({{MEMORY_NAME_DV}})cDV_1[k];
+      dK[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DK}})cDK_0[k];
+      dK[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hk] = ({{MEMORY_NAME_DK}})cDK_1[k];
+    }
+  }
+)";
+    return;
+  }
+  if (doubleHeadBlocks) {
+    source.SetValue("SECOND_HEAD_BLOCK_OFFSET", std::to_string(blockDimensions[2]));
+    source += R"(
+  threadgroup uchar *K0_shared_bytes = threadgroup_block + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}});
+  threadgroup uchar *V0_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}});
+  threadgroup uchar *K1_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_K}}) + sizeof({{MEMORY_NAME_V}})) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}});
+  threadgroup uchar *V1_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_K}}) * 2 + sizeof({{MEMORY_NAME_V}})) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}});
+  threadgroup uchar *Q0_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_K}}) + sizeof({{MEMORY_NAME_V}})) * {{EXECUTION_SIMD_GROUPS}} * 2;
+  threadgroup uchar *dO0_shared_bytes = Q0_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_Q}});
+  threadgroup uchar *Q1_shared_bytes = dO0_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_DO}});
+  threadgroup uchar *dO1_shared_bytes = Q1_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_Q}});
+  threadgroup {{MEMORY_NAME_K}} *K0_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K0_shared_bytes;
+  threadgroup {{MEMORY_NAME_V}} *V0_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V0_shared_bytes;
+  threadgroup {{MEMORY_NAME_K}} *K1_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K1_shared_bytes;
+  threadgroup {{MEMORY_NAME_V}} *V1_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V1_shared_bytes;
+  threadgroup {{MEMORY_NAME_Q}} *Q0_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q0_shared_bytes;
+  threadgroup {{MEMORY_NAME_DO}} *dO0_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO0_shared_bytes;
+  threadgroup {{MEMORY_NAME_Q}} *Q1_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q1_shared_bytes;
+  threadgroup {{MEMORY_NAME_DO}} *dO1_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO1_shared_bytes;
+  auto K0_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto V0_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto K1_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto V1_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto Q0_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto dO0_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO0_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto Q1_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto dO1_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO1_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(V0_shared), decltype(dO0_shared), float>();
+  auto cDV_0 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(dO0_shared), float>();
+  auto cDV_1 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(dO1_shared), float>();
+  auto cDK_0 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(Q0_shared), float>();
+  auto cDK_1 = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(Q1_shared), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
+    if (cDV_0.is_valid_element(k)) {
+      cDV_0[k] = 0;
+      cDV_1[k] = 0;
+      cDK_0[k] = 0;
+      cDK_1[k] = 0;
+    }
+  }
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+    const uint col_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+    const uint col = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + col_idx;
+    K0_shared_buf[load_index] = K_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+    V0_shared_buf[load_index] = V_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+    K1_shared_buf[load_index] = K_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + col * K_Hk];
+    V1_shared_buf[load_index] = V_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + col * K_Hk];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
+      if (cST.is_valid_element(k)) {
+        cST[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
+      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+      const uint row_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+      const uint row = r + row_idx;
+      Q0_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+      dO0_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+      Q1_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + row * K_Hq];
+      dO1_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + {{SECOND_HEAD_BLOCK_OFFSET}} + head_idx + row * K_Hq];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    matmul_kqt_op.run(K0_shared, Q0_shared, cST);
+    matmul_kqt_op.run(K1_shared, Q1_shared, cST);
+    matmul_kqt_op.run(V0_shared, dO0_shared, cDP);
+    matmul_kqt_op.run(V1_shared, dO1_shared, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
+        const float L_value = (float)L_buf[r + idx[0]];
+        const float D_value = (float)D_buf[r + idx[0]];
+        const float P_value = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
+        cP[k] = P_value;
+        cDS[k] = P_value * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+      }
+    }
+    matmul_pdo_op.run(cP, dO0_shared, cDV_0);
+    matmul_pdo_op.run(cP, dO1_shared, cDV_1);
+    matmul_pdo_op.run(cDS, Q0_shared, cDK_0);
+    matmul_pdo_op.run(cDS, Q1_shared, cDK_1);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
+    if (cDV_0.is_valid_element(k)) {
+      auto idx = cDV_0.get_multidimensional_index(k);
+      dV[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DV}})cDV_0[k];
+      dV[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hk] = ({{MEMORY_NAME_DV}})cDV_1[k];
+      dK[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DK}})cDK_0[k];
+      dK[idx[0] + {{SECOND_HEAD_BLOCK_OFFSET}} + idx[1] * K_Hk] = ({{MEMORY_NAME_DK}})cDK_1[k];
+    }
+  }
+)";
+    return;
+  }
+  if (useThreadgroupSharing) {
+    source += R"(
+  threadgroup uchar *K_shared_bytes = threadgroup_block + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}});
+  threadgroup uchar *V_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}}) * {{EXECUTION_SIMD_GROUPS}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}});
+  threadgroup uchar *Q_shared_bytes = threadgroup_block + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * (sizeof({{MEMORY_NAME_K}}) + sizeof({{MEMORY_NAME_V}})) * {{EXECUTION_SIMD_GROUPS}};
+  threadgroup {{MEMORY_NAME_K}} *K_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K_shared_bytes;
+  threadgroup {{MEMORY_NAME_V}} *V_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V_shared_bytes;
+  threadgroup {{MEMORY_NAME_Q}} *Q_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q_shared_bytes;
+  auto K_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto V_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  auto Q_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), float>();
+  auto cDV = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO), float>();
+  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(Q_shared), float>();
+)";
+  } else {
+    source += R"(
+  auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), float>();
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cDV = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO), float>();
+  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();
+)";
+  }
+  source += R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
+    if (cDV.is_valid_element(k)) {
+      cDV[k] = 0;
+      cDK[k] = 0;
+    }
+  }
+)";
+  if (useThreadgroupSharing) {
+    source += R"(
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+    const uint col_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+    const uint col = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + col_idx;
+    K_shared_buf[load_index] = K_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+    V_shared_buf[load_index] = V_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + col * K_Hk];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+)";
+  }
+  source += R"(
+  for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  if (useThreadgroupSharing) {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
+      if (cST.is_valid_element(k)) {
+        cST[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
+      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
+      const uint row_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
+      Q_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + (r + row_idx) * K_Hq];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    matmul_kqt_op.run(K_shared, Q_shared, cST);
+    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    matmul_kqt_op.run(V_shared, mdO, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
+        const float L_value = (float)L_buf[r + idx[0]];
+        const float D_value = (float)D_buf[r + idx[0]];
+        const float P_value = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
+        cP[k] = P_value;
+        cDS[k] = P_value * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+      }
+    }
+    matmul_pdo_op.run(cP, mdO, cDV);
+    matmul_pdo_op.run(cDS, Q_shared, cDK);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+)";
+  } else {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
+      if (cST.is_valid_element(k)) {
+        cST[k] = 0;
+        cDP[k] = 0;
+      }
+    }
+    auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    matmul_kqt_op.run(mK, mQ, cST);
+    matmul_kqt_op.run(mV, mdO, cDP);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
+        const float L_value = (float)L_buf[r + idx[0]];
+        const float D_value = (float)D_buf[r + idx[0]];
+        const float P = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
+        cP[k] = P;
+        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+      }
+    }
+    matmul_pdo_op.run(cP, mdO, cDV);
+    matmul_pdo_op.run(cDS, mQ, cDK);
+)";
+  }
+  source += R"(
+  }
+  auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
+    if (cDV.is_valid_element(k)) {
+      auto idx = cDV.get_multidimensional_index(k);
+      dV[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DV}})cDV[k];
+      dK[idx[0] + idx[1] * K_Hk] = ({{MEMORY_NAME_DK}})cDK[k];
     }
   }
 )";

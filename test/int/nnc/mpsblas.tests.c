@@ -3528,7 +3528,7 @@ TEST_CASE("scaled dot product attention with mps in bfloat precision")
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
 		const int Hk_candidates[num_trials] = {   8,  8, 4, 2, 8, 32, 8,  8, 8, 8, 8, 32 };
-		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 64, 40, 160, 192, 256, 128 };
+		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 48, 96, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
@@ -3789,7 +3789,7 @@ TEST_CASE("scaled dot product attention gradient with mps in half precision")
 		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
-		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 64, 40, 160, 192, 256, 128 };
+		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 48, 96, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
@@ -3906,7 +3906,7 @@ TEST_CASE("scaled dot product attention gradient with mps in bfloat precision")
 		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
-		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 64, 40, 160, 192, 256, 128 };
+		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 48, 96, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
