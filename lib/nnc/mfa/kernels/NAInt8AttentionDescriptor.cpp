@@ -21,6 +21,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     Hk == rhs.Hk &&
     type == rhs.type &&
     ioPrecision == rhs.ioPrecision &&
+    lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale &&
     batchStrides == rhs.batchStrides &&
     simd_all(matrixDimensions == rhs.matrixDimensions);
@@ -33,7 +34,9 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   combine_32(seed, hash.Hq);
   combine_32(seed, hash.Hk);
   combine_32(seed, (uint16_t)hash.type.value);
-  combine_32(seed, (uint32_t)hash.ioPrecision.value);
+  combine_32(seed, pack_32(simd::ushort2 {
+      (uint16_t)hash.ioPrecision.value,
+      (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
@@ -87,6 +90,7 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       has_c_remainder,
       true,
       ioPrecision,
+      lowPrecisionIntermediates,
       type,
       scale);
 }

@@ -18,6 +18,7 @@ struct NAInt8AttentionKernelDescriptor {
   bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;
+  bool lowPrecisionIntermediates;
   AttentionKernelType type;
   float scale;
 
@@ -34,6 +35,7 @@ struct NAInt8AttentionKernelDescriptor {
       bool hasCRemainder,
       bool threadBarrierOverC,
       GEMMOperandPrecision ioPrecision,
+      bool lowPrecisionIntermediates,
       AttentionKernelType type,
       float scale) noexcept;
 

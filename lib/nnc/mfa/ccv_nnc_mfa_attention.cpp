@@ -101,6 +101,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.Hk = hash.Hk;
       attentionDesc.batchDimension = batch_sizes[0];
       attentionDesc.scale = hash.alpha;
+      attentionDesc.lowPrecisionIntermediates =
+          (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
       if (params.batched) {
         attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
         attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
@@ -144,7 +146,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const size_t vScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
       const size_t vMeanBytes =
           (size_t)batchDimension * hash.Hk * hash.D * sizeof(float);
-      const size_t lBytes = (size_t)batchDimension * hash.Hq * hash.R * sizeof(float);
+      const GEMMOperandPrecision lPrecision =
+          attentionDesc.lowPrecisionIntermediates ?
+          (attentionDesc.ioPrecision == GEMMOperandPrecision::BF16 ? GEMMOperandPrecision::BF16 :
+              (attentionDesc.ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16)) :
+          GEMMOperandPrecision::FP32;
+      const size_t lBytes = (size_t)batchDimension * hash.Hq * hash.R * lPrecision.size();
       size_t scratchSize = 0;
       const size_t qInt8Offset = reserve(&scratchSize, qInt8Bytes);
       const size_t kInt8Offset = reserve(&scratchSize, kInt8Bytes);
@@ -442,6 +449,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         attentionDesc.Hk = hash.Hk;
         attentionDesc.batchDimension = batch_sizes[0];
         attentionDesc.scale = hash.alpha;
+        attentionDesc.lowPrecisionIntermediates =
+            (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
         if (params.batched) {
           attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
           attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
@@ -505,7 +514,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         const size_t vScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
         const size_t dOScaleBytes = (size_t)batchDimension * qScaleBatchStride * sizeof(float);
         const size_t vMeanBytes = (size_t)batchDimension * hash.Hk * hash.D * sizeof(float);
-        const size_t dBytes = (size_t)batchDimension * hash.Hq * hash.R * sizeof(float);
+        const GEMMOperandPrecision dPrecision =
+            attentionDesc.lowPrecisionIntermediates ?
+            (attentionDesc.ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::BF16) :
+            GEMMOperandPrecision::FP32;
+        const size_t dBytes = (size_t)batchDimension * hash.Hq * hash.R * dPrecision.size();
         size_t scratchSize = 0;
         const size_t qInt8Offset = reserve(&scratchSize, qInt8Bytes);
         const size_t kInt8Offset = reserve(&scratchSize, kInt8Bytes);

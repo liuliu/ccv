@@ -57,6 +57,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   hasCRemainder = descriptor.hasCRemainder;
   threadBarrierOverC = descriptor.threadBarrierOverC;
   ioPrecision = descriptor.ioPrecision;
+  lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
   scale = descriptor.scale;
 
   source = createSource();
@@ -100,6 +101,15 @@ MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, ui
 std::string NAInt8AttentionKernel::createSource() const noexcept {
   CodeWriter source;
   const bool vectorizeQuantize = (headDimension % 4) == 0;
+  const GEMMOperandPrecision lPrecision =
+      lowPrecisionIntermediates ?
+      (ioPrecision == GEMMOperandPrecision::BF16 ? GEMMOperandPrecision::BF16 :
+          (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16)) :
+      GEMMOperandPrecision::FP32;
+  const GEMMOperandPrecision dPrecision =
+      lowPrecisionIntermediates ?
+      (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::BF16) :
+      GEMMOperandPrecision::FP32;
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source += R"(
 #include <metal_stdlib>
@@ -111,6 +121,8 @@ using namespace mpp::tensor_ops;
 
   )";
   source.SetValue("IO_MEMORY_NAME", ioPrecision.name());
+  source.SetValue("L_MEMORY_NAME", lPrecision.name());
+  source.SetValue("D_MEMORY_NAME", dPrecision.name());
   source.SetValue("V_MEAN_MEMORY_NAME", "float");
   source.SetValue("ACCUM_MEMORY_NAME", ioPrecision == GEMMOperandPrecision::FP32 ? "float" : "half");
   source += R"(
@@ -753,7 +765,18 @@ constant uint K_edge = {{HEAD_DIMENSION}} + 1 - {{BLOCK_DIMENSIONS_HEAD}};
 
 std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
   CodeWriter source;
+  const GEMMOperandPrecision lPrecision =
+      lowPrecisionIntermediates ?
+      (ioPrecision == GEMMOperandPrecision::BF16 ? GEMMOperandPrecision::BF16 :
+          (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16)) :
+      GEMMOperandPrecision::FP32;
+  const GEMMOperandPrecision dPrecision =
+      lowPrecisionIntermediates ?
+      (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::BF16) :
+      GEMMOperandPrecision::FP32;
   source.SetValue("IO_MEMORY_NAME", ioPrecision.name());
+  source.SetValue("L_MEMORY_NAME", lPrecision.name());
+  source.SetValue("D_MEMORY_NAME", dPrecision.name());
   source.SetValue("V_MEAN_MEMORY_NAME", "float");
   source.SetValue("QK_MEMORY_NAME", "int8_t");
   const char* v_memory_name = "int8_t";
@@ -766,7 +789,7 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device {{QK_MEMORY_NAME}} *K_buf [[buffer(1)]],
     device {{V_MEMORY_NAME}} *V_buf [[buffer(2)]],
     device {{IO_MEMORY_NAME}} *O_buf [[buffer(3)]],
-    device float *L_buf [[buffer(4)]],
+    device {{L_MEMORY_NAME}} *L_buf [[buffer(4)]],
     device float *Q_scale_buf [[buffer(10)]],
     device float *K_scale_buf [[buffer(11)]],
     device float *V_scale_buf [[buffer(12)]],
@@ -778,8 +801,8 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device int8_t *Q_buf [[buffer(0)]],
     device int8_t *K_buf [[buffer(1)]],
     device int8_t *V_buf [[buffer(2)]],
-    device const float *L_buf [[buffer(4)]],
-    device const float *D_buf [[buffer(5)]],
+    device const {{L_MEMORY_NAME}} *L_buf [[buffer(4)]],
+    device const {{D_MEMORY_NAME}} *D_buf [[buffer(5)]],
     device int8_t *dO_buf [[buffer(6)]],
     device {{IO_MEMORY_NAME}} *dQ_buf [[buffer(9)]],
     device const float *Q_scale_buf [[buffer(10)]],
@@ -793,8 +816,8 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device int8_t *Q_buf [[buffer(0)]],
     device int8_t *K_buf [[buffer(1)]],
     device int8_t *V_buf [[buffer(2)]],
-    device const float *L_buf [[buffer(4)]],
-    device const float *D_buf [[buffer(5)]],
+    device const {{L_MEMORY_NAME}} *L_buf [[buffer(4)]],
+    device const {{D_MEMORY_NAME}} *D_buf [[buffer(5)]],
     device int8_t *dO_buf [[buffer(6)]],
     device {{IO_MEMORY_NAME}} *dV_buf [[buffer(7)]],
     device {{IO_MEMORY_NAME}} *dK_buf [[buffer(8)]],
@@ -868,7 +891,12 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
 
 std::string NAInt8AttentionKernel::createComputeD() const noexcept {
   CodeWriter source;
+  const GEMMOperandPrecision dPrecision =
+      lowPrecisionIntermediates ?
+      (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::BF16) :
+      GEMMOperandPrecision::FP32;
   source.SetValue("IO_MEMORY_NAME", ioPrecision.name());
+  source.SetValue("D_MEMORY_NAME", dPrecision.name());
   source.SetValue("V_MEAN_MEMORY_NAME", "float");
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("COMPUTE_D_THREADS", std::to_string(computeDThreads));
@@ -878,7 +906,7 @@ std::string NAInt8AttentionKernel::createComputeD() const noexcept {
 kernel void compute_d(
     device const {{IO_MEMORY_NAME}}* O_buf [[buffer(3)]],
     device const {{IO_MEMORY_NAME}}* dO_buf [[buffer(6)]],
-    device float* D_buf [[buffer(5)]],
+    device {{D_MEMORY_NAME}}* D_buf [[buffer(5)]],
     device const {{V_MEAN_MEMORY_NAME}}* V_mean_buf [[buffer(14)]],
     ushort lane_id [[thread_index_in_simdgroup]],
     uint3 tgid [[threadgroup_position_in_grid]])
@@ -901,7 +929,7 @@ kernel void compute_d(
   D_accumulator += simd_shuffle_xor(D_accumulator, 2);
   D_accumulator += simd_shuffle_xor(D_accumulator, 1);
   if (lane_id == 0) {
-    D_buf[row] = D_accumulator * {{DOT_SCALE_DERIVATIVE}};
+    D_buf[row] = ({{D_MEMORY_NAME}})(D_accumulator * {{DOT_SCALE_DERIVATIVE}});
   }
 }
 

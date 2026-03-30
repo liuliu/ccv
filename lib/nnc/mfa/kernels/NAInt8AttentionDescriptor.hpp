@@ -17,6 +17,7 @@ struct NAInt8AttentionDescriptor {
   unsigned short Hq = 1;
   unsigned short Hk = 1;
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
+  bool lowPrecisionIntermediates = false;
   simd::uint3 matrixDimensions;
   AttentionOperands<unsigned int> batchStrides;
   AttentionKernelType type = AttentionKernelType::forward;

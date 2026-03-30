@@ -34,6 +34,7 @@ struct NAInt8AttentionKernel {
   bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;
+  bool lowPrecisionIntermediates;
   float scale;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);

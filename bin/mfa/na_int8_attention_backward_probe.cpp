@@ -109,6 +109,36 @@ float create_scale(const AttentionCase& attention)
   return 1.0f / std::sqrt((float)attention.D);
 }
 
+GEMMOperandPrecision create_io_precision()
+{
+  return GEMMOperandPrecision::FP16;
+}
+
+bool create_low_precision_intermediates()
+{
+  return true;
+}
+
+GEMMOperandPrecision create_l_precision()
+{
+  const auto io_precision = create_io_precision();
+  if (!create_low_precision_intermediates())
+    return GEMMOperandPrecision::FP32;
+  return io_precision == GEMMOperandPrecision::BF16 ?
+      GEMMOperandPrecision::BF16 :
+      (io_precision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16);
+}
+
+GEMMOperandPrecision create_d_precision()
+{
+  const auto io_precision = create_io_precision();
+  if (!create_low_precision_intermediates())
+    return GEMMOperandPrecision::FP32;
+  return io_precision == GEMMOperandPrecision::FP32 ?
+      GEMMOperandPrecision::FP32 :
+      GEMMOperandPrecision::BF16;
+}
+
 bool benchmark(const BenchmarkConfig& config, const std::function<double()>& run_once, Stats* stats)
 {
   std::vector<double> samples;
@@ -336,7 +366,8 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
       bundle.v_mean_threads,
       (attention.C % forward_block_dimensions[1]) != 0,
       true,
-      GEMMOperandPrecision::FP16,
+      create_io_precision(),
+      create_low_precision_intermediates(),
       AttentionKernelType::forward,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
@@ -365,7 +396,8 @@ ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase
           NAInt8AttentionKernel::largeSequenceVMeanThreads,
       (attention.C % block_dimensions[1]) != 0,
       true,
-      GEMMOperandPrecision::FP16,
+      create_io_precision(),
+      create_low_precision_intermediates(),
       AttentionKernelType::forward,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
@@ -399,7 +431,8 @@ BackwardPipelines create_backward_pipelines(
       v_mean_threads,
       (attention.C % query_block_dimensions[1]) != 0,
       true,
-      GEMMOperandPrecision::FP16,
+      create_io_precision(),
+      create_low_precision_intermediates(),
       AttentionKernelType::backwardQuery,
       create_scale(attention));
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
@@ -413,7 +446,8 @@ BackwardPipelines create_backward_pipelines(
       v_mean_threads,
       (attention.C % keyvalue_block_dimensions[1]) != 0,
       true,
-      GEMMOperandPrecision::FP16,
+      create_io_precision(),
+      create_low_precision_intermediates(),
       AttentionKernelType::backwardKeyValue,
       create_scale(attention));
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
@@ -444,7 +478,7 @@ ScratchLayout create_scratch_layout(const AttentionCase& attention)
   layout.v_scale = reserve(&layout.total, (size_t)attention.batch * kv_scale_batch_stride * sizeof(float));
   layout.dO_scale = reserve(&layout.total, (size_t)attention.batch * q_scale_batch_stride * sizeof(float));
   layout.v_mean = reserve(&layout.total, (size_t)attention.batch * attention.Hk * attention.D * sizeof(float));
-  layout.d = reserve(&layout.total, (size_t)attention.batch * attention.Hq * attention.R * sizeof(float));
+  layout.d = reserve(&layout.total, (size_t)attention.batch * attention.Hq * attention.R * create_d_precision().size());
   return layout;
 }
 
@@ -908,7 +942,7 @@ int main(int argc, char** argv)
   const size_t v_bytes = v_bytes_data.size();
   const size_t dO_bytes = dO_bytes_data.size();
   const size_t o_bytes = (size_t)attention.batch * attention.R * attention.Hq * attention.D * sizeof(half_float);
-  const size_t l_bytes = (size_t)attention.batch * attention.Hq * attention.R * sizeof(float);
+  const size_t l_bytes = (size_t)attention.batch * attention.Hq * attention.R * create_l_precision().size();
   const size_t dQ_bytes = o_bytes;
   const size_t dK_bytes = (size_t)attention.batch * attention.C * attention.Hk * attention.D * sizeof(half_float);
   const size_t dV_bytes = dK_bytes;
@@ -1042,6 +1076,7 @@ int main(int argc, char** argv)
             << " D=" << attention.D
             << " warmup=" << config.warmup_iterations
             << " timed=" << config.timed_iterations
+            << " lowPrecisionIntermediates=" << (create_low_precision_intermediates() ? "true" : "false")
             << '\n';
   std::cout << "forward-kernel"
             << " blockR=" << forward_pipeline.kernel->blockDimensions[0]

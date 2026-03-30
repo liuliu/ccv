@@ -1935,11 +1935,15 @@ Int8Pipeline create_int8_pipeline(
       attention.D,
       attention.Hq,
       attention.Hk,
+      16,
+      64,
       bundle.execution_simd_groups,
       v_mean_threads,
       (attention.C % bundle.block_dimensions[1]) != 0,
       bundle.thread_barrier_over_c,
       create_io_precision(variant.input_precision),
+      variant.input_precision != InputPrecision::fp32,
+      AttentionKernelType::forward,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
