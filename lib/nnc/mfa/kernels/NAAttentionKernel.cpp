@@ -7,6 +7,22 @@
 #include <algorithm>
 #include <iomanip>
 
+namespace {
+
+uint32_t ceil_log2_u32_host(uint32_t x) {
+  if (x <= 1)
+    return 0;
+  x -= 1;
+  uint32_t bits = 0;
+  while (x > 0) {
+    x >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
+}
+
 NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL::Device *const device) {
   type = descriptor.type;
   memoryPrecisions = descriptor.memoryPrecisions;
@@ -67,7 +83,11 @@ MTL::Size NAAttentionKernel::threadgroupsPerGrid(const NAAttentionDescriptor &de
     return (target + int64_t(granularity) - 1) / int64_t(granularity);
   };
   switch (type.value) {
-  case AttentionKernelType::forward:
+  case AttentionKernelType::forward: {
+    const uint32_t row_groups = (uint32_t)ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups);
+    const uint32_t morton_bits = ceil_log2_u32_host(row_groups) + ceil_log2_u32_host(Hq);
+    return MTL::Size(uint64_t(1) << morton_bits, 1, descriptor.batchDimension);
+  }
   case AttentionKernelType::backwardQuery:
     return MTL::Size(ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups) * Hq * descriptor.batchDimension, 1, 1);
   case AttentionKernelType::backwardKeyValue:
@@ -207,13 +227,30 @@ using namespace mpp::tensor_ops;
     ) {
 )";
   }
-  source += R"(
+  if (type.value == AttentionKernelType::forward) {
+    source += R"(
+  const uint row_group_count = ({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
+  const uint row_group_bits = ceil_log2_u32(row_group_count);
+  const uint head_bits = ceil_log2_u32({{DISPATCH_HEADS}});
+  const uint2 morton_tile = morton_decode_rectangular_2d(tgid.x, row_group_bits, head_bits);
+  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
+  if (tgid.y >= {{DISPATCH_HEADS}} || tgid.x >= row_group_count) {
+    return;
+  }
+  tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
+  if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{DISPATCH_DIMENSION}}) {
+    return;
+  }
+)";
+  } else {
+    source += R"(
   tgid = { (tgid.x / {{DISPATCH_HEADS}}) % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})), tgid.x % {{DISPATCH_HEADS}}, tgid.x / {{DISPATCH_HEADS}} / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}})) };
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
   if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{DISPATCH_DIMENSION}}) {
     return;
   }
 )";
+  }
   source += createAdjustOffsets() + "\n";
   switch (type.value) {
   case AttentionKernelType::forward:
@@ -298,6 +335,58 @@ constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
 constant uint {{OPERAND_NAME}}_batch_stride [[function_constant({{OPERAND_BUFFER_INDEX}})]];
 )";
   }
+  source += R"(
+
+inline uint compact_morton_even_bits(uint x) {
+  x &= 0x55555555u;
+  x = (x | (x >> 1)) & 0x33333333u;
+  x = (x | (x >> 2)) & 0x0f0f0f0fu;
+  x = (x | (x >> 4)) & 0x00ff00ffu;
+  x = (x | (x >> 8)) & 0x0000ffffu;
+  return x;
+}
+
+inline uint2 morton_decode_2d(uint code) {
+  return uint2(compact_morton_even_bits(code),
+               compact_morton_even_bits(code >> 1));
+}
+
+inline uint lower_bits_mask(uint bit_count) {
+  if (bit_count == 0)
+    return 0;
+  return (1u << bit_count) - 1;
+}
+
+inline uint2 morton_decode_rectangular_2d(uint code,
+                                          uint x_bits,
+                                          uint y_bits) {
+  const uint paired_bits = min(x_bits, y_bits);
+  const uint paired_code = code & lower_bits_mask(paired_bits * 2);
+  uint2 tile = morton_decode_2d(paired_code);
+  uint tail = code >> (paired_bits * 2);
+  if (x_bits > paired_bits) {
+    const uint x_extra_bits = x_bits - paired_bits;
+    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;
+    tail >>= x_extra_bits;
+  }
+  if (y_bits > paired_bits) {
+    tile.y |= tail << paired_bits;
+  }
+  return tile;
+}
+
+inline uint ceil_log2_u32(uint x) {
+  if (x <= 1)
+    return 0;
+  x -= 1;
+  uint bits = 0;
+  while (x > 0) {
+    x >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+)";
 }
 
 std::string NAAttentionKernel::createBufferBindings() const noexcept {

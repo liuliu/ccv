@@ -48,6 +48,7 @@ struct ForwardPipeline {
   NAAttentionDescriptor descriptor;
   std::unique_ptr<NAAttentionKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  bool morton_order = false;
 };
 
 struct BackwardPipelines {
@@ -81,6 +82,17 @@ std::vector<T> make_data(size_t size, float scale, int phase)
 float create_scale(const AttentionCase& attention)
 {
   return 1.0f / std::sqrt((float)attention.D);
+}
+
+uint32_t ceil_log2_u32(uint32_t x)
+{
+  uint32_t bits = 0;
+  uint32_t value = 1;
+  while (value < x) {
+    value <<= 1;
+    ++bits;
+  }
+  return bits;
 }
 
 std::vector<uint8_t> encode_fp16(const std::vector<float>& values)
@@ -134,6 +146,64 @@ void print_stats(const char* label, const Stats& stats)
             << " min_ms=" << stats.min_seconds * 1e3
             << " max_ms=" << stats.max_seconds * 1e3
             << '\n';
+}
+
+MTL::Size create_attention_threadgroups_per_grid(
+    const AttentionCase& attention,
+    AttentionKernelType type,
+    simd::ushort3 block_dimensions,
+    uint16_t execution_simdgroups,
+    bool morton_order)
+{
+  auto ceil_divide =
+      [&](uint32_t target, uint32_t granularity) -> uint32_t {
+    return (target + granularity - 1) / granularity;
+  };
+  const uint32_t dispatch_dimension =
+      type.value == AttentionKernelType::backwardKeyValue ? attention.C : attention.R;
+  const uint32_t dispatch_heads =
+      type.value == AttentionKernelType::backwardKeyValue ? attention.Hk : attention.Hq;
+  const uint32_t row_groups =
+      ceil_divide(dispatch_dimension, block_dimensions[0] * execution_simdgroups);
+  if (!morton_order)
+    return MTL::Size((uint64_t)row_groups * dispatch_heads * attention.batch, 1, 1);
+  const uint32_t row_bits = ceil_log2_u32(row_groups);
+  const uint32_t head_bits = ceil_log2_u32(dispatch_heads);
+  const uint32_t morton_codes = 1u << (row_bits + head_bits);
+  return MTL::Size((uint64_t)morton_codes, 1, attention.batch);
+}
+
+std::string create_row_major_attention_source(
+    const std::string& source,
+    const AttentionCase& attention,
+    AttentionKernelType type,
+    simd::ushort3 block_dimensions,
+    uint16_t execution_simdgroups)
+{
+  std::string output = source;
+  const uint32_t dispatch_dimension =
+      type.value == AttentionKernelType::backwardKeyValue ? attention.C : attention.R;
+  const uint32_t dispatch_heads =
+      type.value == AttentionKernelType::backwardKeyValue ? attention.Hk : attention.Hq;
+  const uint32_t row_groups =
+      (dispatch_dimension + block_dimensions[0] * execution_simdgroups - 1) /
+      (block_dimensions[0] * execution_simdgroups);
+
+  const size_t tgid_pos = output.find("  const uint row_group_count = ");
+  const size_t if_pos = output.find("  if (tgid.x * ", tgid_pos);
+  const size_t end_pos = output.find("  }\n", if_pos);
+  std::ostringstream replacement;
+  replacement
+      << "  tgid = { (tgid.x / " << dispatch_heads << "u) % " << row_groups << "u, "
+      << "tgid.x % " << dispatch_heads << "u, "
+      << "tgid.x / " << dispatch_heads << "u / " << row_groups << "u };\n"
+      << "  tgid.x = tgid.x * " << execution_simdgroups << " + sgid;\n"
+      << "  if (tgid.x * " << block_dimensions[0] << " >= " << dispatch_dimension << "u) {\n"
+      << "    return;\n"
+      << "  }\n";
+  if (tgid_pos != std::string::npos && if_pos != std::string::npos && end_pos != std::string::npos)
+    output.replace(tgid_pos, end_pos + 4 - tgid_pos, replacement.str());
+  return output;
 }
 
 simd::ushort3 create_forward_block_dimensions(const AttentionCase& attention)
@@ -221,9 +291,27 @@ AttentionOperands<GEMMOperandPrecision> create_fp16_backward_precisions()
 NS::SharedPtr<MTL::ComputePipelineState> create_attention_pipeline(
     MTL::Device* device,
     MTL::Library* library,
+    const std::string* source_override,
     const AttentionCase& attention,
-    AttentionKernelType type)
+    AttentionKernelType type,
+    simd::ushort3 block_dimensions,
+    uint16_t execution_simdgroups,
+    bool morton_order)
 {
+  NS::SharedPtr<MTL::Library> active_library;
+  if (type.value == AttentionKernelType::forward && source_override && !morton_order) {
+    const auto row_major_source = create_row_major_attention_source(
+        *source_override,
+        attention,
+        type,
+        block_dimensions,
+        execution_simdgroups);
+    auto source_string = NS::String::string(row_major_source.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    active_library = NS::TransferPtr(device->newLibrary(source_string, nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
+  MTL::Library* pipeline_library = active_library ? active_library.get() : library;
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t row_dimension = attention.R;
   const uint32_t column_dimension = attention.C;
@@ -269,7 +357,7 @@ NS::SharedPtr<MTL::ComputePipelineState> create_attention_pipeline(
   }
   auto function_name = NS::String::string("attention", NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  auto function = NS::TransferPtr(library->newFunction(function_name, constants.get(), &error));
+  auto function = NS::TransferPtr(pipeline_library->newFunction(function_name, constants.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
   auto pipeline_descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
   pipeline_descriptor->setComputeFunction(function.get());
@@ -385,7 +473,7 @@ kernel void compute_d_bench(
   return pipeline;
 }
 
-ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase& attention)
+ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase& attention, bool morton_order)
 {
   ForwardPipeline bundle;
   bundle.descriptor.batchDimension = attention.batch;
@@ -410,7 +498,16 @@ ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase
       block_dimensions, attention.D, attention.Hq, attention.Hk, 16, check_c_edge_1,
       memory_precisions, AttentionKernelType::forward, bundle.descriptor.scale);
   bundle.kernel = std::make_unique<NAAttentionKernel>(kernel_descriptor, device);
-  bundle.pipeline = create_attention_pipeline(device, bundle.kernel->library.get(), attention, AttentionKernelType::forward);
+  bundle.morton_order = morton_order;
+  bundle.pipeline = create_attention_pipeline(
+      device,
+      bundle.kernel->library.get(),
+      &bundle.kernel->source,
+      attention,
+      AttentionKernelType::forward,
+      block_dimensions,
+      bundle.kernel->executionSIMDGroups,
+      morton_order);
   return bundle;
 }
 
@@ -462,8 +559,24 @@ BackwardPipelines create_backward_pipelines(
   bundle.compute_d_threads = compute_d_threads ? compute_d_threads : NAAttentionKernel::computeDThreads;
   bundle.custom_compute_d = (bundle.compute_d_threads != NAAttentionKernel::computeDThreads);
   bundle.compute_d_pipeline = create_compute_d_pipeline(device, bundle.query_kernel->library.get(), attention, bundle.compute_d_threads);
-  bundle.query_pipeline = create_attention_pipeline(device, bundle.query_kernel->library.get(), attention, AttentionKernelType::backwardQuery);
-  bundle.keyvalue_pipeline = create_attention_pipeline(device, bundle.keyvalue_kernel->library.get(), attention, AttentionKernelType::backwardKeyValue);
+  bundle.query_pipeline = create_attention_pipeline(
+      device,
+      bundle.query_kernel->library.get(),
+      nullptr,
+      attention,
+      AttentionKernelType::backwardQuery,
+      query_block_dimensions,
+      query_execution_simdgroups,
+      false);
+  bundle.keyvalue_pipeline = create_attention_pipeline(
+      device,
+      bundle.keyvalue_kernel->library.get(),
+      nullptr,
+      attention,
+      AttentionKernelType::backwardKeyValue,
+      keyvalue_block_dimensions,
+      keyvalue_execution_simdgroups,
+      false);
   return bundle;
 }
 
@@ -485,8 +598,20 @@ double run_forward_once(
   encoder->setBuffer(v_buffer, 0, 2);
   encoder->setBuffer(o_buffer, 0, 3);
   encoder->setBuffer(l_buffer, 0, 4);
+  const auto threadgroups_per_grid = create_attention_threadgroups_per_grid(
+      AttentionCase {
+          pipeline.descriptor.batchDimension,
+          pipeline.descriptor.matrixDimensions[0],
+          pipeline.descriptor.matrixDimensions[1],
+          pipeline.descriptor.Hq,
+          pipeline.descriptor.Hk,
+          pipeline.descriptor.matrixDimensions[2]},
+      AttentionKernelType::forward,
+      pipeline.kernel->blockDimensions,
+      pipeline.kernel->executionSIMDGroups,
+      pipeline.morton_order);
   encoder->dispatchThreadgroups(
-      pipeline.kernel->threadgroupsPerGrid(pipeline.descriptor),
+      threadgroups_per_grid,
       MTL::Size(pipeline.kernel->threadgroupSize(pipeline.pipeline.get(), pipeline.descriptor), 1, 1));
   encoder->endEncoding();
   command_buffer->commit();
@@ -675,6 +800,7 @@ int main(int argc, char** argv)
   bool query_bypass_threadgroup_memory = false;
   bool keyvalue_bypass_threadgroup_memory = false;
   uint16_t compute_d_threads = 0;
+  bool forward_morton_order = false;
   if (argc >= 4) {
     attention.R = (uint32_t)std::strtoul(argv[1], nullptr, 10);
     attention.C = (uint32_t)std::strtoul(argv[2], nullptr, 10);
@@ -718,6 +844,11 @@ int main(int argc, char** argv)
   }
   if (argc >= 20) {
     compute_d_threads = (uint16_t)std::strtoul(argv[19], nullptr, 10);
+  }
+  if (argc >= 21) {
+    forward_morton_order = std::strtoul(argv[20], nullptr, 10) != 0;
+  } else {
+    forward_morton_order = true;
   }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
@@ -774,7 +905,7 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), v_stage.get(), v_buffer.get(), v_bytes);
   upload_buffer(command_queue.get(), dO_stage.get(), dO_buffer.get(), dO_bytes);
 
-  const auto forward_pipeline = create_forward_pipeline(device.get(), attention);
+  const auto forward_pipeline = create_forward_pipeline(device.get(), attention, forward_morton_order);
   const simd::ushort3 query_block_dimensions = (block_r != 0 && block_c != 0 && block_d != 0) ?
       simd::ushort3 { block_r, block_c, block_d } :
       create_backward_block_dimensions(attention);
@@ -941,6 +1072,7 @@ int main(int argc, char** argv)
             << " blockC=" << forward_pipeline.kernel->blockDimensions[1]
             << " blockD=" << forward_pipeline.kernel->blockDimensions[2]
             << " simdgroups=" << forward_pipeline.kernel->executionSIMDGroups
+            << " mortonOrder=" << (forward_pipeline.morton_order ? 1 : 0)
             << " lowPrecisionIntermediates=true"
             << '\n';
   std::cout << "backward-kernel"
