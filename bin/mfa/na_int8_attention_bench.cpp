@@ -1834,10 +1834,10 @@ double run_quantize_and_int8_once(
     encoder->setBuffer(v_int8_buffer, 0, 2);
     encoder->setBuffer(o_buffer, 0, 3);
     encoder->setBuffer(l_buffer, 0, 4);
-    encoder->setBuffer(q_scale_buffer, 0, 5);
-    encoder->setBuffer(k_scale_buffer, 0, 6);
-    encoder->setBuffer(v_scale_buffer, 0, 7);
-    encoder->setBuffer(v_mean_buffer, 0, 8);
+    encoder->setBuffer(q_scale_buffer, 0, 10);
+    encoder->setBuffer(k_scale_buffer, 0, 11);
+    encoder->setBuffer(v_scale_buffer, 0, 12);
+    encoder->setBuffer(v_mean_buffer, 0, 14);
     encoder->dispatchThreadgroups(
         bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
         MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -2122,10 +2122,10 @@ double run_int8_once(
   encoder->setBuffer(v_buffer, 0, 2);
   encoder->setBuffer(o_buffer, 0, 3);
   encoder->setBuffer(l_buffer, 0, 4);
-  encoder->setBuffer(q_scale_buffer, 0, 5);
-  encoder->setBuffer(k_scale_buffer, 0, 6);
-  encoder->setBuffer(v_scale_buffer, 0, 7);
-  encoder->setBuffer(v_mean_buffer, 0, 8);
+  encoder->setBuffer(q_scale_buffer, 0, 10);
+  encoder->setBuffer(k_scale_buffer, 0, 11);
+  encoder->setBuffer(v_scale_buffer, 0, 12);
+  encoder->setBuffer(v_mean_buffer, 0, 14);
   encoder->dispatchThreadgroups(
       bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));

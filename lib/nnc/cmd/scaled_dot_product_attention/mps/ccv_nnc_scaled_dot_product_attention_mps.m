@@ -612,7 +612,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 				.masked = 0,
 				.upcast = !is_downcast,
 				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
-				.use_quantized_attention = 0,
+				.use_quantized_attention = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) != 0,
 
 				.batch_dims_q = { 0 },
 				.batch_dims_mask = { 0 },

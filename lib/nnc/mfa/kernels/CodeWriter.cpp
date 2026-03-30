@@ -1,6 +1,7 @@
 #include "CodeWriter.hpp"
 
 #include <assert.h>
+#include <stdio.h>
 
 void CodeWriter::operator+=(std::string text) {
   if (!ignore_ident_ && !text.empty()) AppendIdent(stream_);
@@ -25,6 +26,7 @@ void CodeWriter::operator+=(std::string text) {
       const std::string &value = iter->second;
       stream_ << value;
     } else {
+      fprintf(stderr, "CodeWriter missing key: %s\n", key.c_str());
       assert(false && "could not find key");
       stream_ << key;
     }

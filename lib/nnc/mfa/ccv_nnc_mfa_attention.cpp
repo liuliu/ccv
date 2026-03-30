@@ -214,10 +214,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->setBuffer(scratch, vInt8Offset, 2);
       encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
       encoder->setBuffer(lBuffer, lBufferOffset, 4);
-      encoder->setBuffer(scratch, qScaleOffset, 5);
-      encoder->setBuffer(scratch, kScaleOffset, 6);
-      encoder->setBuffer(scratch, vScaleOffset, 7);
-      encoder->setBuffer(scratch, vMeanOffset, 8);
+      encoder->setBuffer(scratch, qScaleOffset, 10);
+      encoder->setBuffer(scratch, kScaleOffset, 11);
+      encoder->setBuffer(scratch, vScaleOffset, 12);
+      encoder->setBuffer(scratch, vMeanOffset, 14);
       encoder->dispatchThreadgroups(
           kernel->threadgroupsPerGrid(batchDimension, hash.R),
           MTL::Size(kernel->threadgroupSize(pipeline.get()), 1, 1));
@@ -412,6 +412,223 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         ccv_nnc_mfa_encode_cast(context, cast_params, command_batch, cast_tensors, cast_tensor_offsets);
       }
     } else {
+      const bool use_na_int8_backward =
+        params.use_neural_accelerators &&
+        params.use_quantized_attention &&
+        hash.Hq == hash.Hk &&
+        hash.D <= 128 &&
+        (hash.D % 8) == 0 &&
+        tensors[3] &&
+        tensors[4];
+      if (use_na_int8_backward) {
+        NAInt8AttentionDescriptor attentionDesc;
+        switch (params.data_type) {
+        case MTL::DataTypeHalf:
+          attentionDesc.ioPrecision = GEMMOperandPrecision::FP16;
+          break;
+        case MTL::DataTypeBFloat:
+          attentionDesc.ioPrecision = GEMMOperandPrecision::BF16;
+          break;
+        case MTL::DataTypeFloat:
+          attentionDesc.ioPrecision = GEMMOperandPrecision::FP32;
+          break;
+        default:
+          CCV_NNC_MFA_PRECONDITION(false);
+        }
+        attentionDesc.matrixDimensions[0] = hash.R;
+        attentionDesc.matrixDimensions[1] = hash.C;
+        attentionDesc.matrixDimensions[2] = hash.D;
+        attentionDesc.Hq = hash.Hq;
+        attentionDesc.Hk = hash.Hk;
+        attentionDesc.batchDimension = batch_sizes[0];
+        attentionDesc.scale = hash.alpha;
+        if (params.batched) {
+          attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
+          attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
+          attentionDesc.batchStrides[AttentionOperand::V] = hash.C * hash.D * hash.Hk;
+          attentionDesc.batchStrides[AttentionOperand::O] = hash.R * hash.D * hash.Hq;
+          attentionDesc.batchStrides[AttentionOperand::dO] = hash.R * hash.D * hash.Hq;
+          attentionDesc.batchStrides[AttentionOperand::dQ] = hash.R * hash.D * hash.Hq;
+          attentionDesc.batchStrides[AttentionOperand::dK] = hash.C * hash.D * hash.Hk;
+          attentionDesc.batchStrides[AttentionOperand::dV] = hash.C * hash.D * hash.Hk;
+        }
+        auto forwardDesc = attentionDesc;
+        forwardDesc.type = AttentionKernelType::forward;
+        auto backwardQueryDesc = attentionDesc;
+        backwardQueryDesc.type = AttentionKernelType::backwardQuery;
+        auto backwardKeyValueDesc = attentionDesc;
+        backwardKeyValueDesc.type = AttentionKernelType::backwardKeyValue;
+
+        auto pool = NS::AutoreleasePool::alloc()->init();
+        auto &shaderCache = context->kernel_cache;
+        DeviceProperties dprops = DeviceProperties();
+        auto forwardPipelineValue = shaderCache.findKernel<NAInt8AttentionKernel, NAInt8AttentionDescriptor, NAInt8AttentionKernelDescriptor>(forwardDesc, context->device.get(), dprops);
+        auto backwardQueryPipelineValue = shaderCache.findKernel<NAInt8AttentionKernel, NAInt8AttentionDescriptor, NAInt8AttentionKernelDescriptor>(backwardQueryDesc, context->device.get(), dprops);
+        auto backwardKeyValuePipelineValue = shaderCache.findKernel<NAInt8AttentionKernel, NAInt8AttentionDescriptor, NAInt8AttentionKernelDescriptor>(backwardKeyValueDesc, context->device.get(), dprops);
+        pool->drain();
+
+        auto forwardKernel = forwardPipelineValue->kernel;
+        auto quantizeQPipeline = forwardPipelineValue->second;
+        auto quantizeKPipeline = forwardPipelineValue->third;
+        auto quantizeVPipeline = forwardPipelineValue->fourth;
+        auto computeVMeanPipeline = forwardPipelineValue->fifth;
+        auto backwardQueryKernel = backwardQueryPipelineValue->kernel;
+        auto backwardQueryPipeline = backwardQueryPipelineValue->pipeline;
+        auto computeDPipeline = backwardQueryPipelineValue->second;
+        auto backwardKeyValueKernel = backwardKeyValuePipelineValue->kernel;
+        auto backwardKeyValuePipeline = backwardKeyValuePipelineValue->pipeline;
+
+        auto align_up =
+        [&](size_t value) -> size_t {
+          return (value + 255) & ~((size_t)255);
+        };
+        auto reserve =
+        [&](size_t* total, size_t size) -> size_t {
+          const size_t offset = *total;
+          *total = align_up(*total + size);
+          return offset;
+        };
+
+        const uint32_t batchDimension = attentionDesc.batchDimension;
+        const uint32_t qTiles = (hash.R + forwardKernel->qScaleTileSize - 1) / forwardKernel->qScaleTileSize;
+        const uint32_t kTiles = (hash.C + forwardKernel->kvScaleTileSize - 1) / forwardKernel->kvScaleTileSize;
+        const uint32_t qBatchStride = hash.R * hash.D * hash.Hq;
+        const uint32_t kvBatchStride = hash.C * hash.D * hash.Hk;
+        const uint32_t qScaleBatchStride = hash.Hq * qTiles;
+        const uint32_t kvScaleBatchStride = hash.Hk * kTiles;
+        const size_t qInt8Bytes = (size_t)batchDimension * qBatchStride * sizeof(int8_t);
+        const size_t kInt8Bytes = (size_t)batchDimension * kvBatchStride * sizeof(int8_t);
+        const size_t vInt8Bytes = (size_t)batchDimension * kvBatchStride * sizeof(int8_t);
+        const size_t dOInt8Bytes = (size_t)batchDimension * qBatchStride * sizeof(int8_t);
+        const size_t qScaleBytes = (size_t)batchDimension * qScaleBatchStride * sizeof(float);
+        const size_t kScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
+        const size_t vScaleBytes = (size_t)batchDimension * kvScaleBatchStride * sizeof(float);
+        const size_t dOScaleBytes = (size_t)batchDimension * qScaleBatchStride * sizeof(float);
+        const size_t vMeanBytes = (size_t)batchDimension * hash.Hk * hash.D * sizeof(float);
+        const size_t dBytes = (size_t)batchDimension * hash.Hq * hash.R * sizeof(float);
+        size_t scratchSize = 0;
+        const size_t qInt8Offset = reserve(&scratchSize, qInt8Bytes);
+        const size_t kInt8Offset = reserve(&scratchSize, kInt8Bytes);
+        const size_t vInt8Offset = reserve(&scratchSize, vInt8Bytes);
+        const size_t dOInt8Offset = reserve(&scratchSize, dOInt8Bytes);
+        const size_t qScaleOffset = reserve(&scratchSize, qScaleBytes);
+        const size_t kScaleOffset = reserve(&scratchSize, kScaleBytes);
+        const size_t vScaleOffset = reserve(&scratchSize, vScaleBytes);
+        const size_t dOScaleOffset = reserve(&scratchSize, dOScaleBytes);
+        const size_t vMeanOffset = reserve(&scratchSize, vMeanBytes);
+        const size_t dOffset = reserve(&scratchSize, dBytes);
+        auto scratch = context->request_scratch(scratchSize);
+
+        auto encodeQuantize =
+        [&](NS::SharedPtr<MTL::ComputePipelineState> quantizePipeline, uint16_t threads, MTL::Buffer* source, size_t sourceOffset, size_t int8Offset, size_t scaleOffset, uint32_t scaleTiles, uint32_t heads) {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(quantizePipeline.get());
+          encoder->useResource(source, MTL::ResourceUsageRead);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->setBuffer(source, sourceOffset, 0);
+          encoder->setBuffer(scratch, int8Offset, 1);
+          encoder->setBuffer(scratch, scaleOffset, 2);
+          encoder->dispatchThreadgroups(MTL::Size(scaleTiles, heads, batchDimension), MTL::Size(threads, 1, 1));
+          command_batch->finishCommand(encoder);
+        };
+
+        encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq);
+        encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk);
+        {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(computeVMeanPipeline.get());
+          encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
+          encoder->setBuffer(scratch, vMeanOffset, 1);
+          const uint32_t meanTiles = (hash.D % 4) == 0 ? (hash.D / 4) : hash.D;
+          const uint32_t meanTileBits = ccv_nnc_mfa_ceil_log2_u32(meanTiles);
+          const uint32_t headBits = ccv_nnc_mfa_ceil_log2_u32(hash.Hk);
+          const uint32_t mortonCodes = 1u << (meanTileBits + headBits);
+          encoder->dispatchThreadgroups(
+              MTL::Size(mortonCodes, 1, batchDimension),
+              MTL::Size(forwardKernel->vMeanThreads, 1, 1));
+          command_batch->finishCommand(encoder);
+        }
+        {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(quantizeVPipeline.get());
+          encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
+          encoder->setBuffer(scratch, vInt8Offset, 1);
+          encoder->setBuffer(scratch, vScaleOffset, 2);
+          encoder->setBuffer(scratch, vMeanOffset, 3);
+          encoder->dispatchThreadgroups(MTL::Size(kTiles, hash.Hk, batchDimension), MTL::Size(NAInt8AttentionKernel::kvQuantizeThreads, 1, 1));
+          command_batch->finishCommand(encoder);
+        }
+        encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[5], tensor_offsets[5], dOInt8Offset, dOScaleOffset, qTiles, hash.Hq);
+
+        {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(computeDPipeline.get());
+          encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+          encoder->useResource(tensors[5], MTL::ResourceUsageRead);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+          encoder->setBuffer(tensors[5], tensor_offsets[5], 6);
+          encoder->setBuffer(scratch, dOffset, 5);
+          encoder->setBuffer(scratch, vMeanOffset, 14);
+          encoder->dispatchThreadgroups(MTL::Size((uint64_t)hash.R * hash.Hq, 1, batchDimension), MTL::Size(NAInt8AttentionKernel::computeDThreads, 1, 1));
+          command_batch->finishCommand(encoder);
+        }
+
+        {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(backwardQueryPipeline.get());
+          encoder->setThreadgroupMemoryLength(backwardQueryKernel->threadgroupMemoryAllocation(), 0);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+          encoder->useResource(tensors[6], MTL::ResourceUsageWrite);
+          encoder->setBuffer(scratch, qInt8Offset, 0);
+          encoder->setBuffer(scratch, kInt8Offset, 1);
+          encoder->setBuffer(scratch, vInt8Offset, 2);
+          encoder->setBuffer(tensors[4], tensor_offsets[4], 4);
+          encoder->setBuffer(scratch, dOffset, 5);
+          encoder->setBuffer(scratch, dOInt8Offset, 6);
+          encoder->setBuffer(tensors[6], tensor_offsets[6], 9);
+          encoder->setBuffer(scratch, qScaleOffset, 10);
+          encoder->setBuffer(scratch, kScaleOffset, 11);
+          encoder->setBuffer(scratch, vScaleOffset, 12);
+          encoder->setBuffer(scratch, dOScaleOffset, 13);
+          encoder->dispatchThreadgroups(
+              backwardQueryKernel->threadgroupsPerGrid(batchDimension, hash.R),
+              MTL::Size(backwardQueryKernel->threadgroupSize(backwardQueryPipeline.get()), 1, 1));
+          command_batch->finishCommand(encoder);
+        }
+
+        {
+          auto encoder = command_batch->startCommand();
+          encoder->setComputePipelineState(backwardKeyValuePipeline.get());
+          encoder->setThreadgroupMemoryLength(backwardKeyValueKernel->threadgroupMemoryAllocation(), 0);
+          encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+          encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+          encoder->useResource(tensors[7], MTL::ResourceUsageWrite);
+          encoder->useResource(tensors[8], MTL::ResourceUsageWrite);
+          encoder->setBuffer(scratch, qInt8Offset, 0);
+          encoder->setBuffer(scratch, kInt8Offset, 1);
+          encoder->setBuffer(scratch, vInt8Offset, 2);
+          encoder->setBuffer(tensors[4], tensor_offsets[4], 4);
+          encoder->setBuffer(scratch, dOffset, 5);
+          encoder->setBuffer(scratch, dOInt8Offset, 6);
+          encoder->setBuffer(tensors[8], tensor_offsets[8], 7);
+          encoder->setBuffer(tensors[7], tensor_offsets[7], 8);
+          encoder->setBuffer(scratch, qScaleOffset, 10);
+          encoder->setBuffer(scratch, kScaleOffset, 11);
+          encoder->setBuffer(scratch, vScaleOffset, 12);
+          encoder->setBuffer(scratch, dOScaleOffset, 13);
+          encoder->dispatchThreadgroups(
+              backwardKeyValueKernel->threadgroupsPerGrid(batchDimension, hash.C),
+              MTL::Size(backwardKeyValueKernel->threadgroupSize(backwardKeyValuePipeline.get()), 1, 1));
+          command_batch->finishCommand(encoder);
+        }
+        return;
+      }
       const bool use_na_backward =
         params.use_neural_accelerators &&
         hash.Hq == hash.Hk &&

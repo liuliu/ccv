@@ -174,3 +174,20 @@ git checkout -- lib/nnc/cmd/ccv_nnc_cmd.inc lib/nnc/cmd/ccv_nnc_cmd.h lib/nnc/cm
     - temporarily force `use_neural_accelerators = 1` in `ccv_nnc_conv_mps.m`;
     - run `./mpsdnn.tests "mfa conv3d"` from `test/int/nnc`;
     - revert the force after validation so production code uses `ccv_nnc_mfa_has_neural_accelerators(context)`.
+- `NAInt8Attention` backward `dS` fallback note:
+  - Earlier exploration suggested `dS -> half` might be a fallback worth keeping in mind, but on the current shipped `D=128` fixed-quant setup it is not a win.
+  - Rechecked on `4096 x 4096 x 128` with the current selector:
+    - fixed-quant `dS`: forward median `4.0495 ms`, backward median `21.8308 ms`, ratio `5.3910x`
+    - `dS -> half`: forward median `4.0552 ms`, backward median `23.0083 ms`, ratio `5.6737x`
+  - Takeaway:
+    - on the current `NAInt8Attention` backward path, `dS -> half` regresses relative to fixed-quant `dS`
+    - do not treat it as the preferred fallback without reworking the kernel again
+- `NAInt8Attention` backward fixed-quant selector note:
+  - For the shipping `D=128` low-precision backward path, the safe production rule is:
+    - query: `blockR=16`, `blockC=32`, `blockD=32`, `executionSIMDGroups=4`
+    - key/value: `blockR=16`, `blockC=64`, `blockD=64`, `executionSIMDGroups=16`
+  - Trust the backward absolute times more than any single reported ratio; forward medians on the probe can move enough to make one-off ratios look too optimistic.
+  - Reliable current probe numbers are in this range:
+    - `4096 x 4096 x 128`: backward median about `21-23 ms`, typically around `5.2x-5.6x`
+    - `8192 x 8192 x 128`: backward median about `82-87 ms`, typically around `5.2x-5.4x`
+  - Wider key/value traversal (`blockC=96`) can benchmark slightly faster in the probe but is not accuracy-safe on the real gradient test surface; keep `blockC=64` in production.

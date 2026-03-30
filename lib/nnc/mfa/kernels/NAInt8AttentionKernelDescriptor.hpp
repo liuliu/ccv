@@ -3,6 +3,7 @@
 
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "GEMMOperandPrecision.hpp"
+#include "AttentionKernelType.hpp"
 #include <simd/simd.h>
 
 struct NAInt8AttentionKernelDescriptor {
@@ -10,11 +11,14 @@ struct NAInt8AttentionKernelDescriptor {
   unsigned short headDimension;
   unsigned short Hq;
   unsigned short Hk;
+  uint16_t qScaleTileSize;
+  uint16_t kvScaleTileSize;
   uint16_t executionSIMDGroups;
   uint16_t vMeanThreads;
   bool hasCRemainder;
   bool threadBarrierOverC;
   GEMMOperandPrecision ioPrecision;
+  AttentionKernelType type;
   float scale;
 
   NAInt8AttentionKernelDescriptor() = delete;
@@ -23,11 +27,14 @@ struct NAInt8AttentionKernelDescriptor {
       unsigned short headDimension,
       unsigned short Hq,
       unsigned short Hk,
+      uint16_t qScaleTileSize,
+      uint16_t kvScaleTileSize,
       uint16_t executionSIMDGroups,
       uint16_t vMeanThreads,
       bool hasCRemainder,
       bool threadBarrierOverC,
       GEMMOperandPrecision ioPrecision,
+      AttentionKernelType type,
       float scale) noexcept;
 
   bool operator==(const NAInt8AttentionKernelDescriptor& rhs) const;

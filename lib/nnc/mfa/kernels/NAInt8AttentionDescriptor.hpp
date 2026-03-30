@@ -7,6 +7,7 @@
 #include "DeviceProperties.hpp"
 #include "GEMMOperandPrecision.hpp"
 #include "AttentionOperand.hpp"
+#include "AttentionKernelType.hpp"
 
 struct NAInt8AttentionKernelDescriptor;
 struct NAInt8AttentionKernel;
@@ -18,6 +19,7 @@ struct NAInt8AttentionDescriptor {
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
   simd::uint3 matrixDimensions;
   AttentionOperands<unsigned int> batchStrides;
+  AttentionKernelType type = AttentionKernelType::forward;
   float scale;
 
   bool operator==(const NAInt8AttentionDescriptor& rhs) const;
