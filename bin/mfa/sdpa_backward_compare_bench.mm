@@ -113,6 +113,12 @@ struct MPSGraphBackwardPipeline {
   NSArray<MPSGraphTensorData*>* outputs = nil;
 };
 
+struct MPSGraphForwardPipeline {
+  MPSGraphExecutable* executable = nil;
+  NSArray<MPSGraphTensorData*>* inputs = nil;
+  NSArray<MPSGraphTensorData*>* outputs = nil;
+};
+
 constexpr MTL::ResourceOptions kPrivateResourceOptions =
     MTL::ResourceStorageModePrivate | MTL::ResourceHazardTrackingModeTracked;
 constexpr MTL::ResourceOptions kSharedResourceOptions =
@@ -691,6 +697,7 @@ QuantizePipelines create_int8_quantize_pipelines(MTL::Device* device, const Atte
       (attention.C % forward_block_dimensions[1]) != 0,
       true,
       GEMMOperandPrecision::FP16,
+      true,
       AttentionKernelType::forward,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
@@ -720,6 +727,7 @@ Int8ForwardPipeline create_int8_forward_pipeline(MTL::Device* device, const Atte
       (attention.C % block_dimensions[1]) != 0,
       true,
       GEMMOperandPrecision::FP16,
+      true,
       AttentionKernelType::forward,
       create_scale(attention));
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
@@ -750,6 +758,7 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       false,
       true,
       GEMMOperandPrecision::FP16,
+      true,
       AttentionKernelType::backwardQuery,
       create_scale(attention));
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
@@ -764,6 +773,7 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       false,
       true,
       GEMMOperandPrecision::FP16,
+      true,
       AttentionKernelType::backwardKeyValue,
       create_scale(attention));
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
@@ -1026,6 +1036,71 @@ MPSGraphTensorData* create_tensor_data(id<MTLBuffer> buffer, NSArray<NSNumber*>*
   return [[[MPSGraphTensorData alloc] initWithMTLBuffer:buffer shape:shape dataType:data_type] autorelease];
 }
 
+MPSGraphForwardPipeline create_mpsgraph_forward_pipeline(
+    id<MTLDevice> device,
+    const AttentionCase& attention,
+    id<MTLBuffer> q_buffer,
+    id<MTLBuffer> k_buffer,
+    id<MTLBuffer> v_buffer,
+    id<MTLBuffer> o_buffer)
+{
+  MPSGraphForwardPipeline pipeline;
+  NSArray<NSNumber*>* q_shape = create_shape4(attention.batch, attention.R, attention.Hq, attention.D);
+  NSArray<NSNumber*>* k_shape = create_shape4(attention.batch, attention.C, attention.Hk, attention.D);
+  NSArray<NSNumber*>* v_shape = create_shape4(attention.batch, attention.C, attention.Hk, attention.D);
+  NSArray<NSNumber*>* o_shape = create_shape4(attention.batch, attention.R, attention.Hq, attention.D);
+
+  MPSGraph* graph = [MPSGraph new];
+  graph.options = MPSGraphOptionsSynchronizeResults;
+
+  const MPSDataType data_type = MPSDataTypeFloat16;
+  MPSGraphTensor* mps_q = [graph placeholderWithShape:q_shape dataType:data_type name:nil];
+  MPSGraphTensor* mps_k = [graph placeholderWithShape:k_shape dataType:data_type name:nil];
+  MPSGraphTensor* mps_v = [graph placeholderWithShape:v_shape dataType:data_type name:nil];
+
+  NSArray<MPSGraphTensor*>* input_tensors = @[ mps_q, mps_k, mps_v ];
+  NSArray<MPSGraphShapedType*>* input_shapes = @[
+    [[[MPSGraphShapedType alloc] initWithShape:q_shape dataType:data_type] autorelease],
+    [[[MPSGraphShapedType alloc] initWithShape:k_shape dataType:data_type] autorelease],
+    [[[MPSGraphShapedType alloc] initWithShape:v_shape dataType:data_type] autorelease]
+  ];
+
+  mps_q = [graph transposeTensor:mps_q dimension:1 withDimension:2 name:nil];
+  mps_k = [graph transposeTensor:mps_k dimension:1 withDimension:2 name:nil];
+  mps_v = [graph transposeTensor:mps_v dimension:1 withDimension:2 name:nil];
+  MPSGraphTensor* mps_o =
+      [graph scaledDotProductAttentionWithQueryTensor:mps_q
+                                            keyTensor:mps_k
+                                          valueTensor:mps_v
+                                                scale:create_scale(attention)
+                                                 name:nil];
+  mps_o = [graph transposeTensor:mps_o dimension:1 withDimension:2 name:nil];
+
+  MPSGraphCompilationDescriptor* compilation_descriptor = [MPSGraphCompilationDescriptor new];
+  compilation_descriptor.optimizationLevel = MPSGraphOptimizationLevel0;
+  compilation_descriptor.optimizationProfile = MPSGraphOptimizationProfilePerformance;
+  NSDictionary<MPSGraphTensor*, MPSGraphShapedType*>* feeds =
+      [NSDictionary dictionaryWithObjects:input_shapes forKeys:input_tensors];
+  MPSGraphDevice* graph_device = [MPSGraphDevice deviceWithMTLDevice:device];
+  pipeline.executable =
+      [[graph compileWithDevice:graph_device
+                          feeds:feeds
+                  targetTensors:@[ mps_o ]
+               targetOperations:nil
+           compilationDescriptor:compilation_descriptor] retain];
+  pipeline.executable.options = MPSGraphOptionsSynchronizeResults;
+  [compilation_descriptor release];
+  [graph release];
+
+  pipeline.inputs = [[NSArray alloc] initWithObjects:
+      create_tensor_data(q_buffer, q_shape, data_type),
+      create_tensor_data(k_buffer, k_shape, data_type),
+      create_tensor_data(v_buffer, v_shape, data_type), nil];
+  pipeline.outputs = [[NSArray alloc] initWithObjects:
+      create_tensor_data(o_buffer, o_shape, data_type), nil];
+  return pipeline;
+}
+
 MPSGraphBackwardPipeline create_mpsgraph_backward_pipeline(
     id<MTLDevice> device,
     const AttentionCase& attention,
@@ -1128,6 +1203,38 @@ double run_mpsgraph_backward_once(
   [command_buffer waitUntilCompleted];
   const auto end = std::chrono::steady_clock::now();
   return std::chrono::duration<double>(end - start).count();
+}
+
+double run_mpsgraph_forward_once(
+    id<MTLCommandQueue> command_queue,
+    const MPSGraphForwardPipeline& pipeline)
+{
+  const auto start = std::chrono::steady_clock::now();
+  id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:command_queue];
+  [pipeline.executable encodeToCommandBuffer:(MPSCommandBuffer*)command_buffer
+                                 inputsArray:pipeline.inputs
+                                resultsArray:pipeline.outputs
+                         executionDescriptor:nil];
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+  const auto end = std::chrono::steady_clock::now();
+  return std::chrono::duration<double>(end - start).count();
+}
+
+void destroy_mpsgraph_forward_pipeline(MPSGraphForwardPipeline* pipeline)
+{
+  if (pipeline->inputs) {
+    [pipeline->inputs release];
+    pipeline->inputs = nil;
+  }
+  if (pipeline->outputs) {
+    [pipeline->outputs release];
+    pipeline->outputs = nil;
+  }
+  if (pipeline->executable) {
+    [pipeline->executable release];
+    pipeline->executable = nil;
+  }
 }
 
 void destroy_mpsgraph_backward_pipeline(MPSGraphBackwardPipeline* pipeline)
@@ -1268,6 +1375,7 @@ int main(int argc, char** argv)
   id<MTLBuffer> graph_k = [graph_device newBufferWithLength:k_bytes options:MTLResourceStorageModePrivate];
   id<MTLBuffer> graph_v = [graph_device newBufferWithLength:v_bytes options:MTLResourceStorageModePrivate];
   id<MTLBuffer> graph_g = [graph_device newBufferWithLength:dO_bytes options:MTLResourceStorageModePrivate];
+  id<MTLBuffer> graph_o = [graph_device newBufferWithLength:o_bytes options:MTLResourceStorageModePrivate];
   id<MTLBuffer> graph_dq = [graph_device newBufferWithLength:dQ_bytes options:MTLResourceStorageModePrivate];
   id<MTLBuffer> graph_dk = [graph_device newBufferWithLength:dK_bytes options:MTLResourceStorageModePrivate];
   id<MTLBuffer> graph_dv = [graph_device newBufferWithLength:dV_bytes options:MTLResourceStorageModePrivate];
@@ -1282,6 +1390,8 @@ int main(int argc, char** argv)
   const auto int8_quantize = create_int8_quantize_pipelines(dense_device.get(), attention);
   const auto int8_forward = create_int8_forward_pipeline(dense_device.get(), attention);
   const auto int8_backward = create_int8_backward_pipelines(dense_device.get(), attention);
+  auto graph_forward = create_mpsgraph_forward_pipeline(
+      graph_device, attention, graph_q, graph_k, graph_v, graph_o);
   auto graph_backward = create_mpsgraph_backward_pipeline(
       graph_device, attention, graph_q, graph_k, graph_v, graph_g, graph_dq, graph_dk, graph_dv);
 
@@ -1294,6 +1404,7 @@ int main(int argc, char** argv)
             dense_o.get(),
             dense_l.get()) > 0)) {
     std::cerr << "dense forward setup failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1313,6 +1424,16 @@ int main(int argc, char** argv)
             int8_o.get(),
             int8_l.get()) > 0)) {
     std::cerr << "int8 forward setup failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
+    destroy_mpsgraph_backward_pipeline(&graph_backward);
+    [graph_command_queue release];
+    [graph_device release];
+    pool->drain();
+    return 1;
+  }
+  if (!(run_mpsgraph_forward_once(graph_command_queue, graph_forward) > 0)) {
+    std::cerr << "mpsgraph forward setup failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1321,6 +1442,73 @@ int main(int argc, char** argv)
   }
   if (!(run_mpsgraph_backward_once(graph_command_queue, graph_backward) > 0)) {
     std::cerr << "mpsgraph backward setup failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
+    destroy_mpsgraph_backward_pipeline(&graph_backward);
+    [graph_command_queue release];
+    [graph_device release];
+    pool->drain();
+    return 1;
+  }
+
+  Stats dense_forward_stats;
+  if (!benchmark(
+          config,
+          [&]() {
+            return run_dense_forward_once(
+                dense_command_queue.get(),
+                dense_forward,
+                dense_q.get(),
+                dense_k.get(),
+                dense_v.get(),
+                dense_o.get(),
+                dense_l.get());
+          },
+          &dense_forward_stats)) {
+    std::cerr << "dense forward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
+    destroy_mpsgraph_backward_pipeline(&graph_backward);
+    [graph_command_queue release];
+    [graph_device release];
+    pool->drain();
+    return 1;
+  }
+
+  Stats int8_forward_stats;
+  if (!benchmark(
+          config,
+          [&]() {
+            return run_int8_forward_total_once(
+                dense_command_queue.get(),
+                attention,
+                int8_quantize,
+                int8_forward,
+                scratch_layout,
+                int8_q.get(),
+                int8_k.get(),
+                int8_v.get(),
+                int8_scratch.get(),
+                int8_o.get(),
+                int8_l.get());
+          },
+          &int8_forward_stats)) {
+    std::cerr << "int8 forward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
+    destroy_mpsgraph_backward_pipeline(&graph_backward);
+    [graph_command_queue release];
+    [graph_device release];
+    pool->drain();
+    return 1;
+  }
+
+  Stats graph_forward_stats;
+  if (!benchmark(
+          config,
+          [&]() {
+            return run_mpsgraph_forward_once(graph_command_queue, graph_forward);
+          },
+          &graph_forward_stats)) {
+    std::cerr << "mpsgraph forward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1349,6 +1537,7 @@ int main(int argc, char** argv)
           },
           &dense_backward_stats)) {
     std::cerr << "dense backward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1379,6 +1568,7 @@ int main(int argc, char** argv)
           },
           &int8_backward_stats)) {
     std::cerr << "int8 backward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1394,6 +1584,7 @@ int main(int argc, char** argv)
           },
           &graph_backward_stats)) {
     std::cerr << "mpsgraph backward benchmark failed\n";
+    destroy_mpsgraph_forward_pipeline(&graph_forward);
     destroy_mpsgraph_backward_pipeline(&graph_backward);
     [graph_command_queue release];
     [graph_device release];
@@ -1409,10 +1600,19 @@ int main(int argc, char** argv)
             << " Hk=" << attention.Hk
             << " D=" << attention.D
             << '\n';
+  print_stats("na_forward", dense_forward_stats);
+  print_stats("na_int8_forward_total", int8_forward_stats);
+  print_stats("mpsgraph_forward", graph_forward_stats);
   print_stats("na_backward", dense_backward_stats);
   print_stats("na_int8_backward_total", int8_backward_stats);
   print_stats("mpsgraph_backward", graph_backward_stats);
   std::cout << std::fixed << std::setprecision(4)
+            << "na_forward_vs_mpsgraph_speedup=" << (graph_forward_stats.median_seconds / dense_forward_stats.median_seconds)
+            << '\n'
+            << "na_int8_forward_vs_na_speedup=" << (dense_forward_stats.median_seconds / int8_forward_stats.median_seconds)
+            << '\n'
+            << "na_int8_forward_vs_mpsgraph_speedup=" << (graph_forward_stats.median_seconds / int8_forward_stats.median_seconds)
+            << '\n'
             << "na_vs_mpsgraph_speedup=" << (graph_backward_stats.median_seconds / dense_backward_stats.median_seconds)
             << '\n'
             << "na_int8_vs_na_speedup=" << (dense_backward_stats.median_seconds / int8_backward_stats.median_seconds)
@@ -1420,6 +1620,7 @@ int main(int argc, char** argv)
             << "na_int8_vs_mpsgraph_speedup=" << (graph_backward_stats.median_seconds / int8_backward_stats.median_seconds)
             << '\n';
 
+  destroy_mpsgraph_forward_pipeline(&graph_forward);
   destroy_mpsgraph_backward_pipeline(&graph_backward);
   [graph_q_stage release];
   [graph_k_stage release];
@@ -1429,6 +1630,7 @@ int main(int argc, char** argv)
   [graph_k release];
   [graph_v release];
   [graph_g release];
+  [graph_o release];
   [graph_dq release];
   [graph_dk release];
   [graph_dv release];
