@@ -49,7 +49,7 @@ unsigned short NAAttentionKernel::threadgroupMemoryAllocation(MTL::ComputePipeli
     const unsigned short kBlocks = (headDimension + blockDimensions[2] - 1) / blockDimensions[2];
     const unsigned short sharedTileBytes =
         blockDimensions[2] *
-        (blockDimensions[1] * 2 * kBlocks + blockDimensions[0] * 2 * executionSIMDGroups * kBlocks) *
+        (blockDimensions[0] * 2 * executionSIMDGroups * kBlocks) *
         memorySize;
     return sharedTileBytes;
   }
@@ -1036,7 +1036,7 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
   source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
   source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
   source.SetValue("MEMORY_NAME_DQ", memoryName(AttentionOperand::dQ));
-  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::D));
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("KBLOCKS", std::to_string(kBlocks));
   if (blockDimensions[2] % 32 == 0) {
@@ -1072,28 +1072,20 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
     source += R"(
   threadgroup uchar *Q_shared_bytes = threadgroup_block;
   threadgroup uchar *dO_shared_bytes = Q_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} * {{KBLOCKS}};
-  threadgroup uchar *K_shared_bytes = dO_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}}) * {{EXECUTION_SIMD_GROUPS}} * {{KBLOCKS}};
-  threadgroup uchar *V_shared_bytes = K_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_K}}) * {{KBLOCKS}};
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source += R"(
   threadgroup uchar *Q{{LOOP_INDEX}}_shared_bytes = Q_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}}) * {{EXECUTION_SIMD_GROUPS}} * {{LOOP_INDEX}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_Q}});
   threadgroup uchar *dO{{LOOP_INDEX}}_shared_bytes = dO_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}}) * {{EXECUTION_SIMD_GROUPS}} * {{LOOP_INDEX}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_DO}});
-  threadgroup uchar *K{{LOOP_INDEX}}_shared_bytes = K_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_K}}) * {{LOOP_INDEX}};
-  threadgroup uchar *V{{LOOP_INDEX}}_shared_bytes = V_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_V}}) * {{LOOP_INDEX}};
   threadgroup {{MEMORY_NAME_Q}} *Q{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q{{LOOP_INDEX}}_shared_bytes;
   threadgroup {{MEMORY_NAME_DO}} *dO{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO{{LOOP_INDEX}}_shared_bytes;
-  threadgroup {{MEMORY_NAME_K}} *K{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K{{LOOP_INDEX}}_shared_bytes;
-  threadgroup {{MEMORY_NAME_V}} *V{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V{{LOOP_INDEX}}_shared_bytes;
   auto Q{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
   auto dO{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
-  auto K{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
-  auto V{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
 )";
     }
     source += R"(
-  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_K}}, float>();
   auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), float>();
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
@@ -1144,22 +1136,12 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
-    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
-      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
-      const uint col_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
-      K{{LOOP_INDEX}}_shared_buf[load_index] = K_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + head_idx + (c + col_idx) * K_Hk];
-      V{{LOOP_INDEX}}_shared_buf[load_index] = V_buf[tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + head_idx + (c + col_idx) * K_Hk];
+    {
+      auto mK_{{LOOP_INDEX}} = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+      auto mV_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+      matmul_qk_op.run(Q{{LOOP_INDEX}}_shared, mK_{{LOOP_INDEX}}, cS);
+      matmul_qk_op.run(dO{{LOOP_INDEX}}_shared, mV_{{LOOP_INDEX}}, cDP);
     }
-)";
-    }
-    source += R"(
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += R"(
-    matmul_qk_op.run(Q{{LOOP_INDEX}}_shared, K{{LOOP_INDEX}}_shared, cS);
-    matmul_qk_op.run(dO{{LOOP_INDEX}}_shared, V{{LOOP_INDEX}}_shared, cDP);
 )";
     }
     source += R"(
@@ -1168,22 +1150,27 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
       if (cDS.is_valid_element(k)) {
         auto idx = cDS.get_multidimensional_index(k);
         const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
-        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+        cDS[k] = ({{MEMORY_NAME_DS}})(P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]));
       }
     }
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "    matmul_dsk_op.run(cDS, K{{LOOP_INDEX}}_shared, cDQ_{{LOOP_INDEX}});\n";
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
+    {
+      auto mK_{{LOOP_INDEX}} = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+      matmul_dsk_op.run(cDS, mK_{{LOOP_INDEX}}, cDQ_{{LOOP_INDEX}});
+    }
+)";
     }
     source += R"(
-    threadgroup_barrier(mem_flags::mem_threadgroup);
   }
 )";
   } else {
     source += R"(
   auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), float>();
-  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_K}}, float>();
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_K}}, float>();
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1232,7 +1219,7 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
       if (cDS.is_valid_element(k)) {
         auto idx = cDS.get_multidimensional_index(k);
         const float P = fast::exp2(cS[k] * {{DOT_SCALE}} - (float)L[idx[1]]);
-        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]);
+        cDS[k] = ({{MEMORY_NAME_DS}})(P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - (float)D[idx[1]]));
       }
     }
 )";
@@ -1278,8 +1265,8 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
   source.SetValue("MEMORY_NAME_DO", memoryName(AttentionOperand::dO));
   source.SetValue("MEMORY_NAME_DK", memoryName(AttentionOperand::dK));
   source.SetValue("MEMORY_NAME_DV", memoryName(AttentionOperand::dV));
-  source.SetValue("MEMORY_NAME_P", memoryName(AttentionOperand::dO));
-  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_P", memoryName(AttentionOperand::O));
+  source.SetValue("MEMORY_NAME_DS", memoryName(AttentionOperand::D));
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("KBLOCKS", std::to_string(kBlocks));
   if (blockDimensions[2] % 32 == 0) {
@@ -1310,29 +1297,21 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
     source += R"(
   threadgroup uchar *K_shared_bytes = threadgroup_block;
   threadgroup uchar *V_shared_bytes = K_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}}) * {{EXECUTION_SIMD_GROUPS}} * {{KBLOCKS}};
-  threadgroup uchar *Q_shared_bytes = V_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}}) * {{EXECUTION_SIMD_GROUPS}} * {{KBLOCKS}};
-  threadgroup uchar *dO_shared_bytes = Q_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_Q}}) * {{KBLOCKS}};
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source += R"(
   threadgroup uchar *K{{LOOP_INDEX}}_shared_bytes = K_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}}) * {{EXECUTION_SIMD_GROUPS}} * {{LOOP_INDEX}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_K}});
   threadgroup uchar *V{{LOOP_INDEX}}_shared_bytes = V_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}}) * {{EXECUTION_SIMD_GROUPS}} * {{LOOP_INDEX}} + sgid * {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * sizeof({{MEMORY_NAME_V}});
-  threadgroup uchar *Q{{LOOP_INDEX}}_shared_bytes = Q_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_Q}}) * {{LOOP_INDEX}};
-  threadgroup uchar *dO{{LOOP_INDEX}}_shared_bytes = dO_shared_bytes + {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sizeof({{MEMORY_NAME_DO}}) * {{LOOP_INDEX}};
   threadgroup {{MEMORY_NAME_K}} *K{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)K{{LOOP_INDEX}}_shared_bytes;
   threadgroup {{MEMORY_NAME_V}} *V{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_V}}*)V{{LOOP_INDEX}}_shared_bytes;
-  threadgroup {{MEMORY_NAME_Q}} *Q{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)Q{{LOOP_INDEX}}_shared_bytes;
-  threadgroup {{MEMORY_NAME_DO}} *dO{{LOOP_INDEX}}_shared_buf = (threadgroup {{MEMORY_NAME_DO}}*)dO{{LOOP_INDEX}}_shared_bytes;
   auto K{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(K{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
   auto V{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(V{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
-  auto Q{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(Q{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
-  auto dO{{LOOP_INDEX}}_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(dO{{LOOP_INDEX}}_shared_buf, extents<int32_t, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>());
 )";
     }
     source += R"(
-  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
-  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_P}}, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_Q}}, float>();
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), float>();
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
@@ -1383,22 +1362,12 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
-    for (uint load_index = tid; load_index < {{BLOCK_DIMENSIONS_HEAD}} * {{BLOCK_DIMENSIONS_TRAVERSAL}}; load_index += 32 * {{EXECUTION_SIMD_GROUPS}}) {
-      const uint head_idx = load_index % {{BLOCK_DIMENSIONS_HEAD}};
-      const uint row_idx = load_index / {{BLOCK_DIMENSIONS_HEAD}};
-      Q{{LOOP_INDEX}}_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + head_idx + (r + row_idx) * K_Hq];
-      dO{{LOOP_INDEX}}_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + head_idx + (r + row_idx) * K_Hq];
+    {
+      auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+      auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+      matmul_kqt_op.run(K{{LOOP_INDEX}}_shared, mQ_{{LOOP_INDEX}}, cST);
+      matmul_kqt_op.run(V{{LOOP_INDEX}}_shared, mdO_{{LOOP_INDEX}}, cDP);
     }
-)";
-    }
-    source += R"(
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += R"(
-    matmul_kqt_op.run(K{{LOOP_INDEX}}_shared, Q{{LOOP_INDEX}}_shared, cST);
-    matmul_kqt_op.run(V{{LOOP_INDEX}}_shared, dO{{LOOP_INDEX}}_shared, cDP);
 )";
     }
     source += R"(
@@ -1409,26 +1378,31 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
         const float L_value = (float)L_buf[r + idx[0]];
         const float D_value = (float)D_buf[r + idx[0]];
         const float P_value = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
-        cP[k] = P_value;
-        cDS[k] = P_value * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+        cP[k] = ({{MEMORY_NAME_P}})P_value;
+        cDS[k] = ({{MEMORY_NAME_DS}})(P_value * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value));
       }
     }
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += "    matmul_pdo_op.run(cP, dO{{LOOP_INDEX}}_shared, cDV_{{LOOP_INDEX}});\n";
-      source += "    matmul_pdo_op.run(cDS, Q{{LOOP_INDEX}}_shared, cDK_{{LOOP_INDEX}});\n";
+      source += R"(
+    {
+      auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+      auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+      matmul_pdo_op.run(cP, mdO_{{LOOP_INDEX}}, cDV_{{LOOP_INDEX}});
+      matmul_pdo_op.run(cDS, mQ_{{LOOP_INDEX}}, cDK_{{LOOP_INDEX}});
+    }
+)";
     }
     source += R"(
-    threadgroup_barrier(mem_flags::mem_threadgroup);
   }
 )";
   } else {
     source += R"(
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), float>();
-  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_DO}}, float>();
-  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<float, {{MEMORY_NAME_Q}}, float>();
+  auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_P}}, {{MEMORY_NAME_DO}}, float>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_Q}}, float>();
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1479,8 +1453,8 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
         const float L_value = (float)L_buf[r + idx[0]];
         const float D_value = (float)D_buf[r + idx[0]];
         const float P = fast::exp2(cST[k] * {{DOT_SCALE}} - L_value);
-        cP[k] = P;
-        cDS[k] = P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value);
+        cP[k] = ({{MEMORY_NAME_P}})P;
+        cDS[k] = ({{MEMORY_NAME_DS}})(P * (cDP[k] * {{DOT_SCALE_DERIVATIVE}} - D_value));
       }
     }
 )";

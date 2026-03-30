@@ -213,8 +213,8 @@ AttentionOperands<GEMMOperandPrecision> create_fp16_backward_precisions()
   memory_precisions[AttentionOperand::dQ] = GEMMOperandPrecision::FP16;
   memory_precisions[AttentionOperand::dK] = GEMMOperandPrecision::FP16;
   memory_precisions[AttentionOperand::dV] = GEMMOperandPrecision::FP16;
-  memory_precisions[AttentionOperand::L] = GEMMOperandPrecision::FP32;
-  memory_precisions[AttentionOperand::D] = GEMMOperandPrecision::FP32;
+  memory_precisions[AttentionOperand::L] = GEMMOperandPrecision::FP16;
+  memory_precisions[AttentionOperand::D] = GEMMOperandPrecision::BF16;
   return memory_precisions;
 }
 
@@ -393,7 +393,7 @@ ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase
   bundle.descriptor.Hk = attention.Hk;
   bundle.descriptor.lowPrecisionInputs = true;
   bundle.descriptor.isBF16 = false;
-  bundle.descriptor.lowPrecisionIntermediates = false;
+  bundle.descriptor.lowPrecisionIntermediates = true;
   bundle.descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
   bundle.descriptor.type = AttentionKernelType::forward;
   bundle.descriptor.scale = create_scale(attention);
@@ -431,7 +431,7 @@ BackwardPipelines create_backward_pipelines(
   bundle.query_descriptor.Hk = attention.Hk;
   bundle.query_descriptor.lowPrecisionInputs = true;
   bundle.query_descriptor.isBF16 = false;
-  bundle.query_descriptor.lowPrecisionIntermediates = false;
+  bundle.query_descriptor.lowPrecisionIntermediates = true;
   bundle.query_descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
   bundle.query_descriptor.type = AttentionKernelType::backwardQuery;
   bundle.query_descriptor.scale = create_scale(attention);
@@ -941,7 +941,7 @@ int main(int argc, char** argv)
             << " blockC=" << forward_pipeline.kernel->blockDimensions[1]
             << " blockD=" << forward_pipeline.kernel->blockDimensions[2]
             << " simdgroups=" << forward_pipeline.kernel->executionSIMDGroups
-            << " lowPrecisionIntermediates=false"
+            << " lowPrecisionIntermediates=true"
             << '\n';
   std::cout << "backward-kernel"
             << " queryBlockR=" << backward_pipelines.query_kernel->blockDimensions[0]

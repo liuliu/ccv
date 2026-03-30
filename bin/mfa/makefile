@@ -3,7 +3,9 @@ include ../../lib/config.mk
 CFLAGS := -std=c++17 -O0 -g -Wall -I"../.." -I"../../lib" $(CFLAGS)
 LDFLAGS := $(LDFLAGS) -framework QuartzCore
 
-TARGETS = gemm_scaffold na_gemm_splitk_bench na_int8_attention_bench na_int8_attention_backward_probe na_attention_backward_bench na_int8_matmul_bench dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
+TARGETS = gemm_scaffold na_gemm_splitk_bench na_int8_attention_bench na_int8_attention_backward_probe na_attention_backward_bench sdpa_backward_compare_bench na_int8_matmul_bench dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
+
+MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 
 COMMON_OBJS = \
 	Metal.local.o \
@@ -45,7 +47,7 @@ NA_BASELINE_ATTENTION_OBJS = \
 all: $(TARGETS)
 
 clean:
-	rm -f dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o na_int8_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(TARGETS) dump_na_source
+	rm -f dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o sdpa_backward_compare_bench.o na_int8_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(TARGETS) dump_na_source
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -58,6 +60,8 @@ na_int8_attention_backward_probe: na_int8_attention_backward_probe.o $(COMMON_OB
 	$(CC) -o $@ $^ $(LDFLAGS)
 na_attention_backward_bench: na_attention_backward_bench.o $(COMMON_OBJS) $(NA_BASELINE_ATTENTION_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
+sdpa_backward_compare_bench: sdpa_backward_compare_bench.o $(COMMON_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS)
+	$(CC) -o $@ $^ $(MPSGRAPH_LDFLAGS)
 na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
@@ -99,6 +103,8 @@ na_int8_attention_backward_probe.o: na_int8_attention_backward_probe.cpp
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
 na_attention_backward_bench.o: na_attention_backward_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
+sdpa_backward_compare_bench.o: sdpa_backward_compare_bench.mm
+	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
 na_int8_matmul_bench.o: na_int8_matmul_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
