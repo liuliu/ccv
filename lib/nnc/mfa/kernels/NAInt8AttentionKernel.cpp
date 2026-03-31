@@ -1712,6 +1712,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   source += R"(
   for (uint c = 0; c < C_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     const float block_scale = {{QK_SCALE_FACTOR_0}}{{DOT_SCALE}};
+    const float v_scale_recip_127 = {{V_SCALE_FACTOR_0}} / 127.0f;
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -1818,7 +1819,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cOq.get_capacity(); ++k) {
       if (cOq.is_valid_element(k)) {
-        cO_{{LOOP_INDEX}}[k] += (float)cOq[k] * ({{V_SCALE_FACTOR_0}} / 127.0f);
+        cO_{{LOOP_INDEX}}[k] += (float)cOq[k] * v_scale_recip_127;
       }
     }
 )";
@@ -1833,6 +1834,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   if (C_remainder > 0) {
     const uint c = C - C_remainder;
     const float block_scale = {{QK_SCALE_FACTOR_REM}}{{DOT_SCALE}};
+    const float v_scale_recip_127 = {{V_SCALE_FACTOR_REM}} / 127.0f;
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
@@ -1958,7 +1960,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cOq_remainder.get_capacity(); ++k) {
       if (cOq_remainder.is_valid_element(k)) {
-        cO_{{LOOP_INDEX}}[k] += (float)cOq_remainder[k] * ({{V_SCALE_FACTOR_REM}} / 127.0f);
+        cO_{{LOOP_INDEX}}[k] += (float)cOq_remainder[k] * v_scale_recip_127;
       }
     }
 )";

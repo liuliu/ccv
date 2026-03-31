@@ -61,6 +61,7 @@ struct VariantConfig {
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
   float v_bias = 0.0f;
+  float input_scale_multiplier = 1.0f;
 };
 
 struct Stats {
@@ -76,6 +77,8 @@ struct ValidationStats {
   size_t checked_batches = 0;
   size_t checked_heads = 0;
   size_t checked_rows = 0;
+  size_t nonfinite_o = 0;
+  size_t nonfinite_l = 0;
   double max_abs_o = 0;
   double max_rel_o = 0;
   double max_abs_l = 0;
@@ -2258,9 +2261,15 @@ ValidationStats validate_int8_outputs(
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
     const std::vector<float>& o_values,
-    const float* l_raw)
+    const std::vector<float>& l_values)
 {
   ValidationStats stats;
+  for (const auto value : o_values)
+    if (!std::isfinite(value))
+      ++stats.nonfinite_o;
+  for (const auto value : l_values)
+    if (!std::isfinite(value))
+      ++stats.nonfinite_l;
   const uint64_t reference_work = (uint64_t)attention.batch * attention.Hq * attention.R * attention.C * attention.D;
   stats.full_reference = reference_work <= (1ull << 24);
   std::vector<uint32_t> batch_points;
@@ -2284,7 +2293,7 @@ ValidationStats validate_int8_outputs(
       for (const auto row : row_points) {
         float reference_l = 0;
         compute_int8_reference_row(attention, block_dimensions, quantized, v_values, batch, head, row, &reference_l, &reference_o);
-        const float actual_l = l_raw[l_index(attention, batch, head, row)];
+        const float actual_l = l_values[l_index(attention, batch, head, row)];
         const double abs_l = std::fabs(reference_l - actual_l);
         const double rel_l = abs_l / std::max<double>(std::max(std::fabs(reference_l), std::fabs(actual_l)), 1.0);
         stats.max_abs_l = std::max(stats.max_abs_l, abs_l);
@@ -2302,7 +2311,9 @@ ValidationStats validate_int8_outputs(
   stats.checked_batches = batch_points.size();
   stats.checked_heads = head_points.size();
   stats.checked_rows = row_points.size();
-  stats.passed = (stats.max_abs_o <= 7e-2 || stats.max_rel_o <= 7e-2) &&
+  stats.passed = stats.nonfinite_o == 0 &&
+      stats.nonfinite_l == 0 &&
+      (stats.max_abs_o <= 7e-2 || stats.max_rel_o <= 7e-2) &&
       (stats.max_abs_l <= 7e-2 || stats.max_rel_l <= 7e-2);
   return stats;
 }
@@ -2345,11 +2356,38 @@ void print_validation(const ValidationStats& stats)
             << " batches=" << stats.checked_batches
             << " heads=" << stats.checked_heads
             << " rows=" << stats.checked_rows
+            << " nonfinite_o=" << stats.nonfinite_o
+            << " nonfinite_l=" << stats.nonfinite_l
             << " max_abs_o=" << stats.max_abs_o
             << " max_rel_o=" << stats.max_rel_o
             << " max_abs_l=" << stats.max_abs_l
             << " max_rel_l=" << stats.max_rel_l
             << '\n';
+}
+
+void print_sampled_l_comparison(
+    const AttentionCase& attention,
+    const std::vector<float>& int8_l_values,
+    const std::vector<float>& baseline_l_values)
+{
+  const auto batch_points = make_sample_points(attention.batch, { 0 });
+  const auto head_points = make_sample_points(attention.Hq, { 0, 1, 7, 15, 31 });
+  const auto row_points = make_sample_points(attention.R, { 0, 1, 15, 16, 255, 256, 4095, 4096 });
+  std::cout << "sampled_l_compare";
+  for (const auto batch : batch_points) {
+    for (const auto head : head_points) {
+      for (const auto row : row_points) {
+        const size_t idx = l_index(attention, batch, head, row);
+        std::cout << " [b=" << batch
+                  << " h=" << head
+                  << " r=" << row
+                  << " int8=" << int8_l_values[idx]
+                  << " dense=" << baseline_l_values[idx]
+                  << "]";
+      }
+    }
+  }
+  std::cout << '\n';
 }
 
 } // namespace
@@ -2454,6 +2492,9 @@ int main(int argc, char** argv)
     variant.v_mean_barrier_every_override =
         (uint16_t)std::strtoul(argv[28], nullptr, 10);
   }
+  if (argc >= 30) {
+    variant.input_scale_multiplier = std::strtof(argv[29], nullptr);
+  }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -2471,15 +2512,15 @@ int main(int argc, char** argv)
 
   const auto q_values = make_data<float>(
       (size_t)attention.batch * attention.R * attention.Hq * attention.D,
-      0.03125f,
+      0.03125f * variant.input_scale_multiplier,
       1);
   const auto k_values = make_data<float>(
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
-      0.02734375f,
+      0.02734375f * variant.input_scale_multiplier,
       2);
   auto v_values = make_data<float>(
       (size_t)attention.batch * attention.C * attention.Hk * attention.D,
-      0.0234375f,
+      0.0234375f * variant.input_scale_multiplier,
       3);
   add_bias(v_values, variant.v_bias);
   const auto v_mean_values = variant.center_v ? compute_v_mean(attention, v_values) : std::vector<float>();
@@ -2551,8 +2592,9 @@ int main(int argc, char** argv)
   const size_t v_mean_sum_bytes =
       variant.center_v ? (size_t)attention.batch * attention.Hk * attention.D * sizeof(float) : 0;
   const size_t o_count = (size_t)attention.batch * attention.R * attention.Hq * attention.D;
+  const size_t l_count = (size_t)attention.batch * attention.Hq * attention.R;
   const size_t o_bytes = o_count * input_precision_size(variant.input_precision);
-  const size_t l_bytes = (size_t)attention.batch * attention.Hq * attention.R * sizeof(float);
+  const size_t l_bytes = l_count * input_precision_size(variant.input_precision);
   auto q_stage = NS::TransferPtr(device->newBuffer(q_encoded.data(), q_bytes, kSharedResourceOptions));
   auto q_int8_stage = NS::TransferPtr(device->newBuffer(quantized.q_int8.data(), q_int8_bytes, kSharedResourceOptions));
   auto q_scale_stage = NS::TransferPtr(device->newBuffer(quantized.q_scale.data(), q_scale_bytes, kSharedResourceOptions));
@@ -2960,15 +3002,31 @@ int main(int argc, char** argv)
   download_buffer(command_queue.get(), o_buffer.get(), o_stage.get(), o_bytes);
   download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
   const auto o_values = decode_values(o_stage->contents(), o_count, variant.input_precision);
+  const auto l_values = decode_values(l_stage->contents(), l_count, variant.input_precision);
   const auto validation = validate_int8_outputs(
       attention,
       block_dimensions,
       quantized,
       v_input_values,
       o_values,
-      static_cast<const float*>(l_stage->contents()));
+      l_values);
   print_validation(validation);
   if (!validation.passed) {
+    if (!variant.quantize_only) {
+      const double baseline_validation_seconds = run_baseline_once(
+          command_queue.get(),
+          baseline,
+          q_buffer.get(),
+          k_buffer.get(),
+          v_buffer.get(),
+          o_buffer.get(),
+          l_buffer.get());
+      if (baseline_validation_seconds > 0) {
+        download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
+        const auto baseline_l_values = decode_values(l_stage->contents(), l_count, variant.input_precision);
+        print_sampled_l_comparison(attention, l_values, baseline_l_values);
+      }
+    }
     std::cerr << "validation failed\n";
     pool->drain();
     return 1;
