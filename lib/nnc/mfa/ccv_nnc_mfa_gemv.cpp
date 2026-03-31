@@ -37,7 +37,6 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<GemvKernel, GemvDescriptor, GemvKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();
-  auto kernel = pipelineValue->kernel;
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
@@ -51,6 +50,6 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   const uint32_t rowsPerThreadgroup = GemvDescriptor::rowsPerThreadgroup(context->device.get());
   MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, 1);
   CCV_NNC_MFA_PRECONDITION(gridSize.depth > 0);
-  encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(rowsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);
 }

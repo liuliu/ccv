@@ -36,48 +36,59 @@ kernel void gemv(
   device const real *bias [[buffer(3)]],
 
   uint tgpig [[threadgroup_position_in_grid]],
+  uint tiitg [[thread_index_in_threadgroup]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
   uint tiisg [[thread_index_in_simdgroup]]
 ) {
+  constexpr uint TILE_COLS = 256;
   const uint rb = tgpig * N;
+  const uint row = rb + sgitg;
   device const real* y = (device const real*)src1;
+  threadgroup real y_shared[TILE_COLS];
+  const bool active = row < nrows;
+  device const real* x = active ? ((device const real*)src0 + row * ncols) : (device const real*)src0;
 
-  if (ncols < 128) {
-    for (uint row = 0; row < N; ++row) {
-      const uint r1 = rb + row;
-      if (r1 >= nrows)
-        break;
-      device const real* x = (device const real*)src0 + r1 * ncols;
-      float sumf = 0;
-      for (uint i = tiisg; i < ncols; i += 32) {
-        sumf += (real)x[i] * (real)y[i];
-      }
-
-      const float all_sum = simd_sum(sumf);
-      if (tiisg == 0)
-        dst[r1] = bias[r1] + (real)all_sum;
+  float sumf = 0;
+  uint k = 0;
+  for (; k + TILE_COLS <= ncols; k += TILE_COLS) {
+    for (uint i = tiitg; i < TILE_COLS; i += N * 32) {
+      y_shared[i] = y[k + i];
     }
-  } else {
-    device const real4* y4 = (device const real4*)y;
-    for (uint row = 0; row < N; ++row) {
-      const uint r1 = rb + row;
-      if (r1 >= nrows)
-        break;
-
-      device const real* x = (device const real*)src0 + r1 * ncols;
-      device const real4* x4 = (device const real4*)x;
-
-      float sumf = 0;
-      for (uint i = tiisg; i < ncols / 4; i += 32) {
-        sumf += (real)x4[i][0] * y4[i][0];
-        sumf += (real)x4[i][1] * y4[i][1];
-        sumf += (real)x4[i][2] * y4[i][2];
-        sumf += (real)x4[i][3] * y4[i][3];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (active) {
+      for (uint i = tiisg * 4; i + 3 < TILE_COLS; i += 32 * 4) {
+        sumf += (float)x[k + i + 0] * (float)y_shared[i + 0];
+        sumf += (float)x[k + i + 1] * (float)y_shared[i + 1];
+        sumf += (float)x[k + i + 2] * (float)y_shared[i + 2];
+        sumf += (float)x[k + i + 3] * (float)y_shared[i + 3];
       }
-
-      const float all_sum = simd_sum(sumf);
-      if (tiisg == 0)
-        dst[r1] = bias[r1] + (real)all_sum;
     }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  if (k < ncols) {
+    const uint tile = ncols - k;
+    for (uint i = tiitg; i < tile; i += N * 32) {
+      y_shared[i] = y[k + i];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (active) {
+      const uint tile4 = tile & ~3u;
+      for (uint i = tiisg * 4; i + 3 < tile4; i += 32 * 4) {
+        sumf += (float)x[k + i + 0] * (float)y_shared[i + 0];
+        sumf += (float)x[k + i + 1] * (float)y_shared[i + 1];
+        sumf += (float)x[k + i + 2] * (float)y_shared[i + 2];
+        sumf += (float)x[k + i + 3] * (float)y_shared[i + 3];
+      }
+      for (uint i = tile4 + tiisg; i < tile; i += 32) {
+        sumf += (float)x[k + i] * (float)y_shared[i];
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+
+  const float all_sum = simd_sum(sumf);
+  if (active && tiisg == 0) {
+    dst[row] = bias[row] + (real)all_sum;
   }
 }
     )";
@@ -92,48 +103,59 @@ kernel void gemv(
   device real *dst [[buffer(2)]],
 
   uint tgpig [[threadgroup_position_in_grid]],
+  uint tiitg [[thread_index_in_threadgroup]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
   uint tiisg [[thread_index_in_simdgroup]]
 ) {
+  constexpr uint TILE_COLS = 256;
   const uint rb = tgpig * N;
+  const uint row = rb + sgitg;
   device const real* y = (device const real*)src1;
+  threadgroup real y_shared[TILE_COLS];
+  const bool active = row < nrows;
+  device const real* x = active ? ((device const real*)src0 + row * ncols) : (device const real*)src0;
 
-  if (ncols < 128) {
-    for (uint row = 0; row < N; ++row) {
-      const uint r1 = rb + row;
-      if (r1 >= nrows)
-        break;
-      device const real* x = (device const real*)src0 + r1 * ncols;
-      float sumf = 0;
-      for (uint i = tiisg; i < ncols; i += 32) {
-        sumf += (real)x[i] * (real)y[i];
-      }
-
-      const float all_sum = simd_sum(sumf);
-      if (tiisg == 0)
-        dst[r1] = (real)all_sum;
+  float sumf = 0;
+  uint k = 0;
+  for (; k + TILE_COLS <= ncols; k += TILE_COLS) {
+    for (uint i = tiitg; i < TILE_COLS; i += N * 32) {
+      y_shared[i] = y[k + i];
     }
-  } else {
-    device const real4* y4 = (device const real4*)y;
-    for (uint row = 0; row < N; ++row) {
-      const uint r1 = rb + row;
-      if (r1 >= nrows)
-        break;
-
-      device const real* x = (device const real*)src0 + r1 * ncols;
-      device const real4* x4 = (device const real4*)x;
-
-      float sumf = 0;
-      for (uint i = tiisg; i < ncols / 4; i += 32) {
-        sumf += (real)x4[i][0] * y4[i][0];
-        sumf += (real)x4[i][1] * y4[i][1];
-        sumf += (real)x4[i][2] * y4[i][2];
-        sumf += (real)x4[i][3] * y4[i][3];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (active) {
+      for (uint i = tiisg * 4; i + 3 < TILE_COLS; i += 32 * 4) {
+        sumf += (float)x[k + i + 0] * (float)y_shared[i + 0];
+        sumf += (float)x[k + i + 1] * (float)y_shared[i + 1];
+        sumf += (float)x[k + i + 2] * (float)y_shared[i + 2];
+        sumf += (float)x[k + i + 3] * (float)y_shared[i + 3];
       }
-
-      const float all_sum = simd_sum(sumf);
-      if (tiisg == 0)
-        dst[r1] = (real)all_sum;
     }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  if (k < ncols) {
+    const uint tile = ncols - k;
+    for (uint i = tiitg; i < tile; i += N * 32) {
+      y_shared[i] = y[k + i];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (active) {
+      const uint tile4 = tile & ~3u;
+      for (uint i = tiisg * 4; i + 3 < tile4; i += 32 * 4) {
+        sumf += (float)x[k + i + 0] * (float)y_shared[i + 0];
+        sumf += (float)x[k + i + 1] * (float)y_shared[i + 1];
+        sumf += (float)x[k + i + 2] * (float)y_shared[i + 2];
+        sumf += (float)x[k + i + 3] * (float)y_shared[i + 3];
+      }
+      for (uint i = tile4 + tiisg; i < tile; i += 32) {
+        sumf += (float)x[k + i] * (float)y_shared[i];
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+
+  const float all_sum = simd_sum(sumf);
+  if (active && tiisg == 0) {
+    dst[row] = (real)all_sum;
   }
 }
     )";

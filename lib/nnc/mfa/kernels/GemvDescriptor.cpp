@@ -14,17 +14,17 @@ bool GemvDescriptor::operator==(const GemvDescriptor& rhs) const {
 }
 
 uint32_t GemvDescriptor::rowsPerThreadgroup(MTL::Device* const device) noexcept {
-  uint32_t rows = 8;
+  uint32_t rows = 4;
   const char* const deviceName = device->name()->utf8String();
   if (deviceName && (strstr(deviceName, "M1") != 0 ||
       strstr(deviceName, "M2") != 0 ||
       strstr(deviceName, "M3") != 0 ||
       strstr(deviceName, "M4") != 0)) {
-    if (strstr(deviceName, "Pro") != 0) {
-      rows = 2;
-    } else if (strstr(deviceName, "Max") != 0 ||
+    if (strstr(deviceName, "Max") != 0 ||
         strstr(deviceName, "Ultra") != 0) {
-      rows = 1;
+      rows = 8;
+    } else if (strstr(deviceName, "Pro") != 0) {
+      rows = 4;
     }
   }
   return rows;
