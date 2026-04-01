@@ -47,6 +47,7 @@ struct VariantConfig {
 struct Stats {
   double average_seconds = 0;
   double median_seconds = 0;
+  double best3_average_seconds = 0;
   double min_seconds = 0;
   double max_seconds = 0;
 };
@@ -1070,6 +1071,9 @@ bool benchmark(const BenchmarkConfig& config, RunOnce&& run_once, Stats* stats)
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
   std::sort(samples.begin(), samples.end());
   stats->median_seconds = samples[samples.size() / 2];
+  const size_t best_count = std::min<size_t>(3, samples.size());
+  stats->best3_average_seconds =
+      std::accumulate(samples.begin(), samples.begin() + best_count, 0.0) / best_count;
   stats->min_seconds = samples.front();
   stats->max_seconds = samples.back();
   return true;
@@ -1194,6 +1198,7 @@ void print_stats(const char* label, const BenchmarkCase& bench, const Stats& sta
   std::cout << label
             << " avg_ms=" << std::fixed << std::setprecision(3) << stats.average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
+            << " best3_avg_ms=" << stats.best3_average_seconds * 1e3
             << " min_ms=" << stats.min_seconds * 1e3
             << " max_ms=" << stats.max_seconds * 1e3
             << " avg_gflops=" << flops / stats.average_seconds / 1e9
@@ -1648,14 +1653,18 @@ int main(int argc, char** argv)
   std::cout << "speedup";
   if (benchmark_raw)
     std::cout << " raw_kernel_avg=" << baseline_stats.average_seconds / raw_stats.average_seconds
-              << " raw_kernel_median=" << baseline_stats.median_seconds / raw_stats.median_seconds;
+              << " raw_kernel_median=" << baseline_stats.median_seconds / raw_stats.median_seconds
+              << " raw_kernel_best3=" << baseline_stats.best3_average_seconds / raw_stats.best3_average_seconds;
   std::cout << " kernel_avg=" << baseline_stats.average_seconds / dynamic_stats.average_seconds
-            << " kernel_median=" << baseline_stats.median_seconds / dynamic_stats.median_seconds;
+            << " kernel_median=" << baseline_stats.median_seconds / dynamic_stats.median_seconds
+            << " kernel_best3=" << baseline_stats.best3_average_seconds / dynamic_stats.best3_average_seconds;
   if (benchmark_splitk)
     std::cout << " splitk_kernel_avg=" << baseline_stats.average_seconds / splitk_stats.average_seconds
-              << " splitk_kernel_median=" << baseline_stats.median_seconds / splitk_stats.median_seconds;
+              << " splitk_kernel_median=" << baseline_stats.median_seconds / splitk_stats.median_seconds
+              << " splitk_kernel_best3=" << baseline_stats.best3_average_seconds / splitk_stats.best3_average_seconds;
   std::cout << " end_to_end_avg=" << baseline_stats.average_seconds / combined_stats.average_seconds
             << " end_to_end_median=" << baseline_stats.median_seconds / combined_stats.median_seconds
+            << " end_to_end_best3=" << baseline_stats.best3_average_seconds / combined_stats.best3_average_seconds
             << '\n';
   std::cout.flush();
   std::_Exit(0);

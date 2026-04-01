@@ -3516,8 +3516,6 @@ TEST_CASE("scaled dot product attention gradient with quantized NA mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mps_set_binary_artifacts(0, 0, 0);
-	ccv_nnc_mps_clear_graph_executable_cache();
 	const int B = 2;
 	const int R = 128;
 	const int C = 128;
@@ -3732,8 +3730,6 @@ TEST_CASE("scaled dot product attention gradient with quantized NA mps for recta
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS));
-	ccv_nnc_mps_set_binary_artifacts(0, 0, 0);
-	ccv_nnc_mps_clear_graph_executable_cache();
 	typedef struct {
 		int R;
 		int C;
