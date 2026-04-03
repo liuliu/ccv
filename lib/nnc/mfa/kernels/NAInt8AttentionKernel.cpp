@@ -1275,12 +1275,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV_0), decltype(mdO_0), int32_t>();
   constexpr auto pdo_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pdo_desc, execution_simdgroups<1>> matmul_pdo_op;
-  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<float, int8_t, float>());
+  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>());
+  thread pdo_float_left_tensor_t& cP = reinterpret_cast<thread pdo_float_left_tensor_t&>(cST);
   auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
-  constexpr auto pdo_int8_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply);
-  matmul2d<pdo_int8_desc, execution_simdgroups<1>> matmul_pdo_int8_op;
-  using pdo_int8_left_tensor_t = decltype(matmul_pdo_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
-  thread pdo_int8_left_tensor_t& cP_q = reinterpret_cast<thread pdo_int8_left_tensor_t&>(cST);
 	)";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1296,7 +1293,6 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
       source += R"(
   auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO_0), {{ACCUM_MEMORY_NAME}}>();
   auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_0), {{ACCUM_MEMORY_NAME}}>();
-  auto cDV_q_{{LOOP_INDEX}} = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO_0), int32_t>();
 	)";
     }
     source += R"(
@@ -1343,7 +1339,6 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
     const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1357,12 +1352,11 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     source += R"(
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
-      if (cP_q.is_valid_element(k)) {
-        auto idx = cP_q.get_multidimensional_index(k);
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
-        const int quantized = (int)rint(P * 127.0f);
-        cP_q[k] = (int8_t)clamp(quantized, 0, 127);
+        cP[k] = P * dO_scale;
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
         cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
       }
@@ -1370,21 +1364,10 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "    matmul_pdo_int8_op.run(cP_q, mdO_{{LOOP_INDEX}}, cDV_q_{{LOOP_INDEX}});\n";
+      source += "    matmul_pdo_op.run(cP, mdO_{{LOOP_INDEX}}, cDV_{{LOOP_INDEX}});\n";
       source += "    matmul_pdo_op.run(cDS, mQ_{{LOOP_INDEX}}, cDK_{{LOOP_INDEX}});\n";
     }
     source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
-      if (cDV_0.is_valid_element(k)) {
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * dO_scale_recip_127);\n";
-    }
-    source += R"(
-      }
-    }
   }
   if (KV_R_remainder > 0) {
     const uint r = R - KV_R_remainder;
@@ -1397,7 +1380,6 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
     const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1411,16 +1393,15 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     source += R"(
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
-      if (cP_q.is_valid_element(k)) {
-        auto idx = cP_q.get_multidimensional_index(k);
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
         if (idx[0] >= (int)KV_R_remainder) {
-          cP_q[k] = 0;
+          cP[k] = 0;
           cDS[k] = 0;
         } else {
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
-          const int quantized = (int)rint(P * 127.0f);
-          cP_q[k] = (int8_t)clamp(quantized, 0, 127);
+          cP[k] = P * dO_scale;
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
           cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
         }
@@ -1429,21 +1410,10 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "    matmul_pdo_int8_op.run(cP_q, mdO_{{LOOP_INDEX}}, cDV_q_{{LOOP_INDEX}});\n";
+      source += "    matmul_pdo_op.run(cP, mdO_{{LOOP_INDEX}}, cDV_{{LOOP_INDEX}});\n";
       source += "    matmul_pdo_op.run(cDS, mQ_{{LOOP_INDEX}}, cDK_{{LOOP_INDEX}});\n";
     }
     source += R"(
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cDV_0.get_capacity(); ++k) {
-      if (cDV_0.is_valid_element(k)) {
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * dO_scale_recip_127);\n";
-    }
-    source += R"(
-      }
-    }
   }
   auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
   auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
@@ -1497,15 +1467,11 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), int32_t>();
   constexpr auto pdo_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pdo_desc, execution_simdgroups<1>> matmul_pdo_op;
-  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<float, int8_t, float>());
+  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>());
+  thread pdo_float_left_tensor_t& cP = reinterpret_cast<thread pdo_float_left_tensor_t&>(cST);
   auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
-  constexpr auto pdo_int8_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply);
-  matmul2d<pdo_int8_desc, execution_simdgroups<1>> matmul_pdo_int8_op;
-  using pdo_int8_left_tensor_t = decltype(matmul_pdo_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
-  thread pdo_int8_left_tensor_t& cP_q = reinterpret_cast<thread pdo_int8_left_tensor_t&>(cST);
   auto cDV = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO), {{ACCUM_MEMORY_NAME}}>();
   auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), {{ACCUM_MEMORY_NAME}}>();
-  auto cDV_q = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO), int32_t>();
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
     if (cDV.is_valid_element(k)) {
@@ -1538,30 +1504,22 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
     const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
-      if (cP_q.is_valid_element(k)) {
-        auto idx = cP_q.get_multidimensional_index(k);
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
-        const int quantized = (int)rint(P * 127.0f);
-        cP_q[k] = (int8_t)clamp(quantized, 0, 127);
+        cP[k] = P * dO_scale;
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
         cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
       }
     }
-    matmul_pdo_int8_op.run(cP_q, mdO, cDV_q);
+    matmul_pdo_op.run(cP, mdO, cDV);
     matmul_pdo_op.run(cDS, mQ, cDK);
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
-      if (cDV.is_valid_element(k)) {
-        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * dO_scale_recip_127);
-      }
-    }
   }
   if (KV_R_remainder > 0) {
     const uint r = R - KV_R_remainder;
@@ -1574,35 +1532,27 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
     const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
-      if (cP_q.is_valid_element(k)) {
-        auto idx = cP_q.get_multidimensional_index(k);
+    for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
+      if (cP.is_valid_element(k)) {
+        auto idx = cP.get_multidimensional_index(k);
         if (idx[0] >= (int)KV_R_remainder) {
-          cP_q[k] = 0;
+          cP[k] = 0;
           cDS[k] = 0;
         } else {
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
-          const int quantized = (int)rint(P * 127.0f);
-          cP_q[k] = (int8_t)clamp(quantized, 0, 127);
+          cP[k] = P * dO_scale;
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
           cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
         }
       }
     }
-    matmul_pdo_int8_op.run(cP_q, mdO, cDV_q);
+    matmul_pdo_op.run(cP, mdO, cDV);
     matmul_pdo_op.run(cDS, mQ, cDK);
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
-      if (cDV.is_valid_element(k)) {
-        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * dO_scale_recip_127);
-      }
-    }
   }
   auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
   auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};

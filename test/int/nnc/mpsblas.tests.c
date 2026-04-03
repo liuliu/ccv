@@ -4189,8 +4189,15 @@ TEST_CASE("scaled dot product attention gradient with quantized NA mps on 1536 s
 		if (relative_diff > dv_max_relative_diff)
 			dv_max_relative_diff = relative_diff, dv_max_diff_idx = i;
 	}
-	printf("quantized-na-1536 max_abs dq cpu=%g gpu=%g dk cpu=%g gpu=%g dv cpu=%g gpu=%g\n",
-		dq_cpu_max_abs, dq_gpu_max_abs, dk_cpu_max_abs, dk_gpu_max_abs, dv_cpu_max_abs, dv_gpu_max_abs);
+	REQUIRE(dq_gpu_max_abs >= dq_cpu_max_abs * 0.5f && dq_gpu_max_abs <= dq_cpu_max_abs * 2.0f,
+		"quantized attention dQ magnitude should stay close to CPU reference on 1536 surface (cpu max abs %g gpu max abs %g)",
+		dq_cpu_max_abs, dq_gpu_max_abs);
+	REQUIRE(dk_gpu_max_abs >= dk_cpu_max_abs * 0.5f && dk_gpu_max_abs <= dk_cpu_max_abs * 2.0f,
+		"quantized attention dK magnitude should stay close to CPU reference on 1536 surface (cpu max abs %g gpu max abs %g)",
+		dk_cpu_max_abs, dk_gpu_max_abs);
+	REQUIRE(dv_gpu_max_abs >= dv_cpu_max_abs * 0.5f && dv_gpu_max_abs <= dv_cpu_max_abs * 2.0f,
+		"quantized attention dV magnitude should stay close to CPU reference on 1536 surface (cpu max abs %g gpu max abs %g)",
+		dv_cpu_max_abs, dv_gpu_max_abs);
 	REQUIRE(dq_max_relative_diff <= 8e-2, "quantized attention dQ should match CPU reference on 1536 surface (max relative diff %g at %d: %g vs %g)", dq_max_relative_diff, dq_max_diff_idx, dq_tensor->data.f32[dq_max_diff_idx], dq_gpu_f32[dq_max_diff_idx]);
 	REQUIRE(dk_max_relative_diff <= 1e-1, "quantized attention dK should match CPU reference on 1536 surface (max relative diff %g at %d: %g vs %g)", dk_max_relative_diff, dk_max_diff_idx, dk_tensor->data.f32[dk_max_diff_idx], dk_gpu_f32[dk_max_diff_idx]);
 	REQUIRE(dv_max_relative_diff <= 8e-2, "quantized attention dV should match CPU reference on 1536 surface (max relative diff %g at %d: %g vs %g)", dv_max_relative_diff, dv_max_diff_idx, dv_tensor->data.f32[dv_max_diff_idx], dv_gpu_f32[dv_max_diff_idx]);
