@@ -49,6 +49,7 @@ struct Stats {
   double median_seconds = 0;
   double min_seconds = 0;
   double max_seconds = 0;
+  double best3_average_seconds = 0;
 };
 
 struct DenseForwardPipeline {
@@ -165,6 +166,8 @@ bool benchmark(const BenchmarkConfig& config, const std::function<double()>& run
   stats->median_seconds = samples[samples.size() / 2];
   stats->min_seconds = samples.front();
   stats->max_seconds = samples.back();
+  const size_t best_count = std::min<size_t>(3, samples.size());
+  stats->best3_average_seconds = std::accumulate(samples.begin(), samples.begin() + best_count, 0.0) / (double)best_count;
   return true;
 }
 
@@ -174,6 +177,7 @@ void print_stats(const char* label, const Stats& stats)
             << label
             << " avg_ms=" << std::setprecision(4) << stats.average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
+            << " best3_avg_ms=" << stats.best3_average_seconds * 1e3
             << " min_ms=" << stats.min_seconds * 1e3
             << " max_ms=" << stats.max_seconds * 1e3
             << '\n';
@@ -259,7 +263,10 @@ simd::ushort3 create_dense_block_dimensions(
 
 bool create_dense_bypass_threadgroup_memory(const AttentionCase& attention, simd::ushort3 block_dimensions)
 {
-  if (attention.D > 96)
+  if (attention.D > 128)
+    return false;
+  const uint32_t min_sequence_dimension = std::min(attention.R, attention.C);
+  if (attention.D == 128 && min_sequence_dimension >= 4096)
     return false;
   switch (block_dimensions[1]) {
   case 64:
@@ -1608,16 +1615,22 @@ int main(int argc, char** argv)
   print_stats("mpsgraph_backward", graph_backward_stats);
   std::cout << std::fixed << std::setprecision(4)
             << "na_forward_vs_mpsgraph_speedup=" << (graph_forward_stats.median_seconds / dense_forward_stats.median_seconds)
+            << " na_forward_vs_mpsgraph_best3_speedup=" << (graph_forward_stats.best3_average_seconds / dense_forward_stats.best3_average_seconds)
             << '\n'
             << "na_int8_forward_vs_na_speedup=" << (dense_forward_stats.median_seconds / int8_forward_stats.median_seconds)
+            << " na_int8_forward_vs_na_best3_speedup=" << (dense_forward_stats.best3_average_seconds / int8_forward_stats.best3_average_seconds)
             << '\n'
             << "na_int8_forward_vs_mpsgraph_speedup=" << (graph_forward_stats.median_seconds / int8_forward_stats.median_seconds)
+            << " na_int8_forward_vs_mpsgraph_best3_speedup=" << (graph_forward_stats.best3_average_seconds / int8_forward_stats.best3_average_seconds)
             << '\n'
             << "na_vs_mpsgraph_speedup=" << (graph_backward_stats.median_seconds / dense_backward_stats.median_seconds)
+            << " na_vs_mpsgraph_best3_speedup=" << (graph_backward_stats.best3_average_seconds / dense_backward_stats.best3_average_seconds)
             << '\n'
             << "na_int8_vs_na_speedup=" << (dense_backward_stats.median_seconds / int8_backward_stats.median_seconds)
+            << " na_int8_vs_na_best3_speedup=" << (dense_backward_stats.best3_average_seconds / int8_backward_stats.best3_average_seconds)
             << '\n'
             << "na_int8_vs_mpsgraph_speedup=" << (graph_backward_stats.median_seconds / int8_backward_stats.median_seconds)
+            << " na_int8_vs_mpsgraph_best3_speedup=" << (graph_backward_stats.best3_average_seconds / int8_backward_stats.best3_average_seconds)
             << '\n';
 
   destroy_mpsgraph_forward_pipeline(&graph_forward);

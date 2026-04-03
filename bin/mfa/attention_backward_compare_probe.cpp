@@ -16,9 +16,11 @@
 #include "nnc/mfa/kernels/AttentionKernel.hpp"
 #include "nnc/mfa/kernels/AttentionKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/AttentionOperand.hpp"
+#define private public
 #include "nnc/mfa/kernels/NAAttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernelDescriptor.hpp"
+#undef private
 
 namespace {
 
@@ -469,7 +471,81 @@ OldBackwardPipelines create_old_backward_pipelines(MTL::Device* device, const De
   return pipelines;
 }
 
-NewBackwardPipelines create_new_backward_pipelines(MTL::Device* device, const DeviceProperties& dprops, const AttentionCase& attention)
+std::unique_ptr<PipelineValue<NAAttentionKernel>> create_new_pipeline_value(
+    MTL::Device* device,
+    const NAAttentionDescriptor& descriptor,
+    const NAAttentionKernelDescriptor& kernel_descriptor,
+    std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>>& cache)
+{
+  auto cache_it = cache.find(kernel_descriptor);
+  NAAttentionKernel* kernel = nullptr;
+  if (cache_it != cache.end()) {
+    kernel = cache_it->second.get();
+  } else {
+    auto owned = std::make_unique<NAAttentionKernel>(kernel_descriptor, device);
+    kernel = owned.get();
+    cache.emplace(kernel_descriptor, std::move(owned));
+  }
+
+  auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  uint32_t row_dimension = descriptor.matrixDimensions[0];
+  uint32_t column_dimension = descriptor.matrixDimensions[1];
+  constants->setConstantValue(&row_dimension, MTL::DataTypeUInt, NS::Integer(0));
+  constants->setConstantValue(&column_dimension, MTL::DataTypeUInt, 1);
+
+  std::vector<AttentionOperand> operands;
+  switch (descriptor.type.value) {
+  case AttentionKernelType::forward:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O};
+    break;
+  case AttentionKernelType::backwardQuery:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dQ};
+    break;
+  case AttentionKernelType::backwardKeyValue:
+    operands = {AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O, AttentionOperand::dO, AttentionOperand::dV, AttentionOperand::dK};
+    break;
+  }
+  for (const auto& operand : operands) {
+    const uint32_t batch_stride = descriptor.batchStrides[operand].value_or(0);
+    constants->setConstantValue(&batch_stride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
+  }
+
+  NS::Error* error = nil;
+  auto pipeline_desc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+  auto attention_name = NS::String::string("attention", NS::UTF8StringEncoding);
+  pipeline_desc->setComputeFunction(NS::TransferPtr(kernel->library->newFunction(attention_name, constants.get(), &error)).get());
+  CCV_NNC_MFA_CHECK_ERROR(error);
+  auto pipeline = NS::TransferPtr(device->newComputePipelineState(pipeline_desc.get(), MTL::PipelineOptionNone, NULL, &error));
+  CCV_NNC_MFA_CHECK_ERROR(error);
+
+  NS::SharedPtr<MTL::ComputePipelineState> second;
+  if (descriptor.type.value == AttentionKernelType::backwardQuery) {
+    auto compute_d_constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+    const uint32_t o_batch_stride = descriptor.batchStrides[AttentionOperand::O].value_or(0);
+    const uint32_t dO_batch_stride = descriptor.batchStrides[AttentionOperand::dO].value_or(0);
+    compute_d_constants->setConstantValue(&row_dimension, MTL::DataTypeUInt, NS::Integer(0));
+    compute_d_constants->setConstantValue(&column_dimension, MTL::DataTypeUInt, 1);
+    compute_d_constants->setConstantValue(&o_batch_stride, MTL::DataTypeUInt, 2 + AttentionOperand(AttentionOperand::O).bufferIndex());
+    compute_d_constants->setConstantValue(&dO_batch_stride, MTL::DataTypeUInt, 2 + AttentionOperand(AttentionOperand::dO).bufferIndex());
+    auto compute_d_name = NS::String::string("compute_d", NS::UTF8StringEncoding);
+    auto compute_d_desc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    compute_d_desc->setComputeFunction(NS::TransferPtr(kernel->library->newFunction(compute_d_name, compute_d_constants.get(), &error)).get());
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    second = NS::TransferPtr(device->newComputePipelineState(compute_d_desc.get(), MTL::PipelineOptionNone, NULL, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
+
+  auto output = std::make_unique<PipelineValue<NAAttentionKernel>>(PipelineValue<NAAttentionKernel>{ kernel, pipeline });
+  output->second = second;
+  return output;
+}
+
+NewBackwardPipelines create_new_backward_pipelines(
+    MTL::Device* device,
+    const DeviceProperties& dprops,
+    const AttentionCase& attention,
+    int query_bypass_override = -1,
+    int keyvalue_bypass_override = -1)
 {
   NewBackwardPipelines pipelines;
   NAAttentionDescriptor descriptor;
@@ -482,18 +558,21 @@ NewBackwardPipelines create_new_backward_pipelines(MTL::Device* device, const De
   descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
   descriptor.batchStrides = create_batch_strides(attention);
   descriptor.scale = create_scale(attention);
-
   static std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> cache;
 
   pipelines.query_descriptor = descriptor;
   pipelines.query_descriptor.type = AttentionKernelType::backwardQuery;
-  auto query_pair = pipelines.query_descriptor.findKernel(device, dprops, nullptr, nullptr, "", &cache);
-  pipelines.query_pipeline_value.reset(query_pair.second);
+  pipelines.query_kernel_descriptor = pipelines.query_descriptor.kernelDescriptor(device, dprops);
+  if (query_bypass_override != -1)
+    pipelines.query_kernel_descriptor.bypassThreadgroupMemory = (query_bypass_override != 0);
+  pipelines.query_pipeline_value = create_new_pipeline_value(device, pipelines.query_descriptor, pipelines.query_kernel_descriptor, cache);
 
   pipelines.keyvalue_descriptor = descriptor;
   pipelines.keyvalue_descriptor.type = AttentionKernelType::backwardKeyValue;
-  auto keyvalue_pair = pipelines.keyvalue_descriptor.findKernel(device, dprops, nullptr, nullptr, "", &cache);
-  pipelines.keyvalue_pipeline_value.reset(keyvalue_pair.second);
+  pipelines.keyvalue_kernel_descriptor = pipelines.keyvalue_descriptor.kernelDescriptor(device, dprops);
+  if (keyvalue_bypass_override != -1)
+    pipelines.keyvalue_kernel_descriptor.bypassThreadgroupMemory = (keyvalue_bypass_override != 0);
+  pipelines.keyvalue_pipeline_value = create_new_pipeline_value(device, pipelines.keyvalue_descriptor, pipelines.keyvalue_kernel_descriptor, cache);
 
   return pipelines;
 }
@@ -689,6 +768,12 @@ int main(int argc, char** argv)
     attention.v_scale = std::strtof(argv[11], nullptr);
   if (argc >= 13)
     attention.dO_scale = std::strtof(argv[12], nullptr);
+  int query_bypass_override = -1;
+  int keyvalue_bypass_override = -1;
+  if (argc >= 14)
+    query_bypass_override = std::atoi(argv[13]);
+  if (argc >= 15)
+    keyvalue_bypass_override = std::atoi(argv[14]);
 
   attention.q_scale = env_or_default("CCV_MFA_PROBE_Q_SCALE", attention.q_scale);
   attention.k_scale = env_or_default("CCV_MFA_PROBE_K_SCALE", attention.k_scale);
@@ -763,7 +848,8 @@ int main(int argc, char** argv)
 
   const auto forward = create_na_forward_pipeline(device.get(), dprops, attention);
   const auto old_backward = create_old_backward_pipelines(device.get(), dprops, attention);
-  const auto new_backward = create_new_backward_pipelines(device.get(), dprops, attention);
+  const auto new_backward = create_new_backward_pipelines(
+      device.get(), dprops, attention, query_bypass_override, keyvalue_bypass_override);
 
   run_na_forward_once(
       command_queue.get(),

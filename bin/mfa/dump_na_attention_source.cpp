@@ -39,6 +39,12 @@ static void write_text_file(const std::string& path, const std::string& contents
   }
 }
 
+enum class BypassMode {
+  Auto,
+  Disable,
+  Enable,
+};
+
 static NAAttentionKernel* create_kernel(const NAAttentionKernelDescriptor& kernel_descriptor)
 {
   auto* kernel = reinterpret_cast<NAAttentionKernel*>(::operator new(sizeof(NAAttentionKernel)));
@@ -76,6 +82,13 @@ int main(int argc, char** argv)
   const bool low_precision_inputs = std::strcmp(precision, "fp32") != 0;
   const bool is_bf16 = std::strcmp(precision, "bf16") == 0;
   const bool low_precision_intermediates = (argc > 8) ? (std::atoi(argv[8]) != 0) : false;
+  const char* bypass_arg = (argc > 9) ? argv[9] : "auto";
+  BypassMode bypass_mode = BypassMode::Auto;
+  if (std::strcmp(bypass_arg, "0") == 0 || std::strcmp(bypass_arg, "off") == 0 || std::strcmp(bypass_arg, "disable") == 0) {
+    bypass_mode = BypassMode::Disable;
+  } else if (std::strcmp(bypass_arg, "1") == 0 || std::strcmp(bypass_arg, "on") == 0 || std::strcmp(bypass_arg, "enable") == 0) {
+    bypass_mode = BypassMode::Enable;
+  }
 
   DeviceProperties dprops = DeviceProperties();
   NAAttentionDescriptor descriptor = {
@@ -97,11 +110,24 @@ int main(int argc, char** argv)
 
   descriptor.type = AttentionKernelType::backwardQuery;
   auto query_descriptor = descriptor.kernelDescriptor(nullptr, dprops);
+  if (bypass_mode == BypassMode::Disable)
+    query_descriptor.bypassThreadgroupMemory = false;
+  else if (bypass_mode == BypassMode::Enable)
+    query_descriptor.bypassThreadgroupMemory = true;
   auto* query_kernel = create_kernel(query_descriptor);
 
   descriptor.type = AttentionKernelType::backwardKeyValue;
   auto keyvalue_descriptor = descriptor.kernelDescriptor(nullptr, dprops);
+  if (bypass_mode == BypassMode::Disable)
+    keyvalue_descriptor.bypassThreadgroupMemory = false;
+  else if (bypass_mode == BypassMode::Enable)
+    keyvalue_descriptor.bypassThreadgroupMemory = true;
   auto* keyvalue_kernel = create_kernel(keyvalue_descriptor);
+
+  const std::string suffix =
+      (bypass_mode == BypassMode::Enable) ? "bypass" :
+      (bypass_mode == BypassMode::Disable) ? "shared" :
+      "auto";
 
   const std::string header =
       "// Generated from current NAAttention backward source generator\n"
@@ -113,12 +139,13 @@ int main(int argc, char** argv)
       " batch=" + std::to_string(batch) +
       " ioPrecision=" + std::string(low_precision_inputs ? (is_bf16 ? "BF16" : "FP16") : "FP32") +
       " lowPrecisionIntermediates=" + std::string(low_precision_intermediates ? "1" : "0") +
+      " bypassThreadgroupMemory=" + suffix +
       "\n\n";
 
-  write_text_file("../../na_attention_source_current.metal", header + forward_kernel->createSource());
-  write_text_file("../../na_attention_compute_d_source_current.metal", header + create_compute_d_source(*query_kernel));
-  write_text_file("../../na_attention_backward_query_source_current.metal", header + query_kernel->createSource());
-  write_text_file("../../na_attention_backward_keyvalue_source_current.metal", header + keyvalue_kernel->createSource());
+  write_text_file("../../na_attention_source_" + suffix + "_current.metal", header + forward_kernel->createSource());
+  write_text_file("../../na_attention_compute_d_source_" + suffix + "_current.metal", header + create_compute_d_source(*query_kernel));
+  write_text_file("../../na_attention_backward_query_source_" + suffix + "_current.metal", header + query_kernel->createSource());
+  write_text_file("../../na_attention_backward_keyvalue_source_" + suffix + "_current.metal", header + keyvalue_kernel->createSource());
 
   ::operator delete(forward_kernel);
   ::operator delete(query_kernel);

@@ -80,6 +80,10 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     const unsigned short headDimension = createHeadDimension();
     if (headDimension > 128)
       return false;
+    const uint32_t minSequenceDimension =
+        (matrixDimensions[0] < matrixDimensions[1]) ? matrixDimensions[0] : matrixDimensions[1];
+    if (headDimension == 128 && minSequenceDimension >= 4096)
+      return false;
     const auto blockDimensions = createBlockDimensions();
     switch (blockDimensions[1]) {
     case 64:

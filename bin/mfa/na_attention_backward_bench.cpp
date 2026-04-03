@@ -240,7 +240,8 @@ simd::ushort3 create_backward_block_dimensions(const AttentionCase& attention)
 bool create_backward_bypass_threadgroup_memory(const AttentionCase& attention)
 {
   const auto block_dimensions = create_backward_block_dimensions(attention);
-  if (attention.D > 96)
+  const uint32_t min_sequence_dimension = (attention.R < attention.C) ? attention.R : attention.C;
+  if (attention.D == 128 && min_sequence_dimension >= 4096)
     return false;
   switch (block_dimensions[1]) {
   case 64:
