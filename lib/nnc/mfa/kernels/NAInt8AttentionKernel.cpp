@@ -1337,8 +1337,6 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1351,10 +1349,23 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     }
     source += R"(
+    const uint scale_offset = r / Q_scale_tile_size;
+    const uint next_scale_offset = min(scale_offset + 1, (R - 1) / Q_scale_tile_size);
+    const float q_scales[2] = {
+      Q_scale_buf[scale_offset],
+      Q_scale_buf[next_scale_offset],
+    };
+    const float dO_scales[2] = {
+      dO_scale_buf[scale_offset],
+      dO_scale_buf[next_scale_offset],
+    };
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
       if (cP.is_valid_element(k)) {
         auto idx = cP.get_multidimensional_index(k);
+        const uint scale_idx = idx[0] / Q_scale_tile_size;
+        const float q_scale = q_scales[scale_idx];
+        const float dO_scale = dO_scales[scale_idx];
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
         cP[k] = P * dO_scale;
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
@@ -1378,8 +1389,6 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -1392,6 +1401,16 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     }
     source += R"(
+    const uint scale_offset = r / Q_scale_tile_size;
+    const uint next_scale_offset = min(scale_offset + 1, (R - 1) / Q_scale_tile_size);
+    const float q_scales[2] = {
+      Q_scale_buf[scale_offset],
+      Q_scale_buf[next_scale_offset],
+    };
+    const float dO_scales[2] = {
+      dO_scale_buf[scale_offset],
+      dO_scale_buf[next_scale_offset],
+    };
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
       if (cP.is_valid_element(k)) {
@@ -1400,6 +1419,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cP[k] = 0;
           cDS[k] = 0;
         } else {
+          const uint scale_idx = idx[0] / Q_scale_tile_size;
+          const float q_scale = q_scales[scale_idx];
+          const float dO_scale = dO_scales[scale_idx];
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
           cP[k] = P * dO_scale;
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
@@ -1502,16 +1524,27 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
+    const uint scale_offset = r / Q_scale_tile_size;
+    const uint next_scale_offset = min(scale_offset + 1, (R - 1) / Q_scale_tile_size);
+    const float q_scales[2] = {
+      Q_scale_buf[scale_offset],
+      Q_scale_buf[next_scale_offset],
+    };
+    const float dO_scales[2] = {
+      dO_scale_buf[scale_offset],
+      dO_scale_buf[next_scale_offset],
+    };
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
       if (cP.is_valid_element(k)) {
         auto idx = cP.get_multidimensional_index(k);
+        const uint scale_idx = idx[0] / Q_scale_tile_size;
+        const float q_scale = q_scales[scale_idx];
+        const float dO_scale = dO_scales[scale_idx];
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
         cP[k] = P * dO_scale;
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
@@ -1530,12 +1563,20 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
+    const uint scale_offset = r / Q_scale_tile_size;
+    const uint next_scale_offset = min(scale_offset + 1, (R - 1) / Q_scale_tile_size);
+    const float q_scales[2] = {
+      Q_scale_buf[scale_offset],
+      Q_scale_buf[next_scale_offset],
+    };
+    const float dO_scales[2] = {
+      dO_scale_buf[scale_offset],
+      dO_scale_buf[next_scale_offset],
+    };
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP.get_capacity(); ++k) {
       if (cP.is_valid_element(k)) {
@@ -1544,6 +1585,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cP[k] = 0;
           cDS[k] = 0;
         } else {
+          const uint scale_idx = idx[0] / Q_scale_tile_size;
+          const float q_scale = q_scales[scale_idx];
+          const float dO_scale = dO_scales[scale_idx];
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
           cP[k] = P * dO_scale;
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
