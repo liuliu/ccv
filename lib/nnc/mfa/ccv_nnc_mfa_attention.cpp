@@ -477,7 +477,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         pool->drain();
 
         auto forwardKernel = forwardPipelineValue->kernel;
-        auto quantizeQPipeline = forwardPipelineValue->second;
+        auto quantizeQPipeline = backwardQueryPipelineValue->third;
         auto quantizeKPipeline = forwardPipelineValue->third;
         auto quantizeVPipeline = forwardPipelineValue->fourth;
         auto computeVMeanPipeline = forwardPipelineValue->fifth;
@@ -499,7 +499,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         };
 
         const uint32_t batchDimension = attentionDesc.batchDimension;
-        const uint32_t qTiles = (hash.R + forwardKernel->qScaleTileSize - 1) / forwardKernel->qScaleTileSize;
+        const uint32_t qTiles = (hash.R + backwardQueryKernel->qScaleTileSize - 1) / backwardQueryKernel->qScaleTileSize;
         const uint32_t kTiles = (hash.C + forwardKernel->kvScaleTileSize - 1) / forwardKernel->kvScaleTileSize;
         const uint32_t qBatchStride = hash.R * hash.D * hash.Hq;
         const uint32_t kvBatchStride = hash.C * hash.D * hash.Hk;

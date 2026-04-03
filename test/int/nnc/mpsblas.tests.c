@@ -4107,12 +4107,12 @@ TEST_CASE("scaled dot product attention gradient with quantized NA mps on 1536 s
 	dsfmt_init_gen_rand(&dsfmt, 4177);
 	for (int i = 0; i < q_count; ++i)
 	{
-		q_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		// Use a stronger shared Q / K signal on this surface so QK^T produces
+		// sharper rows than the fully diffuse random-input case.
+		const float q = 2.f * (dsfmt_genrand_open_close(&dsfmt) - 0.5f);
+		q_tensor->data.f32[i] = q;
+		k_tensor->data.f32[i] = q + 0.125f * (dsfmt_genrand_open_close(&dsfmt) - 0.5f);
 		do_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
-	}
-	for (int i = 0; i < kv_count; ++i)
-	{
-		k_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
 		v_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
 	}
 	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(do_tensor, 0, 0, q_tensor, k_tensor, v_tensor), TENSOR_LIST(dq_tensor, dk_tensor, dv_tensor), 0);

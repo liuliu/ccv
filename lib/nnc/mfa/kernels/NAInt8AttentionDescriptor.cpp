@@ -45,7 +45,8 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
 }
 
 NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() const noexcept {
-  const uint16_t qScaleTileSize = 16;
+  const uint16_t qScaleTileSize =
+      type == AttentionKernelType::forward ? 16 : 32;
   const uint16_t kvScaleTileSize = 64;
   const bool lowPrecisionBackward =
       type != AttentionKernelType::forward &&
@@ -218,6 +219,7 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   case AttentionKernelType::backwardQuery:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_backward_query"));
     second = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "compute_d"));
+    third = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_q"));
     break;
   case AttentionKernelType::backwardKeyValue:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_backward_keyvalue"));
