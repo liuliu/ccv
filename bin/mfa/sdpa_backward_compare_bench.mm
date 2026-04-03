@@ -444,7 +444,7 @@ DenseBackwardPipelines create_dense_backward_pipelines(MTL::Device* device, cons
   bundle.query_descriptor.Hk = attention.Hk;
   bundle.query_descriptor.lowPrecisionInputs = true;
   bundle.query_descriptor.isBF16 = false;
-  bundle.query_descriptor.lowPrecisionIntermediates = false;
+  bundle.query_descriptor.lowPrecisionIntermediates = true;
   bundle.query_descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
   bundle.query_descriptor.type = AttentionKernelType::backwardQuery;
   bundle.query_descriptor.scale = create_scale(attention);
@@ -464,6 +464,8 @@ DenseBackwardPipelines create_dense_backward_pipelines(MTL::Device* device, cons
   const auto memory_precisions = create_fp16_dense_precisions();
   const auto query_block_dimensions = create_dense_block_dimensions(attention, AttentionKernelType::backwardQuery);
   const auto keyvalue_block_dimensions = create_dense_block_dimensions(attention, AttentionKernelType::backwardKeyValue);
+  const uint16_t query_execution_simdgroups = attention.D == 128 ? 6 : 8;
+  const uint16_t keyvalue_execution_simdgroups = attention.D == 128 ? 6 : 8;
   const bool query_check_c_edge_1 = (attention.C % (query_block_dimensions[1] * 2)) > query_block_dimensions[1];
   const bool keyvalue_check_c_edge_1 = (attention.C % (keyvalue_block_dimensions[1] * 2)) > keyvalue_block_dimensions[1];
   const NAAttentionKernelDescriptor query_kernel_descriptor(
@@ -471,7 +473,7 @@ DenseBackwardPipelines create_dense_backward_pipelines(MTL::Device* device, cons
       attention.D,
       attention.Hq,
       attention.Hk,
-      8,
+      query_execution_simdgroups,
       query_check_c_edge_1,
       memory_precisions,
       AttentionKernelType::backwardQuery,
@@ -482,7 +484,7 @@ DenseBackwardPipelines create_dense_backward_pipelines(MTL::Device* device, cons
       attention.D,
       attention.Hq,
       attention.Hk,
-      8,
+      keyvalue_execution_simdgroups,
       keyvalue_check_c_edge_1,
       memory_precisions,
       AttentionKernelType::backwardKeyValue,

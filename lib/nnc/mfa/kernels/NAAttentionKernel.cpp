@@ -58,6 +58,18 @@ unsigned short NAAttentionKernel::threadgroupMemoryAllocation(MTL::ComputePipeli
     unsigned short threadgroupMemoryAllocation = blockDimensions[0] * blockDimensions[1] * executionSIMDGroups * memoryPrecisions[AttentionOperand::O].value().size();
     return threadgroupMemoryAllocation;
   }
+  if (type.value == AttentionKernelType::backwardQuery &&
+      memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32 &&
+      !bypassThreadgroupMemory) {
+    return headDimension * blockDimensions[0] * executionSIMDGroups *
+        memoryPrecisions[AttentionOperand::Q].value().size() * 2;
+  }
+  if (type.value == AttentionKernelType::backwardKeyValue &&
+      memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32 &&
+      !bypassThreadgroupMemory) {
+    return headDimension * blockDimensions[0] * executionSIMDGroups *
+        memoryPrecisions[AttentionOperand::K].value().size() * 2;
+  }
   return 0;
 }
 
@@ -157,7 +169,14 @@ unsigned short NAAttentionKernel::blockSequenceLength(AttentionOperand operand) 
 
 std::string NAAttentionKernel::createSource() const noexcept {
   CodeWriter source;
-  const bool usesThreadgroupBlock = type.value == AttentionKernelType::forward;
+  const bool lowPrecisionInputs =
+      memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32;
+  const bool usesThreadgroupBlock =
+      type.value == AttentionKernelType::forward ||
+      (type.value == AttentionKernelType::backwardQuery &&
+       lowPrecisionInputs && !bypassThreadgroupMemory) ||
+      (type.value == AttentionKernelType::backwardKeyValue &&
+       lowPrecisionInputs && !bypassThreadgroupMemory);
 
   // Inject the contents of the headers.
   source += R"(
@@ -1156,18 +1175,30 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
 )";
   if (useThreadgroupSharing) {
     source += R"(
-  auto cQ_0 = matmul_qk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_Q}}, {{MEMORY_NAME_K}}, float>();
-  auto cdO_0 = matmul_qk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DO}}, {{MEMORY_NAME_V}}, float>();
+  threadgroup {{MEMORY_NAME_Q}} *Q_shared_buf = (threadgroup {{MEMORY_NAME_Q}}*)threadgroup_block +
+      sgid * ({{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * 2);
+  threadgroup {{MEMORY_NAME_DO}} *dO_shared_buf = Q_shared_buf + {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto Q_shared = tensor<threadgroup {{MEMORY_NAME_Q}}, dextents<int32_t, 2>, tensor_inline>(
+      Q_shared_buf, dextents<int32_t, 2>({{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}));
+  auto dO_shared = tensor<threadgroup {{MEMORY_NAME_DO}}, dextents<int32_t, 2>, tensor_inline>(
+      dO_shared_buf, dextents<int32_t, 2>({{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}));
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{HEAD_DIMENSION}};
+    const uint row_idx = load_index / {{HEAD_DIMENSION}};
+    const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + row_idx;
+    if (row < R) {
+      Q_shared_buf[load_index] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+      dO_shared_buf[load_index] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hq];
+    } else {
+      Q_shared_buf[load_index] = 0;
+      dO_shared_buf[load_index] = 0;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
   auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_K}}, float>();
   auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), float>();
 )";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      if (i > 0) {
-        source += "  auto cQ_{{LOOP_INDEX}} = matmul_qk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_Q}}, {{MEMORY_NAME_K}}, float>();\n";
-        source += "  auto cdO_{{LOOP_INDEX}} = matmul_qk_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DO}}, {{MEMORY_NAME_V}}, float>();\n";
-      }
-    }
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source += "  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK), float>();\n";
@@ -1186,32 +1217,6 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
   }
 )";
     source += R"(
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cQ_0.get_capacity(); ++k) {
-    if (cQ_0.is_valid_element(k)) {
-      auto idx = cQ_0.get_multidimensional_index(k);
-      const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + idx[1];
-      cQ_0[k] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + idx[0] + row * K_Hq];
-      cdO_0[k] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + idx[0] + row * K_Hq];
-    }
-  }
-)";
-    for (unsigned short i = 1; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += R"(
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cQ_{{LOOP_INDEX}}.get_capacity(); ++k) {
-    if (cQ_{{LOOP_INDEX}}.is_valid_element(k)) {
-      auto idx = cQ_{{LOOP_INDEX}}.get_multidimensional_index(k);
-      const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + idx[1];
-      cQ_{{LOOP_INDEX}}[k] = Q_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[0] + row * K_Hq];
-      cdO_{{LOOP_INDEX}}[k] = dO_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[0] + row * K_Hq];
-    }
-  }
-)";
-    }
-    source += R"(
   auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   auto D = D_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   for (uint c = 0; c < C; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
@@ -1228,10 +1233,12 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
     {
+      auto mQ_{{LOOP_INDEX}} = Q_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
+      auto mdO_{{LOOP_INDEX}} = dO_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
       auto mK_{{LOOP_INDEX}} = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
       auto mV_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
-      matmul_qk_op.run(cQ_{{LOOP_INDEX}}, mK_{{LOOP_INDEX}}, cS);
-      matmul_qk_op.run(cdO_{{LOOP_INDEX}}, mV_{{LOOP_INDEX}}, cDP);
+      matmul_qk_op.run(mQ_{{LOOP_INDEX}}, mK_{{LOOP_INDEX}}, cS);
+      matmul_qk_op.run(mdO_{{LOOP_INDEX}}, mV_{{LOOP_INDEX}}, cDP);
     }
 )";
     }
@@ -1386,17 +1393,27 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
 )";
   if (useThreadgroupSharing) {
     source += R"(
-  auto cK_0 = matmul_kqt_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_K}}, {{MEMORY_NAME_Q}}, float>();
-  auto cV_0 = matmul_kqt_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_V}}, {{MEMORY_NAME_DO}}, float>();
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      if (i > 0) {
-        source += "  auto cK_{{LOOP_INDEX}} = matmul_kqt_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_K}}, {{MEMORY_NAME_Q}}, float>();\n";
-        source += "  auto cV_{{LOOP_INDEX}} = matmul_kqt_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_V}}, {{MEMORY_NAME_DO}}, float>();\n";
-      }
+  threadgroup {{MEMORY_NAME_K}} *K_shared_buf = (threadgroup {{MEMORY_NAME_K}}*)threadgroup_block +
+      sgid * ({{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}} * 2);
+  threadgroup {{MEMORY_NAME_V}} *V_shared_buf = K_shared_buf + {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto K_shared = tensor<threadgroup {{MEMORY_NAME_K}}, dextents<int32_t, 2>, tensor_inline>(
+      K_shared_buf, dextents<int32_t, 2>({{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}));
+  auto V_shared = tensor<threadgroup {{MEMORY_NAME_V}}, dextents<int32_t, 2>, tensor_inline>(
+      V_shared_buf, dextents<int32_t, 2>({{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}));
+  const uint lane = tid % 32;
+  for (uint load_index = lane; load_index < {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}}; load_index += 32) {
+    const uint head_idx = load_index % {{HEAD_DIMENSION}};
+    const uint row_idx = load_index / {{HEAD_DIMENSION}};
+    const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + row_idx;
+    if (row < C) {
+      K_shared_buf[load_index] = K_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hk];
+      V_shared_buf[load_index] = V_buf[tgid.y * {{HEAD_DIMENSION}} + head_idx + row * K_Hk];
+    } else {
+      K_shared_buf[load_index] = 0;
+      V_shared_buf[load_index] = 0;
     }
-    source += R"(
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
   auto cP = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_P}}, {{MEMORY_NAME_DO}}, float>();
   auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_DS}}, {{MEMORY_NAME_Q}}, float>();
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV), decltype(mdO), float>();
@@ -1421,32 +1438,6 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
   }
 )";
     source += R"(
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cK_0.get_capacity(); ++k) {
-    if (cK_0.is_valid_element(k)) {
-      auto idx = cK_0.get_multidimensional_index(k);
-      const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + idx[1];
-      cK_0[k] = K_buf[tgid.y * {{HEAD_DIMENSION}} + idx[0] + row * K_Hk];
-      cV_0[k] = V_buf[tgid.y * {{HEAD_DIMENSION}} + idx[0] + row * K_Hk];
-    }
-  }
-)";
-    for (unsigned short i = 1; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
-      source += R"(
-  #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cK_{{LOOP_INDEX}}.get_capacity(); ++k) {
-    if (cK_{{LOOP_INDEX}}.is_valid_element(k)) {
-      auto idx = cK_{{LOOP_INDEX}}.get_multidimensional_index(k);
-      const uint row = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + idx[1];
-      cK_{{LOOP_INDEX}}[k] = K_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[0] + row * K_Hk];
-      cV_{{LOOP_INDEX}}[k] = V_buf[tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[0] + row * K_Hk];
-    }
-  }
-)";
-    }
-    source += R"(
   for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
@@ -1461,10 +1452,12 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
     {
+      auto mK_{{LOOP_INDEX}} = K_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
+      auto mV_{{LOOP_INDEX}} = V_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
       auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
       auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
-      matmul_kqt_op.run(cK_{{LOOP_INDEX}}, mQ_{{LOOP_INDEX}}, cST);
-      matmul_kqt_op.run(cV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
+      matmul_kqt_op.run(mK_{{LOOP_INDEX}}, mQ_{{LOOP_INDEX}}, cST);
+      matmul_kqt_op.run(mV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
     }
 )";
     }

@@ -71,6 +71,14 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   };
   auto createExecutionSIMDGroups = 
   [=]() -> uint16_t {
+    if (type.value == AttentionKernelType::backwardQuery &&
+        lowPrecisionInputs && createHeadDimension() == 128) {
+      return 6;
+    }
+    if (type.value == AttentionKernelType::backwardKeyValue &&
+        lowPrecisionInputs && createHeadDimension() == 128) {
+      return 6;
+    }
     return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
   };
   auto createBypassThreadgroupMemory =
