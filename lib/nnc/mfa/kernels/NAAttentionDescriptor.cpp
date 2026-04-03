@@ -78,7 +78,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     if (type.value == AttentionKernelType::forward || !lowPrecisionInputs)
       return false;
     const unsigned short headDimension = createHeadDimension();
-    if (headDimension > 96)
+    if (headDimension > 128)
       return false;
     const auto blockDimensions = createBlockDimensions();
     switch (blockDimensions[1]) {

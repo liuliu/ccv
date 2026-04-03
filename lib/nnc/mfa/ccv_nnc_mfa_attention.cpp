@@ -645,7 +645,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const bool use_na_backward =
         params.use_neural_accelerators &&
         hash.Hq == hash.Hk &&
-        params.upcast &&
         hash.D <= 128 &&
         (hash.D % 8) == 0 &&
         (hash.R % 64) == 0 &&
@@ -654,7 +653,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         NAAttentionDescriptor attentionDesc;
         attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
         attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
-        attentionDesc.lowPrecisionIntermediates = false;
+        attentionDesc.lowPrecisionIntermediates =
+          (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
         attentionDesc.matrixDimensions[0] = hash.R;
         attentionDesc.matrixDimensions[1] = hash.C;
         attentionDesc.matrixDimensions[2] = hash.D;
