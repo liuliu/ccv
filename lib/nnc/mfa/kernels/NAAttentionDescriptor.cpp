@@ -72,11 +72,11 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   auto createExecutionSIMDGroups = 
   [=]() -> uint16_t {
     if (type.value == AttentionKernelType::backwardQuery &&
-        lowPrecisionInputs && createHeadDimension() == 128) {
+        lowPrecisionInputs && createHeadDimension() >= 128) {
       return 6;
     }
     if (type.value == AttentionKernelType::backwardKeyValue &&
-        lowPrecisionInputs && createHeadDimension() == 128) {
+        lowPrecisionInputs && createHeadDimension() >= 128) {
       return 6;
     }
     return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
@@ -90,7 +90,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
       return false;
     const uint32_t minSequenceDimension =
         (matrixDimensions[0] < matrixDimensions[1]) ? matrixDimensions[0] : matrixDimensions[1];
-    if (headDimension == 128 && minSequenceDimension >= 4096)
+    if (headDimension == 128 && minSequenceDimension >= 3072)
       return false;
     const auto blockDimensions = createBlockDimensions();
     switch (blockDimensions[1]) {
