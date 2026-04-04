@@ -263,39 +263,9 @@ simd::ushort3 create_dense_block_dimensions(
 
 bool create_dense_bypass_threadgroup_memory(const AttentionCase& attention, simd::ushort3 block_dimensions)
 {
-  if (attention.D > 128)
-    return false;
-  const uint32_t min_sequence_dimension = std::min(attention.R, attention.C);
-  if (attention.D == 128 && min_sequence_dimension >= 4096)
-    return false;
-  switch (block_dimensions[1]) {
-  case 64:
-    switch (block_dimensions[2]) {
-    case 32:
-    case 40:
-    case 64:
-    case 80:
-    case 96:
-      return true;
-    default:
-      return false;
-    }
-  case 48:
-    switch (block_dimensions[2]) {
-    case 32:
-    case 40:
-    case 48:
-    case 64:
-    case 72:
-    case 80:
-    case 96:
-      return true;
-    default:
-      return false;
-    }
-  default:
-    return false;
-  }
+  (void)attention;
+  (void)block_dimensions;
+  return false;
 }
 
 AttentionOperands<GEMMOperandPrecision> create_fp16_dense_precisions()

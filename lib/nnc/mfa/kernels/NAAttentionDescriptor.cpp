@@ -83,44 +83,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   };
   auto createBypassThreadgroupMemory =
   [=]() -> bool {
-    if (type.value == AttentionKernelType::forward || !lowPrecisionInputs)
-      return false;
-    const unsigned short headDimension = createHeadDimension();
-    if (headDimension > 128)
-      return false;
-    const uint32_t minSequenceDimension =
-        (matrixDimensions[0] < matrixDimensions[1]) ? matrixDimensions[0] : matrixDimensions[1];
-    if (headDimension == 128 && minSequenceDimension >= 3072)
-      return false;
-    const auto blockDimensions = createBlockDimensions();
-    switch (blockDimensions[1]) {
-    case 64:
-      switch (blockDimensions[2]) {
-      case 32:
-      case 40:
-      case 64:
-      case 80:
-      case 96:
-        return true;
-      default:
-        return false;
-      }
-    case 48:
-      switch (blockDimensions[2]) {
-      case 32:
-      case 40:
-      case 48:
-      case 64:
-      case 72:
-      case 80:
-      case 96:
-        return true;
-      default:
-        return false;
-      }
-    default:
-      return false;
-    }
+    return false;
   };
   auto blockDimensions = createBlockDimensions();
   bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
