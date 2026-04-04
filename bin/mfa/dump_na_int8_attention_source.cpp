@@ -51,7 +51,7 @@ static NAInt8AttentionKernel* create_kernel(const NAInt8AttentionKernelDescripto
   kernel->executionSIMDGroups = kernel_descriptor.executionSIMDGroups;
   kernel->vMeanThreads = kernel_descriptor.vMeanThreads;
   kernel->hasCRemainder = kernel_descriptor.hasCRemainder;
-  kernel->threadBarrierOverC = kernel_descriptor.threadBarrierOverC;
+  kernel->threadBarrierEveryC = kernel_descriptor.threadBarrierEveryC;
   kernel->ioPrecision = kernel_descriptor.ioPrecision;
   kernel->lowPrecisionIntermediates = kernel_descriptor.lowPrecisionIntermediates;
   kernel->scale = kernel_descriptor.scale;

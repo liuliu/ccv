@@ -32,7 +32,7 @@ struct NAInt8AttentionKernel {
   uint16_t executionSIMDGroups;
   uint16_t vMeanThreads;
   bool hasCRemainder;
-  bool threadBarrierOverC;
+  uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
   bool lowPrecisionIntermediates;
   float scale;

@@ -16,7 +16,7 @@ struct NAInt8AttentionKernelDescriptor {
   uint16_t executionSIMDGroups;
   uint16_t vMeanThreads;
   bool hasCRemainder;
-  bool threadBarrierOverC;
+  uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
   bool lowPrecisionIntermediates;
   AttentionKernelType type;
@@ -33,7 +33,7 @@ struct NAInt8AttentionKernelDescriptor {
       uint16_t executionSIMDGroups,
       uint16_t vMeanThreads,
       bool hasCRemainder,
-      bool threadBarrierOverC,
+      uint16_t threadBarrierEveryC,
       GEMMOperandPrecision ioPrecision,
       bool lowPrecisionIntermediates,
       AttentionKernelType type,

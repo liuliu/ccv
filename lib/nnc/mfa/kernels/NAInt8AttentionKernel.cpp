@@ -55,7 +55,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   executionSIMDGroups = descriptor.executionSIMDGroups;
   vMeanThreads = descriptor.vMeanThreads;
   hasCRemainder = descriptor.hasCRemainder;
-  threadBarrierOverC = descriptor.threadBarrierOverC;
+  threadBarrierEveryC = descriptor.threadBarrierEveryC;
   ioPrecision = descriptor.ioPrecision;
   lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
   scale = descriptor.scale;
@@ -609,7 +609,7 @@ kernel void {{MAIN_KERNEL_NAME}}(
     source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
     source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
     source.SetValue("MATMUL_SIMDGROUPS", "1");
-    source.SetValue("THREAD_BARRIER_OVER_C", std::to_string(threadBarrierOverC ? 1 : 0));
+    source.SetValue("THREAD_BARRIER_EVERY_C", std::to_string(threadBarrierEveryC));
 	    source += R"(
 	    threadgroup uchar *threadgroup_block [[threadgroup(0)]],
 	    ushort tid [[thread_index_in_threadgroup]],
@@ -1825,9 +1825,9 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
 )";
   }
   source += R"(
-    if ({{THREAD_BARRIER_OVER_C}} &&
+    if ({{THREAD_BARRIER_EVERY_C}} > 0 &&
         c + {{BLOCK_DIMENSIONS_TRAVERSAL}} < C &&
-        (((c / {{BLOCK_DIMENSIONS_TRAVERSAL}}) & 1) == 1)) {
+        ((((c / {{BLOCK_DIMENSIONS_TRAVERSAL}}) + 1) % {{THREAD_BARRIER_EVERY_C}}) == 0)) {
       threadgroup_barrier(mem_flags::mem_none);
     }
   }

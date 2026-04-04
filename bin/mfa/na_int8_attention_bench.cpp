@@ -55,6 +55,7 @@ struct VariantConfig {
   uint16_t kv_quant_threads_override = 0;
   uint16_t v_mean_threads_override = 0;
   uint16_t v_mean_barrier_every_override = 0;
+  uint16_t int8_thread_barrier_every_c_override = 0;
   bool int8_thread_barrier_over_c = true;
   bool center_v = false;
   bool quantize_only = false;
@@ -97,7 +98,7 @@ struct Int8Pipeline {
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   simd::ushort3 block_dimensions = simd::ushort3 { 0, 0, 0 };
   uint16_t execution_simd_groups = 0;
-  bool thread_barrier_over_c = false;
+  uint16_t thread_barrier_every_c = 0;
 };
 
 struct QuantizePipelines {
@@ -1928,7 +1929,10 @@ Int8Pipeline create_int8_pipeline(
       variant.int8_block_d_override);
   bundle.execution_simd_groups =
       create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-  bundle.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
+  bundle.thread_barrier_every_c =
+      variant.int8_thread_barrier_every_c_override ?
+      variant.int8_thread_barrier_every_c_override :
+      (variant.int8_thread_barrier_over_c ? 2 : 0);
   const uint16_t v_mean_threads =
       attention.C <= 20480 ?
       NAInt8AttentionKernel::smallSequenceVMeanThreads :
@@ -1943,7 +1947,7 @@ Int8Pipeline create_int8_pipeline(
       bundle.execution_simd_groups,
       v_mean_threads,
       (attention.C % bundle.block_dimensions[1]) != 0,
-      bundle.thread_barrier_over_c,
+      bundle.thread_barrier_every_c,
       create_io_precision(variant.input_precision),
       variant.input_precision != InputPrecision::fp32,
       AttentionKernelType::forward,
@@ -2495,6 +2499,10 @@ int main(int argc, char** argv)
   if (argc >= 30) {
     variant.input_scale_multiplier = std::strtof(argv[29], nullptr);
   }
+  if (argc >= 31) {
+    variant.int8_thread_barrier_every_c_override =
+        (uint16_t)std::strtoul(argv[30], nullptr, 10);
+  }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -2561,7 +2569,10 @@ int main(int argc, char** argv)
     int8_pipeline.block_dimensions = block_dimensions;
     int8_pipeline.execution_simd_groups =
         create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-    int8_pipeline.thread_barrier_over_c = variant.int8_thread_barrier_over_c;
+    int8_pipeline.thread_barrier_every_c =
+        variant.int8_thread_barrier_every_c_override ?
+        variant.int8_thread_barrier_every_c_override :
+        (variant.int8_thread_barrier_over_c ? 2 : 0);
   }
   auto quantize_pipelines = create_quantize_pipelines(
       device.get(),
@@ -2733,7 +2744,7 @@ int main(int argc, char** argv)
             << " kvQuantThreads=" << quantize_pipelines.kv_threads
             << " vMeanThreads=" << quantize_pipelines.v_mean_threads
             << " vMeanBarrierEvery=" << quantize_pipelines.v_mean_barrier_every
-            << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
+            << " threadBarrierEveryC=" << int8_pipeline.thread_barrier_every_c
             << " centerV=" << (variant.center_v ? "true" : "false")
             << " vBias=" << variant.v_bias
             << '\n';
@@ -2747,7 +2758,7 @@ int main(int argc, char** argv)
               << " qkPrecision=int8"
               << " vPrecision=int8"
               << " qkScales=tile"
-              << " threadBarrierOverC=" << (int8_pipeline.thread_barrier_over_c ? "true" : "false")
+              << " threadBarrierEveryC=" << int8_pipeline.thread_barrier_every_c
               << " centerV=" << (variant.center_v ? "true" : "false")
               << " vBias=" << variant.v_bias
               << '\n';

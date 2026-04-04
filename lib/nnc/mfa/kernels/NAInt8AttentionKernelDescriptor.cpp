@@ -13,7 +13,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     executionSIMDGroups == rhs.executionSIMDGroups &&
     vMeanThreads == rhs.vMeanThreads &&
     hasCRemainder == rhs.hasCRemainder &&
-    threadBarrierOverC == rhs.threadBarrierOverC &&
+    threadBarrierEveryC == rhs.threadBarrierEveryC &&
     ioPrecision == rhs.ioPrecision &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale;
@@ -31,7 +31,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
   combine_32(seed, hash.vMeanThreads);
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.hasCRemainder ? 1 : 0),
-      (uint16_t)(hash.threadBarrierOverC ? 1 : 0) }));
+      hash.threadBarrierEveryC }));
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.ioPrecision.value,
       (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
@@ -50,7 +50,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     uint16_t executionSIMDGroups,
     uint16_t vMeanThreads,
     bool hasCRemainder,
-    bool threadBarrierOverC,
+    uint16_t threadBarrierEveryC,
     GEMMOperandPrecision ioPrecision,
     bool lowPrecisionIntermediates,
     AttentionKernelType type,
@@ -66,7 +66,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->executionSIMDGroups = executionSIMDGroups;
   this->vMeanThreads = vMeanThreads;
   this->hasCRemainder = hasCRemainder;
-  this->threadBarrierOverC = threadBarrierOverC;
+  this->threadBarrierEveryC = threadBarrierEveryC;
   this->ioPrecision = ioPrecision;
   this->lowPrecisionIntermediates = lowPrecisionIntermediates;
   this->scale = scale;

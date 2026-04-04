@@ -89,10 +89,12 @@ MTL::Size NAAttentionKernel::threadgroupsPerGrid(const NAAttentionDescriptor &de
     const uint32_t morton_bits = ceil_log2_u32_host(row_groups) + ceil_log2_u32_host(Hq);
     return MTL::Size(uint64_t(1) << morton_bits, 1, descriptor.batchDimension);
   }
-  case AttentionKernelType::backwardQuery:
+  case AttentionKernelType::backwardQuery: {
     return MTL::Size(ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups) * Hq * descriptor.batchDimension, 1, 1);
-  case AttentionKernelType::backwardKeyValue:
+  }
+  case AttentionKernelType::backwardKeyValue: {
     return MTL::Size(ceilDivide(descriptor.matrixDimensions[1], blockDimensions[0] * executionSIMDGroups) * Hk * descriptor.batchDimension, 1, 1);
+  }
   }
   return MTL::Size(0, 0, 0);
 }
@@ -253,10 +255,22 @@ using namespace mpp::tensor_ops;
 )";
   } else {
     source += R"(
-  const uint row_group_count = ({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
   const uint linear_group = tgid.x;
-  const uint row_group = (linear_group / {{DISPATCH_HEADS}}) % row_group_count;
-  const uint head = linear_group % {{DISPATCH_HEADS}};
+  const uint row_group_count = ({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
+  const uint row_group = )";
+  if (type.value == AttentionKernelType::backwardKeyValue) {
+    source += "linear_group % row_group_count";
+  } else {
+    source += "(linear_group / {{DISPATCH_HEADS}}) % row_group_count";
+  }
+  source += R"(;
+  const uint head = )";
+  if (type.value == AttentionKernelType::backwardKeyValue) {
+    source += "(linear_group / row_group_count) % {{DISPATCH_HEADS}}";
+  } else {
+    source += "linear_group % {{DISPATCH_HEADS}}";
+  }
+  source += R"(;
   const uint batch = linear_group / ({{DISPATCH_HEADS}} * row_group_count);
   tgid = uint3(row_group, head, batch);
   tgid.x = row_group * {{EXECUTION_SIMD_GROUPS}} + sgid;

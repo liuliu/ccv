@@ -89,7 +89,7 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       executionSIMDGroups,
       vMeanThreads,
       has_c_remainder,
-      true,
+      2,
       ioPrecision,
       lowPrecisionIntermediates,
       type,
