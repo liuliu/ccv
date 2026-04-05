@@ -33,13 +33,48 @@ unsigned short SwishKernel::createThreadgroupMemoryAllocation() const noexcept {
 std::string SwishKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   const bool beta_is_one = (beta == 1);
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+inline float stable_sigmoid(float z)
+{
+  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float positive = step(0.0f, z);
+  return tail + positive * (1.0f - 2.0f * tail);
+}
+
+inline float4 stable_sigmoid(float4 z)
+{
+  const float4 tail = 1.0f / (1.0f + exp(abs(z)));
+  const float4 positive = step(0.0f, z);
+  return tail + positive * (1.0f - 2.0f * tail);
+}
+
+inline float stable_swish_gradient(float z)
+{
+  const float t = exp(-abs(z));
+  const float tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
+  const float slope = tail * (1.0f - tail);
+  const float correction = isfinite(z) ? (z * slope) : 0.0f;
+  return sigmoid + correction;
+}
+
+inline float4 stable_swish_gradient(float4 z)
+{
+  const float4 t = exp(-abs(z));
+  const float4 tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float4 sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
+  const float4 slope = tail * ((float4)(1.0f) - tail);
+  const float4 correction = select((float4)(0.0f), z * slope, isfinite(z));
+  return sigmoid + correction;
+}
+  )";
   if (gradient) {
     if (value == 0) {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -49,16 +84,11 @@ kernel void swish(
 ) {
   const uint idx = tpig.x;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1. / (1. + exp(-x));
-  const float4 y_sq = y * y;
-  destination[idx] = (real4)((float4)g[idx] * (x * (y - y_sq) + y));
+  destination[idx] = (real4)((float4)g[idx] * stable_swish_gradient(x));
 }
     )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -68,18 +98,14 @@ kernel void swish(
 ) {
   const uint idx = tpig.x;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1. / (1. + exp(-(beta * x)));
-  const float4 y_sq = y * y;
-  destination[idx] = (real4)((float4)g[idx] * ((beta * x) * (y - y_sq) + y));
+  const float4 z = beta * x;
+  destination[idx] = (real4)((float4)g[idx] * stable_swish_gradient(z));
 }
     )";
       }
     } else if (value == 1) {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -91,16 +117,11 @@ kernel void swish(
   if (idx >= count)
     return;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1. / (1. + exp(-x));
-  const float4 y_sq = y * y;
-  destination[idx] = (real4)((float4)g[idx] * (x * (y - y_sq) + y));
+  destination[idx] = (real4)((float4)g[idx] * stable_swish_gradient(x));
 }
       )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -112,18 +133,14 @@ kernel void swish(
   if (idx >= count)
     return;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1. / (1. + exp(-(beta * x)));
-  const float4 y_sq = y * y;
-  destination[idx] = (real4)((float4)g[idx] * ((beta * x) * (y - y_sq) + y));
+  const float4 z = beta * x;
+  destination[idx] = (real4)((float4)g[idx] * stable_swish_gradient(z));
 }
       )";
       }
     } else {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real *g [[buffer(0)]],
   device real *src [[buffer(1)]],
@@ -135,16 +152,11 @@ kernel void swish(
   if (idx >= count)
     return;
   const float x = (float)(src[idx]);
-  const float y = 1. / (1. + exp(-x));
-  const float y_sq = y * y;
-  destination[idx] = (real)((float)g[idx] * (x * (y - y_sq) + y));
+  destination[idx] = (real)((float)g[idx] * stable_swish_gradient(x));
 }
     )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real *g [[buffer(0)]],
   device real *src [[buffer(1)]],
@@ -156,9 +168,8 @@ kernel void swish(
   if (idx >= count)
     return;
   const float x = (float)(src[idx]);
-  const float y = 1. / (1. + exp(-(beta * x)));
-  const float y_sq = y * y;
-  destination[idx] = (real)((float)g[idx] * ((beta * x) * (y - y_sq) + y));
+  const float z = beta * x;
+  destination[idx] = (real)((float)g[idx] * stable_swish_gradient(z));
 }
     )";
       }
@@ -167,9 +178,6 @@ kernel void swish(
     if (value == 0) {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -178,14 +186,11 @@ kernel void swish(
 ) {
   const uint idx = tpig.x;
   const float4 x = (float4)(src[idx]);
-  destination[idx] = (real4)(x / (1 + exp(-x)));
+  destination[idx] = (real4)(x * stable_sigmoid(x));
 }
     )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -194,16 +199,13 @@ kernel void swish(
 ) {
   const uint idx = tpig.x;
   const float4 x = (float4)(src[idx]);
-  destination[idx] = (real4)(x / (1 + exp(-(beta * x))));
+  destination[idx] = (real4)(x * stable_sigmoid(beta * x));
 }
     )";
       }
     } else if (value == 1) {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -214,14 +216,11 @@ kernel void swish(
   if (idx >= count)
     return;
   const float4 x = (float4)(src[idx]);
-  destination[idx] = (real4)(x / (1 + exp(-x)));
+  destination[idx] = (real4)(x * stable_sigmoid(x));
 }
     )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -232,16 +231,13 @@ kernel void swish(
   if (idx >= count)
     return;
   const float4 x = (float4)(src[idx]);
-  destination[idx] = (real4)(x / (1 + exp(-(beta * x))));
+  destination[idx] = (real4)(x * stable_sigmoid(beta * x));
 }
     )";
       }
     } else {
       if (beta_is_one) {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real *src [[buffer(0)]],
   device real *destination [[buffer(1)]],
@@ -252,14 +248,11 @@ kernel void swish(
   if (idx >= count)
     return;
   const float x = (float)(src[idx]);
-  destination[idx] = (real)(x / (1 + exp(-x)));
+  destination[idx] = (real)(x * stable_sigmoid(x));
 }
     )";
       } else {
         shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void swish(
   device real *src [[buffer(0)]],
   device real *destination [[buffer(1)]],
@@ -270,7 +263,7 @@ kernel void swish(
   if (idx >= count)
     return;
   const float x = (float)(src[idx]);
-  destination[idx] = (real)(x / (1 + exp(-(beta * x))));
+  destination[idx] = (real)(x * stable_sigmoid(beta * x));
 }
     )";
       }

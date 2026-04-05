@@ -503,4 +503,50 @@ TEST_CASE("mps swish gradient with non-one beta in half precision")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+TEST_CASE("mps swish with extreme beta stays finite")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWISH_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SWISH_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const float beta = 1e20f;
+	static const float xv[] = {-1e20f, -1.0f, 0.0f, 1.0f, 1e20f};
+	static const float expected_y[] = {0.0f, 0.0f, 0.0f, 1.0f, 1e20f};
+	static const float expected_dx[] = {0.0f, 0.0f, 0.5f, 1.0f, 1.0f};
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const dy_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5), 0);
+	ccv_nnc_tensor_t* const dyt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5), 0);
+	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5), 0);
+	int i;
+	for (i = 0; i < 5; i++)
+	{
+		x_tensor->data.f32[i] = xv[i];
+		dy_tensor->data.f32[i] = 1.0f;
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor), TENSOR_LIST(dyt), 0);
+	ccv_nnc_cmd_exec(CMD_SWISH_FORWARD(beta), ccv_nnc_no_hint, 0, TENSOR_LIST(xt), TENSOR_LIST(yt), 0);
+	ccv_nnc_cmd_exec(CMD_SWISH_BACKWARD(beta), ccv_nnc_no_hint, 0, TENSOR_LIST(dyt, xt, 0), TENSOR_LIST(dxt), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(dx_tensor), 0);
+	for (i = 0; i < 5; i++)
+	{
+		REQUIRE(isfinite(y_tensor->data.f32[i]), "forward pass should stay finite at %d", i);
+		REQUIRE(isfinite(dx_tensor->data.f32[i]), "backward pass should stay finite at %d", i);
+		const float y_tolerance = fmaxf(fabsf(expected_y[i]) * 1e-6f, 1e-6f);
+		REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[i], expected_y[i], y_tolerance, "forward pass should saturate cleanly at %d", i);
+		REQUIRE_EQ_WITH_TOLERANCE(dx_tensor->data.f32[i], expected_dx[i], 1e-6f, "backward pass should saturate cleanly at %d", i);
+	}
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(dy_tensor);
+	ccv_nnc_tensor_free(dx_tensor);
+	ccv_nnc_tensor_free(xt);
+	ccv_nnc_tensor_free(yt);
+	ccv_nnc_tensor_free(dyt);
+	ccv_nnc_tensor_free(dxt);
+}
+
 #include "case_main.h"

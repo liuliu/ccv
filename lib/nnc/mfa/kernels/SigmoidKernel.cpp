@@ -25,12 +25,27 @@ unsigned short SigmoidKernel::createThreadgroupMemoryAllocation() const noexcept
 
 std::string SigmoidKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
-  if (gradient) {
-    if (value == 0) {
-      shader += R"(
+  shader += R"(
 #include <metal_stdlib>
 using namespace metal;
 
+inline float stable_sigmoid(float z)
+{
+  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float positive = step(0.0f, z);
+  return tail + positive * (1.0f - 2.0f * tail);
+}
+
+inline float4 stable_sigmoid(float4 z)
+{
+  const float4 tail = 1.0f / (1.0f + exp(abs(z)));
+  const float4 positive = step(0.0f, z);
+  return tail + positive * (1.0f - 2.0f * tail);
+}
+  )";
+  if (gradient) {
+    if (value == 0) {
+      shader += R"(
 kernel void sigmoid(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -45,9 +60,6 @@ kernel void sigmoid(
       )";
     } else if (value == 1) {
       shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void sigmoid(
   device real4 *g [[buffer(0)]],
   device real4 *src [[buffer(1)]],
@@ -64,9 +76,6 @@ kernel void sigmoid(
       )";
     } else {
       shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void sigmoid(
   device real *g [[buffer(0)]],
   device real *src [[buffer(1)]],
@@ -85,9 +94,6 @@ kernel void sigmoid(
   } else {
     if (value == 0) {
       shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void sigmoid(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -96,16 +102,11 @@ kernel void sigmoid(
 ) {
   const uint idx = tpig.x;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1.0f / (1.0f + exp(abs(x)));
-  const float4 positive = step((float4)(0.0f), x);
-  destination[idx] = (real4)(y + positive * (1.0f - 2.0f * y));
+  destination[idx] = (real4)(stable_sigmoid(x));
 }
       )";
     } else if (value == 1) {
       shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void sigmoid(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
@@ -116,16 +117,11 @@ kernel void sigmoid(
   if (idx >= count)
     return;
   const float4 x = (float4)(src[idx]);
-  const float4 y = 1.0f / (1.0f + exp(abs(x)));
-  const float4 positive = step((float4)(0.0f), x);
-  destination[idx] = (real4)(y + positive * (1.0f - 2.0f * y));
+  destination[idx] = (real4)(stable_sigmoid(x));
 }
       )";
     } else {
       shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-
 kernel void sigmoid(
   device real *src [[buffer(0)]],
   device real *destination [[buffer(1)]],
@@ -136,9 +132,7 @@ kernel void sigmoid(
   if (idx >= count)
     return;
   const float x = (float)(src[idx]);
-  const float y = 1.0f / (1.0f + exp(abs(x)));
-  const float positive = step(0.0f, x);
-  destination[idx] = (real)(y + positive * (1.0f - 2.0f * y));
+  destination[idx] = (real)(stable_sigmoid(x));
 }
       )";
     }
