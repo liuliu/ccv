@@ -727,8 +727,11 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 			for (i = 0; i < per_input_size; i++)
 			{
 				ccv_nnc_tensor_variable_t const input = inputs[i + t * per_input_size];
-				if (!input || input->type == CCV_NNC_TENSOR_CONSTANT)
+				if (!input || input_symbols[i + t * per_input_size].d == CCV_NNC_NO_TENSOR_SYMBOL)
 					continue;
+				// Constant inputs still need lifetime tracking while this exec is alive because
+				// backward may read their concrete tensor buffers even though they do not require
+				// gradients themselves.
 				ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, input_symbols[i + t * per_input_size].d);
 				if (!bind->destinations)
 					bind->destinations = ccv_array_new(sizeof(int), 1, 0);
