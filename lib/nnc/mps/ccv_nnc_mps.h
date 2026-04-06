@@ -67,6 +67,7 @@ typedef struct {
 
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
+id mpgetbufferassociationtarget(const ccv_nnc_tensor_t* const tensor);
 id<MTLDevice> ccv_nnc_default_device(void);
 MPSGraphDevice* ccv_nnc_default_mps_device(void);
 CCV_WARN_UNUSED(MTLCommandBatch*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);

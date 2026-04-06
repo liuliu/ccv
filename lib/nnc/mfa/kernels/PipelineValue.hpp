@@ -14,6 +14,7 @@ struct PipelineValue {
   NS::SharedPtr<MTL::ComputePipelineState> third; // This is optional.
   NS::SharedPtr<MTL::ComputePipelineState> fourth; // This is optional.
   NS::SharedPtr<MTL::ComputePipelineState> fifth; // This is optional.
+  NS::SharedPtr<MTL::ComputePipelineState> sixth; // This is optional.
 };
 
 #endif

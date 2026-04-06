@@ -15,11 +15,18 @@ void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context) {
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
+  ccv_nnc_mfa_ane_rowwise_gemm_cleanup(context);
   delete context;
 }
 
 uint8_t ccv_nnc_mfa_context_supported(mfa::context* context) {
   return context->supported ? 1 : 0;
+}
+
+uint8_t ccv_nnc_mfa_supports_int8_ane(ccv_nnc_mfa_context_t* context) {
+  auto device = context->device;
+  // Public CoreML rowwise GEMM path requires Apple9 or newer.
+  return (device->supportsFamily(MTL::GPUFamily(1009)));
 }
 
 uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context) {
@@ -151,6 +158,7 @@ mfa::context::context(MTL::Device* device)
   this->device = NS::RetainPtr(device);
 
   this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
+  this->ane_rowwise_gemm_cache = nullptr;
 
   // Check whether the device architecture is supported.
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);

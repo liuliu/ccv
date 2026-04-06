@@ -282,6 +282,23 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_gemv = !is_batched && ((a_rows == 1 && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
+		const int use_ane_rowwise_gemm =
+			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
+			(a_datatype == CCV_16F) &&
+			(w_datatype == CCV_16F) &&
+			(b->info.datatype == CCV_16F) &&
+			(!bias || (bias->info.datatype == CCV_16F && bias_batch_size == 1)) &&
+			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
+			(!is_transpose_a) &&
+			is_transpose_w &&
+			is_contiguous &&
+			is_same_dtype &&
+			is_supported_dtype &&
+			(!is_batched) &&
+			ccv_nnc_mfa_context_supported(context) &&
+			ccv_nnc_mfa_supports_int8_ane(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ANE);
 		const int use_scaled_gemm =
 			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
@@ -309,6 +326,39 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		size_t w_data_size = 0;
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
+		id weight_association_target = nil;
+		if (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE)
+			weight_association_target = mpgetbufferassociationtarget((ccv_nnc_tensor_t*)w);
+
+		if (use_ane_rowwise_gemm)
+		{
+			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
+				.M = (uint32_t)b_rows,
+				.N = (uint32_t)b_cols,
+				.K = (uint32_t)w_rows,
+				.fused_bias = bias ? 1 : 0,
+			};
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, (__bridge void*)weight_association_target, tensors, tensor_offsets, stream_context))
+			{
+				if (METAL_LOG_LEVEL(context) >= 1)
+					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
+				if (getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM_DEBUG") && atoi(getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM_DEBUG")) != 0)
+					fprintf(stderr, "ccv_nnc_gemm_mps: ANE rowwise GEMM dispatched for M=%u N=%u K=%u\n", params.M, params.N, params.K);
+				return CCV_NNC_EXEC_SUCCESS;
+			}
+		}
 
 		if (use_scaled_gemm)
 		{

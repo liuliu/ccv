@@ -245,6 +245,18 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 	return (id<MTLBuffer>)obj;
 }
 
+id mpgetbufferassociationtarget(const ccv_nnc_tensor_t* const tensor)
+{
+	id obj = (id)tensor->data.u8;
+	// Only reuse associations on stable pre-materialized MTLBuffer objects.
+	// The on-demand file-backed wrapper creates a fresh MTLBuffer on each lookup.
+	if ([obj isKindOfClass:[MTLFileBackedBuffer class]])
+		return nil;
+	if ([obj conformsToProtocol:@protocol(MTLBuffer)])
+		return obj;
+	return nil;
+}
+
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
 	return tensor->dataof;
@@ -671,6 +683,7 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 		stream_mps->workspace = 0;
 		stream_mps->workspace_size = 0;
 	}
+	ccv_nnc_mfa_ane_rowwise_gemm_cleanup(ccv_nnc_default_mfa_context());
 }
 
 // We don't need to support signal as of now because we share one queue. When we multiplex on multiple queues, we need to have a signal implementation.

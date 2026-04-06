@@ -12,6 +12,7 @@
 #include "ccv_nnc_mfa_gelu.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_scaled_gemm.hpp"
+#include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
 #include "ccv_nnc_mfa_segmented_scaled_gemm.hpp"
 #include "ccv_nnc_mfa_conv3d.hpp"
 #include "ccv_nnc_mfa_gemv.hpp"
@@ -53,6 +54,7 @@ public:
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Library> library;
   NS::SharedPtr<MTL::Buffer> scratch;
+  void* ane_rowwise_gemm_cache;
   
   context(MTL::Device* device);
   
@@ -75,6 +77,7 @@ ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
 void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context);
 void ccv_nnc_deinit_mfa_context(ccv_nnc_mfa_context_t* context);
 uint8_t ccv_nnc_mfa_context_supported(ccv_nnc_mfa_context_t* context);
+uint8_t ccv_nnc_mfa_supports_int8_ane(ccv_nnc_mfa_context_t* context);
 uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
 uint8_t ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_mfa_context_t* context);
 uint16_t ccv_nnc_mfa_context_log_level(ccv_nnc_mfa_context_t* context);

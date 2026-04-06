@@ -414,6 +414,7 @@ cc_library(
 objc_library(
 	name = "nnc_mps_compat",
 	non_arc_srcs = [
+		"nnc/mfa/ccv_nnc_mfa_ane_rowwise_gemm.mm",
 		"nnc/mps/ccv_nnc_mps.m",
 		"nnc/mps/ccv_nnc_palettize.m",
 	],
@@ -421,7 +422,7 @@ objc_library(
 		"nnc/mps/ccv_nnc_mps.h",
 	],
 	copts = ccv_default_copts(),
-	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph"],
+	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph", "IOSurface"],
 	deps = [
 		":nnc_mfa_compat",
 		":nnc_headers",
