@@ -39,13 +39,13 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		if (use_mfa) {
 			for (z = 0; z < input_size; z++)
 			{
-				if (inputs[z]->info.datatype != CCV_16F && inputs[z]->info.datatype != CCV_32F) {
+				if (inputs[z]->info.datatype != CCV_16F && inputs[z]->info.datatype != CCV_32F && inputs[z]->info.datatype != CCV_16BF) {
 					use_mfa = false;
 					fallback_reason = "Unsupported data type.";
 					break;
 				}
 			}
-			if (outputs[0]->info.datatype != CCV_16F && outputs[0]->info.datatype != CCV_32F) {
+			if (outputs[0]->info.datatype != CCV_16F && outputs[0]->info.datatype != CCV_32F && outputs[0]->info.datatype != CCV_16BF) {
 				use_mfa = false;
 				fallback_reason = "Unsupported data type.";
 			}
@@ -91,6 +91,10 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			switch (outputs[0]->info.datatype) {
 				case CCV_16F: {
 					mtl_data_type = 16;
+					break;
+				}
+				case CCV_16BF: {
+					mtl_data_type = 121;
 					break;
 				}
 				case CCV_32F: {
@@ -177,7 +181,7 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_32S | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_ewsum_forw;

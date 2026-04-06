@@ -3706,6 +3706,104 @@ TEST_CASE("compare ewsum with mps in half precision")
 	ccv_nnc_tensor_free(gd);
 }
 
+TEST_CASE("compare ewsum with mps in bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const ha16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hb16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hc16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hd16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	int i;
+	for (i = 0; i < 100; i++)
+	{
+		ha->data.f32[i] = 1;
+		hb->data.f32[i] = 0.5;
+		hc->data.f32[i] = 0.25;
+		gd->data.f32[i] = 1.75;
+	}
+	ccv_float_to_bfloat(ha->data.f32, (uint16_t*)ha16bf->data.f16, 100);
+	ccv_float_to_bfloat(hb->data.f32, (uint16_t*)hb16bf->data.f16, 100);
+	ccv_float_to_bfloat(hc->data.f32, (uint16_t*)hc16bf->data.f16, 100);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16bf, hb16bf, hc16bf), TENSOR_LIST(a, b, c), 0);
+	ccv_nnc_cmd_exec(CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b, c), TENSOR_LIST(d), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(d), TENSOR_LIST(hd16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hd16bf->data.f16, hd->data.f32, 100);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hd->data.f32, gd->data.f32, 100, 1e-3, "ewsum result should be the same");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(hd);
+	ccv_nnc_tensor_free(ha16bf);
+	ccv_nnc_tensor_free(hb16bf);
+	ccv_nnc_tensor_free(hc16bf);
+	ccv_nnc_tensor_free(hd16bf);
+	ccv_nnc_tensor_free(gd);
+}
+
+TEST_CASE("compare ewsum with mps in bfloat precision with MFA disabled")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 100), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	ccv_nnc_tensor_t* const ha16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hb16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hc16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const hd16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 100), 0);
+	ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
+	int i;
+	for (i = 0; i < 100; i++)
+	{
+		ha->data.f32[i] = 1;
+		hb->data.f32[i] = 0.5;
+		hc->data.f32[i] = 0.25;
+		gd->data.f32[i] = 1.75;
+	}
+	ccv_float_to_bfloat(ha->data.f32, (uint16_t*)ha16bf->data.f16, 100);
+	ccv_float_to_bfloat(hb->data.f32, (uint16_t*)hb16bf->data.f16, 100);
+	ccv_float_to_bfloat(hc->data.f32, (uint16_t*)hc16bf->data.f16, 100);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16bf, hb16bf, hc16bf), TENSOR_LIST(a, b, c), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b, c), TENSOR_LIST(d), 0);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(d), TENSOR_LIST(hd16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hd16bf->data.f16, hd->data.f32, 100);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hd->data.f32, gd->data.f32, 100, 1e-3, "ewsum result should be the same");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(hd);
+	ccv_nnc_tensor_free(ha16bf);
+	ccv_nnc_tensor_free(hb16bf);
+	ccv_nnc_tensor_free(hc16bf);
+	ccv_nnc_tensor_free(hd16bf);
+	ccv_nnc_tensor_free(gd);
+}
+
 TEST_CASE("compare transpose two tensor views")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TRANSPOSE_FORWARD, CCV_NNC_BACKEND_MPS));

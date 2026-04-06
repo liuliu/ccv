@@ -91,29 +91,35 @@ static int _ccv_nnc_gelu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 				[inputShapedTypes addObject:mps_a_shape];
-				MPSGraphTensor* mps_b;
+				MPSGraphTensor* mps_a_f32 = mps_a;
+				if (a->info.datatype != CCV_32F)
+					mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				MPSGraphTensor* mps_b_f32;
 				if (cmd.info.gelu.tanh)
 				{
-					MPSGraphTensor* mps_x_3 = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:[graph squareWithTensor:mps_a name:nil] name:nil];
-					MPSGraphTensor* mps_c0 = [graph constantWithScalar:0.044715 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_x_3 = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:[graph squareWithTensor:mps_a_f32 name:nil] name:nil];
+					MPSGraphTensor* mps_c0 = [graph constantWithScalar:0.044715 dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_mul0 = [graph multiplicationWithPrimaryTensor:mps_x_3 secondaryTensor:mps_c0 name:nil];
-					MPSGraphTensor* mps_x_sum = [graph additionWithPrimaryTensor:mps_a secondaryTensor:mps_mul0 name:nil];
-					MPSGraphTensor* mps_c1 = [graph constantWithScalar:0.797884560802865355 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_x_sum = [graph additionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_mul0 name:nil];
+					MPSGraphTensor* mps_c1 = [graph constantWithScalar:0.797884560802865355 dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_mul1 = [graph multiplicationWithPrimaryTensor:mps_x_sum secondaryTensor:mps_c1 name:nil];
 					MPSGraphTensor* mps_tanh = [graph tanhWithTensor:mps_mul1 name:nil];
-					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_sum = [graph additionWithPrimaryTensor:mps_tanh secondaryTensor:mps_one name:nil];
-					MPSGraphTensor* mps_half = [graph constantWithScalar:0.5 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-					mps_b = [graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_sum secondaryTensor:mps_a name:nil] secondaryTensor:mps_half name:nil];
+					MPSGraphTensor* mps_half = [graph constantWithScalar:0.5 dataType:MPSDataTypeFloat32];
+					mps_b_f32 = [graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_sum secondaryTensor:mps_a_f32 name:nil] secondaryTensor:mps_half name:nil];
 				} else {
-					MPSGraphTensor* mps_c = [graph constantWithScalar:0.70710678118654752440 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-					MPSGraphTensor* mps_x = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_c name:nil];
+					MPSGraphTensor* mps_c = [graph constantWithScalar:0.70710678118654752440 dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_x = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_c name:nil];
 					MPSGraphTensor* mps_erf = [graph erfWithTensor:mps_x name:nil];
-					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
+					MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_sum = [graph additionWithPrimaryTensor:mps_erf secondaryTensor:mps_one name:nil];
-					MPSGraphTensor* mps_half = [graph constantWithScalar:0.5 dataType:ccv_nnc_mps_datatype(a->info.datatype)];
-					mps_b = [graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_sum secondaryTensor:mps_a name:nil] secondaryTensor:mps_half name:nil];
+					MPSGraphTensor* mps_half = [graph constantWithScalar:0.5 dataType:MPSDataTypeFloat32];
+					mps_b_f32 = [graph multiplicationWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_sum secondaryTensor:mps_a_f32 name:nil] secondaryTensor:mps_half name:nil];
 				}
+				MPSGraphTensor* mps_b = mps_b_f32;
+				if (b->info.datatype != CCV_32F)
+					mps_b = [graph castTensor:mps_b_f32 toType:ccv_nnc_mps_datatype(b->info.datatype) name:@"mps_b"];
 				[resultTensors addObject:mps_b];
 			});
 			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
@@ -238,11 +244,15 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 				[inputShapedTypes addObject:mps_b_shape];
 				MPSGraphTensor* inputTensor = mps_b;
+				if (b->info.datatype != CCV_32F)
+					inputTensor = [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:@"mps_b_float"];
 				MPSGraphTensor* gradTensor = mps_g;
-				MPSDataType dataType = mps_b.dataType;
+				if (g->info.datatype != CCV_32F)
+					gradTensor = [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				const MPSDataType dataType = MPSDataTypeFloat32;
 				MPSGraphTensor* mps_h;
 				if (cmd.info.gelu.tanh) {
-					float kBeta = 0.797884560802865355 * (0.5f);
+					float kBeta = 0.797884560802865355f;
 					float kKappa = 0.044715f;
 					MPSGraphTensor* betaf = [graph constantWithScalar:kBeta shape:@[ @1 ] dataType:dataType];
 					MPSGraphTensor* kappaf = [graph constantWithScalar:kKappa shape:@[ @1 ] dataType:dataType];
@@ -266,8 +276,9 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					inner_derivative = [graph multiplicationWithPrimaryTensor:betaf secondaryTensor:inner_derivative name:nil];
 					MPSGraphTensor* right_derivative = [graph multiplicationWithPrimaryTensor:left secondaryTensor:tanh_derivative name:nil];
 					right_derivative = [graph multiplicationWithPrimaryTensor:right_derivative secondaryTensor:inner_derivative name:nil];
-					mps_h = [graph additionWithPrimaryTensor:left_derivative secondaryTensor:right_derivative name:nil];
-					mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h name:nil];
+					MPSGraphTensor* mps_h_f32 = [graph additionWithPrimaryTensor:left_derivative secondaryTensor:right_derivative name:nil];
+					mps_h_f32 = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:mps_h_f32 name:nil];
+					mps_h = mps_h_f32;
 				} else {
 					float kBeta = 0.797884560802865355;
 					MPSGraphTensor* halff = [graph constantWithScalar:-0.5f dataType:dataType];
@@ -281,6 +292,8 @@ static int _ccv_nnc_gelu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					pdf = [graph additionWithPrimaryTensor:pdf secondaryTensor:cdf name:nil];
 					mps_h = [graph multiplicationWithPrimaryTensor:gradTensor secondaryTensor:pdf name:nil];
 				}
+				if (h->info.datatype != CCV_32F)
+					mps_h = [graph castTensor:mps_h toType:ccv_nnc_mps_datatype(h->info.datatype) name:@"mps_h"];
 
 				[resultTensors addObject:mps_h];
 			});

@@ -142,7 +142,7 @@ kernel void gelu(
   const uint idx = tpig.x;
   if (idx >= count)
     return;
-  const float x = (float4)(src[idx]);
+  const float x = (float)(src[idx]);
   const float x_sq = x * x;
   const float x_cube = x_sq * x;
   const float inner = 0.797884560802865355 * (x + 0.044715 * x_cube);
