@@ -48,6 +48,9 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     } else {
       revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
     }
+    if (type.value != AttentionKernelType::forward) {
+      return simd::ushort3 { 16, 64, revisedHead };
+    }
     // Prefer ones without partial matrix multiplication (due to tiling).
     if (matrixDimensions[1] % 64 == 0) {
       return simd::ushort3 { 16, 64, revisedHead };
