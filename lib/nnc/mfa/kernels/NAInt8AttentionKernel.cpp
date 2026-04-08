@@ -976,8 +976,8 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
   auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO_0), decltype(mV_0), int32_t>();
   constexpr auto dsk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<dsk_desc, execution_simdgroups<1>> matmul_dsk_op;
-  using dsk_accum_left_tensor_t = decltype(matmul_dsk_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>());
-  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
+  using dsk_accum_left_tensor_t = decltype(matmul_dsk_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>());
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>();
 	)";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -991,7 +991,7 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
 	)";
       }
       source += R"(
-  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<dsk_accum_left_tensor_t, decltype(mK_0), {{ACCUM_MEMORY_NAME}}>();
+  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<dsk_accum_left_tensor_t, decltype(mK_0), float>();
 	)";
     }
     source += R"(
@@ -1043,7 +1043,7 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
         auto idx = cDS.get_multidimensional_index(k);
         const float P = fast::exp2((float)cS[k] * (q_scale * k_scale * {{DOT_SCALE}}) - (float)L[idx[1]]);
         const float dS = P * ((float)cDP[k] * (dO_scale * v_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[idx[1]]);
-        cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * k_scale);
+        cDS[k] = ({{D_MEMORY_NAME}})(dS * k_scale);
       }
     }
 )";
@@ -1085,7 +1085,7 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
         } else {
           const float P = fast::exp2((float)cS[k] * (q_scale * k_scale * {{DOT_SCALE}}) - (float)L[idx[1]]);
           const float dS = P * ((float)cDP[k] * (dO_scale * v_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[idx[1]]);
-          cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * k_scale);
+          cDS[k] = ({{D_MEMORY_NAME}})(dS * k_scale);
         }
       }
     }
@@ -1141,9 +1141,9 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
   auto cDP = matmul_qk_op.get_destination_cooperative_tensor<decltype(mdO), decltype(mV), int32_t>();
   constexpr auto dsk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<dsk_desc, execution_simdgroups<1>> matmul_dsk_op;
-  using dsk_accum_left_tensor_t = decltype(matmul_dsk_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>());
-  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
-  auto cDQ = matmul_dsk_op.get_destination_cooperative_tensor<dsk_accum_left_tensor_t, decltype(mK), {{ACCUM_MEMORY_NAME}}>();
+  using dsk_accum_left_tensor_t = decltype(matmul_dsk_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>());
+  auto cDS = matmul_dsk_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>();
+  auto cDQ = matmul_dsk_op.get_destination_cooperative_tensor<dsk_accum_left_tensor_t, decltype(mK), float>();
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cDQ.get_capacity(); ++k) {
     if (cDQ.is_valid_element(k)) {
@@ -1174,7 +1174,7 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
         auto idx = cDS.get_multidimensional_index(k);
         const float P = fast::exp2((float)cS[k] * (q_scale * k_scale * {{DOT_SCALE}}) - (float)L[idx[1]]);
         const float dS = P * ((float)cDP[k] * (dO_scale * v_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[idx[1]]);
-        cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * k_scale);
+        cDS[k] = ({{D_MEMORY_NAME}})(dS * k_scale);
       }
     }
     matmul_dsk_op.run(cDS, mK, cDQ);
@@ -1203,7 +1203,7 @@ void NAInt8AttentionKernel::loopBackwardQuery(CodeWriter& source) const noexcept
         } else {
           const float P = fast::exp2((float)cS[k] * (q_scale * k_scale * {{DOT_SCALE}}) - (float)L[idx[1]]);
           const float dS = P * ((float)cDP[k] * (dO_scale * v_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[idx[1]]);
-          cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * k_scale);
+          cDS[k] = ({{D_MEMORY_NAME}})(dS * k_scale);
         }
       }
     }
@@ -1275,8 +1275,8 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   auto cDP = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mV_0), decltype(mdO_0), int32_t>();
   constexpr auto pdo_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pdo_desc, execution_simdgroups<1>> matmul_pdo_op;
-  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<float, int8_t, float>());
-  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
+  using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<float, int8_t, {{ACCUM_MEMORY_NAME}}>());
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>();
   constexpr auto pdo_int8_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply);
   matmul2d<pdo_int8_desc, execution_simdgroups<1>> matmul_pdo_int8_op;
   using pdo_int8_left_tensor_t = decltype(matmul_pdo_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
@@ -1295,7 +1295,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
       }
       source += R"(
   auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO_0), {{ACCUM_MEMORY_NAME}}>();
-  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_0), {{ACCUM_MEMORY_NAME}}>();
+  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_0), float>();
   auto cDV_q_{{LOOP_INDEX}} = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO_0), int32_t>();
 	)";
     }
@@ -1364,7 +1364,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         const int quantized = (int)rint(P * 127.0f);
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
-        cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
+        cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
       }
     }
 )";
@@ -1422,7 +1422,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           const int quantized = (int)rint(P * 127.0f);
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
-          cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
+          cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
         }
       }
     }
@@ -1498,13 +1498,13 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   constexpr auto pdo_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pdo_desc, execution_simdgroups<1>> matmul_pdo_op;
   using pdo_float_left_tensor_t = decltype(matmul_pdo_op.get_left_input_cooperative_tensor<float, int8_t, float>());
-  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{ACCUM_MEMORY_NAME}}, int8_t, {{ACCUM_MEMORY_NAME}}>();
+  auto cDS = matmul_pdo_op.get_left_input_cooperative_tensor<{{D_MEMORY_NAME}}, int8_t, float>();
   constexpr auto pdo_int8_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, false, false, true, matmul2d_descriptor::mode::multiply);
   matmul2d<pdo_int8_desc, execution_simdgroups<1>> matmul_pdo_int8_op;
   using pdo_int8_left_tensor_t = decltype(matmul_pdo_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
   thread pdo_int8_left_tensor_t& cP_q = reinterpret_cast<thread pdo_int8_left_tensor_t&>(cST);
   auto cDV = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO), {{ACCUM_MEMORY_NAME}}>();
-  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), {{ACCUM_MEMORY_NAME}}>();
+  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();
   auto cDV_q = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO), int32_t>();
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
@@ -1551,7 +1551,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         const int quantized = (int)rint(P * 127.0f);
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
-        cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
+        cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
       }
     }
     matmul_pdo_int8_op.run(cP_q, mdO, cDV_q);
@@ -1591,7 +1591,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           const int quantized = (int)rint(P * 127.0f);
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
-          cDS[k] = ({{ACCUM_MEMORY_NAME}})(dS * q_scale);
+          cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
         }
       }
     }
