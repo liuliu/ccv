@@ -748,15 +748,25 @@ constant uint K_scale_tiles = {{K_SCALE_TILES}};
 constant uint C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 )";
-  source += R"(
+  if (type == AttentionKernelType::forward || type == AttentionKernelType::backwardQuery) {
+    source += R"(
 constant uint R_edge = R >= {{BLOCK_DIMENSIONS_PARALLELIZATION}} ? R + 1 - {{BLOCK_DIMENSIONS_PARALLELIZATION}} : 0;
 constant uint R_remainder = R % {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+)";
+  }
+  if (type == AttentionKernelType::backwardKeyValue) {
+    source += R"(
 constant uint KV_R_edge = R >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? R + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 constant uint KV_R_remainder = R % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint KV_C_edge = C >= {{BLOCK_DIMENSIONS_PARALLELIZATION}} ? C + 1 - {{BLOCK_DIMENSIONS_PARALLELIZATION}} : 0;
 constant uint KV_C_remainder = C % {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+)";
+  }
+  if (type == AttentionKernelType::forward) {
+    source += R"(
 constant uint K_edge = {{HEAD_DIMENSION}} + 1 - {{BLOCK_DIMENSIONS_HEAD}};
 )";
+  }
   source.SetValue("QK_SCALE_FACTOR_0", "Q_scale_buf[0] * K_scale_buf[c / KV_scale_tile_size] * ");
   source.SetValue("QK_SCALE_FACTOR_REM", "Q_scale_buf[0] * K_scale_buf[(C - C_remainder) / KV_scale_tile_size] * ");
   source.SetValue("V_SCALE_FACTOR_0", "V_scale_buf[c / KV_scale_tile_size]");
