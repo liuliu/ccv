@@ -278,6 +278,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 			}
 		}
+		const int is_ane_rowwise_compatible_batch = is_mfa_compatible_batch && B_batch_size == 1;
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_gemv = !is_batched && ((a_rows == 1 && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
@@ -294,7 +295,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			is_contiguous &&
 			is_same_dtype &&
 			is_supported_dtype &&
-			(!is_batched) &&
+			is_ane_rowwise_compatible_batch &&
 			ccv_nnc_mfa_context_supported(context) &&
 			ccv_nnc_mfa_supports_int8_ane(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
@@ -330,7 +331,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_ane_rowwise_gemm)
 		{
 			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
-				.M = (uint32_t)b_rows,
+				.M = (uint32_t)(b_rows * C_batch_size),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
 				.fused_bias = bias ? 1 : 0,
