@@ -245,18 +245,6 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 	return (id<MTLBuffer>)obj;
 }
 
-id mpgetbufferassociationtarget(const ccv_nnc_tensor_t* const tensor)
-{
-	id obj = (id)tensor->data.u8;
-	// Only reuse associations on stable pre-materialized MTLBuffer objects.
-	// The on-demand file-backed wrapper creates a fresh MTLBuffer on each lookup.
-	if ([obj isKindOfClass:[MTLFileBackedBuffer class]])
-		return nil;
-	if ([obj conformsToProtocol:@protocol(MTLBuffer)])
-		return obj;
-	return nil;
-}
-
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
 	return tensor->dataof;

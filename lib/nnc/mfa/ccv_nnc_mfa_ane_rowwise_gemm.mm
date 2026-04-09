@@ -1158,7 +1158,6 @@ static bool run_dequantize_output(
 int ccv_nnc_mfa_run_ane_rowwise_gemm(
     ccv_nnc_mfa_context_t* const context,
     ccv_nnc_mfa_ane_rowwise_gemm_params_t params,
-    void* const weight_association_target,
     mtl_buffer_t** tensors,
     size_t* tensor_offsets,
     ccv_nnc_stream_context_t* const stream_context)
@@ -1167,7 +1166,6 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
     CCV_NNC_MFA_PRECONDITION(context != nullptr);
     CCV_NNC_MFA_PRECONDITION(tensors != nullptr);
     CCV_NNC_MFA_PRECONDITION(tensor_offsets != nullptr);
-    (void)weight_association_target;
     std::string error;
     ANERowwiseGEMMCache* const cache = get_or_create_cache(context, &error);
     if (!cache) {
@@ -1178,8 +1176,6 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
     MTL::Buffer* const weight = tensors[1];
     MTL::Buffer* const output = tensors[2];
     MTL::Buffer* const bias = params.fused_bias ? tensors[3] : nullptr;
-    if (!weight_association_target)
-      return 0;
     PipelineValue<ANERowwiseTransformKernel>* const transform_pipeline = find_transform_pipeline(context, params);
     CompiledProgram* const program = find_or_create_program(params, &error);
     if (!program) {

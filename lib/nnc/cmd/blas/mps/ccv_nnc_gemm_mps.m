@@ -326,9 +326,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		size_t w_data_size = 0;
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
-		id weight_association_target = nil;
-		if (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE)
-			weight_association_target = mpgetbufferassociationtarget((ccv_nnc_tensor_t*)w);
 
 		if (use_ane_rowwise_gemm)
 		{
@@ -350,7 +347,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				b->dataof,
 				bias ? bias->dataof : 0,
 			};
-			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, (__bridge void*)weight_association_target, tensors, tensor_offsets, stream_context))
+			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, tensors, tensor_offsets, stream_context))
 			{
 				if (METAL_LOG_LEVEL(context) >= 1)
 					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");

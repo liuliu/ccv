@@ -17,7 +17,6 @@ extern "C" {
 int ccv_nnc_mfa_run_ane_rowwise_gemm(
     ccv_nnc_mfa_context_t* context,
     ccv_nnc_mfa_ane_rowwise_gemm_params_t params,
-    void* weight_association_target,
     mtl_buffer_t** tensors,
     size_t* tensor_offsets,
     ccv_nnc_stream_context_t* stream_context);
