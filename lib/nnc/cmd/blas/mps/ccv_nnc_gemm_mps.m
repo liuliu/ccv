@@ -351,8 +351,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				if (METAL_LOG_LEVEL(context) >= 1)
 					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
-				if (getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM_DEBUG") && atoi(getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM_DEBUG")) != 0)
-					fprintf(stderr, "ccv_nnc_gemm_mps: ANE rowwise GEMM dispatched for M=%u N=%u K=%u\n", params.M, params.N, params.K);
 				return CCV_NNC_EXEC_SUCCESS;
 			}
 		}
