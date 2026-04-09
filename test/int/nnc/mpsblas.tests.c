@@ -368,6 +368,36 @@ static void _mps_forward_scaled_gemm_to_float(const int datatype, const void* co
 		memcpy(values, data, sizeof(float) * count);
 }
 
+static void _mps_forward_scaled_gemm_compare_rows(const int datatype, const void* const actual_data, const void* const expected_data, const int rows, const int cols, double* const max_abs_ref, double* const max_rel_ref)
+{
+	float* const actual_row = (float*)ccmalloc(sizeof(float) * cols);
+	float* const expected_row = (float*)ccmalloc(sizeof(float) * cols);
+	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
+	const uint8_t* const actual_bytes = (const uint8_t*)actual_data;
+	const uint8_t* const expected_bytes = (const uint8_t*)expected_data;
+	double max_abs = 0;
+	double max_rel = 0;
+	int i, j;
+	for (i = 0; i < rows; i++)
+	{
+		_mps_forward_scaled_gemm_to_float(datatype, actual_bytes + (size_t)i * cols * element_size, cols, actual_row);
+		_mps_forward_scaled_gemm_to_float(datatype, expected_bytes + (size_t)i * cols * element_size, cols, expected_row);
+		for (j = 0; j < cols; j++)
+		{
+			const double diff = fabs((double)actual_row[j] - (double)expected_row[j]);
+			const double denom = ccv_max(1.0, ccv_max(fabs((double)actual_row[j]), fabs((double)expected_row[j])));
+			max_abs = ccv_max(max_abs, diff);
+			max_rel = ccv_max(max_rel, diff / denom);
+		}
+	}
+	ccfree(expected_row);
+	ccfree(actual_row);
+	if (max_abs_ref)
+		*max_abs_ref = max_abs;
+	if (max_rel_ref)
+		*max_rel_ref = max_rel;
+}
+
 static void _mps_forward_scaled_gemm_quantized_reference(const int datatype, const void* const data, const int rows, const int cols, float* const values)
 {
 	ccv_nnc_tensor_param_t params = {
@@ -857,26 +887,7 @@ static int _mps_forward_scaled_gemm_compare_dense(const int datatype, const int 
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wd), TENSOR_LIST(bd), 0);
 	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(bq, bd), TENSOR_LIST(hbq, hbd), 0);
-	float* const actual = (float*)ccmalloc(sizeof(float) * m_dim * n_dim);
-	float* const expected = (float*)ccmalloc(sizeof(float) * m_dim * n_dim);
-	_mps_forward_scaled_gemm_to_float(datatype, hbq->data.u8, m_dim * n_dim, actual);
-	_mps_forward_scaled_gemm_to_float(datatype, hbd->data.u8, m_dim * n_dim, expected);
-	double max_abs = 0;
-	double max_rel = 0;
-	int i;
-	for (i = 0; i < m_dim * n_dim; i++)
-	{
-		const double diff = fabs((double)actual[i] - (double)expected[i]);
-		const double denom = ccv_max(1.0, ccv_max(fabs((double)actual[i]), fabs((double)expected[i])));
-		max_abs = ccv_max(max_abs, diff);
-		max_rel = ccv_max(max_rel, diff / denom);
-	}
-	if (max_abs_ref)
-		*max_abs_ref = max_abs;
-	if (max_rel_ref)
-		*max_rel_ref = max_rel;
-	ccfree(expected);
-	ccfree(actual);
+	_mps_forward_scaled_gemm_compare_rows(datatype, hbq->data.u8, hbd->data.u8, m_dim, n_dim, max_abs_ref, max_rel_ref);
 	ccv_nnc_tensor_free(hbq);
 	ccv_nnc_tensor_free(hbd);
 	ccv_nnc_tensor_free(bq);
@@ -891,6 +902,150 @@ static int _mps_forward_scaled_gemm_compare_dense(const int datatype, const int 
 		ccv_nnc_tensor_free(hbias);
 	if (bias)
 		ccv_nnc_tensor_free(bias);
+	return 0;
+}
+
+static int _mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(const int datatype, const int use_bias, const int batch_dim, const int m_dim, const int n_dim, const int k_dim, const int padded_m_dim, double* const max_abs_ref, double* const max_rel_ref)
+{
+	ccv_nnc_tensor_param_t ga_storage_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, padded_m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t ga_view_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gwq_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = ((datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gb_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, m_dim, n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gbias_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t ha_storage_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, padded_m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t ha_view_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t wd_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t b_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { batch_dim, m_dim, n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t bias_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_t* const ha_storage = ccv_nnc_tensor_new(0, ha_storage_params, 0);
+	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, wd_params, 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(wd_params), 0);
+	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
+	ccv_nnc_tensor_t* const a_storage = ccv_nnc_tensor_new(0, ga_storage_params, 0);
+	ccv_nnc_tensor_t* const wq = ccv_nnc_tensor_new(0, gwq_params, 0);
+	ccv_nnc_tensor_t* const bq = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const hbq = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_tensor_view_t* const ha = ccv_nnc_tensor_view_new(ha_storage, ha_view_params, ccv_nnc_no_ofs, DIM_ALLOC(padded_m_dim * k_dim, k_dim, 1));
+	ccv_nnc_tensor_view_t* const a = ccv_nnc_tensor_view_new(a_storage, ga_view_params, ccv_nnc_no_ofs, DIM_ALLOC(padded_m_dim * k_dim, k_dim, 1));
+	float* const a_ref = (float*)ccmalloc(sizeof(float) * batch_dim * m_dim * k_dim);
+	float* const w_ref = (float*)ccmalloc(sizeof(float) * n_dim * k_dim);
+	float* const bias_ref = use_bias ? (float*)ccmalloc(sizeof(float) * n_dim) : 0;
+	float* const out_ref = (float*)ccmalloc(sizeof(float) * batch_dim * m_dim * n_dim);
+	int bch, i, j;
+	for (bch = 0; bch < batch_dim; bch++)
+		for (i = 0; i < padded_m_dim; i++)
+			for (j = 0; j < k_dim; j++)
+			{
+				const int dst = ((bch * padded_m_dim) + i) * k_dim + j;
+				float value = 0;
+				if (i < m_dim)
+				{
+					value = _mps_forward_scaled_gemm_a_batched_value(bch, i, j);
+					a_ref[((bch * m_dim) + i) * k_dim + j] = value;
+				}
+				if (datatype == CCV_16F)
+					ccv_float_to_half_precision(&value, ((uint16_t*)ha_storage->data.u8) + dst, 1);
+				else if (datatype == CCV_16BF)
+					ccv_float_to_bfloat(&value, ((uint16_t*)ha_storage->data.u8) + dst, 1);
+				else
+					((float*)ha_storage->data.f32)[dst] = value;
+			}
+	_mps_forward_scaled_gemm_fill_matrix(datatype, hwd->data.u8, n_dim, k_dim, 0);
+	_mps_forward_scaled_gemm_to_float(datatype, hwd->data.u8, n_dim * k_dim, w_ref);
+	if (use_bias)
+	{
+		_mps_forward_scaled_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
+		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, n_dim, bias_ref);
+	}
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
+		return -1;
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_storage, hwq, hbias), TENSOR_LIST(a_storage, wq, bias), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_storage, hwq), TENSOR_LIST(a_storage, wq), 0);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)a, wq, bias), TENSOR_LIST(bq), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)a, wq), TENSOR_LIST(bq), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(bq), TENSOR_LIST(hbq), 0);
+	_mps_forward_scaled_gemm_reference_batched(a_ref, w_ref, bias_ref, batch_dim, 1, use_bias ? 1 : 0, m_dim, n_dim, k_dim, out_ref);
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(out_ref, (uint16_t*)ha_storage->data.u8, batch_dim * m_dim * n_dim);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(out_ref, (uint16_t*)ha_storage->data.u8, batch_dim * m_dim * n_dim);
+	else
+		memcpy(ha_storage->data.f32, out_ref, sizeof(float) * batch_dim * m_dim * n_dim);
+	_mps_forward_scaled_gemm_compare_rows(datatype, hbq->data.u8, ha_storage->data.u8, batch_dim * m_dim, n_dim, max_abs_ref, max_rel_ref);
+	ccfree(out_ref);
+	if (bias_ref)
+		ccfree(bias_ref);
+	ccfree(w_ref);
+	ccfree(a_ref);
+	ccv_nnc_tensor_view_free(ha);
+	ccv_nnc_tensor_view_free(a);
+	ccv_nnc_tensor_free(ha_storage);
+	ccv_nnc_tensor_free(hwd);
+	ccv_nnc_tensor_free(hwq);
+	if (hbias)
+		ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(a_storage);
+	ccv_nnc_tensor_free(wq);
+	ccv_nnc_tensor_free(bq);
+	if (bias)
+		ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(hbq);
 	return 0;
 }
 
@@ -1332,6 +1487,25 @@ TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA"
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
 	REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match batched-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i weight NA")
+{
+	if (!getenv("CCV_NNC_RUN_PADDED_SCALED_GEMM_TEST"))
+		return;
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(CCV_16F, 0, 1, 512, 3072, 3072, 513, &max_abs, &max_rel), 0, "single-batch padded-A scaled GEMM validation should run");
+	REQUIRE(max_rel < 2e-3, "single-batch padded-A scaled GEMM without bias should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(CCV_16F, 0, 2, 512, 3072, 3072, 513, &max_abs, &max_rel), 0, "batched padded-A scaled GEMM validation should run");
+	REQUIRE(max_rel < 2e-3, "batched padded-A scaled GEMM without bias should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(CCV_16F, 1, 2, 512, 3072, 3072, 513, &max_abs, &max_rel), 0, "batched padded-A scaled GEMM with bias validation should run");
+	REQUIRE(max_rel < 2e-3, "batched padded-A scaled GEMM with bias should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 #define _STRINGIFY(x) #x

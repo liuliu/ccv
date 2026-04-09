@@ -100,13 +100,15 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const uint32_t K = matrixDimensions[2];
     const bool batched = batchDimension > 1;
     const simd::uint4 batchStrides = this->batchStrides.value_or(simd::uint4(0));
-    const uint32_t batchStrideA = batchStrides[0];
+    const uint32_t batchStrideSourceA = batchStrides[0];
+    const uint32_t batchStridePackedA = batched ? M * K : 0;
     const uint32_t batchStrideB = batchStrides[1];
     const uint32_t batchStrideC = batchStrides[2];
     const uint32_t batchStrideBias = batchStrides[3];
-    const uint32_t batchStrideAScale = batchStrides[0] > 0 ? M : 0;
+    const uint32_t batchStrideAScale = batched ? M : 0;
     const uint32_t batchStrideBScale = batchStrides[1] > 0 ? N : 0;
     const bool quantizeActivation = (strcmp(functionNameString, "quantize_activation") == 0);
+    const uint32_t batchStrideA = quantizeActivation ? batchStrideSourceA : batchStridePackedA;
     if (!this->loadM || quantizeActivation)
       constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
@@ -118,6 +120,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, NS::UInteger(18));
     constants->setConstantValue(&batchStrideAScale, MTL::DataTypeUInt, NS::UInteger(19));
     constants->setConstantValue(&batchStrideBScale, MTL::DataTypeUInt, NS::UInteger(20));
+    constants->setConstantValue(&batchStridePackedA, MTL::DataTypeUInt, NS::UInteger(21));
     NS::Error* error = nil;
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
     auto function = NS::TransferPtr(kernel->library->newFunction(functionName, constants.get(), &error));

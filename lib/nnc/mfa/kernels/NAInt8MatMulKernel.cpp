@@ -124,6 +124,7 @@ constant uint C_batch_stride [[function_constant(17)]];
 constant uint bias_batch_stride [[function_constant(18)]];
 constant uint A_scale_batch_stride [[function_constant(19)]];
 constant uint B_scale_batch_stride [[function_constant(20)]];
+constant uint A_packed_batch_stride [[function_constant(21)]];
 
 inline float quantize_reduce_max(float value,
                                  threadgroup float* scratch,
@@ -167,7 +168,7 @@ kernel void quantize_activation(
     return;
   if (batched) {
     src += A_batch_stride * tgid.z;
-    dst += A_batch_stride * tgid.z;
+    dst += A_packed_batch_stride * tgid.z;
     scales += A_scale_batch_stride * tgid.z;
   }
   float local_max = 0.0f;
@@ -257,7 +258,7 @@ kernel void int8_matmul(
   const uint N_group_size = N - N_group_start;
 
   if (batched) {
-    A_buf += A_batch_stride * tgid.z;
+    A_buf += A_packed_batch_stride * tgid.z;
     B_buf += B_batch_stride * tgid.z;
     C_buf += C_batch_stride * tgid.z;
     A_scale_buf += A_scale_batch_stride * tgid.z;
