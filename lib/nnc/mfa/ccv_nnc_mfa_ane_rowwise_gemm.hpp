@@ -6,6 +6,9 @@ typedef struct {
   uint32_t N;
   uint32_t K;
   uint32_t fused_bias;
+  uint32_t batch_dimension;
+  uint32_t batch_stride_a;
+  uint32_t batch_stride_c;
 } ccv_nnc_mfa_ane_rowwise_gemm_params_t;
 
 typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;

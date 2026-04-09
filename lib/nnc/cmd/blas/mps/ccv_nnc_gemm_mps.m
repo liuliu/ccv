@@ -331,10 +331,13 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_ane_rowwise_gemm)
 		{
 			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
-				.M = (uint32_t)(b_rows * C_batch_size),
+				.M = (uint32_t)b_rows,
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
 				.fused_bias = bias ? 1 : 0,
+				.batch_dimension = (uint32_t)C_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
 			};
 			mtl_buffer_t* tensors[4] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a),

@@ -9,8 +9,11 @@ bool ANERowwiseTransformDescriptor::operator==(const ANERowwiseTransformDescript
       memoryPrecision == rhs.memoryPrecision &&
       M == rhs.M &&
       paddedM == rhs.paddedM &&
+      batchDimension == rhs.batchDimension &&
       N == rhs.N &&
-      K == rhs.K;
+      K == rhs.K &&
+      batchStrideA == rhs.batchStrideA &&
+      batchStrideC == rhs.batchStrideC;
 }
 
 std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwiseTransformDescriptor& hash) const noexcept
@@ -20,8 +23,11 @@ std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwis
   combine_32(seed, (uint32_t)hash.memoryPrecision.value);
   combine_32(seed, hash.M);
   combine_32(seed, hash.paddedM);
+  combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.N);
   combine_32(seed, hash.K);
+  combine_32(seed, hash.batchStrideA);
+  combine_32(seed, hash.batchStrideC);
   return seed;
 }
 
@@ -50,8 +56,11 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&paddedM, MTL::DataTypeUInt, NS::UInteger(1));
-    constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(2));
-    constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(3));
+    constants->setConstantValue(&batchDimension, MTL::DataTypeUInt, NS::UInteger(2));
+    constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(3));
+    constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(4));
+    constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, NS::UInteger(5));
+    constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, NS::UInteger(6));
 
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
     NS::Error* error = nil;

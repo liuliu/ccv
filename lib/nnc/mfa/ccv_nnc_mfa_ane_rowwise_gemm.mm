@@ -412,6 +412,21 @@ static uint32_t pad_ane_rows(const uint32_t rows)
   return (uint32_t)align_up(rows, kANERowAlignment);
 }
 
+static uint32_t rowwise_batch_dimension(const ccv_nnc_mfa_ane_rowwise_gemm_params_t params)
+{
+  return params.batch_dimension ? params.batch_dimension : 1;
+}
+
+static uint32_t rowwise_total_rows(const ccv_nnc_mfa_ane_rowwise_gemm_params_t params)
+{
+  return params.M * rowwise_batch_dimension(params);
+}
+
+static uint32_t rowwise_padded_total_rows(const ccv_nnc_mfa_ane_rowwise_gemm_params_t params)
+{
+  return pad_ane_rows(rowwise_total_rows(params));
+}
+
 static NSString* mil_header()
 {
   return @"program(1.3)\n"
@@ -722,7 +737,7 @@ static bool ensure_shared_scratch(
     const ccv_nnc_mfa_ane_rowwise_gemm_params_t params,
     std::string* const error_out)
 {
-  const uint32_t padded_M = pad_ane_rows(params.M);
+  const uint32_t padded_M = rowwise_padded_total_rows(params);
   const size_t activation_surface_bytes = (size_t)params.K * padded_M * sizeof(int8_t);
   const size_t weight_surface_bytes = (size_t)params.N * params.K * sizeof(int8_t);
   const size_t output_surface_bytes = (size_t)params.N * padded_M * sizeof(half_float);
@@ -784,9 +799,12 @@ static PipelineValue<ANERowwiseTransformKernel>* find_transform_pipeline(
   ANERowwiseTransformDescriptor descriptor;
   descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
   descriptor.M = params.M;
-  descriptor.paddedM = pad_ane_rows(params.M);
+  descriptor.paddedM = rowwise_padded_total_rows(params);
+  descriptor.batchDimension = rowwise_batch_dimension(params);
   descriptor.N = params.N;
   descriptor.K = params.K;
+  descriptor.batchStrideA = params.batch_stride_a;
+  descriptor.batchStrideC = params.batch_stride_c;
   return ccv_nnc_mfa_prepare_ane_rowwise_transform(context, descriptor);
 }
 
@@ -795,7 +813,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
     std::string* const error_out)
 {
   @autoreleasepool {
-    const uint32_t padded_M = pad_ane_rows(params.M);
+    const uint32_t padded_M = rowwise_padded_total_rows(params);
     const float model_scale = choose_model_scale(params.K);
     NSString* const temp_directory = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", [[NSUUID UUID] UUIDString]]];
     NSFileManager* const file_manager = [NSFileManager defaultManager];
@@ -885,7 +903,7 @@ static CompiledProgram* find_or_create_program(
     std::string* const error_out)
 {
   const ProgramKey key = {
-    .M = params.M,
+    .M = rowwise_padded_total_rows(params),
     .N = params.N,
     .K = params.K,
   };

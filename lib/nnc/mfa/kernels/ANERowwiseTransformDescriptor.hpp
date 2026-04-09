@@ -11,8 +11,11 @@ struct ANERowwiseTransformDescriptor {
   GEMMOperandPrecision memoryPrecision;
   uint32_t M;
   uint32_t paddedM;
+  uint32_t batchDimension;
   uint32_t N;
   uint32_t K;
+  uint32_t batchStrideA;
+  uint32_t batchStrideC;
 
   bool operator==(const ANERowwiseTransformDescriptor& rhs) const;
 

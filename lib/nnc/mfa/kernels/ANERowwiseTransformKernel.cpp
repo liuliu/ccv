@@ -74,9 +74,41 @@ using namespace metal;
 
 constant uint SRC_ROWS [[function_constant(0)]];
 constant uint PADDED_ROWS [[function_constant(1)]];
-constant uint N [[function_constant(2)]];
-constant uint K [[function_constant(3)]];
+constant uint BATCH_DIMENSION [[function_constant(2)]];
+constant uint N [[function_constant(3)]];
+constant uint K [[function_constant(4)]];
+constant uint BATCH_STRIDE_A [[function_constant(5)]];
+constant uint BATCH_STRIDE_C [[function_constant(6)]];
 constant float SCALE_CORRECTION  = (float)K;
+
+inline uint total_rows()
+{
+  return SRC_ROWS * BATCH_DIMENSION;
+}
+
+inline uint source_batch_stride()
+{
+  return BATCH_STRIDE_A ? BATCH_STRIDE_A : SRC_ROWS * K;
+}
+
+inline uint output_batch_stride()
+{
+  return BATCH_STRIDE_C ? BATCH_STRIDE_C : SRC_ROWS * N;
+}
+
+inline uint source_offset(const uint flat_row)
+{
+  const uint batch_index = flat_row / SRC_ROWS;
+  const uint row = flat_row - batch_index * SRC_ROWS;
+  return batch_index * source_batch_stride() + row * K;
+}
+
+inline uint output_offset(const uint flat_row, const uint col)
+{
+  const uint batch_index = flat_row / SRC_ROWS;
+  const uint row = flat_row - batch_index * SRC_ROWS;
+  return batch_index * output_batch_stride() + row * N + col;
+}
 
 inline float quantize_reduce_max(float value,
                                  threadgroup float* scratch,
@@ -117,9 +149,9 @@ kernel void compute_activation_scales(
   const uint row = tgid.x;
   if (row >= PADDED_ROWS)
     return;
-  const uint effective_row = min(row, SRC_ROWS > 0 ? SRC_ROWS - 1 : 0u);
+  const uint effective_row = min(row, total_rows() > 0 ? total_rows() - 1 : 0u);
   float local_max = 0.0f;
-  const uint src_base = effective_row * K;
+  const uint src_base = source_offset(effective_row);
   for (uint i = tid; i < K; i += {{THREADGROUP_SIZE}})
     local_max = max(local_max, fabs((float)src[src_base + i]));
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
@@ -141,8 +173,8 @@ kernel void quantize_transpose_activation(
   for (uint j = 0; j < {{QUANT_TILE_DIM}}; j += {{QUANT_BLOCK_ROWS}}) {
     const uint src_row = src_row_base + tid2.y + j;
     if (src_row < PADDED_ROWS && src_col < K) {
-      const uint effective_row = min(src_row, SRC_ROWS > 0 ? SRC_ROWS - 1 : 0u);
-      tile[tid2.y + j][tid2.x] = src[effective_row * K + src_col];
+      const uint effective_row = min(src_row, total_rows() > 0 ? total_rows() - 1 : 0u);
+      tile[tid2.y + j][tid2.x] = src[source_offset(effective_row) + src_col];
     } else {
       tile[tid2.y + j][tid2.x] = ({{IO_TYPE}})0;
     }
@@ -171,13 +203,13 @@ kernel void dequantize_output_transposed(
 {
   const uint dst_row = tgid.y * {{OUTPUT_TILE_DIM_Y}} + tid2.y;
   const uint dst_col = tgid.x * {{OUTPUT_TILE_DIM_X}} + tid2.x;
-  if (dst_row < SRC_ROWS && dst_col < N) {
+  if (dst_row < total_rows() && dst_col < N) {
     const float value =
         (float)src[dst_col * PADDED_ROWS + dst_row] *
         (float)activation_scales[dst_row] *
         (float)weight_scales[dst_col] *
         SCALE_CORRECTION;
-    dst[dst_row * N + dst_col] = ({{IO_TYPE}})value;
+    dst[output_offset(dst_row, dst_col)] = ({{IO_TYPE}})value;
   }
 }
 
@@ -192,13 +224,13 @@ kernel void dequantize_output_transposed_bias(
 {
   const uint dst_row = tgid.y * {{OUTPUT_TILE_DIM_Y}} + tid2.y;
   const uint dst_col = tgid.x * {{OUTPUT_TILE_DIM_X}} + tid2.x;
-  if (dst_row < SRC_ROWS && dst_col < N) {
+  if (dst_row < total_rows() && dst_col < N) {
     const float value =
         (float)src[dst_col * PADDED_ROWS + dst_row] *
         (float)activation_scales[dst_row] *
         (float)weight_scales[dst_col] *
         SCALE_CORRECTION;
-    dst[dst_row * N + dst_col] = ({{IO_TYPE}})(value + (float)bias[dst_col]);
+    dst[output_offset(dst_row, dst_col)] = ({{IO_TYPE}})(value + (float)bias[dst_col]);
   }
 }
 )";
