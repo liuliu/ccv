@@ -189,6 +189,9 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalPerformanceShaders"),
                 .linkedFramework("MetalPerformanceShadersGraph"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("IOSurface"),
                 .linkedFramework("Foundation"),
             ]
         ),
@@ -225,6 +228,9 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalPerformanceShaders"),
                 .linkedFramework("MetalPerformanceShadersGraph"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("IOSurface"),
                 .linkedFramework("Foundation"),
             ]
         ),
