@@ -1,4 +1,5 @@
 #include "ccv_nnc_mfa.hpp"
+#include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
 #include "libmfa.inc"
 using namespace ccv::nnc;
 
@@ -56,6 +57,31 @@ uint8_t ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_mfa_context_t* co
 
 uint16_t ccv_nnc_mfa_context_log_level(mfa::context* context) {
   return context->log_level;
+}
+
+mtl_device_t* ccv_nnc_mfa_context_device(ccv_nnc_mfa_context_t* context) {
+  return context->device.get();
+}
+
+void* ccv_nnc_mfa_context_get_ane_rowwise_gemm_cache(ccv_nnc_mfa_context_t* context) {
+  return context->ane_rowwise_gemm_cache;
+}
+
+void ccv_nnc_mfa_context_set_ane_rowwise_gemm_cache(ccv_nnc_mfa_context_t* context, void* cache) {
+  context->ane_rowwise_gemm_cache = cache;
+}
+
+PipelineValue<ANERowwiseTransformKernel>* ccv_nnc_mfa_prepare_ane_rowwise_transform(
+    ccv_nnc_mfa_context_t* context,
+    ANERowwiseTransformDescriptor descriptor) {
+  auto pool = NS::AutoreleasePool::alloc()->init();
+  auto& shaderCache = context->kernel_cache;
+  DeviceProperties dprops = DeviceProperties();
+  auto pipelineValue =
+    shaderCache.findKernel<ANERowwiseTransformKernel, ANERowwiseTransformDescriptor, ANERowwiseTransformKernelDescriptor>(
+        descriptor, context->device.get(), dprops);
+  pool->drain();
+  return pipelineValue;
 }
 
 mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size) {

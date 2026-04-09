@@ -1,4 +1,4 @@
-#include "ccv_nnc_mfa.hpp"
+#include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
 #include "kernels/ANERowwiseTransformDescriptor.hpp"
 #include "kernels/ANERowwiseTransformKernel.hpp"
 
@@ -701,14 +701,14 @@ static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols)
   return align_up((size_t)rows * cols * sizeof(int8_t), 128);
 }
 
-static ANERowwiseGEMMCache* get_or_create_cache(mfa::context* const context, std::string* const error_out)
+static ANERowwiseGEMMCache* get_or_create_cache(ccv_nnc_mfa_context_t* const context, std::string* const error_out)
 {
   (void)error_out;
-  if (context->ane_rowwise_gemm_cache)
-    return (ANERowwiseGEMMCache*)context->ane_rowwise_gemm_cache;
+  if (ccv_nnc_mfa_context_get_ane_rowwise_gemm_cache(context))
+    return (ANERowwiseGEMMCache*)ccv_nnc_mfa_context_get_ane_rowwise_gemm_cache(context);
   auto* const cache = new ANERowwiseGEMMCache();
-  cache->device = context->device.get();
-  context->ane_rowwise_gemm_cache = cache;
+  cache->device = ccv_nnc_mfa_context_device(context);
+  ccv_nnc_mfa_context_set_ane_rowwise_gemm_cache(context, cache);
   return cache;
 }
 
@@ -782,14 +782,7 @@ static PipelineValue<ANERowwiseTransformKernel>* find_transform_pipeline(
   descriptor.paddedM = pad_ane_rows(params.M);
   descriptor.N = params.N;
   descriptor.K = params.K;
-  auto pool = NS::AutoreleasePool::alloc()->init();
-  auto& shaderCache = context->kernel_cache;
-  DeviceProperties dprops = DeviceProperties();
-  auto pipelineValue =
-    shaderCache.findKernel<ANERowwiseTransformKernel, ANERowwiseTransformDescriptor, ANERowwiseTransformKernelDescriptor>(
-        descriptor, context->device.get(), dprops);
-  pool->drain();
-  return pipelineValue;
+  return ccv_nnc_mfa_prepare_ane_rowwise_transform(context, descriptor);
 }
 
 static std::unique_ptr<CompiledProgram> compile_program(
@@ -1212,13 +1205,13 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
 
 void ccv_nnc_mfa_ane_rowwise_gemm_cleanup(ccv_nnc_mfa_context_t* const context)
 {
-  if (!context || !context->ane_rowwise_gemm_cache)
+  if (!context || !ccv_nnc_mfa_context_get_ane_rowwise_gemm_cache(context))
     return;
-  auto* const cache = (ANERowwiseGEMMCache*)context->ane_rowwise_gemm_cache;
+  auto* const cache = (ANERowwiseGEMMCache*)ccv_nnc_mfa_context_get_ane_rowwise_gemm_cache(context);
   destroy_shared_scratch(&cache->scratch);
   destroy_surface_cache(&cache->activation_surface_cache);
   destroy_surface_cache(&cache->weight_surface_cache);
   destroy_surface_cache(&cache->output_surface_cache);
   delete cache;
-  context->ane_rowwise_gemm_cache = nullptr;
+  ccv_nnc_mfa_context_set_ane_rowwise_gemm_cache(context, nullptr);
 }
