@@ -8,6 +8,8 @@ typedef struct {
   uint32_t fused_bias;
 } ccv_nnc_mfa_ane_rowwise_gemm_params_t;
 
+typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

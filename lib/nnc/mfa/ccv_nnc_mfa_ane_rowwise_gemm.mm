@@ -1,4 +1,6 @@
 #include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
+#include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
+#include "ccv_nnc_mfa_error.hpp"
 #include "kernels/ANERowwiseTransformDescriptor.hpp"
 #include "kernels/ANERowwiseTransformKernel.hpp"
 
@@ -24,7 +26,10 @@
 
 using namespace ccv::nnc;
 
+typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;
+
 extern "C" {
+void ccv_nnc_mfa_log_message(const char* message);
 mtl_command_batch_t* ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch);
 id ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch);
