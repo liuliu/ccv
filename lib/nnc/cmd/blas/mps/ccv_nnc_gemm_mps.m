@@ -295,7 +295,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			is_contiguous &&
 			is_same_dtype &&
 			is_supported_dtype &&
-			is_ane_rowwise_compatible_batch &&
+			(!is_batched || is_ane_rowwise_compatible_batch) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			ccv_nnc_mfa_supports_int8_ane(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
