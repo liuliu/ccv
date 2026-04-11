@@ -183,7 +183,7 @@ kernel void quantize_transpose_activation(
 }
 
 kernel void dequantize_output_transposed(
-    device const {{IO_TYPE}}* src [[buffer(0)]],
+    device const half* src [[buffer(0)]],
     device {{IO_TYPE}}* dst [[buffer(1)]],
     device const {{IO_TYPE}}* activation_scales [[buffer(2)]],
     device const {{IO_TYPE}}* weight_scales [[buffer(3)]],
@@ -203,7 +203,7 @@ kernel void dequantize_output_transposed(
 }
 
 kernel void dequantize_output_transposed_bias(
-    device const {{IO_TYPE}}* src [[buffer(0)]],
+    device const half* src [[buffer(0)]],
     device {{IO_TYPE}}* dst [[buffer(1)]],
     device const {{IO_TYPE}}* activation_scales [[buffer(2)]],
     device const {{IO_TYPE}}* weight_scales [[buffer(3)]],

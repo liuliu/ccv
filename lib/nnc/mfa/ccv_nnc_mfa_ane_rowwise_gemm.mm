@@ -1,3 +1,4 @@
+#include "ccv.h"
 #include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
 #include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
 #include "ccv_nnc_mfa_error.hpp"
@@ -36,8 +37,6 @@ id ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_b
 }
 
 namespace {
-
-using half_float = _Float16;
 
 constexpr MTLResourceOptions kSharedResourceOptions = MTLResourceStorageModeShared;
 constexpr uint64_t kPrivateQuantCommitActivationElementsThreshold = (1ULL << 22);
@@ -177,7 +176,7 @@ static size_t bytes_per_ml_datatype(const MLMultiArrayDataType dt)
     case MLMultiArrayDataTypeFloat32:
       return sizeof(float);
     case MLMultiArrayDataTypeFloat16:
-      return sizeof(half_float);
+      return sizeof(uint16_t);
     case MLMultiArrayDataTypeInt32:
       return sizeof(int32_t);
     case MLMultiArrayDataTypeInt8:
@@ -403,8 +402,11 @@ static void destroy_shared_scratch(SharedScratch* const scratch)
 static float choose_model_scale(const uint32_t K)
 {
   const float scale = 1.0f / std::sqrt((float)K);
-  const half_float scale_half = (half_float)scale;
-  return (float)scale_half;
+  uint16_t scale_bits;
+  float rounded_scale;
+  ccv_float_to_half_precision(&scale, &scale_bits, 1);
+  ccv_half_precision_to_float(&scale_bits, &rounded_scale, 1);
+  return rounded_scale;
 }
 
 static uint32_t pad_ane_rows(const uint32_t rows)
@@ -740,8 +742,8 @@ static bool ensure_shared_scratch(
   const uint32_t padded_M = rowwise_padded_total_rows(params);
   const size_t activation_surface_bytes = (size_t)params.K * padded_M * sizeof(int8_t);
   const size_t weight_surface_bytes = (size_t)params.N * params.K * sizeof(int8_t);
-  const size_t output_surface_bytes = (size_t)params.N * padded_M * sizeof(half_float);
-  const size_t activation_scale_bytes = (size_t)padded_M * sizeof(half_float);
+  const size_t output_surface_bytes = (size_t)params.N * padded_M * sizeof(uint16_t);
+  const size_t activation_scale_bytes = (size_t)padded_M * sizeof(uint16_t);
   SharedScratch& scratch = cache->scratch;
   const bool scratch_shape_matches = (scratch.M == padded_M && scratch.N == params.N && scratch.K == params.K);
   if (scratch_shape_matches &&
@@ -797,7 +799,12 @@ static PipelineValue<ANERowwiseTransformKernel>* find_transform_pipeline(
     const ccv_nnc_mfa_ane_rowwise_gemm_params_t params)
 {
   ANERowwiseTransformDescriptor descriptor;
-  descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+  if (params.data_type == MTL::DataTypeHalf) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+  } else {
+    CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeBFloat);
+    descriptor.memoryPrecision = GEMMOperandPrecision::BF16;
+  }
   descriptor.M = params.M;
   descriptor.paddedM = rowwise_padded_total_rows(params);
   descriptor.batchDimension = rowwise_batch_dimension(params);

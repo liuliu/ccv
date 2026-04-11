@@ -5,6 +5,7 @@ typedef struct {
   uint32_t M;
   uint32_t N;
   uint32_t K;
+  uint32_t data_type;
   uint32_t fused_bias;
   uint32_t batch_dimension;
   uint32_t batch_stride_a;

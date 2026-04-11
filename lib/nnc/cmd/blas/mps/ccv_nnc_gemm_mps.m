@@ -285,10 +285,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
 		const int use_ane_rowwise_gemm =
 			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
-			(a_datatype == CCV_16F) &&
-			(w_datatype == CCV_16F) &&
-			(b->info.datatype == CCV_16F) &&
-			(!bias || (bias->info.datatype == CCV_16F && bias_batch_size == 1)) &&
+			(a_datatype == CCV_16F || a_datatype == CCV_16BF) &&
+			(!bias || bias_batch_size == 1) &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(!is_transpose_a) &&
 			is_transpose_w &&
@@ -334,6 +332,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.M = (uint32_t)b_rows,
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
+				.data_type = mtl_data_type,
 				.fused_bias = bias ? 1 : 0,
 				.batch_dimension = (uint32_t)C_batch_size,
 				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
