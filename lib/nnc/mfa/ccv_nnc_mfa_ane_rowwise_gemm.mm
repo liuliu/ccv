@@ -811,7 +811,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
 {
   @autoreleasepool {
     const uint32_t padded_M = rowwise_padded_total_rows(params);
-    const float model_scale = 1.0f / std::sqrt((float)K);
+    const float model_scale = 1.0f / std::sqrt((float)params.K);
     NSString* const temp_directory = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", [[NSUUID UUID] UUIDString]]];
     NSFileManager* const file_manager = [NSFileManager defaultManager];
     NSError* error = nil;
