@@ -399,16 +399,6 @@ static void destroy_shared_scratch(SharedScratch* const scratch)
   scratch->activation_scales = nullptr;
 }
 
-static float choose_model_scale(const uint32_t K)
-{
-  const float scale = 1.0f / std::sqrt((float)K);
-  uint16_t scale_bits;
-  float rounded_scale;
-  ccv_float_to_half_precision(&scale, &scale_bits, 1);
-  ccv_half_precision_to_float(&scale_bits, &rounded_scale, 1);
-  return rounded_scale;
-}
-
 static uint32_t pad_ane_rows(const uint32_t rows)
 {
   return (uint32_t)align_up(rows, kANERowAlignment);
@@ -821,7 +811,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
 {
   @autoreleasepool {
     const uint32_t padded_M = rowwise_padded_total_rows(params);
-    const float model_scale = choose_model_scale(params.K);
+    const float model_scale = 1.0f / std::sqrt((float)K);
     NSString* const temp_directory = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", [[NSUUID UUID] UUIDString]]];
     NSFileManager* const file_manager = [NSFileManager defaultManager];
     NSError* error = nil;
