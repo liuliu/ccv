@@ -3,10 +3,11 @@ include ../../lib/config.mk
 CFLAGS := -std=c++17 -O0 -g -Wall -I"../.." -I"../../lib" $(CFLAGS)
 LDFLAGS := $(LDFLAGS) -framework QuartzCore
 
-TARGETS = gemm_scaffold na_gemm_splitk_bench na_int8_attention_bench na_int8_attention_backward_probe na_attention_backward_bench attention_backward_compare_probe sdpa_backward_compare_bench na_int8_matmul_bench ane_fp16_matmul_harness ane_int8_matmul_probe ane_int8_conv_matmul_harness ane_int8_rowwise_conv_harness dump_attention_source dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
+TARGETS = gemm_scaffold na_gemm_splitk_bench na_int8_attention_bench na_int8_attention_backward_probe na_attention_backward_bench attention_backward_compare_probe sdpa_backward_compare_bench na_int8_matmul_bench ane_fp16_matmul_harness ane_int8_matmul_probe ane_int8_conv_matmul_harness ane_int8_rowwise_conv_harness ane_na_int8_matmul_harness dump_attention_source dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
+ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface
 
 COMMON_OBJS = \
 	Metal.local.o \
@@ -55,7 +56,7 @@ GENERIC_ATTENTION_OBJS = \
 all: $(TARGETS)
 
 clean:
-	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(TARGETS) dump_na_source
+	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(TARGETS) dump_na_source
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -82,6 +83,8 @@ ane_int8_conv_matmul_harness: ane_int8_conv_matmul_harness.o
 	$(CC) -o $@ $^ $(ANE_LDFLAGS)
 ane_int8_rowwise_conv_harness: ane_int8_rowwise_conv_harness.o
 	$(CC) -o $@ $^ $(ANE_LDFLAGS)
+ane_na_int8_matmul_harness: ane_na_int8_matmul_harness.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
+	$(CC) -o $@ $^ $(ANE_ROWWISE_LDFLAGS)
 
 dump_na_source: dump_na_source.o $(COMMON_OBJS) NAMatMulKernelDescriptor.local.o NAMatMulKernel.local.o
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -137,6 +140,8 @@ ane_int8_matmul_probe.o: ane_int8_matmul_probe.mm
 ane_int8_conv_matmul_harness.o: ane_int8_conv_matmul_harness.mm
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS)) -fobjc-arc
 ane_int8_rowwise_conv_harness.o: ane_int8_rowwise_conv_harness.mm
+	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS)) -fobjc-arc
+ane_na_int8_matmul_harness.o: ane_na_int8_matmul_harness.mm
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS)) -fobjc-arc
 
 dump_na_source.o: dump_na_source.cpp

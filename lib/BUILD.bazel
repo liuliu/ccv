@@ -414,7 +414,7 @@ cc_library(
 objc_library(
 	name = "nnc_mps_compat",
 	non_arc_srcs = [
-		"nnc/mfa/ccv_nnc_mfa_ane_rowwise_gemm.mm",
+		"nnc/mfa/ccv_nnc_mfa_ane_rowwise_coreml.mm",
 		"nnc/mps/ccv_nnc_mps.m",
 		"nnc/mps/ccv_nnc_palettize.m",
 	],
