@@ -363,38 +363,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				return CCV_NNC_EXEC_INVALID;
 		}
 
-		if (use_ane_rowwise_gemm)
-		{
-			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
-				.M = (uint32_t)b_rows,
-				.N = (uint32_t)b_cols,
-				.K = (uint32_t)w_rows,
-				.data_type = mtl_data_type,
-				.fused_bias = bias ? 1 : 0,
-				.batch_dimension = (uint32_t)C_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
-			};
-			mtl_buffer_t* tensors[4] = {
-				mpgetbuffer((ccv_nnc_tensor_t*)a),
-				mpgetbuffer((ccv_nnc_tensor_t*)w),
-				mpgetbuffer((ccv_nnc_tensor_t*)b),
-				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
-			};
-			size_t tensor_offsets[4] = {
-				a->dataof,
-				w->dataof,
-				b->dataof,
-				bias ? bias->dataof : 0,
-			};
-			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, tensors, tensor_offsets, stream_context))
-			{
-				if (METAL_LOG_LEVEL(context) >= 1)
-					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
-				return CCV_NNC_EXEC_SUCCESS;
-			}
-		}
-
 		if (use_scaled_gemm)
 		{
 			ccv_nnc_mfa_scaled_gemm_params_t params = {
@@ -431,6 +399,38 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
+		}
+
+		if (use_ane_rowwise_gemm)
+		{
+			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
+				.M = (uint32_t)b_rows,
+				.N = (uint32_t)b_cols,
+				.K = (uint32_t)w_rows,
+				.data_type = mtl_data_type,
+				.fused_bias = bias ? 1 : 0,
+				.batch_dimension = (uint32_t)C_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+			};
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, tensors, tensor_offsets, stream_context))
+			{
+				if (METAL_LOG_LEVEL(context) >= 1)
+					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
+				return CCV_NNC_EXEC_SUCCESS;
+			}
 		}
 
 		if (METAL_LOG_LEVEL(context) >= 3)

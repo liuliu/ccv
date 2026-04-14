@@ -7,7 +7,7 @@ TARGETS = gemm_scaffold na_gemm_splitk_bench na_int8_attention_bench na_int8_att
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
-ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface
+ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface -framework MetalPerformanceShaders
 
 COMMON_OBJS = \
 	Metal.local.o \
@@ -29,7 +29,12 @@ NA_GEMM_OBJS = \
 	NAMatMulKernelDescriptor.local.o \
 	NAMatMulKernel.local.o \
 	NAInt8MatMulKernelDescriptor.local.o \
-	NAInt8MatMulKernel.local.o
+	NAInt8MatMulKernel.local.o \
+	ANERowwiseTransformDescriptor.local.o \
+	ANERowwiseTransformKernelDescriptor.local.o \
+	ANERowwiseTransformKernel.local.o \
+	ccv_nnc_mfa_ane_rowwise_coreml.local.o \
+	ccv_nnc_mfa_ane_rowwise_gemm.local.o
 
 NA_CONV_OBJS = \
 	NAConv3DDescriptor.local.o \
@@ -256,6 +261,21 @@ NAInt8MatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulKern
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAInt8MatMulKernel.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+ANERowwiseTransformDescriptor.local.o: ../../lib/nnc/mfa/kernels/ANERowwiseTransformDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+ANERowwiseTransformKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/ANERowwiseTransformKernelDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+ANERowwiseTransformKernel.local.o: ../../lib/nnc/mfa/kernels/ANERowwiseTransformKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+ccv_nnc_mfa_ane_rowwise_coreml.local.o: ../../lib/nnc/mfa/ccv_nnc_mfa_ane_rowwise_coreml.mm
+	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS)) -fno-objc-arc
+
+ccv_nnc_mfa_ane_rowwise_gemm.local.o: ../../lib/nnc/mfa/ccv_nnc_mfa_ane_rowwise_gemm.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 NAConv3DDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAConv3DDescriptor.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)

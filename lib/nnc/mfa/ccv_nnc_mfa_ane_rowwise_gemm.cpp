@@ -582,10 +582,9 @@ static bool run_dequantize_output(
       kernel->outputDequantizeThreadgroupSize());
   command_batch->finishCommand(encoder);
   char error_buffer[1024] = {};
-  const int ok = ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
+  const int ok = ccv_nnc_mfa_ane_rowwise_finish_command_batch_async(
       stream_context,
       command_batch,
-      0,
       error_buffer,
       sizeof(error_buffer));
   if (!ok && error_out)
@@ -953,6 +952,14 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
   }
   ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
   return 1;
+}
+
+uint32_t ccv_nnc_mfa_choose_ane_na_rowwise_split_rows_per_batch(
+    ccv_nnc_mfa_context_t* const context,
+    ccv_nnc_mfa_ane_na_rowwise_gemm_params_t params)
+{
+  CCV_NNC_MFA_PRECONDITION(context != nullptr);
+  return choose_hybrid_ane_rows_per_batch(context, params);
 }
 
 void ccv_nnc_mfa_ane_rowwise_gemm_cleanup(ccv_nnc_mfa_context_t* const context)
