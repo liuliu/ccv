@@ -135,45 +135,6 @@ static CVPixelBufferRef create_pixel_buffer_for_dimensions(
   return pixel_buffer;
 }
 
-static CVPixelBufferRef create_pixel_buffer_for_surface(
-    IOSurfaceRef const surface,
-    NSArray<NSNumber*>* const shape,
-    const MLMultiArrayDataType dt,
-    std::string* const error_out)
-{
-  if (!surface) {
-    if (error_out)
-      *error_out = "IOSurface is not available for pixel buffer creation";
-    return nullptr;
-  }
-  const size_t bytes_per_element = bytes_per_ml_datatype(dt);
-  const OSType pixel_format = pixel_format_for_ml_datatype(dt);
-  if (!shape || shape.count == 0 || !bytes_per_element || !pixel_format) {
-    if (error_out)
-      *error_out = "unsupported pixel buffer surface configuration";
-    return nullptr;
-  }
-  const size_t width = (size_t)shape.lastObject.unsignedLongLongValue;
-  size_t height = 1;
-  for (NSUInteger i = 0; i + 1 < shape.count; ++i)
-    height *= shape[i].unsignedIntegerValue;
-  NSDictionary* const attrs = @{
-    (id)kCVPixelBufferWidthKey : @(width),
-    (id)kCVPixelBufferHeightKey : @(height),
-    (id)kCVPixelBufferPixelFormatTypeKey : @(pixel_format),
-    (id)kCVPixelBufferBytesPerRowAlignmentKey : @(width * bytes_per_element),
-    (id)kCVPixelBufferMetalCompatibilityKey : @YES,
-  };
-  CVPixelBufferRef pixel_buffer = nullptr;
-  const CVReturn rc = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, (__bridge CFDictionaryRef)attrs, &pixel_buffer);
-  if (rc != kCVReturnSuccess || !pixel_buffer) {
-    if (error_out)
-      *error_out = "CVPixelBufferCreateWithIOSurface failed (" + std::to_string((int)rc) + ")";
-    return nullptr;
-  }
-  return pixel_buffer;
-}
-
 static MLMultiArray* create_multiarray_with_pixel_buffer(
     CVPixelBufferRef const pixel_buffer,
     NSArray<NSNumber*>* const shape,
@@ -373,7 +334,9 @@ static CachedSurface* find_or_create_cached_surface(
   replacement->height = requested_height;
   replacement->last_used = ++cache->lru_clock;
   replacement->pixel_buffer = create_pixel_buffer_for_dimensions(width, requested_height, dt, error_out);
-  replacement->surface = replacement->pixel_buffer ? (IOSurfaceRef)CFRetain(CVPixelBufferGetIOSurface(replacement->pixel_buffer)) : nullptr;
+  IOSurfaceRef const surface =
+      replacement->pixel_buffer ? CVPixelBufferGetIOSurface(replacement->pixel_buffer) : nullptr;
+  replacement->surface = surface ? (IOSurfaceRef)CFRetain(surface) : nullptr;
   replacement->alloc_bytes = replacement->surface ? IOSurfaceGetAllocSize(replacement->surface) : 0;
   replacement->buffer = create_surface_buffer(device, replacement->surface, replacement->alloc_bytes);
   if (!replacement->pixel_buffer || !replacement->surface || !replacement->buffer) {
@@ -875,12 +838,6 @@ mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(
   return cache ? cache->scratch.activation_surface_buffer : nullptr;
 }
 
-mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_weight_surface_buffer(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache)
-{
-  return cache ? cache->scratch.weight_surface_buffer : nullptr;
-}
-
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache)
 {
@@ -1104,6 +1061,21 @@ int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
   }
   if (command_buffer)
     [command_buffer release];
+  set_error(error_out, error_out_size, "");
+  return 1;
+}
+
+int ccv_nnc_mfa_ane_rowwise_finish_command_batch_async(
+    ccv_nnc_stream_context_t* stream_context,
+    mtl_command_batch_t* command_batch,
+    char* error_out,
+    size_t error_out_size)
+{
+  if (!command_batch) {
+    set_error(error_out, error_out_size, "command batch is not available");
+    return 0;
+  }
+  ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
   set_error(error_out, error_out_size, "");
   return 1;
 }

@@ -34,6 +34,8 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     batchDimension == rhs.batchDimension &&
     ioPrecision == rhs.ioPrecision &&
     simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
+    packedABatchStride == rhs.packedABatchStride &&
+    aScaleBatchStride == rhs.aScaleBatchStride &&
     useBias == rhs.useBias &&
     loadM == rhs.loadM &&
     supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers &&
@@ -54,6 +56,8 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
     combine_32(seed, hash.batchStrides.value()[2]);
     combine_32(seed, hash.batchStrides.value()[3]);
   }
+  combine_32(seed, hash.packedABatchStride.value_or(0));
+  combine_32(seed, hash.aScaleBatchStride.value_or(0));
   combine_32(seed, hash.useBias ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
@@ -101,11 +105,11 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const bool batched = batchDimension > 1;
     const simd::uint4 batchStrides = this->batchStrides.value_or(simd::uint4(0));
     const uint32_t batchStrideSourceA = batchStrides[0];
-    const uint32_t batchStridePackedA = batched ? M * K : 0;
+    const uint32_t batchStridePackedA = packedABatchStride.value_or(batched ? M * K : 0);
     const uint32_t batchStrideB = batchStrides[1];
     const uint32_t batchStrideC = batchStrides[2];
     const uint32_t batchStrideBias = batchStrides[3];
-    const uint32_t batchStrideAScale = batched ? M : 0;
+    const uint32_t batchStrideAScale = aScaleBatchStride.value_or(batched ? M : 0);
     const uint32_t batchStrideBScale = batchStrides[1] > 0 ? N : 0;
     const bool quantizeActivation = (strcmp(functionNameString, "quantize_activation") == 0);
     const uint32_t batchStrideA = quantizeActivation ? batchStrideSourceA : batchStridePackedA;

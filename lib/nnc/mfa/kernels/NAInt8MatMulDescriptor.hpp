@@ -16,6 +16,8 @@ struct NAInt8MatMulDescriptor {
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
   simd::uint3 matrixDimensions;
   std::optional<simd::uint4> batchStrides;
+  std::optional<uint32_t> packedABatchStride;
+  std::optional<uint32_t> aScaleBatchStride;
   bool useBias = false;
   bool loadM = false;
   bool supportIndirectCommandBuffers = false;

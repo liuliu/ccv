@@ -13,7 +13,11 @@ bool ANERowwiseTransformDescriptor::operator==(const ANERowwiseTransformDescript
       N == rhs.N &&
       K == rhs.K &&
       batchStrideA == rhs.batchStrideA &&
-      batchStrideC == rhs.batchStrideC;
+      batchStrideC == rhs.batchStrideC &&
+      sourceRowOffset == rhs.sourceRowOffset &&
+      outputRowOffset == rhs.outputRowOffset &&
+      activationScaleBatchStride == rhs.activationScaleBatchStride &&
+      activationScaleRowOffset == rhs.activationScaleRowOffset;
 }
 
 std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwiseTransformDescriptor& hash) const noexcept
@@ -28,6 +32,10 @@ std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwis
   combine_32(seed, hash.K);
   combine_32(seed, hash.batchStrideA);
   combine_32(seed, hash.batchStrideC);
+  combine_32(seed, hash.sourceRowOffset);
+  combine_32(seed, hash.outputRowOffset);
+  combine_32(seed, hash.activationScaleBatchStride);
+  combine_32(seed, hash.activationScaleRowOffset);
   return seed;
 }
 
@@ -61,6 +69,10 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, NS::UInteger(5));
     constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, NS::UInteger(6));
+    constants->setConstantValue(&sourceRowOffset, MTL::DataTypeUInt, NS::UInteger(7));
+    constants->setConstantValue(&outputRowOffset, MTL::DataTypeUInt, NS::UInteger(8));
+    constants->setConstantValue(&activationScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&activationScaleRowOffset, MTL::DataTypeUInt, NS::UInteger(10));
 
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
     NS::Error* error = nil;
@@ -78,11 +90,13 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
   auto quantizeActivation = NS::TransferPtr(createPipeline(kernel, "quantize_transpose_activation"));
   auto dequantizeOutputTransposed = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed"));
   auto dequantizeOutputTransposedBias = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed_bias"));
+  auto transposeQuantizedActivation = NS::TransferPtr(createPipeline(kernel, "transpose_quantized_activation"));
 
   PipelineValue<ANERowwiseTransformKernel>* output =
       new PipelineValue<ANERowwiseTransformKernel> { kernel, computeActivationScales };
   output->second = quantizeActivation;
   output->third = dequantizeOutputTransposed;
   output->fourth = dequantizeOutputTransposedBias;
+  output->fifth = transposeQuantizedActivation;
   return std::make_pair(kernelDesc, output);
 }

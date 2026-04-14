@@ -28,8 +28,6 @@ int ccv_nnc_mfa_ane_rowwise_coreml_cache_ensure_scratch(
 
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
-mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_weight_surface_buffer(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(
@@ -70,6 +68,11 @@ int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
     ccv_nnc_stream_context_t* stream_context,
     mtl_command_batch_t* command_batch,
     int use_mps_wrapper,
+    char* error_out,
+    size_t error_out_size);
+int ccv_nnc_mfa_ane_rowwise_finish_command_batch_async(
+    ccv_nnc_stream_context_t* stream_context,
+    mtl_command_batch_t* command_batch,
     char* error_out,
     size_t error_out_size);
 

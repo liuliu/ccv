@@ -16,6 +16,10 @@ struct ANERowwiseTransformDescriptor {
   uint32_t K;
   uint32_t batchStrideA;
   uint32_t batchStrideC;
+  uint32_t sourceRowOffset;
+  uint32_t outputRowOffset;
+  uint32_t activationScaleBatchStride;
+  uint32_t activationScaleRowOffset;
 
   bool operator==(const ANERowwiseTransformDescriptor& rhs) const;
 

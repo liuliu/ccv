@@ -326,6 +326,43 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
 
+		if (use_ane_rowwise_gemm && use_scaled_gemm)
+		{
+			ccv_nnc_mfa_ane_na_rowwise_gemm_params_t params = {
+				.data_type = mtl_data_type,
+				.M = (uint32_t)b_rows,
+				.N = (uint32_t)b_cols,
+				.K = (uint32_t)w_rows,
+				.fused_bias = (bias ? 1 : 0),
+				.batch_dimension = b_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
+				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+			};
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			const int status = ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(context, params, tensors, tensor_offsets, stream_context);
+			if (status > 0)
+			{
+				if (METAL_LOG_LEVEL(context) >= 1)
+					ccv_nnc_mfa_log_message("Using hybrid ANE + NA rowwise GEMM.");
+				return CCV_NNC_EXEC_SUCCESS;
+			}
+			if (status < 0)
+				return CCV_NNC_EXEC_INVALID;
+		}
+
 		if (use_ane_rowwise_gemm)
 		{
 			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
