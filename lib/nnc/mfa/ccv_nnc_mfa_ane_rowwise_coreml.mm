@@ -272,6 +272,9 @@ struct SharedScratch {
   size_t output_surface_bytes = 0;
   size_t activation_scale_bytes = 0;
   size_t activation_scale_capacity_bytes = 0;
+  CVPixelBufferRef activation_pixel_buffer = nullptr;
+  CVPixelBufferRef weight_pixel_buffer = nullptr;
+  CVPixelBufferRef output_pixel_buffer = nullptr;
   IOSurfaceRef activation_surface = nullptr;
   IOSurfaceRef weight_surface = nullptr;
   IOSurfaceRef output_surface = nullptr;
@@ -321,6 +324,9 @@ static void destroy_shared_scratch(SharedScratch* const scratch)
   scratch->output_surface_bytes = 0;
   scratch->activation_scale_bytes = 0;
   scratch->activation_scale_capacity_bytes = 0;
+  scratch->activation_pixel_buffer = nullptr;
+  scratch->weight_pixel_buffer = nullptr;
+  scratch->output_pixel_buffer = nullptr;
   scratch->activation_surface = nullptr;
   scratch->weight_surface = nullptr;
   scratch->output_surface = nullptr;
@@ -825,6 +831,9 @@ int ccv_nnc_mfa_ane_rowwise_coreml_cache_ensure_scratch(
   scratch.activation_surface = activation_surface_entry ? activation_surface_entry->surface : nullptr;
   scratch.weight_surface = weight_surface_entry ? weight_surface_entry->surface : nullptr;
   scratch.output_surface = output_surface_entry ? output_surface_entry->surface : nullptr;
+  scratch.activation_pixel_buffer = activation_surface_entry ? activation_surface_entry->pixel_buffer : nullptr;
+  scratch.weight_pixel_buffer = weight_surface_entry ? weight_surface_entry->pixel_buffer : nullptr;
+  scratch.output_pixel_buffer = output_surface_entry ? output_surface_entry->pixel_buffer : nullptr;
   scratch.activation_surface_buffer = activation_surface_entry ? activation_surface_entry->buffer : nullptr;
   scratch.weight_surface_buffer = weight_surface_entry ? weight_surface_entry->buffer : nullptr;
   scratch.output_surface_buffer = output_surface_entry ? output_surface_entry->buffer : nullptr;
@@ -944,20 +953,6 @@ int ccv_nnc_mfa_ane_rowwise_coreml_evaluate(
 {
   std::string error;
   @autoreleasepool {
-    struct ScopedPixelBuffers {
-      CVPixelBufferRef activation = nullptr;
-      CVPixelBufferRef weight = nullptr;
-      CVPixelBufferRef output = nullptr;
-      ~ScopedPixelBuffers()
-      {
-        if (activation)
-          CFRelease(activation);
-        if (weight)
-          CFRelease(weight);
-        if (output)
-          CFRelease(output);
-      }
-    } pixel_buffers;
     CompiledProgram* const program = program_handle ? program_handle->program : nullptr;
     MLModel* const model = program ? (__bridge MLModel*)program->model : nil;
     NSString* const x_name = program ? (__bridge NSString*)program->x_name : nil;
@@ -972,12 +967,12 @@ int ccv_nnc_mfa_ane_rowwise_coreml_evaluate(
     NSArray<NSNumber*>* const activation_shape = make_shape(1, 1, program->K, cache->scratch.M);
     NSArray<NSNumber*>* const weight_shape = make_shape(1, 1, program->N, program->K);
     NSArray<NSNumber*>* const output_shape = make_shape(1, 1, program->N, cache->scratch.M);
-    pixel_buffers.activation = create_pixel_buffer_for_surface(cache->scratch.activation_surface, activation_shape, MLMultiArrayDataTypeInt8, &error);
-    pixel_buffers.weight = create_pixel_buffer_for_surface(cache->scratch.weight_surface, weight_shape, MLMultiArrayDataTypeInt8, &error);
-    pixel_buffers.output = create_pixel_buffer_for_surface(cache->scratch.output_surface, output_shape, MLMultiArrayDataTypeFloat16, &error);
-    MLMultiArray* const activation_array = pixel_buffers.activation ? create_multiarray_with_pixel_buffer(pixel_buffers.activation, activation_shape, &error) : nil;
-    MLMultiArray* const weight_array = pixel_buffers.weight ? create_multiarray_with_pixel_buffer(pixel_buffers.weight, weight_shape, &error) : nil;
-    MLMultiArray* const output_array = pixel_buffers.output ? create_multiarray_with_pixel_buffer(pixel_buffers.output, output_shape, &error) : nil;
+    MLMultiArray* const activation_array =
+        cache->scratch.activation_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.activation_pixel_buffer, activation_shape, &error) : nil;
+    MLMultiArray* const weight_array =
+        cache->scratch.weight_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.weight_pixel_buffer, weight_shape, &error) : nil;
+    MLMultiArray* const output_array =
+        cache->scratch.output_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.output_pixel_buffer, output_shape, &error) : nil;
     if (!activation_array || !weight_array || !output_array) {
       if (error.empty())
         error = "failed to create CoreML multiarray wrappers from IOSurface";
