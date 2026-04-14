@@ -548,7 +548,7 @@ static bool write_text_file(NSString* const text, NSString* const path, std::str
 
 static NSMutableDictionary* default_metadata_root(void)
 {
-  return [@{
+  return [[[NSMutableDictionary alloc] initWithDictionary:@{
     @"metadataOutputVersion" : @"3.0",
     @"outputSchema" : @[],
     @"modelParameters" : @[],
@@ -574,7 +574,7 @@ static NSMutableDictionary* default_metadata_root(void)
     @"inputSchema" : @[],
     @"generatedClassName" : @"w_a",
     @"method" : @"predict"
-  } mutableCopy];
+  }] autorelease];
 }
 
 static NSString* build_metadata_json(const uint32_t K, const uint32_t N, const uint32_t padded_M)
