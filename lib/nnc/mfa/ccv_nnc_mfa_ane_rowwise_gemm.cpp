@@ -330,7 +330,7 @@ static bool select_cached_hybrid_gpu_to_ane_ratio(
     g_hybrid_probe_cache.valid = ok;
     g_hybrid_probe_cache.na_tflops = na_tflops;
     g_hybrid_probe_cache.gpu_to_ane_ratio =
-        ok ? std::max<uint32_t>(1, (uint32_t)llround(na_tflops / kANEReferenceTFlops)) : 0;
+        ok ? std::max<uint32_t>(1, (uint32_t)llround(na_tflops / kANEReferenceTFlops + 1)) : 0;
     if (!ok && error_out)
       *error_out = probe_error;
     if (ok && METAL_LOG_LEVEL(context) >= 1) {
