@@ -671,7 +671,6 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 		stream_mps->workspace = 0;
 		stream_mps->workspace_size = 0;
 	}
-	ccv_nnc_mfa_ane_rowwise_gemm_cleanup(ccv_nnc_default_mfa_context());
 }
 
 // We don't need to support signal as of now because we share one queue. When we multiplex on multiple queues, we need to have a signal implementation.

@@ -13,6 +13,7 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
 
 void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context) {
   context->kernel_cache.evict();
+  ccv_nnc_mfa_ane_rowwise_gemm_cleanup(context);
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
