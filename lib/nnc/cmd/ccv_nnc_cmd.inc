@@ -13,8 +13,8 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_TRANSPOSE_BACKWARD", .cmd = 0xb4d506e1},
 	{.name = "CCV_NNC_AVERAGE_POOL_FORWARD", .cmd = 0x51267ab8},
 	{.name = "CCV_NNC_AVERAGE_POOL_BACKWARD", .cmd = 0x51267ab9},
-	{.name = "CCV_NNC_EWLOG_FORWARD", .cmd = 0xf4191bf2},
-	{.name = "CCV_NNC_EWLOG_BACKWARD", .cmd = 0xf4191bf3},
+	{.name = "CCV_NNC_RMSPROP_FORWARD", .cmd = 0x9c886b1c},
+	{.name = "CCV_NNC_RMSPROP_BACKWARD", .cmd = 0x9c886b1d},
 	{.name = "CCV_NNC_INDEX_SELECT_FORWARD", .cmd = 0x7ee7771e},
 	{.name = "CCV_NNC_INDEX_SELECT_BACKWARD", .cmd = 0x7ee7771f},
 	{.name = "CCV_NNC_DROPOUT_FORWARD", .cmd = 0x7f2dc3e4},
@@ -25,8 +25,8 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_BATCH_NORM_BACKWARD", .cmd = 0x5419819d},
 	{.name = "CCV_NNC_GEMM_FORWARD", .cmd = 0x7e87d00c},
 	{.name = "CCV_NNC_GEMM_BACKWARD", .cmd = 0x7e87d00d},
-	{.name = "CCV_NNC_RANDOM_UNIFORM_FORWARD", .cmd = 0xa0cd1d5e},
-	{.name = "CCV_NNC_RANDOM_UNIFORM_BACKWARD", .cmd = 0xa0cd1d5f},
+	{.name = "CCV_NNC_ROI_ALIGN_FORWARD", .cmd = 0xfef55168},
+	{.name = "CCV_NNC_ROI_ALIGN_BACKWARD", .cmd = 0xfef55169},
 	{.name = "CCV_NNC_REDUCE_NORM2_FORWARD", .cmd = 0xb3034e16},
 	{.name = "CCV_NNC_REDUCE_NORM2_BACKWARD", .cmd = 0xb3034e17},
 	{.name = "CCV_NNC_EWPOW_FORWARD", .cmd = 0xa9cd182},
@@ -39,10 +39,10 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_MAX_POOL_BACKWARD", .cmd = 0x7bec9361},
 	{.name = "CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD", .cmd = 0xd9e0e4a},
 	{.name = "CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD", .cmd = 0xd9e0e4b},
-	{.name = "CCV_NNC_MIN_FORWARD", .cmd = 0x972fbd26},
-	{.name = "CCV_NNC_MIN_BACKWARD", .cmd = 0x972fbd27},
-	{.name = "CCV_NNC_LSTM_FORWARD", .cmd = 0xc5cb998c},
-	{.name = "CCV_NNC_LSTM_BACKWARD", .cmd = 0xc5cb998d},
+	{.name = "CCV_NNC_RANDOM_UNIFORM_FORWARD", .cmd = 0xa0cd1d5e},
+	{.name = "CCV_NNC_RANDOM_UNIFORM_BACKWARD", .cmd = 0xa0cd1d5f},
+	{.name = "CCV_NNC_SORT_FORWARD", .cmd = 0x9b3f5868},
+	{.name = "CCV_NNC_SORT_BACKWARD", .cmd = 0x9b3f5869},
 	{.name = "CCV_NNC_RMSNORM_FORWARD", .cmd = 0x6889e9d0},
 	{.name = "CCV_NNC_RMSNORM_BACKWARD", .cmd = 0x6889e9d1},
 	{.name = "CCV_NNC_SOFTMAX_FORWARD", .cmd = 0xc969a252},
@@ -59,14 +59,14 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_MAX_BACKWARD", .cmd = 0xdf6f014d},
 	{.name = "CCV_NNC_SGD_FORWARD", .cmd = 0xe650ad26},
 	{.name = "CCV_NNC_SGD_BACKWARD", .cmd = 0xe650ad27},
-	{.name = "CCV_NNC_ROI_ALIGN_FORWARD", .cmd = 0xfef55168},
-	{.name = "CCV_NNC_ROI_ALIGN_BACKWARD", .cmd = 0xfef55169},
+	{.name = "CCV_NNC_COMM_REDUCE_FORWARD", .cmd = 0x3434ead8},
+	{.name = "CCV_NNC_COMM_REDUCE_BACKWARD", .cmd = 0x3434ead9},
 	{.name = "CCV_NNC_MSE_FORWARD", .cmd = 0x6904a9a2},
 	{.name = "CCV_NNC_MSE_BACKWARD", .cmd = 0x6904a9a3},
 	{.name = "CCV_NNC_EWSUM_FORWARD", .cmd = 0xe21a2c4c},
 	{.name = "CCV_NNC_EWSUM_BACKWARD", .cmd = 0xe21a2c4d},
-	{.name = "CCV_NNC_SORT_FORWARD", .cmd = 0x9b3f5868},
-	{.name = "CCV_NNC_SORT_BACKWARD", .cmd = 0x9b3f5869},
+	{.name = "CCV_NNC_EWLOG_FORWARD", .cmd = 0xf4191bf2},
+	{.name = "CCV_NNC_EWLOG_BACKWARD", .cmd = 0xf4191bf3},
 	{.name = "CCV_NNC_FORMAT_TRANSFORM_FORWARD", .cmd = 0xe4a2b192},
 	{.name = "CCV_NNC_FORMAT_TRANSFORM_BACKWARD", .cmd = 0xe4a2b193},
 	{.name = "CCV_NNC_EWSIN_FORWARD", .cmd = 0xc87a926a},
@@ -87,8 +87,8 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_CONVOLUTION_BACKWARD", .cmd = 0x254d05f5},
 	{.name = "CCV_NNC_GRID_SAMPLE_FORWARD", .cmd = 0xd492a032},
 	{.name = "CCV_NNC_GRID_SAMPLE_BACKWARD", .cmd = 0xd492a033},
-	{.name = "CCV_NNC_RELU_FORWARD", .cmd = 0xc51eaa80},
-	{.name = "CCV_NNC_RELU_BACKWARD", .cmd = 0xc51eaa81},
+	{.name = "CCV_NNC_ADAMW_FORWARD", .cmd = 0x4f5d4870},
+	{.name = "CCV_NNC_ADAMW_BACKWARD", .cmd = 0x4f5d4871},
 	{.name = "CCV_NNC_PARTITION_FORWARD", .cmd = 0x698f42fe},
 	{.name = "CCV_NNC_PARTITION_BACKWARD", .cmd = 0x698f42ff},
 	{.name = "CCV_NNC_COMPRESSION_LSSC_FORWARD", .cmd = 0x17ea8f72},
@@ -97,32 +97,32 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_EWEXP_BACKWARD", .cmd = 0xd784b171},
 	{.name = "CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD", .cmd = 0xd691f78e},
 	{.name = "CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD", .cmd = 0xd691f78f},
-	{.name = "CCV_NNC_SIGMOID_FORWARD", .cmd = 0xf2f69650},
-	{.name = "CCV_NNC_SIGMOID_BACKWARD", .cmd = 0xf2f69651},
+	{.name = "CCV_NNC_ROTATE_HALF_FORWARD", .cmd = 0xa831a22c},
+	{.name = "CCV_NNC_ROTATE_HALF_BACKWARD", .cmd = 0xa831a22d},
 	{.name = "CCV_NNC_REDUCE_MAX_FORWARD", .cmd = 0x80f1a506},
 	{.name = "CCV_NNC_REDUCE_MAX_BACKWARD", .cmd = 0x80f1a507},
 	{.name = "CCV_NNC_ADAM_FORWARD", .cmd = 0xe30099dc},
 	{.name = "CCV_NNC_ADAM_BACKWARD", .cmd = 0xe30099dd},
+	{.name = "CCV_NNC_SCATTER_ADD_FORWARD", .cmd = 0xabddad90},
+	{.name = "CCV_NNC_SCATTER_ADD_BACKWARD", .cmd = 0xabddad91},
 	{.name = "CCV_NNC_REDUCE_MIN_FORWARD", .cmd = 0x6785ef96},
 	{.name = "CCV_NNC_REDUCE_MIN_BACKWARD", .cmd = 0x6785ef97},
-	{.name = "CCV_NNC_RMSPROP_FORWARD", .cmd = 0x9c886b1c},
-	{.name = "CCV_NNC_RMSPROP_BACKWARD", .cmd = 0x9c886b1d},
 	{.name = "CCV_NNC_MUL_FORWARD", .cmd = 0x24721a46},
 	{.name = "CCV_NNC_MUL_BACKWARD", .cmd = 0x24721a47},
 	{.name = "CCV_NNC_GROUP_NORM_FORWARD", .cmd = 0x17deb074},
 	{.name = "CCV_NNC_GROUP_NORM_BACKWARD", .cmd = 0x17deb075},
-	{.name = "CCV_NNC_ADD_FORWARD", .cmd = 0x58fb3664},
-	{.name = "CCV_NNC_ADD_BACKWARD", .cmd = 0x58fb3665},
-	{.name = "CCV_NNC_COMM_REDUCE_FORWARD", .cmd = 0x3434ead8},
-	{.name = "CCV_NNC_COMM_REDUCE_BACKWARD", .cmd = 0x3434ead9},
+	{.name = "CCV_NNC_HISTOGRAM_FORWARD", .cmd = 0xc5473e44},
+	{.name = "CCV_NNC_HISTOGRAM_BACKWARD", .cmd = 0xc5473e45},
+	{.name = "CCV_NNC_SIGMOID_FORWARD", .cmd = 0xf2f69650},
+	{.name = "CCV_NNC_SIGMOID_BACKWARD", .cmd = 0xf2f69651},
 	{.name = "CCV_NNC_ARGMIN_FORWARD", .cmd = 0xeb8747f2},
 	{.name = "CCV_NNC_ARGMIN_BACKWARD", .cmd = 0xeb8747f3},
 	{.name = "CCV_NNC_SMOOTH_L1_FORWARD", .cmd = 0x4e428e},
 	{.name = "CCV_NNC_SMOOTH_L1_BACKWARD", .cmd = 0x4e428f},
 	{.name = "CCV_NNC_SCALAR_MUL_FORWARD", .cmd = 0x8b4d86aa},
 	{.name = "CCV_NNC_SCALAR_MUL_BACKWARD", .cmd = 0x8b4d86ab},
-	{.name = "CCV_NNC_HISTOGRAM_FORWARD", .cmd = 0xc5473e44},
-	{.name = "CCV_NNC_HISTOGRAM_BACKWARD", .cmd = 0xc5473e45},
+	{.name = "CCV_NNC_LSTM_FORWARD", .cmd = 0xc5cb998c},
+	{.name = "CCV_NNC_LSTM_BACKWARD", .cmd = 0xc5cb998d},
 	{.name = "CCV_NNC_UPSAMPLE_FORWARD", .cmd = 0x73875556},
 	{.name = "CCV_NNC_UPSAMPLE_BACKWARD", .cmd = 0x73875557},
 	{.name = "CCV_NNC_SET_FORWARD", .cmd = 0x2b070804},
@@ -141,22 +141,24 @@ static ccv_nnc_cmd_init_t init_map[] = {
 	{.name = "CCV_NNC_EWABS_BACKWARD", .cmd = 0x8a0db899},
 	{.name = "CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD", .cmd = 0x5d575032},
 	{.name = "CCV_NNC_UNIQUE_CONSECUTIVE_BACKWARD", .cmd = 0x5d575033},
-	{.name = "CCV_NNC_LAYER_NORM_FORWARD", .cmd = 0xbed3c264},
-	{.name = "CCV_NNC_LAYER_NORM_BACKWARD", .cmd = 0xbed3c265},
 	{.name = "CCV_NNC_EWCOS_FORWARD", .cmd = 0xbf13866c},
 	{.name = "CCV_NNC_EWCOS_BACKWARD", .cmd = 0xbf13866d},
+	{.name = "CCV_NNC_SEGMENTED_GEMM_FORWARD", .cmd = 0x58305730},
+	{.name = "CCV_NNC_SEGMENTED_GEMM_BACKWARD", .cmd = 0x58305731},
+	{.name = "CCV_NNC_LAYER_NORM_FORWARD", .cmd = 0xbed3c264},
+	{.name = "CCV_NNC_LAYER_NORM_BACKWARD", .cmd = 0xbed3c265},
+	{.name = "CCV_NNC_RELU_FORWARD", .cmd = 0xc51eaa80},
+	{.name = "CCV_NNC_RELU_BACKWARD", .cmd = 0xc51eaa81},
+	{.name = "CCV_NNC_MIN_FORWARD", .cmd = 0x972fbd26},
+	{.name = "CCV_NNC_MIN_BACKWARD", .cmd = 0x972fbd27},
 	{.name = "CCV_NNC_COMM_BROADCAST_FORWARD", .cmd = 0x830eee},
 	{.name = "CCV_NNC_COMM_BROADCAST_BACKWARD", .cmd = 0x830eef},
 	{.name = "CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD", .cmd = 0xc26b7b5e},
 	{.name = "CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD", .cmd = 0xc26b7b5f},
-	{.name = "CCV_NNC_SCATTER_ADD_FORWARD", .cmd = 0xabddad90},
-	{.name = "CCV_NNC_SCATTER_ADD_BACKWARD", .cmd = 0xabddad91},
-	{.name = "CCV_NNC_SEGMENTED_GEMM_FORWARD", .cmd = 0x58305730},
-	{.name = "CCV_NNC_SEGMENTED_GEMM_BACKWARD", .cmd = 0x58305731},
+	{.name = "CCV_NNC_ADD_FORWARD", .cmd = 0x58fb3664},
+	{.name = "CCV_NNC_ADD_BACKWARD", .cmd = 0x58fb3665},
 	{.name = "CCV_NNC_SWISH_FORWARD", .cmd = 0x583d90c2},
 	{.name = "CCV_NNC_SWISH_BACKWARD", .cmd = 0x583d90c3},
-	{.name = "CCV_NNC_ADAMW_FORWARD", .cmd = 0x4f5d4870},
-	{.name = "CCV_NNC_ADAMW_BACKWARD", .cmd = 0x4f5d4871},
 };
 
 static ccv_nnc_cmd_backend_init_t backend_init_map[] = {
@@ -174,7 +176,7 @@ static inline int _ccv_nnc_cmd_ph(const uint32_t cmd)
 	switch ((cmd >> 27) % 12)
 	{
 		case 0:
-			return ((((cmd >> 1) % 61) + 15) << 1) | (cmd & 1);
+			return ((((cmd >> 1) % 31) + 49) << 1) | (cmd & 1);
 		case 1:
 			return ((((cmd >> 1) % 32) + 14) << 1) | (cmd & 1);
 		case 2:
@@ -186,18 +188,18 @@ static inline int _ccv_nnc_cmd_ph(const uint32_t cmd)
 		case 5:
 			return ((((cmd >> 1) % 13) + 58) << 1) | (cmd & 1);
 		case 6:
-			return ((((cmd >> 20) % 60) + 2) << 1) | (cmd & 1);
+			return ((((cmd >> 12) % 64) + 16) << 1) | (cmd & 1);
 		case 7:
-			return ((((cmd >> 6) % 29) + 27) << 1) | (cmd & 1);
+			return ((((cmd >> 1) % 40) + 1) << 1) | (cmd & 1);
 		case 8:
-			return ((((cmd >> 2) % 22) + 0) << 1) | (cmd & 1);
+			return ((((cmd >> 1) % 26) + 1) << 1) | (cmd & 1);
 		case 9:
-			return ((((cmd >> 2) % 5) + 74) << 1) | (cmd & 1);
+			return ((((cmd >> 4) % 10) + 43) << 1) | (cmd & 1);
 		case 10:
 			return ((((cmd >> 14) % 26) + 5) << 1) | (cmd & 1);
 		case 11:
 		default:
-			return ((((cmd >> 4) % 37) + 42) << 1) | (cmd & 1);
+			return ((((cmd >> 15) % 10) + 70) << 1) | (cmd & 1);
 	}
 }
 
@@ -225,8 +227,8 @@ void _register_command_CCV_NNC_TRANSPOSE_FORWARD(ccv_nnc_cmd_registry_t* const r
 void _register_command_CCV_NNC_TRANSPOSE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_AVERAGE_POOL_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_AVERAGE_POOL_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_EWLOG_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_EWLOG_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RMSPROP_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RMSPROP_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_INDEX_SELECT_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_INDEX_SELECT_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_DROPOUT_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -237,8 +239,8 @@ void _register_command_CCV_NNC_BATCH_NORM_FORWARD(ccv_nnc_cmd_registry_t* const 
 void _register_command_CCV_NNC_BATCH_NORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GEMM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ROI_ALIGN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ROI_ALIGN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_NORM2_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_NORM2_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWPOW_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -251,10 +253,10 @@ void _register_command_CCV_NNC_MAX_POOL_FORWARD(ccv_nnc_cmd_registry_t* const re
 void _register_command_CCV_NNC_MAX_POOL_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_MIN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_MIN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_LSTM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_LSTM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SORT_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SORT_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_RMSNORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_RMSNORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SOFTMAX_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -271,14 +273,14 @@ void _register_command_CCV_NNC_MAX_FORWARD(ccv_nnc_cmd_registry_t* const registr
 void _register_command_CCV_NNC_MAX_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SGD_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SGD_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ROI_ALIGN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ROI_ALIGN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_COMM_REDUCE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_COMM_REDUCE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_MSE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_MSE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWSUM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWSUM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SORT_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SORT_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_EWLOG_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_EWLOG_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWSIN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -299,8 +301,8 @@ void _register_command_CCV_NNC_CONVOLUTION_FORWARD(ccv_nnc_cmd_registry_t* const
 void _register_command_CCV_NNC_CONVOLUTION_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GRID_SAMPLE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GRID_SAMPLE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RELU_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RELU_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ADAMW_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ADAMW_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_PARTITION_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_PARTITION_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_COMPRESSION_LSSC_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -309,32 +311,32 @@ void _register_command_CCV_NNC_EWEXP_FORWARD(ccv_nnc_cmd_registry_t* const regis
 void _register_command_CCV_NNC_EWEXP_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SIGMOID_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SIGMOID_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MAX_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MAX_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_ADAM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_ADAM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SCATTER_ADD_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SCATTER_ADD_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MIN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_REDUCE_MIN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RMSPROP_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_RMSPROP_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_MUL_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_MUL_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GROUP_NORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_GROUP_NORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ADD_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ADD_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_COMM_REDUCE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_COMM_REDUCE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_HISTOGRAM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_HISTOGRAM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SIGMOID_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SIGMOID_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_ARGMIN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_ARGMIN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SMOOTH_L1_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SMOOTH_L1_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SCALAR_MUL_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SCALAR_MUL_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_HISTOGRAM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_HISTOGRAM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_LSTM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_LSTM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_UPSAMPLE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_UPSAMPLE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SET_FORWARD(ccv_nnc_cmd_registry_t* const registry);
@@ -353,22 +355,24 @@ void _register_command_CCV_NNC_EWABS_FORWARD(ccv_nnc_cmd_registry_t* const regis
 void _register_command_CCV_NNC_EWABS_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_UNIQUE_CONSECUTIVE_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_LAYER_NORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_LAYER_NORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWCOS_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_EWCOS_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_LAYER_NORM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_LAYER_NORM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RELU_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_RELU_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_MIN_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_MIN_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_COMM_BROADCAST_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_COMM_BROADCAST_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SCATTER_ADD_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SCATTER_ADD_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ADD_FORWARD(ccv_nnc_cmd_registry_t* const registry);
+void _register_command_CCV_NNC_ADD_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SWISH_FORWARD(ccv_nnc_cmd_registry_t* const registry);
 void _register_command_CCV_NNC_SWISH_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ADAMW_FORWARD(ccv_nnc_cmd_registry_t* const registry);
-void _register_command_CCV_NNC_ADAMW_BACKWARD(ccv_nnc_cmd_registry_t* const registry);
 
 void _register_command_CCV_NNC_ADAM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_ADAM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -388,6 +392,8 @@ void _register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_
 void _register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MAX_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -778,8 +784,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_TRANSPOSE_BACKWARD(&init_map[11].registry);
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD(&init_map[12].registry);
 	_register_command_CCV_NNC_AVERAGE_POOL_BACKWARD(&init_map[13].registry);
-	_register_command_CCV_NNC_EWLOG_FORWARD(&init_map[14].registry);
-	_register_command_CCV_NNC_EWLOG_BACKWARD(&init_map[15].registry);
+	_register_command_CCV_NNC_RMSPROP_FORWARD(&init_map[14].registry);
+	_register_command_CCV_NNC_RMSPROP_BACKWARD(&init_map[15].registry);
 	_register_command_CCV_NNC_INDEX_SELECT_FORWARD(&init_map[16].registry);
 	_register_command_CCV_NNC_INDEX_SELECT_BACKWARD(&init_map[17].registry);
 	_register_command_CCV_NNC_DROPOUT_FORWARD(&init_map[18].registry);
@@ -790,8 +796,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_BATCH_NORM_BACKWARD(&init_map[23].registry);
 	_register_command_CCV_NNC_GEMM_FORWARD(&init_map[24].registry);
 	_register_command_CCV_NNC_GEMM_BACKWARD(&init_map[25].registry);
-	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD(&init_map[26].registry);
-	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD(&init_map[27].registry);
+	_register_command_CCV_NNC_ROI_ALIGN_FORWARD(&init_map[26].registry);
+	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD(&init_map[27].registry);
 	_register_command_CCV_NNC_REDUCE_NORM2_FORWARD(&init_map[28].registry);
 	_register_command_CCV_NNC_REDUCE_NORM2_BACKWARD(&init_map[29].registry);
 	_register_command_CCV_NNC_EWPOW_FORWARD(&init_map[30].registry);
@@ -804,10 +810,10 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_MAX_POOL_BACKWARD(&init_map[37].registry);
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD(&init_map[38].registry);
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD(&init_map[39].registry);
-	_register_command_CCV_NNC_MIN_FORWARD(&init_map[40].registry);
-	_register_command_CCV_NNC_MIN_BACKWARD(&init_map[41].registry);
-	_register_command_CCV_NNC_LSTM_FORWARD(&init_map[42].registry);
-	_register_command_CCV_NNC_LSTM_BACKWARD(&init_map[43].registry);
+	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD(&init_map[40].registry);
+	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD(&init_map[41].registry);
+	_register_command_CCV_NNC_SORT_FORWARD(&init_map[42].registry);
+	_register_command_CCV_NNC_SORT_BACKWARD(&init_map[43].registry);
 	_register_command_CCV_NNC_RMSNORM_FORWARD(&init_map[44].registry);
 	_register_command_CCV_NNC_RMSNORM_BACKWARD(&init_map[45].registry);
 	_register_command_CCV_NNC_SOFTMAX_FORWARD(&init_map[46].registry);
@@ -824,14 +830,14 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_MAX_BACKWARD(&init_map[57].registry);
 	_register_command_CCV_NNC_SGD_FORWARD(&init_map[58].registry);
 	_register_command_CCV_NNC_SGD_BACKWARD(&init_map[59].registry);
-	_register_command_CCV_NNC_ROI_ALIGN_FORWARD(&init_map[60].registry);
-	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD(&init_map[61].registry);
+	_register_command_CCV_NNC_COMM_REDUCE_FORWARD(&init_map[60].registry);
+	_register_command_CCV_NNC_COMM_REDUCE_BACKWARD(&init_map[61].registry);
 	_register_command_CCV_NNC_MSE_FORWARD(&init_map[62].registry);
 	_register_command_CCV_NNC_MSE_BACKWARD(&init_map[63].registry);
 	_register_command_CCV_NNC_EWSUM_FORWARD(&init_map[64].registry);
 	_register_command_CCV_NNC_EWSUM_BACKWARD(&init_map[65].registry);
-	_register_command_CCV_NNC_SORT_FORWARD(&init_map[66].registry);
-	_register_command_CCV_NNC_SORT_BACKWARD(&init_map[67].registry);
+	_register_command_CCV_NNC_EWLOG_FORWARD(&init_map[66].registry);
+	_register_command_CCV_NNC_EWLOG_BACKWARD(&init_map[67].registry);
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD(&init_map[68].registry);
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD(&init_map[69].registry);
 	_register_command_CCV_NNC_EWSIN_FORWARD(&init_map[70].registry);
@@ -852,8 +858,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_CONVOLUTION_BACKWARD(&init_map[85].registry);
 	_register_command_CCV_NNC_GRID_SAMPLE_FORWARD(&init_map[86].registry);
 	_register_command_CCV_NNC_GRID_SAMPLE_BACKWARD(&init_map[87].registry);
-	_register_command_CCV_NNC_RELU_FORWARD(&init_map[88].registry);
-	_register_command_CCV_NNC_RELU_BACKWARD(&init_map[89].registry);
+	_register_command_CCV_NNC_ADAMW_FORWARD(&init_map[88].registry);
+	_register_command_CCV_NNC_ADAMW_BACKWARD(&init_map[89].registry);
 	_register_command_CCV_NNC_PARTITION_FORWARD(&init_map[90].registry);
 	_register_command_CCV_NNC_PARTITION_BACKWARD(&init_map[91].registry);
 	_register_command_CCV_NNC_COMPRESSION_LSSC_FORWARD(&init_map[92].registry);
@@ -862,32 +868,32 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWEXP_BACKWARD(&init_map[95].registry);
 	_register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD(&init_map[96].registry);
 	_register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_BACKWARD(&init_map[97].registry);
-	_register_command_CCV_NNC_SIGMOID_FORWARD(&init_map[98].registry);
-	_register_command_CCV_NNC_SIGMOID_BACKWARD(&init_map[99].registry);
+	_register_command_CCV_NNC_ROTATE_HALF_FORWARD(&init_map[98].registry);
+	_register_command_CCV_NNC_ROTATE_HALF_BACKWARD(&init_map[99].registry);
 	_register_command_CCV_NNC_REDUCE_MAX_FORWARD(&init_map[100].registry);
 	_register_command_CCV_NNC_REDUCE_MAX_BACKWARD(&init_map[101].registry);
 	_register_command_CCV_NNC_ADAM_FORWARD(&init_map[102].registry);
 	_register_command_CCV_NNC_ADAM_BACKWARD(&init_map[103].registry);
-	_register_command_CCV_NNC_REDUCE_MIN_FORWARD(&init_map[104].registry);
-	_register_command_CCV_NNC_REDUCE_MIN_BACKWARD(&init_map[105].registry);
-	_register_command_CCV_NNC_RMSPROP_FORWARD(&init_map[106].registry);
-	_register_command_CCV_NNC_RMSPROP_BACKWARD(&init_map[107].registry);
+	_register_command_CCV_NNC_SCATTER_ADD_FORWARD(&init_map[104].registry);
+	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD(&init_map[105].registry);
+	_register_command_CCV_NNC_REDUCE_MIN_FORWARD(&init_map[106].registry);
+	_register_command_CCV_NNC_REDUCE_MIN_BACKWARD(&init_map[107].registry);
 	_register_command_CCV_NNC_MUL_FORWARD(&init_map[108].registry);
 	_register_command_CCV_NNC_MUL_BACKWARD(&init_map[109].registry);
 	_register_command_CCV_NNC_GROUP_NORM_FORWARD(&init_map[110].registry);
 	_register_command_CCV_NNC_GROUP_NORM_BACKWARD(&init_map[111].registry);
-	_register_command_CCV_NNC_ADD_FORWARD(&init_map[112].registry);
-	_register_command_CCV_NNC_ADD_BACKWARD(&init_map[113].registry);
-	_register_command_CCV_NNC_COMM_REDUCE_FORWARD(&init_map[114].registry);
-	_register_command_CCV_NNC_COMM_REDUCE_BACKWARD(&init_map[115].registry);
+	_register_command_CCV_NNC_HISTOGRAM_FORWARD(&init_map[112].registry);
+	_register_command_CCV_NNC_HISTOGRAM_BACKWARD(&init_map[113].registry);
+	_register_command_CCV_NNC_SIGMOID_FORWARD(&init_map[114].registry);
+	_register_command_CCV_NNC_SIGMOID_BACKWARD(&init_map[115].registry);
 	_register_command_CCV_NNC_ARGMIN_FORWARD(&init_map[116].registry);
 	_register_command_CCV_NNC_ARGMIN_BACKWARD(&init_map[117].registry);
 	_register_command_CCV_NNC_SMOOTH_L1_FORWARD(&init_map[118].registry);
 	_register_command_CCV_NNC_SMOOTH_L1_BACKWARD(&init_map[119].registry);
 	_register_command_CCV_NNC_SCALAR_MUL_FORWARD(&init_map[120].registry);
 	_register_command_CCV_NNC_SCALAR_MUL_BACKWARD(&init_map[121].registry);
-	_register_command_CCV_NNC_HISTOGRAM_FORWARD(&init_map[122].registry);
-	_register_command_CCV_NNC_HISTOGRAM_BACKWARD(&init_map[123].registry);
+	_register_command_CCV_NNC_LSTM_FORWARD(&init_map[122].registry);
+	_register_command_CCV_NNC_LSTM_BACKWARD(&init_map[123].registry);
 	_register_command_CCV_NNC_UPSAMPLE_FORWARD(&init_map[124].registry);
 	_register_command_CCV_NNC_UPSAMPLE_BACKWARD(&init_map[125].registry);
 	_register_command_CCV_NNC_SET_FORWARD(&init_map[126].registry);
@@ -906,43 +912,47 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWABS_BACKWARD(&init_map[139].registry);
 	_register_command_CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD(&init_map[140].registry);
 	_register_command_CCV_NNC_UNIQUE_CONSECUTIVE_BACKWARD(&init_map[141].registry);
-	_register_command_CCV_NNC_LAYER_NORM_FORWARD(&init_map[142].registry);
-	_register_command_CCV_NNC_LAYER_NORM_BACKWARD(&init_map[143].registry);
-	_register_command_CCV_NNC_EWCOS_FORWARD(&init_map[144].registry);
-	_register_command_CCV_NNC_EWCOS_BACKWARD(&init_map[145].registry);
-	_register_command_CCV_NNC_COMM_BROADCAST_FORWARD(&init_map[146].registry);
-	_register_command_CCV_NNC_COMM_BROADCAST_BACKWARD(&init_map[147].registry);
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD(&init_map[148].registry);
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD(&init_map[149].registry);
-	_register_command_CCV_NNC_SCATTER_ADD_FORWARD(&init_map[150].registry);
-	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD(&init_map[151].registry);
-	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD(&init_map[152].registry);
-	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD(&init_map[153].registry);
-	_register_command_CCV_NNC_SWISH_FORWARD(&init_map[154].registry);
-	_register_command_CCV_NNC_SWISH_BACKWARD(&init_map[155].registry);
-	_register_command_CCV_NNC_ADAMW_FORWARD(&init_map[156].registry);
-	_register_command_CCV_NNC_ADAMW_BACKWARD(&init_map[157].registry);
+	_register_command_CCV_NNC_EWCOS_FORWARD(&init_map[142].registry);
+	_register_command_CCV_NNC_EWCOS_BACKWARD(&init_map[143].registry);
+	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD(&init_map[144].registry);
+	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD(&init_map[145].registry);
+	_register_command_CCV_NNC_LAYER_NORM_FORWARD(&init_map[146].registry);
+	_register_command_CCV_NNC_LAYER_NORM_BACKWARD(&init_map[147].registry);
+	_register_command_CCV_NNC_RELU_FORWARD(&init_map[148].registry);
+	_register_command_CCV_NNC_RELU_BACKWARD(&init_map[149].registry);
+	_register_command_CCV_NNC_MIN_FORWARD(&init_map[150].registry);
+	_register_command_CCV_NNC_MIN_BACKWARD(&init_map[151].registry);
+	_register_command_CCV_NNC_COMM_BROADCAST_FORWARD(&init_map[152].registry);
+	_register_command_CCV_NNC_COMM_BROADCAST_BACKWARD(&init_map[153].registry);
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD(&init_map[154].registry);
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD(&init_map[155].registry);
+	_register_command_CCV_NNC_ADD_FORWARD(&init_map[156].registry);
+	_register_command_CCV_NNC_ADD_BACKWARD(&init_map[157].registry);
+	_register_command_CCV_NNC_SWISH_FORWARD(&init_map[158].registry);
+	_register_command_CCV_NNC_SWISH_BACKWARD(&init_map[159].registry);
 
 	_register_command_CCV_NNC_ADAM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[102].backends[2]));
 	_register_command_CCV_NNC_ADAM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[103].backends[2]));
-	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[156].backends[2]));
-	_register_command_CCV_NNC_ADAMW_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[157].backends[2]));
+	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[88].backends[2]));
+	_register_command_CCV_NNC_ADAMW_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[89].backends[2]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[24].backends[2]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_OPT(&(init_map[24].backends[4]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[25].backends[2]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_OPT(&(init_map[25].backends[4]));
-	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[112].backends[2]));
-	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[113].backends[2]));
+	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[156].backends[2]));
+	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[157].backends[2]));
 	_register_command_CCV_NNC_MUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[108].backends[2]));
 	_register_command_CCV_NNC_MUL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[109].backends[2]));
 	_register_command_CCV_NNC_SCALAR_MUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[120].backends[2]));
 	_register_command_CCV_NNC_SCALAR_MUL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[121].backends[2]));
 	_register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[134].backends[2]));
 	_register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[135].backends[2]));
-	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[152].backends[2]));
-	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[153].backends[2]));
-	_register_command_CCV_NNC_MIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[40].backends[2]));
-	_register_command_CCV_NNC_MIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[41].backends[2]));
+	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[144].backends[2]));
+	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[145].backends[2]));
+	_register_command_CCV_NNC_ROTATE_HALF_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[98].backends[2]));
+	_register_command_CCV_NNC_ROTATE_HALF_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[99].backends[2]));
+	_register_command_CCV_NNC_MIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[150].backends[2]));
+	_register_command_CCV_NNC_MIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[151].backends[2]));
 	_register_command_CCV_NNC_MAX_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[56].backends[2]));
 	_register_command_CCV_NNC_MAX_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[57].backends[2]));
 	_register_command_CCV_NNC_COMPRESSION_LSSC_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[92].backends[2]));
@@ -964,14 +974,14 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWEXP_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[95].backends[2]));
 	_register_command_CCV_NNC_EWPOW_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[30].backends[2]));
 	_register_command_CCV_NNC_EWPOW_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[31].backends[2]));
-	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[14].backends[2]));
-	_register_command_CCV_NNC_EWLOG_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[15].backends[2]));
+	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[66].backends[2]));
+	_register_command_CCV_NNC_EWLOG_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[67].backends[2]));
 	_register_command_CCV_NNC_EWSQRT_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[136].backends[2]));
 	_register_command_CCV_NNC_EWSQRT_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[137].backends[2]));
 	_register_command_CCV_NNC_EWSIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[70].backends[2]));
 	_register_command_CCV_NNC_EWSIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[71].backends[2]));
-	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[144].backends[2]));
-	_register_command_CCV_NNC_EWCOS_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[145].backends[2]));
+	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[142].backends[2]));
+	_register_command_CCV_NNC_EWCOS_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[143].backends[2]));
 	_register_command_CCV_NNC_EWABS_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[138].backends[2]));
 	_register_command_CCV_NNC_EWABS_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[139].backends[2]));
 	_register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[6].backends[2]));
@@ -979,8 +989,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[48].backends[2]));
 	_register_command_CCV_NNC_GELU_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[49].backends[2]));
 	_register_command_CCV_NNC_GRID_SAMPLE_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[86].backends[2]));
-	_register_command_CCV_NNC_HISTOGRAM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[122].backends[2]));
-	_register_command_CCV_NNC_HISTOGRAM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[123].backends[2]));
+	_register_command_CCV_NNC_HISTOGRAM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[112].backends[2]));
+	_register_command_CCV_NNC_HISTOGRAM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[113].backends[2]));
 	_register_command_CCV_NNC_INDEX_SELECT_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[16].backends[2]));
 	_register_command_CCV_NNC_INDEX_SELECT_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[17].backends[2]));
 	_register_command_CCV_NNC_REDUCE_ISNAN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[128].backends[2]));
@@ -1001,8 +1011,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_NMS_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[35].backends[2]));
 	_register_command_CCV_NNC_BATCH_NORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[22].backends[2]));
 	_register_command_CCV_NNC_BATCH_NORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[23].backends[2]));
-	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[142].backends[2]));
-	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[143].backends[2]));
+	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[146].backends[2]));
+	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[147].backends[2]));
 	_register_command_CCV_NNC_GROUP_NORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[110].backends[2]));
 	_register_command_CCV_NNC_GROUP_NORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[111].backends[2]));
 	_register_command_CCV_NNC_RMSNORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[44].backends[2]));
@@ -1015,8 +1025,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[37].backends[2]));
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[12].backends[2]));
 	_register_command_CCV_NNC_AVERAGE_POOL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[13].backends[2]));
-	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[26].backends[2]));
-	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[27].backends[2]));
+	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[40].backends[2]));
+	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[41].backends[2]));
 	_register_command_CCV_NNC_RANDOM_NORMAL_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[78].backends[2]));
 	_register_command_CCV_NNC_RANDOM_NORMAL_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[79].backends[2]));
 	_register_command_CCV_NNC_REDUCE_SUM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[50].backends[2]));
@@ -1025,38 +1035,38 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_REDUCE_MEAN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[75].backends[2]));
 	_register_command_CCV_NNC_REDUCE_MAX_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[100].backends[2]));
 	_register_command_CCV_NNC_REDUCE_MAX_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[101].backends[2]));
-	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[104].backends[2]));
-	_register_command_CCV_NNC_REDUCE_MIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[105].backends[2]));
+	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[106].backends[2]));
+	_register_command_CCV_NNC_REDUCE_MIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[107].backends[2]));
 	_register_command_CCV_NNC_REDUCE_NORM2_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[28].backends[2]));
 	_register_command_CCV_NNC_REDUCE_NORM2_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[29].backends[2]));
 	_register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[32].backends[2]));
 	_register_command_CCV_NNC_ARGMAX_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[33].backends[2]));
 	_register_command_CCV_NNC_ARGMIN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[116].backends[2]));
 	_register_command_CCV_NNC_ARGMIN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[117].backends[2]));
-	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[88].backends[2]));
-	_register_command_CCV_NNC_RELU_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[89].backends[2]));
-	_register_command_CCV_NNC_RMSPROP_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[106].backends[2]));
-	_register_command_CCV_NNC_RMSPROP_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[107].backends[2]));
-	_register_command_CCV_NNC_ROI_ALIGN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[60].backends[2]));
-	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[61].backends[2]));
+	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[148].backends[2]));
+	_register_command_CCV_NNC_RELU_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[149].backends[2]));
+	_register_command_CCV_NNC_RMSPROP_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[14].backends[2]));
+	_register_command_CCV_NNC_RMSPROP_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[15].backends[2]));
+	_register_command_CCV_NNC_ROI_ALIGN_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[26].backends[2]));
+	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[27].backends[2]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[132].backends[2]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[133].backends[2]));
-	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[150].backends[2]));
-	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[151].backends[2]));
+	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[104].backends[2]));
+	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[105].backends[2]));
 	_register_command_CCV_NNC_SGD_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[58].backends[2]));
 	_register_command_CCV_NNC_SGD_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[59].backends[2]));
-	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[98].backends[2]));
-	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[99].backends[2]));
+	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[114].backends[2]));
+	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[115].backends[2]));
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[38].backends[2]));
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[39].backends[2]));
 	_register_command_CCV_NNC_SOFTMAX_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[46].backends[2]));
 	_register_command_CCV_NNC_SOFTMAX_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[47].backends[2]));
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[148].backends[2]));
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[149].backends[2]));
-	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[66].backends[2]));
-	_register_command_CCV_NNC_SORT_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[67].backends[2]));
-	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[154].backends[2]));
-	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[155].backends[2]));
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[154].backends[2]));
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[155].backends[2]));
+	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[42].backends[2]));
+	_register_command_CCV_NNC_SORT_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[43].backends[2]));
+	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[158].backends[2]));
+	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[159].backends[2]));
 	_register_command_CCV_NNC_TANH_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[76].backends[2]));
 	_register_command_CCV_NNC_TANH_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[77].backends[2]));
 	_register_command_CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[140].backends[2]));
@@ -1078,28 +1088,28 @@ static inline void _ccv_nnc_cmd_init(void)
 #ifdef HAVE_CUDA
 	_register_command_CCV_NNC_ADAM_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[102].backends[5]));
 	_register_command_CCV_NNC_ADAM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[103].backends[5]));
-	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[156].backends[5]));
-	_register_command_CCV_NNC_ADAMW_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[157].backends[5]));
+	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[88].backends[5]));
+	_register_command_CCV_NNC_ADAMW_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[89].backends[5]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[24].backends[0]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[25].backends[0]));
-	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[112].backends[3]));
-	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[113].backends[3]));
+	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[156].backends[3]));
+	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[157].backends[3]));
 	_register_command_CCV_NNC_MUL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[108].backends[3]));
 	_register_command_CCV_NNC_MUL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[109].backends[3]));
 	_register_command_CCV_NNC_SCALAR_MUL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[120].backends[3]));
 	_register_command_CCV_NNC_SCALAR_MUL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[121].backends[3]));
 	_register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[134].backends[5]));
 	_register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[135].backends[5]));
-	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[152].backends[0]));
-	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[153].backends[0]));
+	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[144].backends[0]));
+	_register_command_CCV_NNC_SEGMENTED_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUBLAS(&(init_map[145].backends[0]));
 	_register_command_CCV_NNC_COMM_ALLREDUCE_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[80].backends[1]));
 	_register_command_CCV_NNC_COMM_ALLREDUCE_BACKWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[81].backends[1]));
-	_register_command_CCV_NNC_COMM_BROADCAST_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[146].backends[1]));
-	_register_command_CCV_NNC_COMM_BROADCAST_BACKWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[147].backends[1]));
-	_register_command_CCV_NNC_COMM_REDUCE_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[114].backends[1]));
-	_register_command_CCV_NNC_COMM_REDUCE_BACKWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[115].backends[1]));
-	_register_command_CCV_NNC_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[40].backends[5]));
-	_register_command_CCV_NNC_MIN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[41].backends[5]));
+	_register_command_CCV_NNC_COMM_BROADCAST_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[152].backends[1]));
+	_register_command_CCV_NNC_COMM_BROADCAST_BACKWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[153].backends[1]));
+	_register_command_CCV_NNC_COMM_REDUCE_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[60].backends[1]));
+	_register_command_CCV_NNC_COMM_REDUCE_BACKWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[61].backends[1]));
+	_register_command_CCV_NNC_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[150].backends[5]));
+	_register_command_CCV_NNC_MIN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[151].backends[5]));
 	_register_command_CCV_NNC_MAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[56].backends[5]));
 	_register_command_CCV_NNC_MAX_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[57].backends[5]));
 	_register_command_CCV_NNC_COMPRESSION_LSSC_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[92].backends[5]));
@@ -1118,14 +1128,14 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWEXP_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[95].backends[5]));
 	_register_command_CCV_NNC_EWPOW_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[30].backends[5]));
 	_register_command_CCV_NNC_EWPOW_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[31].backends[5]));
-	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[14].backends[5]));
-	_register_command_CCV_NNC_EWLOG_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[15].backends[5]));
+	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[66].backends[5]));
+	_register_command_CCV_NNC_EWLOG_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[67].backends[5]));
 	_register_command_CCV_NNC_EWSQRT_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[136].backends[5]));
 	_register_command_CCV_NNC_EWSQRT_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[137].backends[5]));
 	_register_command_CCV_NNC_EWSIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[70].backends[5]));
 	_register_command_CCV_NNC_EWSIN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[71].backends[5]));
-	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[144].backends[5]));
-	_register_command_CCV_NNC_EWCOS_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[145].backends[5]));
+	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[142].backends[5]));
+	_register_command_CCV_NNC_EWCOS_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[143].backends[5]));
 	_register_command_CCV_NNC_EWABS_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[138].backends[5]));
 	_register_command_CCV_NNC_EWABS_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[139].backends[5]));
 	_register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[6].backends[5]));
@@ -1153,8 +1163,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_NMS_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[35].backends[5]));
 	_register_command_CCV_NNC_BATCH_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[22].backends[3]));
 	_register_command_CCV_NNC_BATCH_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[23].backends[3]));
-	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[142].backends[3]));
-	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[143].backends[3]));
+	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[146].backends[3]));
+	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[147].backends[3]));
 	_register_command_CCV_NNC_GROUP_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[110].backends[3]));
 	_register_command_CCV_NNC_GROUP_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[111].backends[3]));
 	_register_command_CCV_NNC_RMSNORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[44].backends[3]));
@@ -1167,8 +1177,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[37].backends[3]));
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[12].backends[3]));
 	_register_command_CCV_NNC_AVERAGE_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[13].backends[3]));
-	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[26].backends[5]));
-	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[27].backends[5]));
+	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[40].backends[5]));
+	_register_command_CCV_NNC_RANDOM_UNIFORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[41].backends[5]));
 	_register_command_CCV_NNC_RANDOM_NORMAL_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[78].backends[5]));
 	_register_command_CCV_NNC_RANDOM_NORMAL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[79].backends[5]));
 	_register_command_CCV_NNC_REDUCE_SUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[50].backends[3]));
@@ -1176,39 +1186,39 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[74].backends[3]));
 	_register_command_CCV_NNC_REDUCE_MEAN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[75].backends[3]));
 	_register_command_CCV_NNC_REDUCE_MAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[100].backends[3]));
-	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[104].backends[3]));
+	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[106].backends[3]));
 	_register_command_CCV_NNC_REDUCE_NORM2_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[28].backends[3]));
 	_register_command_CCV_NNC_REDUCE_NORM2_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[29].backends[3]));
 	_register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[32].backends[5]));
 	_register_command_CCV_NNC_ARGMAX_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[33].backends[5]));
 	_register_command_CCV_NNC_ARGMIN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[116].backends[5]));
 	_register_command_CCV_NNC_ARGMIN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[117].backends[5]));
-	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[88].backends[3]));
-	_register_command_CCV_NNC_RELU_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[89].backends[3]));
-	_register_command_CCV_NNC_RMSPROP_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[106].backends[5]));
-	_register_command_CCV_NNC_RMSPROP_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[107].backends[5]));
-	_register_command_CCV_NNC_LSTM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[42].backends[3]));
-	_register_command_CCV_NNC_LSTM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[43].backends[3]));
-	_register_command_CCV_NNC_ROI_ALIGN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[60].backends[5]));
-	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[61].backends[5]));
+	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[148].backends[3]));
+	_register_command_CCV_NNC_RELU_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[149].backends[3]));
+	_register_command_CCV_NNC_RMSPROP_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[14].backends[5]));
+	_register_command_CCV_NNC_RMSPROP_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[15].backends[5]));
+	_register_command_CCV_NNC_LSTM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[122].backends[3]));
+	_register_command_CCV_NNC_LSTM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[123].backends[3]));
+	_register_command_CCV_NNC_ROI_ALIGN_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[26].backends[5]));
+	_register_command_CCV_NNC_ROI_ALIGN_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[27].backends[5]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[132].backends[5]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[133].backends[5]));
-	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[150].backends[5]));
-	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[151].backends[5]));
+	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[104].backends[5]));
+	_register_command_CCV_NNC_SCATTER_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[105].backends[5]));
 	_register_command_CCV_NNC_SGD_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[58].backends[5]));
 	_register_command_CCV_NNC_SGD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[59].backends[5]));
-	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[98].backends[3]));
-	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[99].backends[3]));
+	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[114].backends[3]));
+	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[115].backends[3]));
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[38].backends[5]));
 	_register_command_CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[39].backends[5]));
 	_register_command_CCV_NNC_SOFTMAX_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[46].backends[3]));
 	_register_command_CCV_NNC_SOFTMAX_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[47].backends[3]));
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[148].backends[3]));
-	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[149].backends[3]));
-	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[66].backends[5]));
-	_register_command_CCV_NNC_SORT_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[67].backends[5]));
-	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[154].backends[5]));
-	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[155].backends[5]));
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[154].backends[3]));
+	_register_command_CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[155].backends[3]));
+	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[42].backends[5]));
+	_register_command_CCV_NNC_SORT_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[43].backends[5]));
+	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[158].backends[5]));
+	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[159].backends[5]));
 	_register_command_CCV_NNC_TANH_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[76].backends[3]));
 	_register_command_CCV_NNC_TANH_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[77].backends[3]));
 	_register_command_CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[140].backends[5]));
@@ -1230,18 +1240,18 @@ static inline void _ccv_nnc_cmd_init(void)
 #endif
 #ifdef HAVE_MPS
 	_register_command_CCV_NNC_ADAM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[102].backends[6]));
-	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[156].backends[6]));
+	_register_command_CCV_NNC_ADAMW_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[88].backends[6]));
 	_register_command_CCV_NNC_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[24].backends[6]));
 	_register_command_CCV_NNC_GEMM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[25].backends[6]));
-	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[112].backends[6]));
-	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[113].backends[6]));
+	_register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[156].backends[6]));
+	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[157].backends[6]));
 	_register_command_CCV_NNC_MUL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[108].backends[6]));
 	_register_command_CCV_NNC_MUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[109].backends[6]));
 	_register_command_CCV_NNC_SCALAR_MUL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[120].backends[6]));
 	_register_command_CCV_NNC_SCALAR_MUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[121].backends[6]));
 	_register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[134].backends[6]));
 	_register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[135].backends[6]));
-	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[152].backends[6]));
+	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[144].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[84].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[85].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[96].backends[6]));
@@ -1250,10 +1260,10 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_EWDIV_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[2].backends[6]));
 	_register_command_CCV_NNC_EWEXP_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[94].backends[6]));
 	_register_command_CCV_NNC_EWPOW_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[30].backends[6]));
-	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[14].backends[6]));
+	_register_command_CCV_NNC_EWLOG_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[66].backends[6]));
 	_register_command_CCV_NNC_EWSQRT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[136].backends[6]));
 	_register_command_CCV_NNC_EWSIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[70].backends[6]));
-	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[144].backends[6]));
+	_register_command_CCV_NNC_EWCOS_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[142].backends[6]));
 	_register_command_CCV_NNC_EWABS_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[138].backends[6]));
 	_register_command_CCV_NNC_CLAMP_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[6].backends[6]));
 	_register_command_CCV_NNC_GELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[48].backends[6]));
@@ -1265,8 +1275,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_LEAKY_RELU_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[21].backends[6]));
 	_register_command_CCV_NNC_MSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[62].backends[6]));
 	_register_command_CCV_NNC_MSE_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[63].backends[6]));
-	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[142].backends[6]));
-	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[143].backends[6]));
+	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[146].backends[6]));
+	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[147].backends[6]));
 	_register_command_CCV_NNC_GROUP_NORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[110].backends[6]));
 	_register_command_CCV_NNC_GROUP_NORM_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[111].backends[6]));
 	_register_command_CCV_NNC_RMSNORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[44].backends[6]));
@@ -1276,28 +1286,28 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_PARTITION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[90].backends[6]));
 	_register_command_CCV_NNC_MAX_POOL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[36].backends[6]));
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[12].backends[6]));
-	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[26].backends[6]));
+	_register_command_CCV_NNC_RANDOM_UNIFORM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[40].backends[6]));
 	_register_command_CCV_NNC_RANDOM_NORMAL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[78].backends[6]));
 	_register_command_CCV_NNC_REDUCE_SUM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[50].backends[6]));
 	_register_command_CCV_NNC_REDUCE_MEAN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[74].backends[6]));
 	_register_command_CCV_NNC_REDUCE_MEAN_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[75].backends[6]));
 	_register_command_CCV_NNC_REDUCE_MAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[100].backends[6]));
-	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[104].backends[6]));
+	_register_command_CCV_NNC_REDUCE_MIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[106].backends[6]));
 	_register_command_CCV_NNC_REDUCE_NORM2_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[28].backends[6]));
 	_register_command_CCV_NNC_REDUCE_NORM2_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[29].backends[6]));
 	_register_command_CCV_NNC_ARGMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[32].backends[6]));
 	_register_command_CCV_NNC_ARGMIN_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[116].backends[6]));
-	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[88].backends[6]));
+	_register_command_CCV_NNC_RELU_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[148].backends[6]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[132].backends[6]));
 	_register_command_CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[133].backends[6]));
-	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[150].backends[6]));
-	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[98].backends[6]));
-	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[99].backends[6]));
+	_register_command_CCV_NNC_SCATTER_ADD_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[104].backends[6]));
+	_register_command_CCV_NNC_SIGMOID_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[114].backends[6]));
+	_register_command_CCV_NNC_SIGMOID_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[115].backends[6]));
 	_register_command_CCV_NNC_SOFTMAX_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[46].backends[6]));
 	_register_command_CCV_NNC_SOFTMAX_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[47].backends[6]));
-	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[66].backends[6]));
-	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[154].backends[6]));
-	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[155].backends[6]));
+	_register_command_CCV_NNC_SORT_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[42].backends[6]));
+	_register_command_CCV_NNC_SWISH_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[158].backends[6]));
+	_register_command_CCV_NNC_SWISH_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[159].backends[6]));
 	_register_command_CCV_NNC_TANH_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[76].backends[6]));
 	_register_command_CCV_NNC_TANH_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[77].backends[6]));
 	_register_command_CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[140].backends[6]));
