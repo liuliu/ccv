@@ -37,6 +37,9 @@ constexpr uint32_t kHybridProbeN = 4096;
 constexpr uint32_t kHybridProbeK = 4096;
 constexpr double kANEReferenceTFlops = 20.0;
 constexpr uint32_t kHybridDisableRatioThreshold = 7;
+constexpr uint64_t kHybridLargeANEWorkThreshold = 3ULL * 1024 * 1024;
+constexpr uint32_t kHybridMinANERowsForLargeWork = 512;
+constexpr uint32_t kHybridMinANERowsForSmallWork = 1024;
 
 typedef struct {
   bool initialized;
@@ -386,6 +389,11 @@ static uint32_t choose_hybrid_ane_rows_per_batch(
     ane_m = params.M > kANERowAlignment ? params.M - kANERowAlignment : 0;
   ane_m -= ane_m % kANERowAlignment;
   if (ane_m == 0 || ane_m >= params.M)
+    return 0;
+  const uint64_t work_per_row = (uint64_t)params.N * params.K;
+  const uint32_t min_ane_m =
+      work_per_row >= kHybridLargeANEWorkThreshold ? kHybridMinANERowsForLargeWork : kHybridMinANERowsForSmallWork;
+  if (ane_m < min_ane_m)
     return 0;
   return ane_m;
 }

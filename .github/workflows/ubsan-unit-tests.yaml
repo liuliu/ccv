@@ -15,8 +15,6 @@ jobs:
           cd lib && ./configure && cd ..
           make -j 64 -C lib ubsan
           make -j 64 -C bin ubsan
-          make -j 64 -C bin/nnc ubsan
-          make -j 64 -C bin/cuda ubsan
           make -j 64 -C test ubsan
       - name: tests
         run: |
