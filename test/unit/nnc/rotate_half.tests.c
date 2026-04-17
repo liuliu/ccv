@@ -72,4 +72,29 @@ TEST_CASE("rotate half of a tensor view")
 	ccv_nnc_tensor_view_free(bv);
 }
 
+TEST_CASE("ccv_cnnp rotate half")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_rotate_half("rotate_half"), MODEL_IO_LIST(x));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(y), 0, "rotate_half");
+	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 2, 4);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	float ap[] = {
+		1, 2, 3, 4,
+		5, 6, 7, 8,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a), TENSOR_LIST(b), 0, 0);
+	float btp[] = {
+		3, 4, 1, 2,
+		7, 8, 5, 6,
+	};
+	ccv_nnc_tensor_t const bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "ccv_cnnp rotate half should rotate the last dim by half");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_cnnp_model_free(model);
+}
+
 #include "case_main.h"

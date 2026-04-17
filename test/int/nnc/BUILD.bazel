@@ -154,6 +154,16 @@ cc_binary(
 )
 
 cc_binary(
+	name = "rotate_half.tests",
+	srcs = ["rotate_half.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "mpsdnn.tests",
 	srcs = ["mpsdnn.tests.c"],
 	copts = ccv_default_copts(),

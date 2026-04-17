@@ -20,6 +20,7 @@
 #include "ccv_nnc_mfa_sigmoid.hpp"
 #include "ccv_nnc_mfa_swish.hpp"
 #include "ccv_nnc_mfa_add.hpp"
+#include "ccv_nnc_mfa_rotate_half.hpp"
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 
 #ifdef __cplusplus

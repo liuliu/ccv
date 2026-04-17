@@ -695,6 +695,8 @@ void _register_command_CCV_NNC_SCALAR_MUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(c
 void _register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_ROTATE_HALF_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_CONVOLUTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_CONVOLUTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -1252,6 +1254,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_CMUL_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[134].backends[6]));
 	_register_command_CCV_NNC_CMUL_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[135].backends[6]));
 	_register_command_CCV_NNC_SEGMENTED_GEMM_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[144].backends[6]));
+	_register_command_CCV_NNC_ROTATE_HALF_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[98].backends[6]));
+	_register_command_CCV_NNC_ROTATE_HALF_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[99].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[84].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_BACKWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[85].backends[6]));
 	_register_command_CCV_NNC_CONVOLUTION_TRANSPOSE_FORWARD_backend_CCV_NNC_BACKEND_MPS(&(init_map[96].backends[6]));
