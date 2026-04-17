@@ -23,7 +23,7 @@ static int _ccv_nnc_rotate_half_back_bitmask(const ccv_nnc_cmd_param_t cmd, cons
 }
 
 REGISTER_COMMAND(CCV_NNC_ROTATE_HALF_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_rotate_half_cpu_ref.c, mps/ccv_nnc_rotate_half_mps.m)
+	FIND_BACKEND(ccv_nnc_rotate_half_cpu_ref.c, gpu/ccv_nnc_rotate_half_gpu_ref.cu, mps/ccv_nnc_rotate_half_mps.m)
 {
 	registry->bitmask = _ccv_nnc_rotate_half_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -31,7 +31,7 @@ REGISTER_COMMAND(CCV_NNC_ROTATE_HALF_FORWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 REGISTER_COMMAND(CCV_NNC_ROTATE_HALF_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_rotate_half_cpu_ref.c, mps/ccv_nnc_rotate_half_mps.m)
+	FIND_BACKEND(ccv_nnc_rotate_half_cpu_ref.c, gpu/ccv_nnc_rotate_half_gpu_ref.cu, mps/ccv_nnc_rotate_half_mps.m)
 {
 	registry->bitmask = _ccv_nnc_rotate_half_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
