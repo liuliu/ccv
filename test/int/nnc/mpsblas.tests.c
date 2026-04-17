@@ -4752,6 +4752,84 @@ TEST_CASE("scaled dot product attention + unify head with mps")
 	ccv_nnc_tensor_free(hr);
 }
 
+TEST_CASE("scaled dot product attention + row-wise 8i unify head with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int B = 2;
+	const int R = 16;
+	const int H = 4;
+	const int D = 32;
+	const int K = H * D;
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const hv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const hw_dense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, K, K), 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, K, K)), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, K), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < B * R * H * D; i++)
+	{
+		hq->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		hk->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		hv->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	}
+	for (i = 0; i < K * K; i++)
+		hw_dense->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (i = 0; i < K; i++)
+		hbias->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw_dense->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, K * K, K, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(hwq->info), "row-wise 8i weight quantization should fit the output tensor");
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const gk = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const gv = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const gwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, K, K)), 0);
+	ccv_nnc_tensor_t* const gwd = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, K, K), 0);
+	ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, K), 0);
+	ccv_nnc_tensor_t* const grq = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, K), 0);
+	ccv_nnc_tensor_t* const grd = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, K), 0);
+	ccv_nnc_tensor_t* const gcq = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const gcd = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hwq, hbias), TENSOR_LIST(gq, gk, gv, gwq, gbias), 0);
+	ccv_nnc_dequantize_8i_rowwise(gwq->data.u8, CCV_32F, CCV_TENSOR_GPU_MEMORY, qsize, K, gwd->data.u8, K * K);
+	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / 8, 0);
+	cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_8I;
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gk, gv, NULL, gwq, gbias), TENSOR_LIST(grq, NULL, gcq), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gk, gv, NULL, gwd, gbias), TENSOR_LIST(grd, NULL, gcd), 0);
+	ccv_nnc_tensor_t* const hrq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, K), 0);
+	ccv_nnc_tensor_t* const hrd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, K), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(grq, grd), TENSOR_LIST(hrq, hrd), 0);
+	float max_relative_diff = 0;
+	int max_diff_idx = 0;
+	for (i = 0; i < B * R * K; i++)
+	{
+		const float denom = fmaxf(fmaxf(fabsf(hrq->data.f32[i]), fabsf(hrd->data.f32[i])), 1.0f);
+		const float relative_diff = fabsf(hrq->data.f32[i] - hrd->data.f32[i]) / denom;
+		if (relative_diff > max_relative_diff)
+			max_relative_diff = relative_diff, max_diff_idx = i;
+	}
+	REQUIRE(max_relative_diff <= 5e-2, "row-wise 8i unify head result should match dequantized weight result (max relative diff %g at %d: %g vs %g)", max_relative_diff, max_diff_idx, hrq->data.f32[max_diff_idx], hrd->data.f32[max_diff_idx]);
+	ccv_nnc_tensor_free(hq);
+	ccv_nnc_tensor_free(hk);
+	ccv_nnc_tensor_free(hv);
+	ccv_nnc_tensor_free(hw_dense);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(gk);
+	ccv_nnc_tensor_free(gv);
+	ccv_nnc_tensor_free(gwq);
+	ccv_nnc_tensor_free(gwd);
+	ccv_nnc_tensor_free(gbias);
+	ccv_nnc_tensor_free(grq);
+	ccv_nnc_tensor_free(grd);
+	ccv_nnc_tensor_free(gcq);
+	ccv_nnc_tensor_free(gcd);
+	ccv_nnc_tensor_free(hrq);
+	ccv_nnc_tensor_free(hrd);
+}
+
 TEST_CASE("scaled dot product attention gradient with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
