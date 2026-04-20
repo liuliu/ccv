@@ -10,7 +10,152 @@ using namespace ccv::nnc;
 #include "kernels/NAMatMulKernel.hpp"
 #include "kernels/NAMatMulKernelDescriptor.hpp"
 #include "kernels/NAMatMulDescriptor.hpp"
+#include "kernels/NAMatMulSmallMKernel.hpp"
+#include "kernels/NAMatMulSmallMKernelDescriptor.hpp"
+#include "kernels/NAMatMulSmallMDescriptor.hpp"
 #include <string>
+
+static constexpr uint32_t kNAMatMulSmallMLowKMaxM = 48;
+static constexpr uint32_t kNAMatMulSmallMReducedMaxM = 16;
+static constexpr uint32_t kNAMatMulSmallMHighK = 16384;
+static constexpr uint32_t kNAMatMulSmallMVectorK = 5120;
+static constexpr uint32_t kNAMatMulSmallMPack = 8;
+
+static bool _ccv_nnc_mfa_gemm_memory_precisions(const ccv_nnc_mfa_gemm_params_t params, GEMMOperandPrecisions* const precisions) noexcept
+{
+  switch (params.data_type) {
+    case MTL::DataTypeHalf: {
+      *precisions = {
+        .A = GEMMOperandPrecision::FP16,
+        .B = GEMMOperandPrecision::FP16,
+        .C = GEMMOperandPrecision::FP16,
+        .bias = GEMMOperandPrecision::FP16,
+      };
+      return true;
+    }
+    case MTL::DataTypeBFloat: {
+      *precisions = {
+        .A = GEMMOperandPrecision::BF16,
+        .B = GEMMOperandPrecision::BF16,
+        .C = GEMMOperandPrecision::BF16,
+        .bias = GEMMOperandPrecision::BF16,
+      };
+      return true;
+    }
+    case MTL::DataTypeFloat: {
+      *precisions = {
+        .A = GEMMOperandPrecision::FP32,
+        .B = GEMMOperandPrecision::FP32,
+        .C = GEMMOperandPrecision::FP32,
+        .bias = GEMMOperandPrecision::FP32,
+      };
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+static bool _ccv_nnc_mfa_use_na_matmul_small_m(const ccv_nnc_mfa_gemm_params_t params) noexcept
+{
+  // This variant targets small M over transposed weights:
+  // C[M, N] = A[M, K] * B[N, K]^T. The packed diagonal trick requires NAX.
+  // At larger K, only widen M when the SmallM split-K path can use full packed tiles.
+  NAMatMulSmallMDescriptor splitDesc;
+  splitDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
+  const uint16_t splitK = splitDesc.splitK();
+  const uint32_t high_k_max_m = splitK > 1 ? kNAMatMulSmallMReducedMaxM : 8;
+  const uint32_t max_m = params.K >= kNAMatMulSmallMHighK ? high_k_max_m : kNAMatMulSmallMLowKMaxM;
+  return params.use_neural_accelerators &&
+    (params.data_type == MTL::DataTypeHalf || params.data_type == MTL::DataTypeBFloat) &&
+    params.M <= max_m &&
+    (params.M != 1 || params.K < kNAMatMulSmallMVectorK) &&
+    params.batch_dimension == 1 &&
+    !params.A_trans &&
+    params.B_trans &&
+    !params.D_trans &&
+    (params.K % kNAMatMulSmallMPack) == 0 &&
+    params.K < 65536;
+}
+
+static NAMatMulSmallMDescriptor _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(const ccv_nnc_mfa_gemm_params_t params) noexcept
+{
+  NAMatMulSmallMDescriptor desc;
+  desc.matrixDimensions = simd::uint3 {
+    params.M,
+    params.N,
+    params.K,
+  };
+  CCV_NNC_MFA_PRECONDITION(_ccv_nnc_mfa_gemm_memory_precisions(params, &desc.memoryPrecisions));
+  desc.useBias = params.fused_bias;
+  desc.batchDimension = params.batch_dimension;
+  return desc;
+}
+
+static void _ccv_nnc_mfa_encode_na_matmul_small_m(
+  mfa::context* context,
+  const ccv_nnc_mfa_gemm_params_t params,
+  MTL::CommandBatch* command_batch,
+  MTL::Buffer** tensors,
+  size_t* tensor_offsets,
+  const int num_tensors)
+{
+  CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
+  NAMatMulSmallMDescriptor desc = _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(params);
+  const NAMatMulSmallMScratchOffsets offsets = desc.scratchOffsets();
+
+  if (METAL_LOG_LEVEL(context) >= 1) {
+    ccv_nnc_mfa_log_message("Using NAX small-M MatMul.");
+  }
+
+  auto pool = NS::AutoreleasePool::alloc()->init();
+  auto &shaderCache = context->kernel_cache;
+  DeviceProperties dprops = DeviceProperties();
+  auto pipelineValue = shaderCache.findKernel<NAMatMulSmallMKernel, NAMatMulSmallMDescriptor, NAMatMulSmallMKernelDescriptor>(desc, context->device.get(), dprops);
+  pool->drain();
+  auto kernel = pipelineValue->kernel;
+  MTL::Buffer* const scratch = context->request_scratch(offsets.total);
+
+  const uint64_t reduce_threads = (uint64_t)params.M * params.N;
+  const MTL::Size linear_group_size(256, 1, 1);
+  auto dispatch_linear =
+  [&](MTL::ComputeCommandEncoder* const encoder, const uint64_t threads) {
+    encoder->dispatchThreadgroups(
+      MTL::Size((int64_t)((threads + 255) / 256), 1, 1),
+      linear_group_size);
+  };
+
+  {
+    auto encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(pipelineValue->pipeline.get());
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(scratch, MTL::ResourceUsageWrite);
+    encoder->setBuffer(tensors[1], tensor_offsets[1], 0);
+    encoder->setBuffer(tensors[0], tensor_offsets[0], 1);
+    encoder->setBuffer(scratch, offsets.partials, 2);
+    encoder->dispatchThreadgroups(
+      kernel->threadgroupsPerGrid(desc),
+      MTL::Size(kernel->threadgroupSize(pipelineValue->pipeline.get()), 1, 1));
+    command_batch->finishCommand(encoder);
+  }
+  {
+    auto encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(pipelineValue->second.get());
+    encoder->useResource(scratch, MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    if (params.fused_bias) {
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    }
+    encoder->setBuffer(scratch, offsets.partials, 0);
+    encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
+    if (params.fused_bias) {
+      encoder->setBuffer(tensors[3], tensor_offsets[3], 2);
+    }
+    dispatch_linear(encoder, reduce_threads);
+    command_batch->finishCommand(encoder);
+  }
+}
 
 // MARK: - C
 
@@ -21,6 +166,10 @@ void ccv_nnc_mfa_prepare_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t p
 
 size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
 {
+  if (_ccv_nnc_mfa_use_na_matmul_small_m(params)) {
+    NAMatMulSmallMDescriptor desc = _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(params);
+    return desc.scratchOffsets().total;
+  }
   if (params.use_neural_accelerators) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;
@@ -95,6 +244,10 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
+  if (_ccv_nnc_mfa_use_na_matmul_small_m(params)) {
+    _ccv_nnc_mfa_encode_na_matmul_small_m(context, params, command_batch, tensors, tensor_offsets, num_tensors);
+    return;
+  }
   if (params.use_neural_accelerators && params.K < 65536) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;

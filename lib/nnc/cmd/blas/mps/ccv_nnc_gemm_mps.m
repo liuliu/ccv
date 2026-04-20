@@ -504,7 +504,17 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				w_data = scratch;
 				w_dataof = a_data_size + scratch_offset;
 			}
-			if (is_mfa_gemv)
+			// Let the MFA GEMM selector choose NAMatMulSmallM for the low-K row-vector NAX window.
+			const int use_mfa_gemm_for_vector =
+				a_rows == 1 &&
+				!is_transpose_a &&
+				is_transpose_w &&
+				(w_rows % 8) == 0 &&
+				w_rows < 5120 &&
+				(mtl_data_type == 16 || mtl_data_type == 121) &&
+				!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM) &&
+				params.use_neural_accelerators;
+			if (is_mfa_gemv && !use_mfa_gemm_for_vector)
 			{
 				// This is GEMV, use GEMV kernel.
 				ccv_nnc_mfa_gemv_params_t params;

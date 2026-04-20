@@ -63,7 +63,8 @@ PipelineBundle create_pipeline_bundle(
     uint16_t forced_split_k,
     bool load_m,
     uint32_t group_m,
-    uint32_t group_n)
+    uint32_t group_n,
+    int forced_thread_barrier)
 {
   PipelineBundle bundle;
   bundle.descriptor.batchDimension = 1;
@@ -88,7 +89,8 @@ PipelineBundle create_pipeline_bundle(
       .C = GEMMOperandPrecision::FP16,
       .bias = GEMMOperandPrecision::FP16,
   };
-  const bool thread_barrier_over_k =
+  const bool thread_barrier_over_k = forced_thread_barrier >= 0 ?
+      (forced_thread_barrier != 0) :
       NAMatMulDescriptor::threadBarrierOverK(bench.K, forced_split_k);
   const NAMatMulKernelDescriptor kernel_descriptor(
       simd::ushort3{128, 64, 64},
@@ -285,9 +287,12 @@ void print_stats(
 
 int main(int argc, char** argv)
 {
+  std::cout.setf(std::ios::unitbuf);
+  std::cerr.setf(std::ios::unitbuf);
   BenchmarkCase bench;
   BenchmarkConfig config;
   int forced_split_k = 0;
+  int forced_thread_barrier = -1;
   bool load_m = true;
   if (argc >= 4) {
     bench.M = static_cast<uint32_t>(std::strtoul(argv[1], nullptr, 10));
@@ -303,6 +308,9 @@ int main(int argc, char** argv)
   }
   if (argc >= 8) {
     load_m = std::strtoul(argv[7], nullptr, 10) != 0;
+  }
+  if (argc >= 9) {
+    forced_thread_barrier = std::atoi(argv[8]);
   }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
@@ -350,7 +358,12 @@ int main(int argc, char** argv)
     group_ns.push_back(4096);
   }
   std::vector<VariantResult> results;
-  const std::vector<uint16_t> split_ks = {1, 2, 4, 8};
+  std::vector<uint16_t> split_ks = {1, 2, 4, 8};
+  if (forced_split_k > 0 &&
+      std::find(split_ks.begin(), split_ks.end(),
+          static_cast<uint16_t>(forced_split_k)) == split_ks.end()) {
+    split_ks.push_back(static_cast<uint16_t>(forced_split_k));
+  }
   results.reserve(group_ns.size() * split_ks.size());
   for (const auto group_n : group_ns) {
     for (const auto split_k : split_ks) {
@@ -365,7 +378,8 @@ int main(int argc, char** argv)
                 << " loadM=" << (load_m ? 1 : 0)
                 << " groupN=" << group_n << std::endl;
       auto bundle = create_pipeline_bundle(
-          device.get(), bench, split_k, load_m, group_m, group_n);
+          device.get(), bench, split_k, load_m, group_m, group_n,
+          forced_thread_barrier);
       Stats stats;
       const bool valid = benchmark_variant(
           command_queue.get(),
@@ -381,7 +395,9 @@ int main(int argc, char** argv)
           .split_k = split_k,
           .group_n = group_n,
           .thread_barrier_over_k =
-              NAMatMulDescriptor::threadBarrierOverK(bench.K, split_k),
+              forced_thread_barrier >= 0 ?
+                  (forced_thread_barrier != 0) :
+                  NAMatMulDescriptor::threadBarrierOverK(bench.K, split_k),
           .stats = stats,
           .valid = valid,
       });
@@ -403,6 +419,7 @@ int main(int argc, char** argv)
     }
   }
 
-  pool->drain();
-  return 0;
+  fflush(stdout);
+  fflush(stderr);
+  std::_Exit(0);
 }

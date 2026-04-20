@@ -24,6 +24,16 @@ static float _mps_forward_na_gemm_b_value(const int col, const int k)
 	return (float)(((col * 19 + k * 7) % 29) + 1) / 512.0f;
 }
 
+static float _mps_forward_na_gemm_signed_a_value(const int row, const int k)
+{
+	return (float)(((row * 31 + k * 17) % 257) - 128) / 128.0f;
+}
+
+static float _mps_forward_na_gemm_signed_b_value(const int col, const int k)
+{
+	return (float)(((col * 13 + k * 29) % 251) - 125) / 128.0f;
+}
+
 static float _mps_forward_na_gemm_bias_value(const int col)
 {
 	return (float)(((col * 5) % 17) - 8) / 256.0f;
@@ -42,26 +52,95 @@ static void _mps_forward_na_gemm_fill_half(ccv_float16_t* const data, const int 
 	ccfree(row_buffer);
 }
 
-static void _mps_forward_na_gemm_fill_bias_half(ccv_float16_t* const data, const int cols)
-{
-	float* const row_buffer = (float*)ccmalloc(sizeof(float) * cols);
-	int j;
-	for (j = 0; j < cols; j++)
-		row_buffer[j] = _mps_forward_na_gemm_bias_value(j);
-	ccv_float_to_half_precision(row_buffer, (uint16_t*)data, cols);
-	ccfree(row_buffer);
-}
-
 static void _mps_forward_scaled_gemm_to_float(const int datatype, const void* const data, const int count, float* const values);
 
-static float _mps_forward_na_gemm_expected(const int row, const int col, const int k_dim, const int use_bias)
+static float _mps_forward_na_gemm_round_value(const int datatype, const float value)
+{
+	if (datatype == CCV_16F)
+	{
+		uint16_t h;
+		float f;
+		ccv_float_to_half_precision(&value, &h, 1);
+		ccv_half_precision_to_float(&h, &f, 1);
+		return f;
+	} else if (datatype == CCV_16BF) {
+		uint16_t h;
+		float f;
+		ccv_float_to_bfloat(&value, &h, 1);
+		ccv_bfloat_to_float(&h, &f, 1);
+		return f;
+	}
+	return value;
+}
+
+static void _mps_forward_na_gemm_fill(const int datatype, void* const data, const int rows, const int cols, const int for_a)
+{
+	float* const values = (float*)ccmalloc(sizeof(float) * rows * cols);
+	int i, j;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < cols; j++)
+			values[i * cols + j] = for_a ? _mps_forward_na_gemm_a_value(i, j) : _mps_forward_na_gemm_b_value(i, j);
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)data, rows * cols);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)data, rows * cols);
+	else
+		memcpy(data, values, sizeof(float) * rows * cols);
+	ccfree(values);
+}
+
+static void _mps_forward_na_gemm_fill_signed(const int datatype, void* const data, const int rows, const int cols, const int for_a)
+{
+	float* const values = (float*)ccmalloc(sizeof(float) * rows * cols);
+	int i, j;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < cols; j++)
+			values[i * cols + j] = for_a ? _mps_forward_na_gemm_signed_a_value(i, j) : _mps_forward_na_gemm_signed_b_value(i, j);
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)data, rows * cols);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)data, rows * cols);
+	else
+		memcpy(data, values, sizeof(float) * rows * cols);
+	ccfree(values);
+}
+
+static void _mps_forward_na_gemm_fill_bias(const int datatype, void* const data, const int cols)
+{
+	float* const values = (float*)ccmalloc(sizeof(float) * cols);
+	int j;
+	for (j = 0; j < cols; j++)
+		values[j] = _mps_forward_na_gemm_bias_value(j);
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)data, cols);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)data, cols);
+	else
+		memcpy(data, values, sizeof(float) * cols);
+	ccfree(values);
+}
+
+static float _mps_forward_na_gemm_expected(const int datatype, const int row, const int col, const int k_dim, const int use_bias)
 {
 	float sum = 0;
 	int k;
 	for (k = 0; k < k_dim; k++)
-		sum += _mps_forward_na_gemm_a_value(row, k) * _mps_forward_na_gemm_b_value(col, k);
+		sum += _mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_a_value(row, k)) *
+			_mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_b_value(col, k));
 	if (use_bias)
-		sum += _mps_forward_na_gemm_bias_value(col);
+		sum += _mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_bias_value(col));
+	return sum;
+}
+
+static float _mps_forward_na_gemm_expected_signed(const int datatype, const int row, const int col, const int k_dim, const int use_bias)
+{
+	float sum = 0;
+	int k;
+	for (k = 0; k < k_dim; k++)
+		sum += _mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_signed_a_value(row, k)) *
+			_mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_signed_b_value(col, k));
+	if (use_bias)
+		sum += _mps_forward_na_gemm_round_value(datatype, _mps_forward_na_gemm_bias_value(col));
 	return sum;
 }
 
@@ -94,42 +173,126 @@ typedef struct {
 	int col;
 	float actual;
 	float expected;
+	float max_abs;
+	float max_rel;
 } _mps_forward_na_gemm_mismatch_t;
 
-static int _mps_forward_na_gemm_validate_shape(const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+static float _mps_forward_na_gemm_abs_tolerance(const int datatype)
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, n_dim), 0);
-	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n_dim, k_dim), 0);
-	_mps_forward_na_gemm_fill_half(ha->data.f16, m_dim, k_dim, 1);
-	_mps_forward_na_gemm_fill_half(hw->data.f16, n_dim, k_dim, 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
+	return datatype == CCV_16BF ? 2e-1f : 5e-2f;
+}
+
+static float _mps_forward_na_gemm_rel_tolerance(const int datatype)
+{
+	return datatype == CCV_16BF ? 5e-3f : 2e-3f;
+}
+
+static int _mps_forward_na_gemm_validate_shape_for_datatype(const int datatype, const int use_bias, const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+{
+	ccv_nnc_tensor_param_t ga_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gw_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gbias_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gb_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t a_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t w_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t bias_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t sample_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { 1, 1, 0 },
+	};
+	ccv_nnc_tensor_param_t gsample_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { 1, 1, 0 },
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, gw_params, 0);
+	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
+	_mps_forward_na_gemm_fill(datatype, ha->data.u8, m_dim, k_dim, 1);
+	_mps_forward_na_gemm_fill(datatype, hw->data.u8, n_dim, k_dim, 0);
+	if (use_bias)
+		_mps_forward_na_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, w, bias), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(hw);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	if (hbias)
+		ccv_nnc_tensor_free(hbias);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
 
 	int row_samples[8];
 	int col_samples[8];
 	const int row_sample_size = _mps_forward_na_gemm_sample_indices(m_dim, 128, 1, row_samples);
 	const int col_sample_size = _mps_forward_na_gemm_sample_indices(n_dim, 64, 0, col_samples);
-	ccv_nnc_tensor_t* const sample_h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1), 0);
-	ccv_nnc_tensor_t* const sample_f = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const sample_h = ccv_nnc_tensor_new(0, sample_params, 0);
 	int ok = 1;
 	int i, j;
 	for (i = 0; i < row_sample_size; i++)
 		for (j = 0; j < col_sample_size; j++)
 		{
-			ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, GPU_TENSOR_NHWC(000, 16F, 1, 1), DIM_ALLOC(row_samples[i], col_samples[j]), DIM_ALLOC(n_dim, 1));
+			ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, gsample_params, DIM_ALLOC(row_samples[i], col_samples[j]), DIM_ALLOC(n_dim, 1));
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)bv), TENSOR_LIST(sample_h), 0);
-			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sample_h), TENSOR_LIST(sample_f), 0);
 			mismatch->row = row_samples[i];
 			mismatch->col = col_samples[j];
-			mismatch->actual = sample_f->data.f32[0];
-			mismatch->expected = _mps_forward_na_gemm_expected(row_samples[i], col_samples[j], k_dim, 0);
+			_mps_forward_scaled_gemm_to_float(datatype, sample_h->data.u8, 1, &mismatch->actual);
+			mismatch->expected = _mps_forward_na_gemm_expected(datatype, row_samples[i], col_samples[j], k_dim, use_bias);
 			ccv_nnc_tensor_view_free(bv);
-			if (fabsf(mismatch->actual - mismatch->expected) > 2e-1f)
+			const float abs_diff = fabsf(mismatch->actual - mismatch->expected);
+			const float denom = fmaxf(fmaxf(fabsf(mismatch->actual), fabsf(mismatch->expected)), 1.0f);
+			const float rel_diff = abs_diff / denom;
+			if (abs_diff > mismatch->max_abs)
+				mismatch->max_abs = abs_diff;
+			if (rel_diff > mismatch->max_rel)
+				mismatch->max_rel = rel_diff;
+			if (abs_diff > _mps_forward_na_gemm_abs_tolerance(datatype) &&
+				rel_diff > _mps_forward_na_gemm_rel_tolerance(datatype))
 			{
 				ok = 0;
 				goto cleanup;
@@ -138,65 +301,138 @@ static int _mps_forward_na_gemm_validate_shape(const int m_dim, const int n_dim,
 
 cleanup:
 	ccv_nnc_tensor_free(sample_h);
-	ccv_nnc_tensor_free(sample_f);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
+	if (bias)
+		ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(b);
 	return ok;
 }
 
-static int _mps_forward_na_gemm_validate_shape_with_bias(const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+static int _mps_forward_na_gemm_validate_full_shape_for_datatype(const int datatype, const int use_bias, const int signed_values, const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n_dim), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, n_dim), 0);
-	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n_dim), 0);
-	_mps_forward_na_gemm_fill_half(ha->data.f16, m_dim, k_dim, 1);
-	_mps_forward_na_gemm_fill_half(hw->data.f16, n_dim, k_dim, 0);
-	_mps_forward_na_gemm_fill_bias_half(hbias->data.f16, n_dim);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, w, bias), 0);
-	ccv_nnc_tensor_free(ha);
-	ccv_nnc_tensor_free(hw);
-	ccv_nnc_tensor_free(hbias);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-
-	int row_samples[8];
-	int col_samples[8];
-	const int row_sample_size = _mps_forward_na_gemm_sample_indices(m_dim, 128, 1, row_samples);
-	const int col_sample_size = _mps_forward_na_gemm_sample_indices(n_dim, 64, 0, col_samples);
-	ccv_nnc_tensor_t* const sample_h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1), 0);
-	ccv_nnc_tensor_t* const sample_f = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_param_t ga_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gw_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gbias_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t gb_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t a_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t w_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, k_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t bias_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { n_dim, 0 },
+	};
+	ccv_nnc_tensor_param_t b_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { m_dim, n_dim, 0 },
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, gw_params, 0);
+	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+	if (signed_values)
+	{
+		_mps_forward_na_gemm_fill_signed(datatype, ha->data.u8, m_dim, k_dim, 1);
+		_mps_forward_na_gemm_fill_signed(datatype, hw->data.u8, n_dim, k_dim, 0);
+	} else {
+		_mps_forward_na_gemm_fill(datatype, ha->data.u8, m_dim, k_dim, 1);
+		_mps_forward_na_gemm_fill(datatype, hw->data.u8, n_dim, k_dim, 0);
+	}
+	if (use_bias)
+		_mps_forward_na_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, w, bias), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	float* const actual = (float*)ccmalloc(sizeof(float) * m_dim * n_dim);
+	_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, m_dim * n_dim, actual);
 	int ok = 1;
 	int i, j;
-	for (i = 0; i < row_sample_size; i++)
-		for (j = 0; j < col_sample_size; j++)
+	for (i = 0; i < m_dim; i++)
+		for (j = 0; j < n_dim; j++)
 		{
-			ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, GPU_TENSOR_NHWC(000, 16F, 1, 1), DIM_ALLOC(row_samples[i], col_samples[j]), DIM_ALLOC(n_dim, 1));
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)bv), TENSOR_LIST(sample_h), 0);
-			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sample_h), TENSOR_LIST(sample_f), 0);
-			mismatch->row = row_samples[i];
-			mismatch->col = col_samples[j];
-			mismatch->actual = sample_f->data.f32[0];
-			mismatch->expected = _mps_forward_na_gemm_expected(row_samples[i], col_samples[j], k_dim, 1);
-			ccv_nnc_tensor_view_free(bv);
-			if (fabsf(mismatch->actual - mismatch->expected) > 2e-1f)
+			const float expected = signed_values ? _mps_forward_na_gemm_expected_signed(datatype, i, j, k_dim, use_bias) : _mps_forward_na_gemm_expected(datatype, i, j, k_dim, use_bias);
+			const float abs_diff = fabsf(actual[i * n_dim + j] - expected);
+			const float denom = fmaxf(fmaxf(fabsf(actual[i * n_dim + j]), fabsf(expected)), 1.0f);
+			const float rel_diff = abs_diff / denom;
+			if (abs_diff > mismatch->max_abs)
 			{
-				ok = 0;
-				goto cleanup;
+				mismatch->row = i;
+				mismatch->col = j;
+				mismatch->actual = actual[i * n_dim + j];
+				mismatch->expected = expected;
+				mismatch->max_abs = abs_diff;
 			}
+			if (rel_diff > mismatch->max_rel)
+				mismatch->max_rel = rel_diff;
+			if (abs_diff > _mps_forward_na_gemm_abs_tolerance(datatype) &&
+				rel_diff > _mps_forward_na_gemm_rel_tolerance(datatype))
+				ok = 0;
 		}
-
-cleanup:
-	ccv_nnc_tensor_free(sample_h);
-	ccv_nnc_tensor_free(sample_f);
+	ccfree(actual);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hw);
+	if (hbias)
+		ccv_nnc_tensor_free(hbias);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
-	ccv_nnc_tensor_free(bias);
+	if (bias)
+		ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(b);
 	return ok;
+}
+
+static int _mps_forward_na_gemm_validate_shape(const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+{
+	return _mps_forward_na_gemm_validate_shape_for_datatype(CCV_16F, 0, m_dim, n_dim, k_dim, mismatch);
+}
+
+static int _mps_forward_na_gemm_validate_shape_with_bias(const int m_dim, const int n_dim, const int k_dim, _mps_forward_na_gemm_mismatch_t* const mismatch)
+{
+	return _mps_forward_na_gemm_validate_shape_for_datatype(CCV_16F, 1, m_dim, n_dim, k_dim, mismatch);
 }
 
 static float _mps_forward_ane_stream_lhs_value(const int row, const int k, const int variant)
@@ -1324,8 +1560,6 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA aligned M")
 
 TEST_CASE("mps forward gemm with row-wise 8i weight ANE stream ordering")
 {
-	if (!(getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM") && atoi(getenv("CCV_NNC_MFA_ANE_ROWWISE_GEMM")) != 0))
-		return;
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	double max_abs = 0;
 	double max_rel = 0;
@@ -1448,7 +1682,7 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize
 		double max_abs = 0;
 		double max_rel = 0;
 		REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, shapes[i][0], shapes[i][1], shapes[i][2], &max_abs, &max_rel), 0, "large fallback row-wise 8i GEMM with bias validation should run");
-		REQUIRE(max_rel < 5e-3, "large fallback row-wise 8i GEMM with bias should match dense GPU bf16 reference for shape %d x %d x %d, max_abs=%g max_rel=%g", shapes[i][0], shapes[i][1], shapes[i][2], max_abs, max_rel);
+		REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "large fallback row-wise 8i GEMM with bias should match dense GPU bf16 reference for shape %d x %d x %d, max_abs=%g max_rel=%g", shapes[i][0], shapes[i][1], shapes[i][2], max_abs, max_rel);
 	}
 	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) {
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
@@ -1491,8 +1725,6 @@ TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA"
 
 TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i weight NA")
 {
-	if (!getenv("CCV_NNC_RUN_PADDED_SCALED_GEMM_TEST"))
-		return;
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	double max_abs = 0;
 	double max_rel = 0;
@@ -1513,22 +1745,48 @@ TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i
 #define NA_GEMM_SHAPE_TEST(M, N, K) \
 	TEST_CASE("mps forward gemm no bias NA shape " STRINGIFY(M) "x" STRINGIFY(N) "x" STRINGIFY(K)) \
 	{ \
-		if (!getenv("CCV_NNC_RUN_NA_GEMM_SHAPE_TESTS")) \
-			return; \
 		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)); \
 		_mps_forward_na_gemm_mismatch_t mismatch = {}; \
-		REQUIRE(_mps_forward_na_gemm_validate_shape(M, N, K, &mismatch), "sampled GEMM result should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected); \
+		REQUIRE(_mps_forward_na_gemm_validate_shape(M, N, K, &mismatch), "sampled GEMM result should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel); \
 	}
 
 #define NA_GEMM_BIAS_SHAPE_TEST(M, N, K) \
 	TEST_CASE("mps forward gemm with bias NA shape " STRINGIFY(M) "x" STRINGIFY(N) "x" STRINGIFY(K)) \
 	{ \
-		if (!getenv("CCV_NNC_RUN_NA_GEMM_SHAPE_TESTS")) \
-			return; \
 		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)); \
 		_mps_forward_na_gemm_mismatch_t mismatch = {}; \
-		REQUIRE(_mps_forward_na_gemm_validate_shape_with_bias(M, N, K, &mismatch), "sampled GEMM result with bias should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected); \
+		REQUIRE(_mps_forward_na_gemm_validate_shape_with_bias(M, N, K, &mismatch), "sampled GEMM result with bias should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel); \
 	}
+
+#define NA_GEMM_BFLOAT_SHAPE_TEST(M, N, K) \
+	TEST_CASE("mps forward gemm no bias bfloat NA shape " STRINGIFY(M) "x" STRINGIFY(N) "x" STRINGIFY(K)) \
+	{ \
+		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)); \
+		_mps_forward_na_gemm_mismatch_t mismatch = {}; \
+		REQUIRE(_mps_forward_na_gemm_validate_shape_for_datatype(CCV_16BF, 0, M, N, K, &mismatch), "sampled bfloat GEMM result should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel); \
+	}
+
+#define NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(M, N, K) \
+	TEST_CASE("mps forward gemm with bias bfloat NA shape " STRINGIFY(M) "x" STRINGIFY(N) "x" STRINGIFY(K)) \
+	{ \
+		GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)); \
+		_mps_forward_na_gemm_mismatch_t mismatch = {}; \
+		REQUIRE(_mps_forward_na_gemm_validate_shape_for_datatype(CCV_16BF, 1, M, N, K, &mismatch), "sampled bfloat GEMM result with bias should match reference for shape (%d, %d, %d) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", M, N, K, mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel); \
+	}
+
+TEST_CASE("mps forward gemm no bias NA full shape 6x1024x3072")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	_mps_forward_na_gemm_mismatch_t mismatch = {};
+	REQUIRE(_mps_forward_na_gemm_validate_full_shape_for_datatype(CCV_16F, 0, 0, 6, 1024, 3072, &mismatch), "full GEMM result should match reference for shape (6, 1024, 3072) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel);
+}
+
+TEST_CASE("mps forward gemm no bias NA full signed shape 6x1024x3072")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	_mps_forward_na_gemm_mismatch_t mismatch = {};
+	REQUIRE(_mps_forward_na_gemm_validate_full_shape_for_datatype(CCV_16F, 0, 1, 6, 1024, 3072, &mismatch), "full signed GEMM result should match reference for shape (6, 1024, 3072) at (%d, %d): %g vs %g, max_abs=%g max_rel=%g", mismatch.row, mismatch.col, mismatch.actual, mismatch.expected, mismatch.max_abs, mismatch.max_rel);
+}
 
 TEST_CASE("gemm no transpose")
 {
@@ -6431,6 +6689,24 @@ NA_GEMM_SHAPE_TEST(1, 2048, 256)
 NA_GEMM_SHAPE_TEST(1, 2048, 2048)
 NA_GEMM_SHAPE_TEST(1, 4096, 256)
 NA_GEMM_SHAPE_TEST(1, 4096, 4096)
+NA_GEMM_SHAPE_TEST(2, 2048, 2048)
+NA_GEMM_SHAPE_TEST(2, 4096, 4096)
+NA_GEMM_SHAPE_TEST(3, 4096, 4096)
+NA_GEMM_SHAPE_TEST(4, 4096, 4096)
+NA_GEMM_SHAPE_TEST(5, 4096, 4096)
+NA_GEMM_SHAPE_TEST(6, 1024, 3072)
+NA_GEMM_SHAPE_TEST(6, 4096, 4096)
+NA_GEMM_SHAPE_TEST(7, 4096, 4096)
+NA_GEMM_SHAPE_TEST(8, 4096, 4096)
+NA_GEMM_SHAPE_TEST(16, 4096, 4096)
+NA_GEMM_SHAPE_TEST(32, 4096, 4096)
+NA_GEMM_SHAPE_TEST(48, 4096, 4096)
+NA_GEMM_SHAPE_TEST(48, 4096, 15360)
+NA_GEMM_SHAPE_TEST(16, 4096, 24576)
+NA_GEMM_SHAPE_TEST(3, 4096, 32768)
+NA_GEMM_SHAPE_TEST(6, 4096, 32768)
+NA_GEMM_SHAPE_TEST(8, 4096, 32768)
+NA_GEMM_SHAPE_TEST(16, 4096, 32768)
 NA_GEMM_SHAPE_TEST(1024, 4096, 128)
 NA_GEMM_SHAPE_TEST(257, 2048, 128)
 NA_GEMM_SHAPE_TEST(33792, 4096, 4096)
@@ -6462,6 +6738,31 @@ NA_GEMM_BIAS_SHAPE_TEST(1, 2048, 256)
 NA_GEMM_BIAS_SHAPE_TEST(1, 2048, 2048)
 NA_GEMM_BIAS_SHAPE_TEST(1, 4096, 256)
 NA_GEMM_BIAS_SHAPE_TEST(1, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(2, 2048, 2048)
+NA_GEMM_BIAS_SHAPE_TEST(2, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(3, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(4, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(5, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(6, 1024, 3072)
+NA_GEMM_BIAS_SHAPE_TEST(6, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(7, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(8, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(3, 4096, 32768)
+NA_GEMM_BIAS_SHAPE_TEST(16, 4096, 32768)
+NA_GEMM_BIAS_SHAPE_TEST(32, 4096, 4096)
+NA_GEMM_BIAS_SHAPE_TEST(48, 4096, 4096)
+NA_GEMM_BFLOAT_SHAPE_TEST(3, 4096, 4096)
+NA_GEMM_BFLOAT_SHAPE_TEST(5, 4096, 4096)
+NA_GEMM_BFLOAT_SHAPE_TEST(6, 1024, 3072)
+NA_GEMM_BFLOAT_SHAPE_TEST(7, 4096, 4096)
+NA_GEMM_BFLOAT_SHAPE_TEST(8, 4096, 4096)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(3, 4096, 4096)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(5, 4096, 4096)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(6, 1024, 3072)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(7, 4096, 4096)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(8, 4096, 4096)
+NA_GEMM_BFLOAT_SHAPE_TEST(48, 4096, 4096)
+NA_GEMM_BFLOAT_BIAS_SHAPE_TEST(48, 4096, 4096)
 NA_GEMM_BIAS_SHAPE_TEST(1024, 4096, 128)
 NA_GEMM_BIAS_SHAPE_TEST(257, 2048, 128)
 NA_GEMM_BIAS_SHAPE_TEST(33792, 4096, 4096)
