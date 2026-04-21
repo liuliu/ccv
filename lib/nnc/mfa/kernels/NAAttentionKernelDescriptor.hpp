@@ -27,6 +27,8 @@ struct NAAttentionKernelDescriptor {
 
   bool bypassThreadgroupMemory;
 
+  bool isCausal;
+
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
 
   AttentionKernelType type;
@@ -38,7 +40,9 @@ struct NAAttentionKernelDescriptor {
   NAAttentionKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory = false) noexcept;
+  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept;
+  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory) noexcept;
+  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal) noexcept;
 
   bool operator==(const NAAttentionKernelDescriptor& rhs) const;
 };

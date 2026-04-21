@@ -35,6 +35,8 @@ struct NAAttentionKernel {
 
   bool checkCEdge1;
 
+  bool isCausal;
+
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;
 
   /// The number of threads per group.
@@ -55,6 +57,7 @@ private:
   std::string createSource() const noexcept;
   void createConstants(CodeWriter &source) const noexcept;
   void loopForward(CodeWriter &source) const noexcept;
+  void loopForwardSingleCausal(CodeWriter &source) const noexcept;
   void loopBackwardQuery(CodeWriter &source) const noexcept;
   void loopBackwardKeyValue(CodeWriter &source) const noexcept;
   std::string createComputeD() const noexcept;

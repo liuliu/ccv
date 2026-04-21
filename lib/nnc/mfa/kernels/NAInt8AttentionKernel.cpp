@@ -59,6 +59,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   ioPrecision = descriptor.ioPrecision;
   lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
   scale = descriptor.scale;
+  isCausal = descriptor.isCausal;
 
   source = createSource();
 
@@ -1719,10 +1720,47 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
   }
+  if (isCausal) {
+    source += R"(
+  const int causal_row_start = int(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  const int causal_column_offset = int(C) - int(R);
+  const int causal_last_column = causal_row_start + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
+  const int causal_first_column_limit = causal_row_start + causal_column_offset;
+  const uint causal_c_edge = causal_last_column < 0 ? 0 : min(C_edge, uint(causal_last_column) + 1);
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
+    }
+    source += R"(
+    }
+  }
+)";
+  }
   source += R"(
+)";
+  if (isCausal) {
+    source += R"(
+  for (uint c = 0; c < causal_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  } else {
+    source += R"(
   for (uint c = 0; c < C_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  }
+  source += R"(
     const float block_scale = {{QK_SCALE_FACTOR_0}}{{DOT_SCALE}};
     const float v_scale_recip_127 = {{V_SCALE_FACTOR_0}} / 127.0f;
+)";
+  if (isCausal) {
+    source += R"(
+    const bool causal_mask = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
+)";
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -1746,7 +1784,33 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     }
 )";
   }
-  source += R"(
+  if (isCausal) {
+    source += R"(
+    if (causal_mask) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
+        if (cP_0.is_valid_element(k)) {
+          const int score_0 = cS_0[k];
+          auto idx = cP_0.get_multidimensional_index(k);
+          const int column = int(c) + idx[0];
+          const int row = causal_row_start + idx[1];
+          cP_0[k] = column <= row + causal_column_offset ?
+              (float)score_0 * block_scale :
+              -numeric_limits<float>::infinity();
+        }
+      }
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
+        if (cP_0.is_valid_element(k)) {
+          const int score_0 = cS_0[k];
+          cP_0[k] = (float)score_0 * block_scale;
+        }
+      }
+    }
+)";
+  } else {
+    source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
@@ -1754,6 +1818,9 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cP_0[k] = (float)score_0 * block_scale;
       }
     }
+)";
+  }
+  source += R"(
     auto cM_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cP_0, cM_new, reduction_operation::max, -numeric_limits<float>::infinity());
     #pragma clang loop unroll(full)
@@ -1795,6 +1862,36 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         }
       }
     }
+)";
+  if (isCausal) {
+    source += R"(
+    if (causal_mask) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
+        if (cP_0.is_valid_element(k)) {
+          auto it = cP_0.get_iterator(k);
+          auto dst_it = cM.map_iterator(it);
+          auto idx = cP_0.get_multidimensional_index(k);
+          const int column = int(c) + idx[0];
+          const int row = causal_row_start + idx[1];
+          cP_0[k] = column <= row + causal_column_offset ?
+              fast::exp2(cP_0[k] - *dst_it) :
+              0;
+        }
+      }
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
+        if (cP_0.is_valid_element(k)) {
+          auto it = cP_0.get_iterator(k);
+          auto dst_it = cM.map_iterator(it);
+          cP_0[k] = fast::exp2(cP_0[k] - *dst_it);
+        }
+      }
+    }
+)";
+  } else {
+    source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
@@ -1803,6 +1900,9 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cP_0[k] = fast::exp2(cP_0[k] - *dst_it);
       }
     }
+)";
+  }
+  source += R"(
     auto cL_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cP_0, cL_new, reduction_operation::sum, (float)0);
     #pragma clang loop unroll(full)
@@ -1841,10 +1941,27 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       threadgroup_barrier(mem_flags::mem_none);
     }
   }
+)";
+  if (isCausal) {
+    source += R"(
+  if (C_remainder > 0 && causal_last_column >= int(C - C_remainder)) {
+)";
+  } else {
+    source += R"(
   if (C_remainder > 0) {
+)";
+  }
+  source += R"(
     const uint c = C - C_remainder;
     const float block_scale = {{QK_SCALE_FACTOR_REM}}{{DOT_SCALE}};
     const float v_scale_recip_127 = {{V_SCALE_FACTOR_REM}} / 127.0f;
+)";
+  if (isCausal) {
+    source += R"(
+    const bool causal_mask = int(c + C_remainder - 1) > causal_first_column_limit;
+)";
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
@@ -1877,7 +1994,20 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
         auto idx = cP_0.get_multidimensional_index(k);
+)";
+  if (isCausal) {
+    source += R"(
+        const int column = int(c) + idx[0];
+        const int row = causal_row_start + idx[1];
+        if (idx[0] >= (int)C_remainder ||
+            (causal_mask && column > row + causal_column_offset)) {
+)";
+  } else {
+    source += R"(
         if (idx[0] >= (int)C_remainder) {
+)";
+  }
+  source += R"(
           cP_0[k] = -numeric_limits<float>::infinity();
         } else {
           cP_0[k] = (float)cS_0[k] * block_scale;
@@ -1931,7 +2061,20 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         auto it = cP_0.get_iterator(k);
         auto dst_it = cM.map_iterator(it);
         auto idx = cP_0.get_multidimensional_index(k);
+)";
+  if (isCausal) {
+    source += R"(
+        const int column = int(c) + idx[0];
+        const int row = causal_row_start + idx[1];
+        if (idx[0] >= (int)C_remainder ||
+            (causal_mask && column > row + causal_column_offset)) {
+)";
+  } else {
+    source += R"(
         if (idx[0] >= (int)C_remainder) {
+)";
+  }
+  source += R"(
           cP_0[k] = 0;
         } else {
           cP_0[k] = fast::exp2(cP_0[k] - *dst_it);

@@ -101,6 +101,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.Hk = hash.Hk;
       attentionDesc.batchDimension = batch_sizes[0];
       attentionDesc.scale = hash.alpha;
+      attentionDesc.isCausal = hash.is_causal;
       attentionDesc.lowPrecisionIntermediates =
           (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
       if (params.batched) {
@@ -243,6 +244,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.Hk = hash.Hk;
       attentionDesc.batchDimension = batch_sizes[0];
       attentionDesc.scale = hash.alpha;
+      attentionDesc.isCausal = hash.is_causal;
       if (params.batched) {
         attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
         attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
@@ -299,6 +301,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       command_batch->finishCommand(encoder);
       return;
     }
+    CCV_NNC_MFA_PRECONDITION(!params.is_causal);
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
     attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
@@ -1051,6 +1054,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   alpha = params.alpha;
   batched = params.batched;
   masked = params.masked;
+  is_causal = params.is_causal;
   upcast = params.upcast;
   type = params.type;
   use_quantized_attention = params.use_quantized_attention;
@@ -1071,6 +1075,7 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (alpha == hash.alpha) &&
   (batched == hash.batched) &&
   (masked == hash.masked) &&
+  (is_causal == hash.is_causal) &&
   (upcast == hash.upcast) &&
   (type == hash.type) &&
   (use_quantized_attention == hash.use_quantized_attention);
@@ -1091,6 +1096,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .alpha = " << double(hash.alpha) << ',';
   os << " .batched = " << bool(hash.batched) << ',';
   os << " .masked = " << bool(hash.masked) << ", ";
+  os << " .is_causal = " << bool(hash.is_causal) << ", ";
   os << " .upcast = " << bool(hash.upcast) << " ";
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
   os << " .type = " << hash.type << " ";
@@ -1105,7 +1111,8 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   combine_64(seed, pack_64(simd::uint2 { hash.R, hash.C }));
   combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.upcast, hash.type })}));
+  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.upcast })}));
+  combine_32(seed, hash.type);
   combine_32(seed, hash.use_quantized_attention);
   return seed;
 }

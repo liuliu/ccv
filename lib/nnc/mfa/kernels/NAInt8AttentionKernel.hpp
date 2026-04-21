@@ -36,6 +36,7 @@ struct NAInt8AttentionKernel {
   GEMMOperandPrecision ioPrecision;
   bool lowPrecisionIntermediates;
   float scale;
+  bool isCausal;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 

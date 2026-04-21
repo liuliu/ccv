@@ -8,6 +8,7 @@ typedef struct {
   uint8_t O_trans;
   uint8_t batched;
   uint8_t masked;
+  uint8_t is_causal;
   uint8_t upcast;
   uint8_t type;
   uint8_t use_neural_accelerators;
@@ -44,6 +45,7 @@ public:
   uint8_t O_trans;
   uint8_t batched;
   uint8_t masked;
+  uint8_t is_causal;
   uint8_t upcast;
   uint8_t type;
   uint8_t use_quantized_attention;

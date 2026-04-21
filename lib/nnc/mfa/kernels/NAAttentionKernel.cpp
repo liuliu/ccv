@@ -34,6 +34,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   checkCEdge1 = descriptor.checkCEdge1;
   scale = descriptor.scale;
   bypassThreadgroupMemory = descriptor.bypassThreadgroupMemory;
+  isCausal = descriptor.isCausal;
 
   source = createSource();
 
@@ -244,10 +245,12 @@ using namespace mpp::tensor_ops;
   const uint row_group_bits = ceil_log2_u32(row_group_count);
   const uint head_bits = ceil_log2_u32({{DISPATCH_HEADS}});
   const uint2 morton_tile = morton_decode_rectangular_2d(tgid.x, row_group_bits, head_bits);
-  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
-  if (tgid.y >= {{DISPATCH_HEADS}} || tgid.x >= row_group_count) {
+  if (morton_tile.y >= {{DISPATCH_HEADS}} || morton_tile.x >= row_group_count) {
     return;
   }
+  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
+)";
+    source += R"(
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
   if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{DISPATCH_DIMENSION}}) {
     return;
@@ -330,21 +333,28 @@ constant uint Hq = {{HQ}};
 constant uint Hk = {{HK}};
 )";
   if (type.value == AttentionKernelType::forward) {
-    source += R"(
+    if (isCausal) {
+      source += R"(
+constant uint C_single_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
+constant uint C_single_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
+)";
+    } else {
+      source += R"(
 // In this special case, leaving the rest to the trailing block to process.
 constant uint C_remainder = (C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}) == {{BLOCK_DIMENSIONS_TRAVERSAL}} ? {{BLOCK_DIMENSIONS_TRAVERSAL}} : (C % {{BLOCK_DIMENSIONS_TRAVERSAL}});
 )";
-    if (checkCEdge1) {
-      source += R"(
+      if (checkCEdge1) {
+        source += R"(
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 constant uint C_edge_1 = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
 )";
-    } else {
-      // When we are not checking C_edge, C_edge makes sure we process entire blockDimensions.C * 2 block, rather than one of.
-      // And leaving the rest to the C_remainder path.
-      source += R"(
+      } else {
+        // When we are not checking C_edge, C_edge makes sure we process entire blockDimensions.C * 2 block, rather than one of.
+        // And leaving the rest to the C_remainder path.
+        source += R"(
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL_2}} : 0;
 )";
+      }
     }
     source += R"(
 constant uint R_edge = R >= {{BLOCK_DIMENSIONS_PARALLELIZATION}} ? R + 1 - {{BLOCK_DIMENSIONS_PARALLELIZATION}} : 0;
@@ -600,7 +610,450 @@ kernel void compute_d(
   return source.ToString();
 }
 
+void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexcept {
+  source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
+  source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
+  source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
+  source.SetValue("MEMORY_NAME_L", memoryName(AttentionOperand::L));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source.SetValue("HEAD_DIMENSION_REMAINDER", std::to_string(headDimension % blockDimensions[2]));
+  if (blockDimensions[1] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[1]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if (blockDimensions[2] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if ((headDimension % blockDimensions[2]) % 32 == 0) {
+    source.SetValue("HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V", std::to_string(headDimension % blockDimensions[2]));
+  } else {
+    source.SetValue("HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if (Hq != Hk) {
+    source.SetValue("H_HK_RATIO", "/ " + std::to_string(Hq / Hk));
+  } else {
+    source.SetValue("H_HK_RATIO", "");
+  }
+  source.SetValue("DOT_SCALE", dotProductScale(scale, false));
+  source += R"(
+  auto Q = tensor<device {{MEMORY_NAME_Q}},  dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
+  auto K = tensor<device {{MEMORY_NAME_K}},  dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto V = tensor<device {{MEMORY_NAME_V}},  dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
+  threadgroup {{MEMORY_NAME_O}} *P_buf = (threadgroup {{MEMORY_NAME_O}}*)threadgroup_block + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sgid;
+  auto P = tensor<threadgroup {{MEMORY_NAME_O}}, dextents<int32_t, 2>, tensor_inline>(P_buf, extents<int32_t, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc, execution_simdgroups<1>> matmul_qk_op;
+)";
+  if (headDimension % blockDimensions[2] > 0) {
+    source += R"(
+  constexpr auto qk_desc_remainder = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc_remainder, execution_simdgroups<1>> matmul_qk_op_remainder;
+)";
+  }
+  source += R"(
+  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
+  auto cS_0 = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = -numeric_limits<float>::infinity();
+      cL[k] = numeric_limits<float>::denorm_min();
+    }
+  }
+  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(0, 0);
+  constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
+)";
+  const unsigned short kBlocks = (std::max(headDimension, blockDimensions[2]) + blockDimensions[2] - 1) / blockDimensions[2];
+  if (bypassThreadgroupMemory) {
+    source += "  auto cP = matmul_pv_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_O}}, {{MEMORY_NAME_V}}, float>();\n";
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();\n";
+    }
+  } else {
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();\n";
+    }
+  }
+  source += R"(
+  const int causal_row_start = int(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+  const int causal_column_offset = int(C) - int(R);
+  const int causal_last_column = causal_row_start + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
+  const int causal_first_column_limit = causal_row_start + causal_column_offset;
+  const uint causal_c_edge = causal_last_column < 0 ? 0 : min(C_single_edge, uint(causal_last_column) + 1);
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
+  }
+  source += R"(
+    }
+  }
+
+  for (uint c = 0; c < causal_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        cS_0[k] = 0;
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
+      auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
+      matmul_qk_op.run(mQ, mK_0, cS_0);
+    }
+)";
+  if (headDimension % blockDimensions[2] > 0) {
+    source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
+    source += R"(
+    {
+      auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
+      matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
+    }
+)";
+  }
+  source += R"(
+    const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
+    if (causal_mask_0) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto idx = cS_0.get_multidimensional_index(k);
+          const int causal_row = causal_row_start + idx[1];
+          const int causal_column_limit = causal_row + causal_column_offset;
+          if (int(c) + idx[0] > causal_column_limit) {
+            cS_0[k] = -numeric_limits<float>::infinity();
+          }
+        }
+      }
+    }
+    // Online reduce maximum.
+    auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cM_0_new, reduction_operation::max, -numeric_limits<float>::infinity());
+    // Online correct O.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+      if (cM.is_valid_element(k)) {
+        correction[k] = 1;
+        const float M_new = cM_0_new[k] * {{DOT_SCALE}};
+        if (M_new > cM[k]) {
+          correction[k] = fast::exp2(cM[k] - M_new);
+          cM[k] = M_new;
+        }
+      }
+    }
+)";
+  source += R"(
+    // Softmax. cS becomes cP.
+    if (causal_mask_0) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto it = cS_0.get_iterator(k);
+          auto dst_it = cM.map_iterator(it);
+          auto idx = cS_0.get_multidimensional_index(k);
+          const int causal_row = causal_row_start + idx[1];
+          const int causal_column_limit = causal_row + causal_column_offset;
+          cS_0[k] = int(c) + idx[0] <= causal_column_limit ?
+              fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it) :
+              0;
+        }
+      }
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto it = cS_0.get_iterator(k);
+          auto dst_it = cM.map_iterator(it);
+          cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+        }
+      }
+    }
+)";
+  source += R"(
+    // Online reduce sum.
+    auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cL_0_new, reduction_operation::sum, (float)0);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cL.get_capacity(); ++k) {
+      if(cL.is_valid_element(k)) {
+        cL[k] = cL[k] * correction[k] + cL_0_new[k];
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = correction.map_iterator(it);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+  }
+  source += R"(
+      }
+    }
+)";
+  if (bypassThreadgroupMemory) {
+    source += R"(
+    simdgroup_barrier(mem_flags::mem_none);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if(cS_0.is_valid_element(k)) {
+        cP[k] = ({{MEMORY_NAME_O}})cS_0[k];
+      }
+    }
+)";
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+    matmul_pv_op.run(cP, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+    }
+  } else {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if(cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        P_buf[idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+      }
+    }
+    simdgroup_barrier(mem_flags::mem_threadgroup);
+)";
+    for (unsigned short i = 0; i < kBlocks; i++) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+      source += R"(
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+    matmul_pv_op.run(P, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+    }
+  }
+  source += R"(
+  }
+  if (C_single_remainder > 0 && int(C - C_single_remainder) <= causal_last_column) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        if (idx[0] >= (int)C_single_remainder) {
+          cS_0[k] = -numeric_limits<float>::infinity();
+        } else {
+          cS_0[k] = 0;
+        }
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
+      auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, C - C_single_remainder);
+      matmul_qk_op.run(mQ, mK_0, cS_0);
+    }
+)";
+  if (headDimension % blockDimensions[2] > 0) {
+    source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
+    source += R"(
+    {
+      auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, C - C_single_remainder);
+      matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
+    }
+)";
+  }
+  source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        if (int(C - C_single_remainder) + idx[0] > causal_column_limit) {
+          cS_0[k] = -numeric_limits<float>::infinity();
+        }
+      }
+    }
+    // Online reduce maximum.
+    auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cM_0_new, reduction_operation::max, -numeric_limits<float>::infinity());
+    // Online correct O.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+      if (cM.is_valid_element(k)) {
+        correction[k] = 1;
+        const float M_new = cM_0_new[k] * {{DOT_SCALE}};
+        if (M_new > cM[k]) {
+          correction[k] = fast::exp2(cM[k] - M_new);
+          cM[k] = M_new;
+        }
+      }
+    }
+    // Softmax. cS becomes cP.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        if (idx[0] >= (int)C_single_remainder || int(C - C_single_remainder) + idx[0] > causal_column_limit) {
+          cS_0[k] = 0;
+        } else {
+          cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+        }
+      }
+    }
+    // Online reduce sum.
+    auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cL_0_new, reduction_operation::sum, (float)0);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cL.get_capacity(); ++k) {
+      if(cL.is_valid_element(k)) {
+        cL[k] = cL[k] * correction[k] + cL_0_new[k];
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = correction.map_iterator(it);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+  }
+  source += R"(
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if(cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        if (idx[0] >= (int)C_single_remainder) {
+          P_buf[idx[0] - C_single_remainder + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = 0;
+        } else {
+          P_buf[{{BLOCK_DIMENSIONS_TRAVERSAL}} - C_single_remainder + idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+        }
+      }
+    }
+    simdgroup_barrier(mem_flags::mem_threadgroup);
+    auto mP = P.slice<dynamic_extent, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{BLOCK_DIMENSIONS_TRAVERSAL}} - C_single_remainder, 0);
+    constexpr auto pv_remainder_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, dynamic_length_v<int>, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+    matmul2d<pv_remainder_desc, execution_simdgroups<1>> matmul_pv_remainder_op;
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source += R"(
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, C - C_single_remainder);
+    matmul_pv_remainder_op.run(mP, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+  }
+  source += R"(
+  }
+  auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto idx = cO_0.get_multidimensional_index(k);
+        if (idx[1] < (int)R_remainder) {
+          auto it = cO_0.get_iterator(k);
+          auto dst_it = cL.map_iterator(it);
+          auto L_reciprocal = fast::divide(1, *dst_it);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
+      source += R"(
+          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{MEMORY_NAME_O}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
+)";
+    } else {
+      source += R"(
+          if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
+            O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{MEMORY_NAME_O}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
+          }
+)";
+    }
+  }
+  source += R"(
+        }
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+      if (cM.is_valid_element(k)) {
+        auto idx = cM.get_multidimensional_index(k);
+        if (idx[0] < (int)R_remainder) {
+          float L_sram = cM[k] + fast::log2(cL[k]);
+          L[idx[0]] = ({{MEMORY_NAME_L}})L_sram;
+        }
+      }
+    }
+  } else {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = cL.map_iterator(it);
+        auto L_reciprocal = fast::divide(1, *dst_it);
+        auto idx = cO_0.get_multidimensional_index(k);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
+      source += R"(
+        O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{MEMORY_NAME_O}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
+)";
+    } else {
+      source += R"(
+        if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
+          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{MEMORY_NAME_O}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal);
+        }
+)";
+    }
+  }
+  source += R"(
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+      if (cM.is_valid_element(k)) {
+        auto idx = cM.get_multidimensional_index(k);
+        float L_sram = cM[k] + fast::log2(cL[k]);
+        L[idx[0]] = ({{MEMORY_NAME_L}})L_sram;
+      }
+    }
+  }
+)";
+}
+
 void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
+  if (isCausal) {
+    loopForwardSingleCausal(source);
+    return;
+  }
   source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
   source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
   source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
@@ -747,6 +1200,8 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
         }
       }
     }
+)";
+  source += R"(
     // Softmax. cS becomes cP.
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
@@ -776,6 +1231,8 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   source += R"(
       }
     }
+)";
+  source += R"(
     // Online reduce sum.
     auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cS_0, cL_0_new, reduction_operation::sum, (float)0);
@@ -1020,6 +1477,8 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
         auto it = cS_0.get_iterator(k);
         auto dst_it = cM.map_iterator(it);
         auto idx = cS_0.get_multidimensional_index(k);
+)";
+    source += R"(
         if (idx[0] >= (int)C_remainder) {
           cS_0[k] = 0;
         } else {

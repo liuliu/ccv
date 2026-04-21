@@ -10,6 +10,7 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   Hq == rhs.Hq &&
   Hk == rhs.Hk &&
   scale == rhs.scale &&
+  isCausal == rhs.isCausal &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
@@ -27,7 +28,7 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
@@ -50,6 +51,9 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     }
     if (type.value != AttentionKernelType::forward) {
       return simd::ushort3 { 16, 64, revisedHead };
+    }
+    if (isCausal) {
+      return simd::ushort3 { 16, 32, revisedHead };
     }
     // Prefer ones without partial matrix multiplication (due to tiling).
     if (matrixDimensions[1] % 64 == 0) {
@@ -82,6 +86,9 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
         lowPrecisionInputs && createHeadDimension() >= 128) {
       return 6;
     }
+    if (type.value == AttentionKernelType::forward && isCausal) {
+      return 8;
+    }
     return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
   };
   auto createBypassThreadgroupMemory =
@@ -90,7 +97,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   };
   auto blockDimensions = createBlockDimensions();
   bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
-  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory());
+  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal);
 }
 
 std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {

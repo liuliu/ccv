@@ -323,6 +323,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.alpha = cmd.info.scaled_dot_product_attention.scale,
 			.batched = (attention_is_batched ? 1 : 0),
 			.masked = (attn_mask != NULL ? 1 : 0),
+			.is_causal = cmd.info.scaled_dot_product_attention.is_causal,
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,

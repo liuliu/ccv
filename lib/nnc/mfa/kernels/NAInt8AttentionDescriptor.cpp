@@ -23,6 +23,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     ioPrecision == rhs.ioPrecision &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale &&
+    isCausal == rhs.isCausal &&
     batchStrides == rhs.batchStrides &&
     simd_all(matrixDimensions == rhs.matrixDimensions);
 }
@@ -37,6 +38,7 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.ioPrecision.value,
       (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
+  combine_32(seed, hash.isCausal ? 1 : 0);
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
@@ -89,11 +91,12 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       executionSIMDGroups,
       vMeanThreads,
       has_c_remainder,
-      2,
+      isCausal ? 0 : 2,
       ioPrecision,
       lowPrecisionIntermediates,
       type,
-      scale);
+      scale,
+      isCausal);
 }
 
 std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> NAInt8AttentionDescriptor::findKernel(

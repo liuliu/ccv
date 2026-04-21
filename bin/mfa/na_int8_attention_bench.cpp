@@ -59,6 +59,7 @@ struct VariantConfig {
   bool int8_thread_barrier_over_c = true;
   bool center_v = false;
   bool quantize_only = false;
+  bool is_causal = false;
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
   float v_bias = 0.0f;
@@ -1867,6 +1868,7 @@ BaselinePipeline create_baseline_pipeline(
   bundle.descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
   bundle.descriptor.type = AttentionKernelType::forward;
   bundle.descriptor.scale = create_scale(attention);
+  bundle.descriptor.isCausal = variant.is_causal;
   if (attention.batch > 1) {
     bundle.descriptor.batchStrides[AttentionOperand::Q] = attention.R * attention.D * attention.Hq;
     bundle.descriptor.batchStrides[AttentionOperand::K] = attention.C * attention.D * attention.Hk;
@@ -1888,7 +1890,9 @@ BaselinePipeline create_baseline_pipeline(
       check_c_edge_1,
       bundle.memory_precisions,
       AttentionKernelType::forward,
-      bundle.descriptor.scale);
+      bundle.descriptor.scale,
+      false,
+      variant.is_causal);
   bundle.kernel = std::make_unique<NAAttentionKernel>(kernel_descriptor, device);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
@@ -1932,7 +1936,7 @@ Int8Pipeline create_int8_pipeline(
   bundle.thread_barrier_every_c =
       variant.int8_thread_barrier_every_c_override ?
       variant.int8_thread_barrier_every_c_override :
-      (variant.int8_thread_barrier_over_c ? 2 : 0);
+      (variant.int8_thread_barrier_over_c && !variant.is_causal ? 2 : 0);
   const uint16_t v_mean_threads =
       attention.C <= 20480 ?
       NAInt8AttentionKernel::smallSequenceVMeanThreads :
@@ -1951,7 +1955,8 @@ Int8Pipeline create_int8_pipeline(
       create_io_precision(variant.input_precision),
       variant.input_precision != InputPrecision::fp32,
       AttentionKernelType::forward,
-      create_scale(attention));
+      create_scale(attention),
+      variant.is_causal);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
   const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];
@@ -2205,6 +2210,7 @@ void compute_int8_reference_row(
     uint32_t batch,
     uint32_t query_head,
     uint32_t row,
+    bool is_causal,
     float* l_value,
     std::vector<float>* o_values)
 {
@@ -2216,7 +2222,18 @@ void compute_int8_reference_row(
   const float q_scale = quantized.q_scale[((size_t)batch * attention.Hq + query_head) * q_tiles + q_tile];
   std::vector<float> scores(attention.C);
   float max_score = -std::numeric_limits<float>::infinity();
-  for (uint32_t column = 0; column < attention.C; ++column) {
+  const int64_t last_causal_column =
+      (int64_t)row + (int64_t)attention.C - (int64_t)attention.R;
+  const uint32_t valid_columns =
+      is_causal ?
+      (last_causal_column < 0 ? 0 : std::min<uint32_t>(attention.C, (uint32_t)last_causal_column + 1)) :
+      attention.C;
+  if (valid_columns == 0) {
+    *l_value = -std::numeric_limits<float>::infinity();
+    o_values->assign(attention.D, 0.0f);
+    return;
+  }
+  for (uint32_t column = 0; column < valid_columns; ++column) {
     const uint32_t k_tile = k_tiles == 1 ? 0 : (column / block_dimensions[1]);
     const float k_scale = quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile];
     float dot = 0;
@@ -2229,14 +2246,14 @@ void compute_int8_reference_row(
     max_score = std::max(max_score, score);
   }
   float sum = 0;
-  for (uint32_t column = 0; column < attention.C; ++column) {
+  for (uint32_t column = 0; column < valid_columns; ++column) {
     scores[column] = std::exp(scores[column] - max_score);
     sum += scores[column];
   }
   *l_value = (max_score + std::log(sum)) * 1.442695041f;
   const float reciprocal = 1.0f / sum;
   o_values->assign(attention.D, 0.0f);
-  for (uint32_t column = 0; column < attention.C; ++column) {
+  for (uint32_t column = 0; column < valid_columns; ++column) {
     const float probability = scores[column] * reciprocal;
     for (uint32_t dim = 0; dim < attention.D; ++dim) {
       (*o_values)[dim] += probability * v_values[kv_index(attention, batch, column, kv_head, dim)];
@@ -2265,7 +2282,8 @@ ValidationStats validate_int8_outputs(
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
     const std::vector<float>& o_values,
-    const std::vector<float>& l_values)
+    const std::vector<float>& l_values,
+    bool is_causal)
 {
   ValidationStats stats;
   for (const auto value : o_values)
@@ -2296,7 +2314,7 @@ ValidationStats validate_int8_outputs(
     for (const auto head : head_points) {
       for (const auto row : row_points) {
         float reference_l = 0;
-        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, batch, head, row, &reference_l, &reference_o);
+        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, batch, head, row, is_causal, &reference_l, &reference_o);
         const float actual_l = l_values[l_index(attention, batch, head, row)];
         const double abs_l = std::fabs(reference_l - actual_l);
         const double rel_l = abs_l / std::max<double>(std::max(std::fabs(reference_l), std::fabs(actual_l)), 1.0);
@@ -2403,103 +2421,108 @@ int main(int argc, char** argv)
   AttentionCase attention;
   BenchmarkConfig config;
   VariantConfig variant;
-  if (argc >= 4) {
+  int arg_count = argc;
+  if (arg_count >= 2 && !std::strcmp(argv[arg_count - 1], "causal")) {
+    variant.is_causal = true;
+    --arg_count;
+  }
+  if (arg_count >= 4) {
     attention.R = (uint32_t)std::strtoul(argv[1], nullptr, 10);
     attention.C = (uint32_t)std::strtoul(argv[2], nullptr, 10);
     attention.D = (uint32_t)std::strtoul(argv[3], nullptr, 10);
   }
-  if (argc >= 7) {
+  if (arg_count >= 7) {
     attention.batch = (uint32_t)std::strtoul(argv[4], nullptr, 10);
     attention.Hq = (uint32_t)std::strtoul(argv[5], nullptr, 10);
     attention.Hk = (uint32_t)std::strtoul(argv[6], nullptr, 10);
   }
-  if (argc >= 9) {
+  if (arg_count >= 9) {
     config.warmup_iterations = std::atoi(argv[7]);
     config.timed_iterations = std::atoi(argv[8]);
   }
-  if (argc >= 10) {
+  if (arg_count >= 10) {
     variant.baseline_execution_simd_groups_override =
         (uint16_t)std::strtoul(argv[9], nullptr, 10);
   }
-  if (argc >= 11) {
+  if (arg_count >= 11) {
     variant.int8_execution_simd_groups_override =
         (uint16_t)std::strtoul(argv[10], nullptr, 10);
   }
-  if (argc >= 12) {
+  if (arg_count >= 12) {
     variant.int8_block_c_override =
         (uint16_t)std::strtoul(argv[11], nullptr, 10);
   }
-  if (argc >= 13) {
+  if (arg_count >= 13) {
     variant.int8_block_r_override =
         (uint16_t)std::strtoul(argv[12], nullptr, 10);
   }
-  if (argc >= 14) {
+  if (arg_count >= 14) {
     variant.int8_block_d_override =
         (uint16_t)std::strtoul(argv[13], nullptr, 10);
   }
-  if (argc >= 15) {
+  if (arg_count >= 15) {
     if (!std::strcmp(argv[14], "quantize-only") || !std::strcmp(argv[14], "quantize_only"))
       variant.quantize_only = true;
     // Retired stripped-mode argument slot. Intentionally accepted and ignored
     // to keep older command lines usable while the production kernel stays
     // full-only.
   }
-  if (argc >= 16) {
+  if (arg_count >= 16) {
     // Retired QK-precision argument slot. Intentionally accepted and ignored
     // because the production kernel always uses int8 QK.
   }
-  if (argc >= 17) {
+  if (arg_count >= 17) {
     // Retired QK-scale-mode argument slot. Intentionally accepted and ignored
     // because the production kernel always uses tiled Q/K scales.
   }
-  if (argc >= 18) {
+  if (arg_count >= 18) {
     // Retired bench-only cooperative/two-pass argument slot. Intentionally
     // accepted and ignored to keep older command lines usable.
   }
-  if (argc >= 19) {
+  if (arg_count >= 19) {
     // Retired bench-only V-precision argument slot. Intentionally accepted
     // and ignored to keep older command lines usable.
   }
-  if (argc >= 20) {
+  if (arg_count >= 20) {
     variant.capture_path = argv[19];
   }
-  if (argc >= 21) {
+  if (arg_count >= 21) {
     variant.int8_thread_barrier_over_c =
         std::strtoul(argv[20], nullptr, 10) != 0;
   }
-  if (argc >= 22) {
+  if (arg_count >= 22) {
     // Retired Morton-order override slot. Intentionally accepted and ignored
     // because Morton order is always on in the production kernel.
   }
-  if (argc >= 23) {
+  if (arg_count >= 23) {
     variant.input_precision = parse_input_precision(argv[22]);
   }
-  if (argc >= 24) {
+  if (arg_count >= 24) {
     variant.q_quant_threads_override =
         (uint16_t)std::strtoul(argv[23], nullptr, 10);
   }
-  if (argc >= 25) {
+  if (arg_count >= 25) {
     variant.kv_quant_threads_override =
         (uint16_t)std::strtoul(argv[24], nullptr, 10);
   }
-  if (argc >= 26) {
+  if (arg_count >= 26) {
     variant.center_v = std::strtoul(argv[25], nullptr, 10) != 0;
   }
-  if (argc >= 27) {
+  if (arg_count >= 27) {
     variant.v_bias = std::strtof(argv[26], nullptr);
   }
-  if (argc >= 28) {
+  if (arg_count >= 28) {
     variant.v_mean_threads_override =
         (uint16_t)std::strtoul(argv[27], nullptr, 10);
   }
-  if (argc >= 29) {
+  if (arg_count >= 29) {
     variant.v_mean_barrier_every_override =
         (uint16_t)std::strtoul(argv[28], nullptr, 10);
   }
-  if (argc >= 30) {
+  if (arg_count >= 30) {
     variant.input_scale_multiplier = std::strtof(argv[29], nullptr);
   }
-  if (argc >= 31) {
+  if (arg_count >= 31) {
     variant.int8_thread_barrier_every_c_override =
         (uint16_t)std::strtoul(argv[30], nullptr, 10);
   }
@@ -2572,7 +2595,7 @@ int main(int argc, char** argv)
     int8_pipeline.thread_barrier_every_c =
         variant.int8_thread_barrier_every_c_override ?
         variant.int8_thread_barrier_every_c_override :
-        (variant.int8_thread_barrier_over_c ? 2 : 0);
+        (variant.int8_thread_barrier_over_c && !variant.is_causal ? 2 : 0);
   }
   auto quantize_pipelines = create_quantize_pipelines(
       device.get(),
@@ -2732,6 +2755,7 @@ int main(int argc, char** argv)
             << " Hq=" << attention.Hq
             << " Hk=" << attention.Hk
             << " D=" << attention.D
+            << " causal=" << (variant.is_causal ? "true" : "false")
             << " warmup=" << config.warmup_iterations
             << " timed=" << config.timed_iterations
             << " inputPrecision=" << input_precision_name(variant.input_precision)
@@ -2754,6 +2778,7 @@ int main(int argc, char** argv)
               << " blockC=" << int8_pipeline.block_dimensions[1]
               << " blockD=" << int8_pipeline.block_dimensions[2]
               << " simdgroups=" << int8_pipeline.execution_simd_groups
+              << " causal=" << (variant.is_causal ? "true" : "false")
               << " inputPrecision=" << input_precision_name(variant.input_precision)
               << " qkPrecision=int8"
               << " vPrecision=int8"
@@ -3020,7 +3045,8 @@ int main(int argc, char** argv)
       quantized,
       v_input_values,
       o_values,
-      l_values);
+      l_values,
+      variant.is_causal);
   print_validation(validation);
   if (!validation.passed) {
     if (!variant.quantize_only) {

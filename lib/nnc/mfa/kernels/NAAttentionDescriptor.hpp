@@ -42,6 +42,8 @@ struct NAAttentionDescriptor {
 
   float scale;
 
+  bool isCausal = false;
+
   bool operator==(const NAAttentionDescriptor& rhs) const;
 
   std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept;
@@ -58,4 +60,3 @@ struct std::hash<NAAttentionDescriptor>
 };
 
 #endif
-

@@ -58,6 +58,7 @@ static NAAttentionKernel* create_kernel(const NAAttentionKernelDescriptor& kerne
   kernel->executionSIMDGroups = kernel_descriptor.executionSIMDGroups;
   kernel->bypassThreadgroupMemory = kernel_descriptor.bypassThreadgroupMemory;
   kernel->checkCEdge1 = kernel_descriptor.checkCEdge1;
+  kernel->isCausal = kernel_descriptor.isCausal;
   return kernel;
 }
 
@@ -83,6 +84,10 @@ int main(int argc, char** argv)
   const bool is_bf16 = std::strcmp(precision, "bf16") == 0;
   const bool low_precision_intermediates = (argc > 8) ? (std::atoi(argv[8]) != 0) : false;
   const char* bypass_arg = (argc > 9) ? argv[9] : "auto";
+  const char* causal_arg = (argc > 10) ? argv[10] : "off";
+  const bool is_causal = std::strcmp(causal_arg, "1") == 0 ||
+      std::strcmp(causal_arg, "on") == 0 ||
+      std::strcmp(causal_arg, "causal") == 0;
   BypassMode bypass_mode = BypassMode::Auto;
   if (std::strcmp(bypass_arg, "0") == 0 || std::strcmp(bypass_arg, "off") == 0 || std::strcmp(bypass_arg, "disable") == 0) {
     bypass_mode = BypassMode::Disable;
@@ -102,6 +107,7 @@ int main(int argc, char** argv)
     .batchStrides = AttentionOperands<unsigned int>(),
     .type = AttentionKernelType::backwardQuery,
     .scale = 1.0f / std::sqrt(static_cast<float>(D)),
+    .isCausal = is_causal,
   };
 
   descriptor.type = AttentionKernelType::forward;
@@ -128,6 +134,8 @@ int main(int argc, char** argv)
       (bypass_mode == BypassMode::Enable) ? "bypass" :
       (bypass_mode == BypassMode::Disable) ? "shared" :
       "auto";
+  const std::string causal_suffix =
+      is_causal ? "_causal" : "";
 
   const std::string header =
       "// Generated from current NAAttention backward source generator\n"
@@ -139,10 +147,14 @@ int main(int argc, char** argv)
       " batch=" + std::to_string(batch) +
       " ioPrecision=" + std::string(low_precision_inputs ? (is_bf16 ? "BF16" : "FP16") : "FP32") +
       " lowPrecisionIntermediates=" + std::string(low_precision_intermediates ? "1" : "0") +
+      " isCausal=" + std::string(is_causal ? "1" : "0") +
+      " blockR=" + std::to_string(forward_descriptor.blockDimensions[0]) +
+      " blockC=" + std::to_string(forward_descriptor.blockDimensions[1]) +
+      " executionSIMDGroups=" + std::to_string(forward_descriptor.executionSIMDGroups) +
       " bypassThreadgroupMemory=" + suffix +
       "\n\n";
 
-  write_text_file("../../na_attention_source_" + suffix + "_current.metal", header + forward_kernel->createSource());
+  write_text_file("../../na_attention_source_" + suffix + causal_suffix + "_current.metal", header + forward_kernel->createSource());
   write_text_file("../../na_attention_compute_d_source_" + suffix + "_current.metal", header + create_compute_d_source(*query_kernel));
   write_text_file("../../na_attention_backward_query_source_" + suffix + "_current.metal", header + query_kernel->createSource());
   write_text_file("../../na_attention_backward_keyvalue_source_" + suffix + "_current.metal", header + keyvalue_kernel->createSource());

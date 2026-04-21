@@ -21,6 +21,7 @@ struct NAInt8AttentionKernelDescriptor {
   bool lowPrecisionIntermediates;
   AttentionKernelType type;
   float scale;
+  bool isCausal;
 
   NAInt8AttentionKernelDescriptor() = delete;
   NAInt8AttentionKernelDescriptor(
@@ -37,7 +38,8 @@ struct NAInt8AttentionKernelDescriptor {
       GEMMOperandPrecision ioPrecision,
       bool lowPrecisionIntermediates,
       AttentionKernelType type,
-      float scale) noexcept;
+      float scale,
+      bool isCausal = false) noexcept;
 
   bool operator==(const NAInt8AttentionKernelDescriptor& rhs) const;
 };
