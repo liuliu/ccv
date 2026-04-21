@@ -60,6 +60,8 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
   scale = descriptor.scale;
   isCausal = descriptor.isCausal;
+  masked = descriptor.masked;
+  hasCausalEmptyRows = descriptor.hasCausalEmptyRows;
 
   source = createSource();
 
@@ -595,6 +597,61 @@ kernel void quantize_v(
 )";
   }
   createConstants(source);
+  if (type == AttentionKernelType::forward && masked) {
+    source += R"(
+kernel void generate_int8_attention_block_mask(
+    device const {{IO_MEMORY_NAME}} *Mask_buf [[buffer(15)]],
+    device uchar *Block_mask_buf [[buffer(16)]],
+    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
+    ushort tid [[thread_index_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]]
+) {
+  const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  const uint c_start = tgid.y * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint q_extent = min((uint){{BLOCK_DIMENSIONS_PARALLELIZATION}}, R - q_start);
+  const uint c_extent = min((uint){{BLOCK_DIMENSIONS_TRAVERSAL}}, C - c_start);
+  const uint element_count = q_extent * c_extent;
+  uint all_zero = 1;
+  uint all_masked = 1;
+  for (uint i = tid; i < element_count; i += {{BLOCK_MASK_THREADS}}) {
+    const uint row = q_start + i / c_extent;
+    const uint column = c_start + i - (i / c_extent) * c_extent;
+)";
+    if (isCausal) {
+      source += R"(
+    if (int(column) > int(row) + int(C) - int(R)) {
+      continue;
+    }
+)";
+    }
+    source += R"(
+    const float value = (float)Mask_buf[tgid.z * Mask_batch_stride + row * C + column];
+    if (value != 0.0f) {
+      all_zero = 0;
+    }
+    if (!(value <= {{MASKED_THRESHOLD}})) {
+      all_masked = 0;
+    }
+  }
+  threadgroup uint *zero_scratch = block_mask_scratch;
+  threadgroup uint *masked_scratch = block_mask_scratch + {{BLOCK_MASK_THREADS}};
+  zero_scratch[tid] = all_zero;
+  masked_scratch[tid] = all_masked;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    uint tile_all_zero = 1;
+    uint tile_all_masked = 1;
+    for (uint i = 0; i < {{BLOCK_MASK_THREADS}}; ++i) {
+      tile_all_zero &= zero_scratch[i];
+      tile_all_masked &= masked_scratch[i];
+    }
+    uchar flag = tile_all_masked ? 0 : (tile_all_zero ? 1 : 2);
+    Block_mask_buf[tgid.z * Block_mask_batch_stride + tgid.x * K_block_tiles + tgid.y] = flag;
+  }
+}
+
+)";
+  }
   if (type == AttentionKernelType::backwardQuery) {
     source += createComputeD();
   }
@@ -714,11 +771,16 @@ void NAInt8AttentionKernel::createConstants(CodeWriter& source) const noexcept {
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
+  source.SetValue("BLOCK_MASK_THREADS", std::to_string(blockMaskThreads));
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("Q_SCALE_TILE_SIZE", std::to_string(qScaleTileSize));
   source.SetValue("KV_SCALE_TILE_SIZE", std::to_string(kvScaleTileSize));
   source.SetValue("Q_SCALE_TILES", "(R + " + std::to_string(qScaleTileSize) + " - 1) / " + std::to_string(qScaleTileSize));
   source.SetValue("K_SCALE_TILES", "(C + " + std::to_string(kvScaleTileSize) + " - 1) / " + std::to_string(kvScaleTileSize));
+  source.SetValue("MASKED_THRESHOLD", high_precision_to_string(
+      ioPrecision == GEMMOperandPrecision::FP16 ?
+      (-65504.0f * 0.5f) :
+      (-std::numeric_limits<float>::max() * 0.5f)));
   source += R"(
 constant uint R [[function_constant(0)]];
 constant uint C [[function_constant(1)]];
@@ -736,6 +798,12 @@ constant uint V_scale_batch_stride [[function_constant(12)]];
 constant uint dO_scale_batch_stride [[function_constant(13)]];
 constant uint V_mean_batch_stride [[function_constant(14)]];
 )";
+  if (type == AttentionKernelType::forward && masked) {
+    source += R"(
+constant uint Mask_batch_stride [[function_constant(15)]];
+constant uint Block_mask_batch_stride [[function_constant(16)]];
+)";
+  }
   source += R"(
 
 constant uint Hq = {{HQ}};
@@ -746,7 +814,12 @@ constant uint Q_scale_tile_size = {{Q_SCALE_TILE_SIZE}};
 constant uint KV_scale_tile_size = {{KV_SCALE_TILE_SIZE}};
 constant uint Q_scale_tiles = {{Q_SCALE_TILES}};
 constant uint K_scale_tiles = {{K_SCALE_TILES}};
-constant uint C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
+\)";
+  if (type == AttentionKernelType::forward && masked) {
+    source += R"(constant uint K_block_tiles = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
+)";
+  }
+  source += R"(constant uint C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 )";
   if (type == AttentionKernelType::forward || type == AttentionKernelType::backwardQuery) {
@@ -806,6 +879,12 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device float *V_scale_buf [[buffer(12)]],
     device const {{V_MEAN_MEMORY_NAME}} *V_mean_buf [[buffer(14)]],
 )";
+    if (masked) {
+      source += R"(
+    device const {{IO_MEMORY_NAME}} *Mask_buf [[buffer(15)]],
+    device const uchar *Block_mask_buf [[buffer(16)]],
+)";
+    }
     break;
   case AttentionKernelType::backwardQuery:
     source += R"(
@@ -864,6 +943,12 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   V_scale_buf += tgid.z * V_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
   V_mean_buf += tgid.z * V_mean_batch_stride + (tgid.y {{H_HK_RATIO}}) * {{HEAD_DIMENSION}};
 )";
+    if (masked) {
+      source += R"(
+  Mask_buf += tgid.z * Mask_batch_stride;
+  Block_mask_buf += tgid.z * Block_mask_batch_stride;
+)";
+    }
     break;
   case AttentionKernelType::backwardQuery:
     source += R"(
@@ -1720,13 +1805,38 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
   }
-  if (isCausal) {
+  if (isCausal && !masked) {
     source += R"(
   const int causal_row_start = int(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
   const int causal_column_offset = int(C) - int(R);
   const int causal_last_column = causal_row_start + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
   const int causal_first_column_limit = causal_row_start + causal_column_offset;
   const uint causal_c_edge = causal_last_column < 0 ? 0 : min(C_edge, uint(causal_last_column) + 1);
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
+    }
+    source += R"(
+    }
+  }
+)";
+  } else if (isCausal || masked) {
+    source += R"(
+  const int causal_row_start = int(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+)";
+    if (isCausal) {
+      source += R"(
+  const int causal_column_offset = int(C) - int(R);
+  const int causal_last_column = causal_row_start + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
+  const int causal_first_column_limit = causal_row_start + causal_column_offset;
+  const uint causal_c_edge = causal_last_column < 0 ? 0 : min(C_edge, uint(causal_last_column) + 1);
+)";
+    }
+    source += R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
     if (cO_0.is_valid_element(k)) {
@@ -1749,6 +1859,14 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   } else {
     source += R"(
   for (uint c = 0; c < C_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  }
+  if (masked) {
+    source += R"(
+    const uchar mask_flags = Block_mask_buf[tgid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
+    if (mask_flags == 0) {
+      continue;
+    }
 )";
   }
   source += R"(
@@ -1794,18 +1912,45 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           auto idx = cP_0.get_multidimensional_index(k);
           const int column = int(c) + idx[0];
           const int row = causal_row_start + idx[1];
+\)";
+    if (masked) {
+      source += R"(
+          float score = (float)score_0 * block_scale;
+          if (mask_flags == 2 && row < int(R)) {
+            score += (float)Mask_buf[row * C + column];
+          }
           cP_0[k] = column <= row + causal_column_offset ?
-              (float)score_0 * block_scale :
+              score :
               -numeric_limits<float>::infinity();
-        }
+)";
+    } else {
+      source += "          cP_0[k] = column <= row + causal_column_offset ?\n              (float)score_0 * block_scale :\n              -numeric_limits<float>::infinity();";
+    }
+    source += R"(        }
       }
     } else {
       #pragma clang loop unroll(full)
       for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
         if (cP_0.is_valid_element(k)) {
           const int score_0 = cS_0[k];
-          cP_0[k] = (float)score_0 * block_scale;
-        }
+\)";
+    if (masked) {
+      source += R"(
+          float score = (float)score_0 * block_scale;
+          if (mask_flags == 2) {
+            auto idx = cP_0.get_multidimensional_index(k);
+            const int row = causal_row_start + idx[1];
+            const int column = int(c) + idx[0];
+            if (row < int(R)) {
+              score += (float)Mask_buf[row * C + column];
+            }
+          }
+          cP_0[k] = score;
+)";
+    } else {
+      source += "          cP_0[k] = (float)score_0 * block_scale;";
+    }
+    source += R"(        }
       }
     }
 )";
@@ -1815,8 +1960,24 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
         const int score_0 = cS_0[k];
-        cP_0[k] = (float)score_0 * block_scale;
-      }
+\)";
+    if (masked) {
+      source += R"(
+        float score = (float)score_0 * block_scale;
+        if (mask_flags == 2) {
+          auto idx = cP_0.get_multidimensional_index(k);
+          const int row = causal_row_start + idx[1];
+          const int column = int(c) + idx[0];
+          if (row < int(R)) {
+            score += (float)Mask_buf[row * C + column];
+          }
+        }
+        cP_0[k] = score;
+)";
+    } else {
+      source += "        cP_0[k] = (float)score_0 * block_scale;";
+    }
+    source += R"(      }
     }
 )";
   }
@@ -1953,7 +2114,14 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   }
   source += R"(
     const uint c = C - C_remainder;
-    const float block_scale = {{QK_SCALE_FACTOR_REM}}{{DOT_SCALE}};
+\)";
+  if (masked) {
+    source += R"(
+    const uchar mask_flags = Block_mask_buf[tgid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
+    if (mask_flags != 0) {
+)";
+  }
+  source += R"(    const float block_scale = {{QK_SCALE_FACTOR_REM}}{{DOT_SCALE}};
     const float v_scale_recip_127 = {{V_SCALE_FACTOR_REM}} / 127.0f;
 )";
   if (isCausal) {
@@ -2010,8 +2178,23 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   source += R"(
           cP_0[k] = -numeric_limits<float>::infinity();
         } else {
-          cP_0[k] = (float)cS_0[k] * block_scale;
-        }
+\)";
+  if (masked) {
+    source += R"(
+          float score = (float)cS_0[k] * block_scale;
+          if (mask_flags == 2) {
+            const int row = causal_row_start + idx[1];
+            const int column = int(c) + idx[0];
+            if (row < int(R)) {
+              score += (float)Mask_buf[row * C + column];
+            }
+          }
+          cP_0[k] = score;
+)";
+  } else {
+    source += "          cP_0[k] = (float)cS_0[k] * block_scale;";
+  }
+  source += R"(        }
       }
     }
     auto cM_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -2118,6 +2301,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     }
 )";
   }
+  if (masked) {
+    source += R"(
+    }
+)";
+  }
   source += R"(
   }
   auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
@@ -2129,26 +2317,60 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         auto idx = cO_0.get_multidimensional_index(k);
         if (idx[1] < (int)R_remainder) {
           auto it = cO_0.get_iterator(k);
+\)";
+          if (masked) {
+            source += R"(
+          auto m_it = cM.map_iterator(it);
+          const bool valid_output_row = *m_it != -numeric_limits<float>::infinity();
+)";
+          } else if (hasCausalEmptyRows) {
+            source += R"(
+          const bool valid_output_row = causal_row_start + idx[1] >= int(R) - int(C);
+)";
+          }
+          if (masked || hasCausalEmptyRows) {
+            source += R"(
           auto dst_it = cL.map_iterator(it);
+          auto L_reciprocal = valid_output_row ? fast::divide(1, *dst_it) : 0.0f;
+)";
+          } else {
+            source += R"(          auto dst_it = cL.map_iterator(it);
           auto L_reciprocal = fast::divide(1, *dst_it);
 )";
+          }
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
     if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-      source += R"(
+      if (masked || hasCausalEmptyRows) {
+        source += R"(
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
+)";
+      } else {
+        source += R"(
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
-      source += ");\n";
+        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += ");\n";
+      }
     } else {
-      source += R"(
+      if (masked || hasCausalEmptyRows) {
+        source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
-            O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
-      source += ");\n";
-      source += R"(
+            const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+            O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
           }
 )";
+      } else {
+        source += R"(
+          if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
+            O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
+        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += ");\n";
+        source += R"(
+          }
+)";
+      }
     }
   }
   source += R"(
@@ -2169,20 +2391,58 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
       if (cO_0.is_valid_element(k)) {
         auto it = cO_0.get_iterator(k);
+\)";
+        if (masked || hasCausalEmptyRows) {
+          source += R"(
+        auto idx = cO_0.get_multidimensional_index(k);
+)";
+        }
+        if (masked) {
+          source += R"(
+        auto m_it = cM.map_iterator(it);
+        const bool valid_output_row = *m_it != -numeric_limits<float>::infinity();
+)";
+        } else if (hasCausalEmptyRows) {
+          source += R"(
+        const bool valid_output_row = causal_row_start + idx[1] >= int(R) - int(C);
+)";
+        }
+        if (masked || hasCausalEmptyRows) {
+          source += R"(
         auto dst_it = cL.map_iterator(it);
+        auto L_reciprocal = valid_output_row ? fast::divide(1, *dst_it) : 0.0f;
+)";
+        } else {
+          source += R"(        auto dst_it = cL.map_iterator(it);
         auto L_reciprocal = fast::divide(1, *dst_it);
         auto idx = cO_0.get_multidimensional_index(k);
 )";
+        }
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
     if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
-      source += R"(
+      if (masked || hasCausalEmptyRows) {
+        source += R"(
+        const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+        O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
+)";
+      } else {
+        source += R"(
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
       source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
       source += ");\n";
+      }
     } else {
-      source += R"(
+      if (masked || hasCausalEmptyRows) {
+        source += R"(
+        if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
+        }
+)";
+      } else {
+        source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
       source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
@@ -2190,6 +2450,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       source += R"(
         }
 )";
+      }
     }
   }
   source += R"(

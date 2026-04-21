@@ -369,7 +369,10 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
       create_io_precision(),
       create_low_precision_intermediates(),
       AttentionKernelType::forward,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto quantize_constants = create_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
   bundle.q_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_q", quantize_constants.get());
@@ -399,7 +402,10 @@ ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase
       create_io_precision(),
       create_low_precision_intermediates(),
       AttentionKernelType::forward,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto attention_constants = create_attention_constants(
       attention, (attention.R + 15) / 16, (attention.C + 63) / 64);
@@ -434,7 +440,10 @@ BackwardPipelines create_backward_pipelines(
       create_io_precision(),
       create_low_precision_intermediates(),
       AttentionKernelType::backwardQuery,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
       keyvalue_block_dimensions,
       attention.D,
@@ -449,7 +458,10 @@ BackwardPipelines create_backward_pipelines(
       create_io_precision(),
       create_low_precision_intermediates(),
       AttentionKernelType::backwardKeyValue,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
   bundle.keyvalue_kernel = std::make_unique<NAInt8AttentionKernel>(keyvalue_descriptor, device);
   auto attention_constants = create_attention_constants(

@@ -211,6 +211,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		(q->info.datatype == k->info.datatype) &&
 		(q->info.datatype == v->info.datatype) &&
 		(q->info.datatype == o->info.datatype) &&
+		(attn_mask ? (q->info.datatype == attn_mask->info.datatype) : 1) &&
 		(weights ? (q->info.datatype == weights_datatype) : 1) &&
 		(bias ? (q->info.datatype == bias->info.datatype) : 1);
 	assert(is_same_dtype);
@@ -304,7 +305,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		const int use_quantized_attention =
 			use_neural_accelerators &&
 			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
-			!attn_mask &&
 			!weights &&
 			!bias;
 		int attention_is_batched = (batch_size > 1);

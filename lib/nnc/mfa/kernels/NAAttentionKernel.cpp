@@ -35,6 +35,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   scale = descriptor.scale;
   bypassThreadgroupMemory = descriptor.bypassThreadgroupMemory;
   isCausal = descriptor.isCausal;
+  masked = descriptor.masked;
 
   source = createSource();
 
@@ -194,6 +195,63 @@ using namespace mpp::tensor_ops;
 
   createConstants(source);
 
+  if (type.value == AttentionKernelType::forward && masked) {
+    source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+    source += R"(
+kernel void generate_attention_block_mask(
+    device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
+    device uchar *Block_mask_buf [[buffer(16)]],
+    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
+    ushort tid [[thread_index_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]]
+) {
+  const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  const uint c_start = tgid.y * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint q_extent = min((uint){{BLOCK_DIMENSIONS_PARALLELIZATION}}, R - q_start);
+  const uint c_extent = min((uint){{BLOCK_DIMENSIONS_TRAVERSAL}}, C - c_start);
+  const uint element_count = q_extent * c_extent;
+  uint all_zero = 1;
+  uint all_masked = 1;
+  for (uint i = tid; i < element_count; i += {{BLOCK_MASK_THREADS}}) {
+    const uint row = q_start + i / c_extent;
+    const uint column = c_start + i - (i / c_extent) * c_extent;
+)";
+    if (isCausal) {
+      source += R"(
+    if (int(column) > int(row) + int(C) - int(R)) {
+      continue;
+    }
+)";
+    }
+    source += R"(
+    const float value = (float)Mask_buf[tgid.z * Mask_batch_stride + row * C + column];
+    if (value != 0.0f) {
+      all_zero = 0;
+    }
+    if (!(value <= {{MASKED_THRESHOLD}})) {
+      all_masked = 0;
+    }
+  }
+  threadgroup uint *zero_scratch = block_mask_scratch;
+  threadgroup uint *masked_scratch = block_mask_scratch + {{BLOCK_MASK_THREADS}};
+  zero_scratch[tid] = all_zero;
+  masked_scratch[tid] = all_masked;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    uint tile_all_zero = 1;
+    uint tile_all_masked = 1;
+    for (uint i = 0; i < {{BLOCK_MASK_THREADS}}; ++i) {
+      tile_all_zero &= zero_scratch[i];
+      tile_all_masked &= masked_scratch[i];
+    }
+    const uchar flag = tile_all_masked ? 0 : (tile_all_zero ? 1 : 2);
+    Block_mask_buf[tgid.z * Block_mask_batch_stride + tgid.x * K_block_tiles + tgid.y] = flag;
+  }
+}
+
+)";
+  }
+
   if (type.value == AttentionKernelType::backwardQuery) {
     source += createComputeD();
   }
@@ -327,13 +385,20 @@ constant uint C [[function_constant(1)]];
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_2", std::to_string(blockDimensions[1] * 2));
   source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
+  source.SetValue("BLOCK_MASK_THREADS", std::to_string(blockMaskThreads));
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  std::ostringstream maskedThreshold;
+  maskedThreshold << std::setprecision(std::numeric_limits<float>::max_digits10)
+      << ((memoryPrecisions[AttentionOperand::Q].value() == GEMMOperandPrecision::FP16) ?
+          (-65504.0f * 0.5f) :
+          (-std::numeric_limits<float>::max() * 0.5f));
+  source.SetValue("MASKED_THRESHOLD", maskedThreshold.str());
   source += R"(
 constant uint Hq = {{HQ}};
 constant uint Hk = {{HK}};
 )";
   if (type.value == AttentionKernelType::forward) {
-    if (isCausal) {
+    if (isCausal || masked) {
       source += R"(
 constant uint C_single_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint C_single_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
@@ -385,6 +450,13 @@ constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
     source.SetValue("OPERAND_BUFFER_INDEX", std::to_string(operand.bufferIndex() + 2));
     source += R"(
 constant uint {{OPERAND_NAME}}_batch_stride [[function_constant({{OPERAND_BUFFER_INDEX}})]];
+)";
+  }
+  if (type.value == AttentionKernelType::forward && masked) {
+    source += R"(
+constant uint Mask_batch_stride [[function_constant(15)]];
+constant uint Block_mask_batch_stride [[function_constant(16)]];
+constant uint K_block_tiles = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
 )";
   }
   if (type.value == AttentionKernelType::forward) {
@@ -463,6 +535,12 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
     output += "* " + operand.name() + "_buf [[buffer(";
     output += std::to_string(operand.bufferIndex()) + ")]],\n";
   }
+  if (type.value == AttentionKernelType::forward && masked) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Mask_buf [[buffer(15)]],\n";
+    output += "  device const uchar* Block_mask_buf [[buffer(16)]],\n";
+  }
   return output;
 }
 
@@ -496,6 +574,12 @@ std::string NAAttentionKernel::createAdjustOffsets() const noexcept {
     source.SetValue("OPERAND_LOCATION", operandLocationWithHeadOffsetValue(operand));
       source += R"(
   {{OPERAND}}_buf = {{OPERAND_LOCATION}};
+)";
+  }
+  if (type.value == AttentionKernelType::forward && masked) {
+    source += R"(
+  Mask_buf += tgid.z * Mask_batch_stride;
+  Block_mask_buf += tgid.z * Block_mask_batch_stride;
 )";
   }
   return source.ToString();
@@ -687,10 +771,20 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   }
   source += R"(
   const int causal_row_start = int(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
+)";
+  if (isCausal) {
+    source += R"(
   const int causal_column_offset = int(C) - int(R);
   const int causal_last_column = causal_row_start + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
   const int causal_first_column_limit = causal_row_start + causal_column_offset;
-  const uint causal_c_edge = causal_last_column < 0 ? 0 : min(C_single_edge, uint(causal_last_column) + 1);
+  const uint single_c_edge = causal_last_column < 0 ? 0 : min(C_single_edge, uint(causal_last_column) + 1);
+)";
+  } else {
+    source += R"(
+  const uint single_c_edge = C_single_edge;
+)";
+  }
+  source += R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
     if (cO_0.is_valid_element(k)) {
@@ -703,7 +797,17 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
   }
 
-  for (uint c = 0; c < causal_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+  for (uint c = 0; c < single_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  if (masked) {
+    source += R"(
+    const uchar mask_flags = Block_mask_buf[tgid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
+    if (mask_flags == 0) {
+      continue;
+    }
+)";
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -727,7 +831,39 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   }
-  source += R"(
+  if (masked) {
+    if (isCausal) {
+      source += R"(
+    const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
+)";
+    }
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int row = causal_row_start + idx[1];
+        const int column = int(c) + idx[0];
+        float score = cS_0[k] * {{DOT_SCALE}};
+        if (mask_flags == 2 && row < int(R)) {
+          score += (float)Mask_buf[row * C + column];
+        }
+)";
+    if (isCausal) {
+      source += R"(
+        const int causal_column_limit = row + causal_column_offset;
+        if (causal_mask_0 && column > causal_column_limit) {
+          score = -numeric_limits<float>::infinity();
+        }
+)";
+    }
+    source += R"(
+        cS_0[k] = score;
+      }
+    }
+)";
+  } else {
+    source += R"(
     const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
     if (causal_mask_0) {
       #pragma clang loop unroll(full)
@@ -742,6 +878,9 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         }
       }
     }
+)";
+  }
+  source += R"(
     // Online reduce maximum.
     auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cS_0, cM_0_new, reduction_operation::max, -numeric_limits<float>::infinity());
@@ -750,7 +889,17 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
       if (cM.is_valid_element(k)) {
         correction[k] = 1;
+)";
+  if (masked) {
+    source += R"(
+        const float M_new = cM_0_new[k];
+)";
+  } else {
+    source += R"(
         const float M_new = cM_0_new[k] * {{DOT_SCALE}};
+)";
+  }
+  source += R"(
         if (M_new > cM[k]) {
           correction[k] = fast::exp2(cM[k] - M_new);
           cM[k] = M_new;
@@ -758,7 +907,20 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
-  source += R"(
+  if (masked) {
+    source += R"(
+    // Softmax. cS becomes cP.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        cS_0[k] = fast::exp2(cS_0[k] - *dst_it);
+      }
+    }
+)";
+  } else {
+    source += R"(
     // Softmax. cS becomes cP.
     if (causal_mask_0) {
       #pragma clang loop unroll(full)
@@ -785,6 +947,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
+  }
   source += R"(
     // Online reduce sum.
     auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -849,7 +1012,24 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   }
   source += R"(
   }
+)";
+  if (isCausal) {
+    source += R"(
   if (C_single_remainder > 0 && int(C - C_single_remainder) <= causal_last_column) {
+)";
+  } else {
+    source += R"(
+  if (C_single_remainder > 0) {
+)";
+  }
+  if (masked) {
+    source += R"(
+    const uint c = C - C_single_remainder;
+    const uchar mask_flags = Block_mask_buf[tgid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
+    if (mask_flags != 0) {
+)";
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -878,7 +1058,38 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   }
-  source += R"(
+  if (masked) {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int row = causal_row_start + idx[1];
+        const int column = int(C - C_single_remainder) + idx[0];
+        if (idx[0] >= (int)C_single_remainder) {
+          cS_0[k] = -numeric_limits<float>::infinity();
+        } else {
+          float score = cS_0[k] * {{DOT_SCALE}};
+          if (mask_flags == 2 && row < int(R)) {
+            score += (float)Mask_buf[row * C + column];
+          }
+)";
+    if (isCausal) {
+      source += R"(
+          const int causal_column_limit = row + causal_column_offset;
+          if (column > causal_column_limit) {
+            score = -numeric_limits<float>::infinity();
+          }
+)";
+    }
+    source += R"(
+          cS_0[k] = score;
+        }
+      }
+    }
+)";
+  } else {
+    source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -890,6 +1101,9 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         }
       }
     }
+)";
+  }
+  source += R"(
     // Online reduce maximum.
     auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cS_0, cM_0_new, reduction_operation::max, -numeric_limits<float>::infinity());
@@ -898,13 +1112,43 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
       if (cM.is_valid_element(k)) {
         correction[k] = 1;
+)";
+  if (masked) {
+    source += R"(
+        const float M_new = cM_0_new[k];
+)";
+  } else {
+    source += R"(
         const float M_new = cM_0_new[k] * {{DOT_SCALE}};
+)";
+  }
+  source += R"(
         if (M_new > cM[k]) {
           correction[k] = fast::exp2(cM[k] - M_new);
           cM[k] = M_new;
         }
       }
     }
+)";
+  if (masked) {
+    source += R"(
+    // Softmax. cS becomes cP.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        auto idx = cS_0.get_multidimensional_index(k);
+        if (idx[0] >= (int)C_single_remainder) {
+          cS_0[k] = 0;
+        } else {
+          cS_0[k] = fast::exp2(cS_0[k] - *dst_it);
+        }
+      }
+    }
+)";
+  } else {
+    source += R"(
     // Softmax. cS becomes cP.
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
@@ -921,6 +1165,9 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         }
       }
     }
+)";
+  }
+  source += R"(
     // Online reduce sum.
     auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
     reduce_rows(cS_0, cL_0_new, reduction_operation::sum, (float)0);
@@ -969,6 +1216,13 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   }
   source += R"(
   }
+)";
+  if (masked) {
+    source += R"(
+  }
+)";
+  }
+  source += R"(
   auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
   auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   if (R_remainder > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= R_edge) {
@@ -1050,7 +1304,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
 }
 
 void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
-  if (isCausal) {
+  if (isCausal || masked) {
     loopForwardSingleCausal(source);
     return;
   }

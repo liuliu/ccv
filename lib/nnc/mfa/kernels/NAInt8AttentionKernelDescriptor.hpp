@@ -22,6 +22,8 @@ struct NAInt8AttentionKernelDescriptor {
   AttentionKernelType type;
   float scale;
   bool isCausal;
+  bool masked;
+  bool hasCausalEmptyRows;
 
   NAInt8AttentionKernelDescriptor() = delete;
   NAInt8AttentionKernelDescriptor(
@@ -39,7 +41,9 @@ struct NAInt8AttentionKernelDescriptor {
       bool lowPrecisionIntermediates,
       AttentionKernelType type,
       float scale,
-      bool isCausal = false) noexcept;
+      bool isCausal,
+      bool masked,
+      bool hasCausalEmptyRows) noexcept;
 
   bool operator==(const NAInt8AttentionKernelDescriptor& rhs) const;
 };

@@ -23,6 +23,8 @@ struct NAInt8AttentionDescriptor {
   AttentionKernelType type = AttentionKernelType::forward;
   float scale;
   bool isCausal = false;
+  bool masked = false;
+  uint32_t maskBatchStride = 0;
 
   bool operator==(const NAInt8AttentionDescriptor& rhs) const;
 

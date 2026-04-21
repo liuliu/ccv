@@ -678,7 +678,10 @@ QuantizePipelines create_int8_quantize_pipelines(MTL::Device* device, const Atte
       GEMMOperandPrecision::FP16,
       true,
       AttentionKernelType::forward,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto quantize_constants = create_int8_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
   bundle.q_pipeline = create_int8_pipeline(device, bundle.kernel->library.get(), "quantize_q", quantize_constants.get());
@@ -708,7 +711,10 @@ Int8ForwardPipeline create_int8_forward_pipeline(MTL::Device* device, const Atte
       GEMMOperandPrecision::FP16,
       true,
       AttentionKernelType::forward,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto attention_constants = create_int8_attention_constants(attention, (attention.R + 15) / 16, (attention.C + 63) / 64);
   bundle.pipeline = create_int8_pipeline(device, bundle.kernel->library.get(), "int8_attention", attention_constants.get());
@@ -739,7 +745,10 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       GEMMOperandPrecision::FP16,
       true,
       AttentionKernelType::backwardQuery,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
       keyvalue_block_dimensions,
       attention.D,
@@ -754,7 +763,10 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       GEMMOperandPrecision::FP16,
       true,
       AttentionKernelType::backwardKeyValue,
-      create_scale(attention));
+      create_scale(attention),
+      false,
+      false,
+      false);
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
   bundle.keyvalue_kernel = std::make_unique<NAInt8AttentionKernel>(keyvalue_descriptor, device);
   auto attention_constants = create_int8_attention_constants(attention, (attention.R + 15) / 16, (attention.C + 63) / 64);

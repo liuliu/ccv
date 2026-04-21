@@ -60,6 +60,9 @@ struct VariantConfig {
   bool center_v = false;
   bool quantize_only = false;
   bool is_causal = false;
+  bool zero_mask = false;
+  bool causal_visible_zero_mask = false;
+  bool causal_mask = false;
   InputPrecision input_precision = InputPrecision::fp16;
   const char* capture_path = nullptr;
   float v_bias = 0.0f;
@@ -69,6 +72,7 @@ struct VariantConfig {
 struct Stats {
   double average_seconds = 0;
   double median_seconds = 0;
+  double best3_seconds = 0;
   double min_seconds = 0;
   double max_seconds = 0;
 };
@@ -81,6 +85,7 @@ struct ValidationStats {
   size_t checked_rows = 0;
   size_t nonfinite_o = 0;
   size_t nonfinite_l = 0;
+  size_t mismatched_nonfinite_l = 0;
   double max_abs_o = 0;
   double max_rel_o = 0;
   double max_abs_l = 0;
@@ -92,14 +97,19 @@ struct BaselinePipeline {
   AttentionOperands<GEMMOperandPrecision> memory_precisions;
   std::unique_ptr<NAAttentionKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> block_mask_pipeline;
+  simd::ushort3 block_dimensions = simd::ushort3 { 0, 0, 0 };
+  bool masked = false;
 };
 
 struct Int8Pipeline {
   std::unique_ptr<NAInt8AttentionKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> block_mask_pipeline;
   simd::ushort3 block_dimensions = simd::ushort3 { 0, 0, 0 };
   uint16_t execution_simd_groups = 0;
   uint16_t thread_barrier_every_c = 0;
+  bool masked = false;
 };
 
 struct QuantizePipelines {
@@ -255,6 +265,13 @@ float create_scale(const AttentionCase& attention)
   return 1.0f / std::sqrt((float)attention.D);
 }
 
+float mask_hard_threshold(InputPrecision precision)
+{
+  return precision == InputPrecision::fp16 ?
+      -65504.0f * 0.5f :
+      -std::numeric_limits<float>::max() * 0.5f;
+}
+
 const char* input_precision_name(InputPrecision precision)
 {
   switch (precision) {
@@ -382,7 +399,8 @@ void stop_metal_capture()
 }
 
 simd::ushort3 create_baseline_block_dimensions(
-    const AttentionCase& attention)
+    const AttentionCase& attention,
+    bool is_causal)
 {
   const unsigned short head_dimension = attention.D;
   unsigned short revised_head = (head_dimension + 15) / 16 * 16;
@@ -392,6 +410,8 @@ simd::ushort3 create_baseline_block_dimensions(
     revised_head =
         revised_head / std::max<unsigned short>(revised_head / 128, 2);
   }
+  if (is_causal)
+    return simd::ushort3 { 16, 32, revised_head };
   if (attention.C % 64 == 0) {
     return simd::ushort3 { 16, 64, revised_head };
   } else if (attention.C % 48 == 0) {
@@ -423,11 +443,11 @@ simd::ushort3 create_int8_block_dimensions(
   return simd::ushort3 { block_r, block_c, block_d };
 }
 
-uint16_t create_baseline_execution_simd_groups(uint16_t override_value)
+uint16_t create_baseline_execution_simd_groups(bool is_causal, uint16_t override_value)
 {
   if (override_value != 0)
     return override_value;
-  return 16;
+  return is_causal ? 8 : 16;
 }
 
 uint16_t create_int8_execution_simd_groups(const AttentionCase& attention, uint16_t override_value)
@@ -1797,7 +1817,9 @@ double run_quantize_and_int8_once(
     MTL::Buffer* v_mean_buffer,
     MTL::Buffer* v_mean_sum_buffer,
     MTL::Buffer* o_buffer,
-    MTL::Buffer* l_buffer)
+    MTL::Buffer* l_buffer,
+    MTL::Buffer* mask_buffer = nullptr,
+    MTL::Buffer* block_mask_buffer = nullptr)
 {
   const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
@@ -1829,6 +1851,17 @@ double run_quantize_and_int8_once(
     encode_v_mean(command_buffer.get(), attention, block_dimensions, quantize_pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
     encode_v_quantize(command_buffer.get(), attention, block_dimensions, quantize_pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
   }
+  if (bundle.masked) {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
+    encoder->setThreadgroupMemoryLength(NAInt8AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
+    encoder->setBuffer(mask_buffer, 0, 15);
+    encoder->setBuffer(block_mask_buffer, 0, 16);
+    encoder->dispatchThreadgroups(
+        MTL::Size(q_tiles, k_tiles, attention.batch),
+        MTL::Size(NAInt8AttentionKernel::blockMaskThreads, 1, 1));
+    encoder->endEncoding();
+  }
   {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.pipeline.get());
@@ -1843,6 +1876,10 @@ double run_quantize_and_int8_once(
     encoder->setBuffer(k_scale_buffer, 0, 11);
     encoder->setBuffer(v_scale_buffer, 0, 12);
     encoder->setBuffer(v_mean_buffer, 0, 14);
+    if (bundle.masked) {
+      encoder->setBuffer(mask_buffer, 0, 15);
+      encoder->setBuffer(block_mask_buffer, 0, 16);
+    }
     encoder->dispatchThreadgroups(
         bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
         MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -1869,6 +1906,10 @@ BaselinePipeline create_baseline_pipeline(
   bundle.descriptor.type = AttentionKernelType::forward;
   bundle.descriptor.scale = create_scale(attention);
   bundle.descriptor.isCausal = variant.is_causal;
+  bundle.descriptor.masked = variant.zero_mask;
+  bundle.masked = variant.zero_mask;
+  if (variant.zero_mask && attention.batch > 1)
+    bundle.descriptor.maskBatchStride = attention.R * attention.C;
   if (attention.batch > 1) {
     bundle.descriptor.batchStrides[AttentionOperand::Q] = attention.R * attention.D * attention.Hq;
     bundle.descriptor.batchStrides[AttentionOperand::K] = attention.C * attention.D * attention.Hk;
@@ -1876,9 +1917,10 @@ BaselinePipeline create_baseline_pipeline(
     bundle.descriptor.batchStrides[AttentionOperand::O] = attention.R * attention.D * attention.Hq;
   }
   bundle.memory_precisions = create_memory_precisions(variant.input_precision);
-  const simd::ushort3 block_dimensions = create_baseline_block_dimensions(attention);
+  const simd::ushort3 block_dimensions = create_baseline_block_dimensions(attention, variant.is_causal);
+  bundle.block_dimensions = block_dimensions;
   const uint16_t execution_simd_groups =
-      create_baseline_execution_simd_groups(variant.baseline_execution_simd_groups_override);
+      create_baseline_execution_simd_groups(variant.is_causal, variant.baseline_execution_simd_groups_override);
   const bool check_c_edge_1 =
       (attention.C % (block_dimensions[1] * 2)) > block_dimensions[1];
   const NAAttentionKernelDescriptor kernel_descriptor(
@@ -1892,9 +1934,12 @@ BaselinePipeline create_baseline_pipeline(
       AttentionKernelType::forward,
       bundle.descriptor.scale,
       false,
-      variant.is_causal);
+      variant.is_causal,
+      variant.zero_mask);
   bundle.kernel = std::make_unique<NAAttentionKernel>(kernel_descriptor, device);
 
+  const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
+  const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t row_dimension = attention.R;
   const uint32_t column_dimension = attention.C;
@@ -1908,6 +1953,12 @@ BaselinePipeline create_baseline_pipeline(
   constants->setConstantValue(&k_batch_stride, MTL::DataTypeUInt, NS::UInteger(2 + AttentionOperand(AttentionOperand::K).bufferIndex()));
   constants->setConstantValue(&v_batch_stride, MTL::DataTypeUInt, NS::UInteger(2 + AttentionOperand(AttentionOperand::V).bufferIndex()));
   constants->setConstantValue(&o_batch_stride, MTL::DataTypeUInt, NS::UInteger(2 + AttentionOperand(AttentionOperand::O).bufferIndex()));
+  if (variant.zero_mask) {
+    const uint32_t mask_batch_stride = attention.batch > 1 ? attention.R * attention.C : 0;
+    const uint32_t block_mask_batch_stride = attention.batch > 1 ? q_tiles * k_tiles : 0;
+    constants->setConstantValue(&mask_batch_stride, MTL::DataTypeUInt, NS::UInteger(15));
+    constants->setConstantValue(&block_mask_batch_stride, MTL::DataTypeUInt, NS::UInteger(16));
+  }
 
   NS::Error* error = nil;
   auto attention_name = NS::String::string("attention", NS::UTF8StringEncoding);
@@ -1917,6 +1968,15 @@ BaselinePipeline create_baseline_pipeline(
   pipeline_descriptor->setComputeFunction(attention_function.get());
   bundle.pipeline = NS::TransferPtr(device->newComputePipelineState(pipeline_descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
+  if (variant.zero_mask) {
+    auto block_mask_name = NS::String::string("generate_attention_block_mask", NS::UTF8StringEncoding);
+    auto block_mask_function = NS::TransferPtr(bundle.kernel->library->newFunction(block_mask_name, constants.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    auto block_mask_pipeline_descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    block_mask_pipeline_descriptor->setComputeFunction(block_mask_function.get());
+    bundle.block_mask_pipeline = NS::TransferPtr(device->newComputePipelineState(block_mask_pipeline_descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
   return bundle;
 }
 
@@ -1937,6 +1997,7 @@ Int8Pipeline create_int8_pipeline(
       variant.int8_thread_barrier_every_c_override ?
       variant.int8_thread_barrier_every_c_override :
       (variant.int8_thread_barrier_over_c && !variant.is_causal ? 2 : 0);
+  bundle.masked = variant.zero_mask;
   const uint16_t v_mean_threads =
       attention.C <= 20480 ?
       NAInt8AttentionKernel::smallSequenceVMeanThreads :
@@ -1956,7 +2017,9 @@ Int8Pipeline create_int8_pipeline(
       variant.input_precision != InputPrecision::fp32,
       AttentionKernelType::forward,
       create_scale(attention),
-      variant.is_causal);
+      variant.is_causal,
+      variant.zero_mask,
+      variant.is_causal && !variant.zero_mask && attention.R > attention.C);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
   const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];
@@ -1978,10 +2041,16 @@ Int8Pipeline create_int8_pipeline(
   constants->setConstantValue(&k_batch_stride, MTL::DataTypeUInt, NS::UInteger(3));
   constants->setConstantValue(&v_batch_stride, MTL::DataTypeUInt, NS::UInteger(4));
   constants->setConstantValue(&o_batch_stride, MTL::DataTypeUInt, NS::UInteger(5));
-  constants->setConstantValue(&q_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(6));
-  constants->setConstantValue(&k_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(7));
-  constants->setConstantValue(&v_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(8));
-  constants->setConstantValue(&v_mean_batch_stride, MTL::DataTypeUInt, NS::UInteger(9));
+  constants->setConstantValue(&q_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(10));
+  constants->setConstantValue(&k_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(11));
+  constants->setConstantValue(&v_scale_batch_stride, MTL::DataTypeUInt, NS::UInteger(12));
+  constants->setConstantValue(&v_mean_batch_stride, MTL::DataTypeUInt, NS::UInteger(14));
+  if (variant.zero_mask) {
+    const uint32_t mask_batch_stride = attention.batch > 1 ? attention.R * attention.C : 0;
+    const uint32_t block_mask_batch_stride = attention.batch > 1 ? q_tiles * k_tiles : 0;
+    constants->setConstantValue(&mask_batch_stride, MTL::DataTypeUInt, NS::UInteger(15));
+    constants->setConstantValue(&block_mask_batch_stride, MTL::DataTypeUInt, NS::UInteger(16));
+  }
 
   NS::Error* error = nil;
   auto kernel_name = NS::String::string("int8_attention", NS::UTF8StringEncoding);
@@ -1991,6 +2060,15 @@ Int8Pipeline create_int8_pipeline(
   pipeline_descriptor->setComputeFunction(kernel_function.get());
   bundle.pipeline = NS::TransferPtr(device->newComputePipelineState(pipeline_descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
+  if (variant.zero_mask) {
+    auto block_mask_name = NS::String::string("generate_int8_attention_block_mask", NS::UTF8StringEncoding);
+    auto block_mask_function = NS::TransferPtr(bundle.kernel->library->newFunction(block_mask_name, constants.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    auto block_mask_pipeline_descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    block_mask_pipeline_descriptor->setComputeFunction(block_mask_function.get());
+    bundle.block_mask_pipeline = NS::TransferPtr(device->newComputePipelineState(block_mask_pipeline_descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
   return bundle;
 }
 
@@ -2089,14 +2167,30 @@ QuantizedQK quantize_qk(
 
 double run_baseline_once(
     MTL::CommandQueue* command_queue,
+    const AttentionCase& attention,
     const BaselinePipeline& bundle,
     MTL::Buffer* q_buffer,
     MTL::Buffer* k_buffer,
     MTL::Buffer* v_buffer,
     MTL::Buffer* o_buffer,
-    MTL::Buffer* l_buffer)
+    MTL::Buffer* l_buffer,
+    MTL::Buffer* mask_buffer = nullptr,
+    MTL::Buffer* block_mask_buffer = nullptr)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  if (bundle.masked) {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
+    encoder->setThreadgroupMemoryLength(NAAttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
+    encoder->setBuffer(mask_buffer, 0, 15);
+    encoder->setBuffer(block_mask_buffer, 0, 16);
+    const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];
+    const uint32_t k_tiles = (attention.C + bundle.block_dimensions[1] - 1) / bundle.block_dimensions[1];
+    encoder->dispatchThreadgroups(
+        MTL::Size(q_tiles, k_tiles, attention.batch),
+        MTL::Size(NAAttentionKernel::blockMaskThreads, 1, 1));
+    encoder->endEncoding();
+  }
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(bundle.pipeline.get());
   encoder->setThreadgroupMemoryLength(bundle.kernel->threadgroupMemoryAllocation(bundle.pipeline.get(), bundle.descriptor), 0);
@@ -2105,6 +2199,10 @@ double run_baseline_once(
   encoder->setBuffer(v_buffer, 0, 2);
   encoder->setBuffer(o_buffer, 0, 3);
   encoder->setBuffer(l_buffer, 0, 4);
+  if (bundle.masked) {
+    encoder->setBuffer(mask_buffer, 0, 15);
+    encoder->setBuffer(block_mask_buffer, 0, 16);
+  }
   encoder->dispatchThreadgroups(
       bundle.kernel->threadgroupsPerGrid(bundle.descriptor),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get(), bundle.descriptor), 1, 1));
@@ -2126,9 +2224,24 @@ double run_int8_once(
     MTL::Buffer* q_scale_buffer,
     MTL::Buffer* k_scale_buffer,
     MTL::Buffer* v_scale_buffer,
-    MTL::Buffer* v_mean_buffer)
+    MTL::Buffer* v_mean_buffer,
+    MTL::Buffer* mask_buffer = nullptr,
+    MTL::Buffer* block_mask_buffer = nullptr)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  if (bundle.masked) {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
+    encoder->setThreadgroupMemoryLength(NAInt8AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
+    encoder->setBuffer(mask_buffer, 0, 15);
+    encoder->setBuffer(block_mask_buffer, 0, 16);
+    const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];
+    const uint32_t k_tiles = (attention.C + bundle.block_dimensions[1] - 1) / bundle.block_dimensions[1];
+    encoder->dispatchThreadgroups(
+        MTL::Size(q_tiles, k_tiles, attention.batch),
+        MTL::Size(NAInt8AttentionKernel::blockMaskThreads, 1, 1));
+    encoder->endEncoding();
+  }
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(bundle.pipeline.get());
   const uint32_t threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
@@ -2142,6 +2255,10 @@ double run_int8_once(
   encoder->setBuffer(k_scale_buffer, 0, 11);
   encoder->setBuffer(v_scale_buffer, 0, 12);
   encoder->setBuffer(v_mean_buffer, 0, 14);
+  if (bundle.masked) {
+    encoder->setBuffer(mask_buffer, 0, 15);
+    encoder->setBuffer(block_mask_buffer, 0, 16);
+  }
   encoder->dispatchThreadgroups(
       bundle.kernel->threadgroupsPerGrid(attention.batch, attention.R),
       MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -2169,6 +2286,9 @@ bool benchmark(
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
   std::sort(samples.begin(), samples.end());
   stats->median_seconds = samples[samples.size() / 2];
+  const size_t best3_count = std::min<size_t>(samples.size(), 3);
+  stats->best3_seconds =
+      std::accumulate(samples.begin(), samples.begin() + best3_count, 0.0) / (double)best3_count;
   stats->min_seconds = samples.front();
   stats->max_seconds = samples.back();
   return true;
@@ -2207,6 +2327,8 @@ void compute_int8_reference_row(
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
+    const std::vector<float>* mask_values,
+    float mask_hard_threshold,
     uint32_t batch,
     uint32_t query_head,
     uint32_t row,
@@ -2228,11 +2350,7 @@ void compute_int8_reference_row(
       is_causal ?
       (last_causal_column < 0 ? 0 : std::min<uint32_t>(attention.C, (uint32_t)last_causal_column + 1)) :
       attention.C;
-  if (valid_columns == 0) {
-    *l_value = -std::numeric_limits<float>::infinity();
-    o_values->assign(attention.D, 0.0f);
-    return;
-  }
+  uint32_t active_columns = 0;
   for (uint32_t column = 0; column < valid_columns; ++column) {
     const uint32_t k_tile = k_tiles == 1 ? 0 : (column / block_dimensions[1]);
     const float k_scale = quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile];
@@ -2241,12 +2359,28 @@ void compute_int8_reference_row(
       dot += ((float)quantized.q_int8[q_index(attention, batch, row, query_head, dim)] * q_scale) *
           ((float)quantized.k_int8[kv_index(attention, batch, column, kv_head, dim)] * k_scale);
     }
-    const float score = dot * create_scale(attention);
+    float score = dot * create_scale(attention);
+    if (mask_values) {
+      const float mask_value = (*mask_values)[((size_t)batch * attention.R + row) * attention.C + column];
+      if (mask_value <= mask_hard_threshold) {
+        scores[column] = -std::numeric_limits<float>::infinity();
+        continue;
+      }
+      score += mask_value;
+    }
     scores[column] = score;
     max_score = std::max(max_score, score);
+    ++active_columns;
+  }
+  if (active_columns == 0) {
+    *l_value = -std::numeric_limits<float>::infinity();
+    o_values->assign(attention.D, 0.0f);
+    return;
   }
   float sum = 0;
   for (uint32_t column = 0; column < valid_columns; ++column) {
+    if (!std::isfinite(scores[column]))
+      continue;
     scores[column] = std::exp(scores[column] - max_score);
     sum += scores[column];
   }
@@ -2254,6 +2388,8 @@ void compute_int8_reference_row(
   const float reciprocal = 1.0f / sum;
   o_values->assign(attention.D, 0.0f);
   for (uint32_t column = 0; column < valid_columns; ++column) {
+    if (!std::isfinite(scores[column]))
+      continue;
     const float probability = scores[column] * reciprocal;
     for (uint32_t dim = 0; dim < attention.D; ++dim) {
       (*o_values)[dim] += probability * v_values[kv_index(attention, batch, column, kv_head, dim)];
@@ -2281,6 +2417,8 @@ ValidationStats validate_int8_outputs(
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
     const std::vector<float>& v_values,
+    const std::vector<float>* mask_values,
+    float mask_hard_threshold,
     const std::vector<float>& o_values,
     const std::vector<float>& l_values,
     bool is_causal)
@@ -2314,12 +2452,18 @@ ValidationStats validate_int8_outputs(
     for (const auto head : head_points) {
       for (const auto row : row_points) {
         float reference_l = 0;
-        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, batch, head, row, is_causal, &reference_l, &reference_o);
+        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, mask_values, mask_hard_threshold, batch, head, row, is_causal, &reference_l, &reference_o);
         const float actual_l = l_values[l_index(attention, batch, head, row)];
-        const double abs_l = std::fabs(reference_l - actual_l);
-        const double rel_l = abs_l / std::max<double>(std::max(std::fabs(reference_l), std::fabs(actual_l)), 1.0);
-        stats.max_abs_l = std::max(stats.max_abs_l, abs_l);
-        stats.max_rel_l = std::max(stats.max_rel_l, rel_l);
+        const bool reference_l_finite = std::isfinite(reference_l);
+        const bool actual_l_finite = std::isfinite(actual_l);
+        if (reference_l_finite && actual_l_finite) {
+          const double abs_l = std::fabs(reference_l - actual_l);
+          const double rel_l = abs_l / std::max<double>(std::max(std::fabs(reference_l), std::fabs(actual_l)), 1.0);
+          stats.max_abs_l = std::max(stats.max_abs_l, abs_l);
+          stats.max_rel_l = std::max(stats.max_rel_l, rel_l);
+        } else if (reference_l != actual_l) {
+          ++stats.mismatched_nonfinite_l;
+        }
         for (uint32_t dim = 0; dim < attention.D; ++dim) {
           const float actual_o = o_values[o_index(attention, batch, row, head, dim)];
           const double abs_o = std::fabs(reference_o[dim] - actual_o);
@@ -2334,7 +2478,7 @@ ValidationStats validate_int8_outputs(
   stats.checked_heads = head_points.size();
   stats.checked_rows = row_points.size();
   stats.passed = stats.nonfinite_o == 0 &&
-      stats.nonfinite_l == 0 &&
+      stats.mismatched_nonfinite_l == 0 &&
       (stats.max_abs_o <= 7e-2 || stats.max_rel_o <= 7e-2) &&
       (stats.max_abs_l <= 7e-2 || stats.max_rel_l <= 7e-2);
   return stats;
@@ -2354,6 +2498,7 @@ void print_stats(const char* label, const AttentionCase& attention, const Stats&
   std::cout << label
             << " avg_ms=" << std::setprecision(3) << stats.average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
+            << " best3_ms=" << stats.best3_seconds * 1e3
             << " min_ms=" << stats.min_seconds * 1e3
             << " max_ms=" << stats.max_seconds * 1e3
             << " avg_gflops=" << flops / stats.average_seconds / 1e9
@@ -2366,6 +2511,7 @@ void print_time_stats(const char* label, const Stats& stats)
   std::cout << label
             << " avg_ms=" << std::setprecision(3) << stats.average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
+            << " best3_ms=" << stats.best3_seconds * 1e3
             << " min_ms=" << stats.min_seconds * 1e3
             << " max_ms=" << stats.max_seconds * 1e3
             << '\n';
@@ -2380,6 +2526,7 @@ void print_validation(const ValidationStats& stats)
             << " rows=" << stats.checked_rows
             << " nonfinite_o=" << stats.nonfinite_o
             << " nonfinite_l=" << stats.nonfinite_l
+            << " mismatched_nonfinite_l=" << stats.mismatched_nonfinite_l
             << " max_abs_o=" << stats.max_abs_o
             << " max_rel_o=" << stats.max_rel_o
             << " max_abs_l=" << stats.max_abs_l
@@ -2422,9 +2569,28 @@ int main(int argc, char** argv)
   BenchmarkConfig config;
   VariantConfig variant;
   int arg_count = argc;
-  if (arg_count >= 2 && !std::strcmp(argv[arg_count - 1], "causal")) {
-    variant.is_causal = true;
-    --arg_count;
+  while (arg_count >= 2) {
+    if (!std::strcmp(argv[arg_count - 1], "causal")) {
+      variant.is_causal = true;
+      --arg_count;
+    } else if (!std::strcmp(argv[arg_count - 1], "mask-zero") ||
+        !std::strcmp(argv[arg_count - 1], "zero-mask") ||
+        !std::strcmp(argv[arg_count - 1], "masked-zero")) {
+      variant.zero_mask = true;
+      --arg_count;
+    } else if (!std::strcmp(argv[arg_count - 1], "mask-causal-visible-zero") ||
+        !std::strcmp(argv[arg_count - 1], "causal-visible-zero-mask")) {
+      variant.zero_mask = true;
+      variant.causal_visible_zero_mask = true;
+      --arg_count;
+    } else if (!std::strcmp(argv[arg_count - 1], "mask-causal") ||
+        !std::strcmp(argv[arg_count - 1], "causal-mask")) {
+      variant.zero_mask = true;
+      variant.causal_mask = true;
+      --arg_count;
+    } else {
+      break;
+    }
   }
   if (arg_count >= 4) {
     attention.R = (uint32_t)std::strtoul(argv[1], nullptr, 10);
@@ -2577,6 +2743,24 @@ int main(int argc, char** argv)
   const auto v_quant_encoded = encode_values(v_quant_values, variant.input_precision);
   const auto v_quant_reference_values =
       decode_values(v_quant_encoded.data(), v_quant_values.size(), variant.input_precision);
+  std::vector<uint8_t> mask_encoded;
+  std::vector<float> mask_values;
+  if (variant.zero_mask) {
+    mask_values.assign((size_t)attention.batch * attention.R * attention.C, 0.0f);
+    if (variant.causal_visible_zero_mask || variant.causal_mask) {
+      const int causal_column_offset = (int)attention.C - (int)attention.R;
+      for (uint32_t batch = 0; batch < attention.batch; ++batch) {
+        for (uint32_t row = 0; row < attention.R; ++row) {
+          for (uint32_t column = 0; column < attention.C; ++column) {
+            if ((int)column > (int)row + causal_column_offset)
+              mask_values[((size_t)batch * attention.R + row) * attention.C + column] =
+                  variant.causal_mask ? -65504.0f : 1.0f;
+          }
+        }
+      }
+    }
+    mask_encoded = encode_values(mask_values, variant.input_precision);
+  }
 
   const simd::ushort3 block_dimensions = create_int8_block_dimensions(
       attention,
@@ -2619,6 +2803,19 @@ int main(int argc, char** argv)
   const size_t v_int8_bytes = quantized.v_int8.size() * sizeof(int8_t);
   const size_t v_scale_bytes = quantized.v_scale.size() * sizeof(float);
   const size_t v_mean_bytes = v_mean_encoded.size();
+  const size_t mask_bytes = mask_encoded.size();
+  const size_t int8_block_mask_tiles =
+      ((attention.R + block_dimensions[0] - 1) / block_dimensions[0]) *
+      ((attention.C + block_dimensions[1] - 1) / block_dimensions[1]);
+  const size_t baseline_block_mask_tiles =
+      (!variant.quantize_only && baseline.masked) ?
+      ((attention.R + baseline.block_dimensions[0] - 1) / baseline.block_dimensions[0]) *
+      ((attention.C + baseline.block_dimensions[1] - 1) / baseline.block_dimensions[1]) :
+      0;
+  const size_t block_mask_bytes =
+      variant.zero_mask ?
+      (size_t)attention.batch * std::max(int8_block_mask_tiles, baseline_block_mask_tiles) * sizeof(uint8_t) :
+      0;
   const size_t v_tile_mean_bytes =
       (size_t)attention.batch * attention.Hk *
       ((attention.C + block_dimensions[1] - 1) / block_dimensions[1]) *
@@ -2639,6 +2836,9 @@ int main(int argc, char** argv)
   auto v_scale_stage = NS::TransferPtr(device->newBuffer(quantized.v_scale.data(), v_scale_bytes, kSharedResourceOptions));
   auto k_int8_stage = NS::TransferPtr(device->newBuffer(quantized.k_int8.data(), k_int8_bytes, kSharedResourceOptions));
   auto k_scale_stage = NS::TransferPtr(device->newBuffer(quantized.k_scale.data(), k_scale_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> mask_stage;
+  if (variant.zero_mask)
+    mask_stage = NS::TransferPtr(device->newBuffer(mask_encoded.data(), mask_bytes, kSharedResourceOptions));
   auto o_stage = NS::TransferPtr(device->newBuffer(o_bytes, kSharedResourceOptions));
   auto l_stage = NS::TransferPtr(device->newBuffer(l_bytes, kSharedResourceOptions));
   auto q_buffer = NS::TransferPtr(device->newBuffer(q_bytes, kPrivateResourceOptions));
@@ -2655,6 +2855,12 @@ int main(int argc, char** argv)
     v_mean_sum_buffer = NS::TransferPtr(device->newBuffer(v_mean_sum_bytes, kPrivateResourceOptions));
   auto k_int8_buffer = NS::TransferPtr(device->newBuffer(k_int8_bytes, kPrivateResourceOptions));
   auto k_scale_buffer = NS::TransferPtr(device->newBuffer(k_scale_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> mask_buffer;
+  NS::SharedPtr<MTL::Buffer> block_mask_buffer;
+  if (variant.zero_mask) {
+    mask_buffer = NS::TransferPtr(device->newBuffer(mask_bytes, kPrivateResourceOptions));
+    block_mask_buffer = NS::TransferPtr(device->newBuffer(block_mask_bytes, kPrivateResourceOptions));
+  }
   auto o_buffer = NS::TransferPtr(device->newBuffer(o_bytes, kPrivateResourceOptions));
   auto l_buffer = NS::TransferPtr(device->newBuffer(l_bytes, kPrivateResourceOptions));
   auto* qk_q_buffer = q_int8_buffer.get();
@@ -2671,6 +2877,8 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), v_scale_stage.get(), v_scale_buffer.get(), v_scale_bytes);
   upload_buffer(command_queue.get(), k_int8_stage.get(), k_int8_buffer.get(), k_int8_bytes);
   upload_buffer(command_queue.get(), k_scale_stage.get(), k_scale_buffer.get(), k_scale_bytes);
+  if (variant.zero_mask)
+    upload_buffer(command_queue.get(), mask_stage.get(), mask_buffer.get(), mask_bytes);
 
   const double quantize_validation_seconds = run_quantize_once(
       command_queue.get(),
@@ -2770,6 +2978,9 @@ int main(int argc, char** argv)
             << " vMeanBarrierEvery=" << quantize_pipelines.v_mean_barrier_every
             << " threadBarrierEveryC=" << int8_pipeline.thread_barrier_every_c
             << " centerV=" << (variant.center_v ? "true" : "false")
+            << " zeroMask=" << (variant.zero_mask ? "true" : "false")
+            << " causalVisibleZeroMask=" << (variant.causal_visible_zero_mask ? "true" : "false")
+            << " causalMask=" << (variant.causal_mask ? "true" : "false")
             << " vBias=" << variant.v_bias
             << '\n';
   if (!variant.quantize_only) {
@@ -2785,6 +2996,9 @@ int main(int argc, char** argv)
               << " qkScales=tile"
               << " threadBarrierEveryC=" << int8_pipeline.thread_barrier_every_c
               << " centerV=" << (variant.center_v ? "true" : "false")
+              << " zeroMask=" << (variant.zero_mask ? "true" : "false")
+              << " causalVisibleZeroMask=" << (variant.causal_visible_zero_mask ? "true" : "false")
+              << " causalMask=" << (variant.causal_mask ? "true" : "false")
               << " vBias=" << variant.v_bias
               << '\n';
   }
@@ -3029,7 +3243,9 @@ int main(int argc, char** argv)
       q_scale_buffer.get(),
       k_scale_buffer.get(),
       v_scale_buffer.get(),
-      v_mean_buffer.get());
+      v_mean_buffer.get(),
+      mask_buffer.get(),
+      block_mask_buffer.get());
   if (!(validation_seconds > 0)) {
     std::cerr << "int8 validation dispatch failed\n";
     pool->drain();
@@ -3044,6 +3260,8 @@ int main(int argc, char** argv)
       block_dimensions,
       quantized,
       v_input_values,
+      variant.zero_mask ? &mask_values : nullptr,
+      mask_hard_threshold(variant.input_precision),
       o_values,
       l_values,
       variant.is_causal);
@@ -3052,12 +3270,15 @@ int main(int argc, char** argv)
     if (!variant.quantize_only) {
       const double baseline_validation_seconds = run_baseline_once(
           command_queue.get(),
+          attention,
           baseline,
           q_buffer.get(),
           k_buffer.get(),
           v_buffer.get(),
           o_buffer.get(),
-          l_buffer.get());
+          l_buffer.get(),
+          mask_buffer.get(),
+          block_mask_buffer.get());
       if (baseline_validation_seconds > 0) {
         download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
         const auto baseline_l_values = decode_values(l_stage->contents(), l_count, variant.input_precision);
@@ -3087,7 +3308,9 @@ int main(int argc, char** argv)
         q_scale_buffer.get(),
         k_scale_buffer.get(),
         v_scale_buffer.get(),
-        v_mean_buffer.get());
+        v_mean_buffer.get(),
+        mask_buffer.get(),
+        block_mask_buffer.get());
     stop_metal_capture();
     if (!(captured_seconds > 0)) {
       std::cerr << "captured int8 dispatch failed\n";
@@ -3101,7 +3324,7 @@ int main(int argc, char** argv)
   if (!benchmark(
           config,
           [&]() {
-            return run_baseline_once(command_queue.get(), baseline, q_buffer.get(), k_buffer.get(), v_buffer.get(), o_buffer.get(), l_buffer.get());
+            return run_baseline_once(command_queue.get(), attention, baseline, q_buffer.get(), k_buffer.get(), v_buffer.get(), o_buffer.get(), l_buffer.get(), mask_buffer.get(), block_mask_buffer.get());
           },
           &baseline_stats)) {
     std::cerr << "baseline benchmark failed\n";
@@ -3113,7 +3336,7 @@ int main(int argc, char** argv)
   if (!benchmark(
           config,
           [&]() {
-            return run_int8_once(command_queue.get(), attention, int8_pipeline, qk_q_buffer, qk_k_buffer, pv_v_buffer, o_buffer.get(), l_buffer.get(), q_scale_buffer.get(), k_scale_buffer.get(), v_scale_buffer.get(), v_mean_buffer.get());
+            return run_int8_once(command_queue.get(), attention, int8_pipeline, qk_q_buffer, qk_k_buffer, pv_v_buffer, o_buffer.get(), l_buffer.get(), q_scale_buffer.get(), k_scale_buffer.get(), v_scale_buffer.get(), v_mean_buffer.get(), mask_buffer.get(), block_mask_buffer.get());
           },
           &int8_stats)) {
     std::cerr << "int8 benchmark failed\n";
@@ -3170,7 +3393,9 @@ int main(int argc, char** argv)
                 v_mean_buffer.get(),
                 v_mean_sum_buffer.get(),
                 o_buffer.get(),
-                l_buffer.get());
+                l_buffer.get(),
+                mask_buffer.get(),
+                block_mask_buffer.get());
           },
           &quantize_and_int8_stats)) {
     std::cerr << "quantize+int8 benchmark failed\n";
@@ -3178,17 +3403,25 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  const char* const full_label =
+      variant.causal_mask ? "full-causal-mask" :
+      (variant.zero_mask ? "full-zero-mask" : "full");
+  const char* const quantized_label =
+      variant.causal_mask ? "quantize+int8-causal-mask" :
+      (variant.zero_mask ? "quantize+int8-zero-mask" : "quantize+int8");
   print_stats("baseline", attention, baseline_stats);
-  print_stats("quantize", attention, quantize_stats);
-  print_stats("full", attention, int8_stats);
-  print_stats("quantize+int8", attention, quantize_and_int8_stats);
+  print_time_stats("quantize", quantize_stats);
+  print_stats(full_label, attention, int8_stats);
+  print_stats(quantized_label, attention, quantize_and_int8_stats);
   std::cout << "speedup"
             << " avg=" << baseline_stats.average_seconds / int8_stats.average_seconds
             << " median=" << baseline_stats.median_seconds / int8_stats.median_seconds
+            << " best3=" << baseline_stats.best3_seconds / int8_stats.best3_seconds
             << '\n';
   std::cout << "quantized-speedup"
             << " avg=" << baseline_stats.average_seconds / quantize_and_int8_stats.average_seconds
             << " median=" << baseline_stats.median_seconds / quantize_and_int8_stats.median_seconds
+            << " best3=" << baseline_stats.best3_seconds / quantize_and_int8_stats.best3_seconds
             << '\n';
 
   std::cout.flush();

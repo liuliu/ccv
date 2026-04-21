@@ -9,6 +9,7 @@ class CodeWriter;
 
 struct NAAttentionKernel {
   static constexpr uint16_t computeDThreads = 32;
+  static constexpr uint16_t blockMaskThreads = 256;
 
   NS::SharedPtr<MTL::Library> library;
   
@@ -36,6 +37,8 @@ struct NAAttentionKernel {
   bool checkCEdge1;
 
   bool isCausal;
+
+  bool masked;
 
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;
 

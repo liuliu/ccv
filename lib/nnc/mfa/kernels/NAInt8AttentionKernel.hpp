@@ -12,6 +12,7 @@ class CodeWriter;
 struct NAInt8AttentionKernel {
   static constexpr uint16_t qQuantizeThreads = 128;
   static constexpr uint16_t kvQuantizeThreads = 256;
+  static constexpr uint16_t blockMaskThreads = 256;
   static constexpr uint16_t smallSequenceVMeanThreads = 256;
   static constexpr uint16_t largeSequenceVMeanThreads = 128;
   static constexpr uint16_t computeDThreads = 32;
@@ -37,6 +38,8 @@ struct NAInt8AttentionKernel {
   bool lowPrecisionIntermediates;
   float scale;
   bool isCausal;
+  bool masked;
+  bool hasCausalEmptyRows;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 

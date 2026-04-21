@@ -11,6 +11,8 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   Hk == rhs.Hk &&
   scale == rhs.scale &&
   isCausal == rhs.isCausal &&
+  masked == rhs.masked &&
+  maskBatchStride == rhs.maskBatchStride &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
@@ -29,6 +31,10 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
+  combine_32(seed, pack_32(simd::ushort2 {
+      (uint16_t)(hash.masked ? 1 : 0),
+      0 }));
+  combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
@@ -97,12 +103,12 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   };
   auto blockDimensions = createBlockDimensions();
   bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
-  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal);
+  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked);
 }
 
 std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {
   auto createPipeline =
-  [=](MTL::Library* library) -> MTL::ComputePipelineState* {
+  [=](MTL::Library* library, const NAAttentionKernelDescriptor& kernelDesc, const char* name) -> MTL::ComputePipelineState* {
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
@@ -126,8 +132,16 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
       uint32_t batchStride = batchStrides[operand].value_or(0);
       constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
     }
+    if (type.value == AttentionKernelType::forward && masked) {
+      const uint32_t qTiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
+      const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
+      const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
+      const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
+      constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(15));
+      constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(16));
+    }
 
-    NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
+    NS::String* swiftName = NS::String::string(name, NS::UTF8StringEncoding);
     NS::Error* error = nil;
 
     auto pipelineDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
@@ -154,8 +168,11 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
 
   auto kernelDesc = kernelDescriptor(device, dprops);
   NAAttentionKernel* kernel = createKernel(kernelDesc);
-  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc, "attention"));
   NS::SharedPtr<MTL::ComputePipelineState> second;
+  if (type.value == AttentionKernelType::forward && masked) {
+    second = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc, "generate_attention_block_mask"));
+  }
   if (type.value == AttentionKernelType::backwardQuery) {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];

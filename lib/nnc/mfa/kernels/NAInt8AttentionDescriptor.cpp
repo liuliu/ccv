@@ -24,6 +24,8 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale &&
     isCausal == rhs.isCausal &&
+    masked == rhs.masked &&
+    maskBatchStride == rhs.maskBatchStride &&
     batchStrides == rhs.batchStrides &&
     simd_all(matrixDimensions == rhs.matrixDimensions);
 }
@@ -38,7 +40,10 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.ioPrecision.value,
       (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
-  combine_32(seed, hash.isCausal ? 1 : 0);
+  combine_32(seed, pack_32(simd::ushort2 {
+      (uint16_t)(hash.isCausal ? 1 : 0),
+      (uint16_t)(hash.masked ? 1 : 0) }));
+  combine_32(seed, hash.maskBatchStride);
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
@@ -81,6 +86,11 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
   const bool has_c_remainder =
       type == AttentionKernelType::forward &&
       (matrixDimensions[1] % blockDimensions[1]) != 0;
+  const bool has_causal_empty_rows =
+      type == AttentionKernelType::forward &&
+      isCausal &&
+      !masked &&
+      matrixDimensions[0] > matrixDimensions[1];
   return NAInt8AttentionKernelDescriptor(
       blockDimensions,
       (unsigned short)matrixDimensions[2],
@@ -96,7 +106,9 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       lowPrecisionIntermediates,
       type,
       scale,
-      isCausal);
+      isCausal,
+      masked,
+      has_causal_empty_rows);
 }
 
 std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> NAInt8AttentionDescriptor::findKernel(
@@ -165,6 +177,8 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   const uint32_t vScaleBatchStride = batchDimension > 1 ? Hk * k_tiles : 0;
   const uint32_t dOScaleBatchStride = batchDimension > 1 ? Hq * q_tiles : 0;
   const uint32_t vMeanBatchStride = batchDimension > 1 ? Hk * matrixDimensions[2] : 0;
+  const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
+  const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? q_tiles * k_tiles : 0;
   attentionConstants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::UInteger(0));
   attentionConstants->setConstantValue(&columnDimension, MTL::DataTypeUInt, NS::UInteger(1));
   attentionConstants->setConstantValue(&qBatchStride, MTL::DataTypeUInt, NS::UInteger(2));
@@ -180,6 +194,10 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   attentionConstants->setConstantValue(&vScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(12));
   attentionConstants->setConstantValue(&dOScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(13));
   attentionConstants->setConstantValue(&vMeanBatchStride, MTL::DataTypeUInt, NS::UInteger(14));
+  if (masked) {
+    attentionConstants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(15));
+    attentionConstants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(16));
+  }
 
   auto quantizeConstants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t qSequence = matrixDimensions[0];
@@ -211,6 +229,7 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   NS::SharedPtr<MTL::ComputePipelineState> third;
   NS::SharedPtr<MTL::ComputePipelineState> fourth;
   NS::SharedPtr<MTL::ComputePipelineState> fifth;
+  NS::SharedPtr<MTL::ComputePipelineState> sixth;
   switch (type.value) {
   case AttentionKernelType::forward:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_attention"));
@@ -218,6 +237,9 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
     third = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_k"));
     fourth = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_v"));
     fifth = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "compute_v_mean"));
+    if (masked) {
+      sixth = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "generate_int8_attention_block_mask"));
+    }
     break;
   case AttentionKernelType::backwardQuery:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_backward_query"));
@@ -234,5 +256,6 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   output->third = third;
   output->fourth = fourth;
   output->fifth = fifth;
+  output->sixth = sixth;
   return std::make_pair(kernelDesc, output);
 }

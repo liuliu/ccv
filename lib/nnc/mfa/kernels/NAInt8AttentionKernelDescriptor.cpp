@@ -17,6 +17,8 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     ioPrecision == rhs.ioPrecision &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     isCausal == rhs.isCausal &&
+    masked == rhs.masked &&
+    hasCausalEmptyRows == rhs.hasCausalEmptyRows &&
     scale == rhs.scale;
 }
 
@@ -39,6 +41,9 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.type.value,
       (uint16_t)(hash.isCausal ? 1 : 0) }));
+  combine_32(seed, pack_32(simd::ushort2 {
+      (uint16_t)(hash.masked ? 1 : 0),
+      (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }
@@ -58,7 +63,9 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     bool lowPrecisionIntermediates,
     AttentionKernelType type,
     float scale,
-    bool isCausal) noexcept
+    bool isCausal,
+    bool masked,
+    bool hasCausalEmptyRows) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->type = type;
@@ -75,4 +82,6 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->lowPrecisionIntermediates = lowPrecisionIntermediates;
   this->scale = scale;
   this->isCausal = isCausal;
+  this->masked = masked;
+  this->hasCausalEmptyRows = hasCausalEmptyRows;
 }
