@@ -3834,18 +3834,7 @@ TEST_CASE("scaled dot product attention with mps")
 		ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
 
-		const int use_direct_causal =
-			is_causal &&
-			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
-			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION) &&
-			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
-			ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()) &&
-			ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()) &&
-			(D > 128 || (D % 8) == 0);
-		if (use_direct_causal)
-		{
-			ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), TENSOR_LIST(gpu_o_tensor), 0);
-		} else if (is_causal)
+		if (is_causal)
 		{
 			ccv_nnc_tensor_t* const causal_mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
 			ccv_nnc_tensor_t* const gpu_causal_mask = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, R, C), 0);
