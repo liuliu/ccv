@@ -46,6 +46,10 @@
 #define CMD_COMM_REDUCE_FORWARD() ccv_nnc_cmd(CCV_NNC_COMM_REDUCE_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMM_REDUCE_BACKWARD
 #define CMD_COMM_REDUCE_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMM_REDUCE_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_COMM_ALL_TO_ALL_FORWARD
+#define CMD_COMM_ALL_TO_ALL_FORWARD(_axis) ccv_nnc_cmd(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.all_to_all={.axis=_axis}}), 0)
+// CCV_NNC_COMM_ALL_TO_ALL_BACKWARD
+#define CMD_COMM_ALL_TO_ALL_BACKWARD(_axis) ccv_nnc_cmd(CCV_NNC_COMM_ALL_TO_ALL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.all_to_all={.axis=_axis}}), 0)
 // CCV_NNC_MIN_FORWARD
 #define CMD_MIN_FORWARD() ccv_nnc_cmd(CCV_NNC_MIN_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
 // CCV_NNC_MIN_BACKWARD

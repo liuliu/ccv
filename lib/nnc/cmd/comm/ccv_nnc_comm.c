@@ -337,3 +337,54 @@ REGISTER_COMMAND(CCV_NNC_COMM_REDUCE_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 #define CMD_COMM_REDUCE_FORWARD() ccv_nnc_cmd(CCV_NNC_COMM_REDUCE_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_COMM_REDUCE_BACKWARD)
 #define CMD_COMM_REDUCE_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMM_REDUCE_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+
+static int _ccv_nnc_comm_contiguous_bitcount(const uint64_t* const bitmasks, const int bitmask_size)
+{
+	int i, j;
+	int flag = 0;
+	int bitcount = 0;
+	for (i = 0; i < bitmask_size; i++)
+	{
+		for (j = 0; j < 64; j++)
+			if (bitmasks[i] & (uint64_t)1 << j)
+			{
+				if (flag)
+					return -1;
+			} else
+				break;
+		bitcount += j;
+		if (j < 64)
+			flag = 1;
+		// Always like 1111100000, no 1110010101
+		for (; j < 64; j++)
+			if (bitmasks[i] & (uint64_t)1 << j)
+				return -1;
+	}
+	return bitcount;
+}
+
+static int _ccv_nnc_all_to_all_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	const int input_bitcount = _ccv_nnc_comm_contiguous_bitcount(input_bitmasks, input_bitmask_size);
+	const int output_bitcount = _ccv_nnc_comm_contiguous_bitcount(output_bitmasks, output_bitmask_size);
+	return input_size == output_size && input_size >= 1 && input_bitcount == input_size && output_bitcount == output_size;
+}
+
+REGISTER_COMMAND(CCV_NNC_COMM_ALL_TO_ALL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_comm_cpu_ref.c, gpu/ccv_nnc_comm_gpu_nccl.cu)
+{
+	registry->bitmask = _ccv_nnc_all_to_all_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+}
+
+REGISTER_COMMAND(CCV_NNC_COMM_ALL_TO_ALL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_comm_cpu_ref.c, gpu/ccv_nnc_comm_gpu_nccl.cu)
+{
+	registry->bitmask = _ccv_nnc_all_to_all_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_COMM_ALL_TO_ALL_FORWARD)
+#define CMD_COMM_ALL_TO_ALL_FORWARD(_axis) ccv_nnc_cmd(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.all_to_all={.axis=_axis}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_COMM_ALL_TO_ALL_BACKWARD)
+#define CMD_COMM_ALL_TO_ALL_BACKWARD(_axis) ccv_nnc_cmd(CCV_NNC_COMM_ALL_TO_ALL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.all_to_all={.axis=_axis}}), 0)

@@ -101,6 +101,47 @@ TEST_CASE("nccl with reduce in blocking mode")
 		ccv_nnc_tensor_free(tensors[i]);
 }
 
+TEST_CASE("nccl with all-to-all in blocking mode against cpu reference")
+{
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_GPU_NCCL) && ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_CPU_REF) && device_count > 1);
+	const int chunk_count = 17;
+	const int tensor_count = device_count * chunk_count;
+	ccv_nnc_tensor_t* cpu_inputs[device_count];
+	ccv_nnc_tensor_t* cpu_expected[device_count];
+	ccv_nnc_tensor_t* cpu_outputs[device_count];
+	ccv_nnc_tensor_t* gpu_inputs[device_count];
+	ccv_nnc_tensor_t* gpu_outputs[device_count];
+	int i, j;
+	for (i = 0; i < device_count; i++)
+	{
+		cpu_inputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tensor_count), 0);
+		cpu_expected[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tensor_count), 0);
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tensor_count), 0);
+		for (j = 0; j < tensor_count; j++)
+			cpu_inputs[i]->data.f32[j] = (float)(i * tensor_count + j);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, tensor_count);
+		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
+		gpu_inputs[i] = ccv_nnc_tensor_new(0, info, 0);
+		gpu_outputs[i] = ccv_nnc_tensor_new(0, info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &cpu_inputs[i], 1, &gpu_inputs[i], 1, 0);
+	}
+	ccv_nnc_cmd_exec(CMD_COMM_ALL_TO_ALL_FORWARD(0), ccv_nnc_no_hint, 0, cpu_inputs, device_count, cpu_expected, device_count, 0);
+	ccv_nnc_cmd_exec(CMD_COMM_ALL_TO_ALL_FORWARD(0), ccv_nnc_no_hint, 0, gpu_inputs, device_count, gpu_outputs, device_count, 0);
+	for (i = 0; i < device_count; i++)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &gpu_outputs[i], 1, &cpu_outputs[i], 1, 0);
+	for (i = 0; i < device_count; i++)
+		REQUIRE_TENSOR_EQ(cpu_expected[i], cpu_outputs[i], "all-to-all should match cpu reference");
+	for (i = 0; i < device_count; i++)
+	{
+		ccv_nnc_tensor_free(cpu_inputs[i]);
+		ccv_nnc_tensor_free(cpu_expected[i]);
+		ccv_nnc_tensor_free(cpu_outputs[i]);
+		ccv_nnc_tensor_free(gpu_inputs[i]);
+		ccv_nnc_tensor_free(gpu_outputs[i]);
+	}
+}
+
 static ccv_nnc_stream_context_t* _neighbor_discovery(const int device_id, void* const contexts)
 {
 	ccv_nnc_stream_context_t** stream_contexts = (ccv_nnc_stream_context_t**)contexts;
@@ -219,6 +260,59 @@ TEST_CASE("nccl with reduce in non-blocking mode")
 	{
 		ccv_nnc_tensor_free(tensors[i]);
 		ccv_nnc_stream_context_wait(contexts[i]);
+		ccv_nnc_stream_context_free(contexts[i]);
+	}
+}
+
+TEST_CASE("nccl with all-to-all in non-blocking mode against cpu reference")
+{
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_GPU_NCCL) && ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_CPU_REF) && device_count > 1);
+	const int axis = 1;
+	const int outer_count = 3;
+	const int chunk_count = 23;
+	const int axis_count = device_count * chunk_count;
+	const int inner_count = 5;
+	const int tensor_count = outer_count * axis_count * inner_count;
+	ccv_nnc_tensor_t* cpu_inputs[device_count];
+	ccv_nnc_tensor_t* cpu_expected[device_count];
+	ccv_nnc_tensor_t* cpu_outputs[device_count];
+	ccv_nnc_tensor_t* gpu_inputs[device_count];
+	ccv_nnc_tensor_t* gpu_outputs[device_count];
+	ccv_nnc_stream_context_t* contexts[device_count];
+	int i, j;
+	for (i = 0; i < device_count; i++)
+	{
+		cpu_inputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, outer_count, axis_count, inner_count), 0);
+		cpu_expected[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, outer_count, axis_count, inner_count), 0);
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, outer_count, axis_count, inner_count), 0);
+		for (j = 0; j < tensor_count; j++)
+			cpu_inputs[i]->data.f32[j] = (float)(i * tensor_count + j + 0.25);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, outer_count, axis_count, inner_count);
+		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
+		gpu_inputs[i] = ccv_nnc_tensor_new(0, info, 0);
+		gpu_outputs[i] = ccv_nnc_tensor_new(0, info, 0);
+		int stream_type = CCV_STREAM_CONTEXT_GPU;
+		CCV_STREAM_SET_DEVICE_ID(stream_type, i);
+		contexts[i] = ccv_nnc_stream_context_new(stream_type);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &cpu_inputs[i], 1, &gpu_inputs[i], 1, contexts[i]);
+	}
+	ccv_nnc_stream_context_set_neighbor_discovery(contexts[0], _neighbor_discovery, contexts);
+	ccv_nnc_cmd_exec(CMD_COMM_ALL_TO_ALL_FORWARD(axis), ccv_nnc_no_hint, 0, cpu_inputs, device_count, cpu_expected, device_count, 0);
+	ccv_nnc_cmd_exec(CMD_COMM_ALL_TO_ALL_FORWARD(axis), ccv_nnc_no_hint, 0, gpu_inputs, device_count, gpu_outputs, device_count, contexts[0]);
+	for (i = 0; i < device_count; i++)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &gpu_outputs[i], 1, &cpu_outputs[i], 1, contexts[i]);
+	for (i = 0; i < device_count; i++)
+		ccv_nnc_stream_context_wait(contexts[i]);
+	for (i = 0; i < device_count; i++)
+		REQUIRE_TENSOR_EQ(cpu_expected[i], cpu_outputs[i], "all-to-all should match cpu reference");
+	for (i = 0; i < device_count; i++)
+	{
+		ccv_nnc_tensor_free(cpu_inputs[i]);
+		ccv_nnc_tensor_free(cpu_expected[i]);
+		ccv_nnc_tensor_free(cpu_outputs[i]);
+		ccv_nnc_tensor_free(gpu_inputs[i]);
+		ccv_nnc_tensor_free(gpu_outputs[i]);
 		ccv_nnc_stream_context_free(contexts[i]);
 	}
 }

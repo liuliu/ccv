@@ -299,6 +299,9 @@ typedef struct {
 		struct {
 			int bincount; /**< [scatter_add.bincount] Potentially how many unique items there will be, 0 if unknown. */
 		} scatter_add;
+		struct {
+			int axis; /**< [all_to_all.axis] The axis selected to split and concatenate along. */
+		} all_to_all;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
