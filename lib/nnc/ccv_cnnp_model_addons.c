@@ -4044,6 +4044,53 @@ static ccv_cnnp_model_t* _ccv_cnnp_variable_copy(const ccv_cnnp_model_t* const s
 	return ccv_cnnp_variable(self->params, self->super.name);
 }
 
+// MARK - Send Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int device_id;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_send_t;
+
+static void _ccv_cnnp_send_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_send_t* const self = (ccv_cnnp_model_send_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_send_build] - device_id: %d\n", self->device_id);
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	params.type = (params.type & ~0x3) | CCV_TENSOR_GPU_MEMORY;
+	CCV_TENSOR_SET_DEVICE_ID(params.type, self->device_id);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_DATA_TRANSFER_FORWARD(), inputs, 1, outputs, 1, "send");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_send_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_send_isa = {
+	.build = _ccv_cnnp_send_build,
+	.copy = _ccv_cnnp_send_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_send(const int device_id, const char* const name)
+{
+	assert(device_id >= 0);
+	ccv_cnnp_model_send_t* const model_send = (ccv_cnnp_model_send_t*)cccalloc(1, sizeof(ccv_cnnp_model_send_t));
+	model_send->super.isa = &ccv_cnnp_send_isa;
+	model_send->super.input_size = 1;
+	model_send->super.outputs = &model_send->output;
+	model_send->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_send->super, name);
+	model_send->device_id = device_id;
+	return (ccv_cnnp_model_t*)model_send;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_send_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_send_t* const self = (const ccv_cnnp_model_send_t*)super;
+	return ccv_cnnp_send(self->device_id, self->super.name);
+}
+
 // MARK - Move Layer
 
 typedef struct {
@@ -4188,6 +4235,66 @@ static ccv_cnnp_model_t* _ccv_cnnp_copy_copy(const ccv_cnnp_model_t* const super
 {
 	const ccv_cnnp_model_copy_t* const self = (const ccv_cnnp_model_copy_t*)super;
 	return ccv_cnnp_copy(self->super.name);
+}
+
+// MARK - All-To-All Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis;
+	ccv_nnc_tensor_symbol_t outputs[1];
+} ccv_cnnp_model_all_to_all_t;
+
+static void _ccv_cnnp_all_to_all_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_all_to_all_t* const self = (ccv_cnnp_model_all_to_all_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_all_to_all_build] - axis: %d\n", self->axis);
+	assert(input_size == self->super.input_size);
+	assert(output_size == self->super.output_size);
+	assert(input_size == output_size);
+	assert(input_size > 0);
+	const ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const int nd = ccv_nnc_tensor_nd(input_params.dim);
+	assert(self->axis >= 0 && self->axis < nd);
+	assert(input_params.dim[self->axis] % input_size == 0);
+	int i;
+	for (i = 0; i < input_size; i++)
+	{
+		const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+		assert(params.format == input_params.format);
+		assert(params.datatype == input_params.datatype);
+		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GET_MEMORY(input_params.type));
+		assert(memcmp(params.dim, input_params.dim, sizeof(input_params.dim)) == 0);
+		outputs[i] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	}
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_COMM_ALL_TO_ALL_FORWARD(self->axis), inputs, input_size, outputs, output_size, "all_to_all");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_all_to_all_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_all_to_all_isa = {
+	.build = _ccv_cnnp_all_to_all_build,
+	.copy = _ccv_cnnp_all_to_all_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_all_to_all(const int count, const int axis, const char* const name)
+{
+	assert(count > 0);
+	assert(axis >= 0);
+	ccv_cnnp_model_all_to_all_t* const model_all_to_all = (ccv_cnnp_model_all_to_all_t*)cccalloc(1, sizeof(ccv_cnnp_model_all_to_all_t) + sizeof(ccv_nnc_tensor_symbol_t) * (count - 1));
+	model_all_to_all->super.isa = &ccv_cnnp_all_to_all_isa;
+	model_all_to_all->super.input_size = count;
+	model_all_to_all->super.outputs = model_all_to_all->outputs;
+	model_all_to_all->super.output_size = count;
+	model_all_to_all->axis = axis;
+	ccv_cnnp_model_copy_name(&model_all_to_all->super, name);
+	return (ccv_cnnp_model_t*)model_all_to_all;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_all_to_all_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_all_to_all_t* const self = (const ccv_cnnp_model_all_to_all_t*)super;
+	return ccv_cnnp_all_to_all(self->super.output_size, self->axis, self->super.name);
 }
 
 // MARK - Scaled-Dot Product Attention Layer

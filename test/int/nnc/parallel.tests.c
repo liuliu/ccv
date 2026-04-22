@@ -11,6 +11,59 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("cnnp send to devices and all-to-all")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_GPU_NCCL));
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(device_count > 1);
+	const int chunk = 5;
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t chunks = ccv_cnnp_model_apply(ccv_cnnp_chunk(device_count, 0, "chunk"), MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t sent[device_count];
+	int i, j, k;
+	for (i = 0; i < device_count; i++)
+	{
+		ccv_cnnp_model_io_t chunk_i = ccv_cnnp_model_apply(ccv_cnnp_extract(i, 0), &chunks, 1);
+		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
+	}
+	ccv_cnnp_model_io_t exchanged = ccv_cnnp_model_apply(ccv_cnnp_all_to_all(device_count, 1, "all_to_all"), sent, device_count);
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), &exchanged, 1, 0, "send_all_to_all");
+	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, device_count, device_count * chunk);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_param_t output_params[device_count];
+	ccv_cnnp_model_tensor_auto(model, output_params, device_count);
+	ccv_nnc_tensor_t* const h_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, device_count, device_count * chunk), 0);
+	for (i = 0; i < device_count; i++)
+		for (j = 0; j < device_count * chunk; j++)
+			h_input->data.f32[i * device_count * chunk + j] = (float)(i * 1000 + j);
+	ccv_nnc_tensor_t* const d_input = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(h_input), TENSOR_LIST(d_input), 0);
+	ccv_nnc_tensor_t* outputs[device_count];
+	for (i = 0; i < device_count; i++)
+	{
+		REQUIRE_EQ(CCV_TENSOR_GET_DEVICE_ID(output_params[i].type), i, "output device should match all-to-all rank");
+		outputs[i] = ccv_nnc_tensor_new(0, output_params[i], 0);
+	}
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(d_input), outputs, device_count, 0, 0);
+	for (j = 0; j < device_count; j++)
+	{
+		ccv_nnc_tensor_t* const h_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, device_count * chunk), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[j]), TENSOR_LIST(h_output), 0);
+		for (i = 0; i < device_count; i++)
+			for (k = 0; k < chunk; k++)
+			{
+				const float expected = h_input->data.f32[i * device_count * chunk + j * chunk + k];
+				REQUIRE_EQ_WITH_TOLERANCE(h_output->data.f32[i * chunk + k], expected, 1e-5, "all-to-all output should match expected exchange");
+			}
+		ccv_nnc_tensor_free(h_output);
+	}
+	for (i = 0; i < device_count; i++)
+		ccv_nnc_tensor_free(outputs[i]);
+	ccv_nnc_tensor_free(d_input);
+	ccv_nnc_tensor_free(h_input);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));

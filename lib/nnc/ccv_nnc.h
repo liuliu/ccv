@@ -4857,6 +4857,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar(const int type, const int for
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_variable(const ccv_nnc_tensor_param_t params, const char* const name);
 /**
+ * Send a tensor to a GPU device.
+ * @param device_id The GPU device id to place the output tensor on.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and returns a tensor on the requested GPU device.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_send(const int device_id, const char* const name);
+/**
  * A special model that takes two inputs but copies value in the first input to the second. The
  * second input then returned as the output. This is special because it enables you to violate
  * single-static assignment rule otherwise without using this method, it won't trigger. However,
@@ -4888,6 +4895,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_contiguous(const char* const name);
  * @return A model that can be applied and making a copy of the input.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_copy(const char* const name);
+/**
+ * All-to-all exchange across input tensors.
+ * @param count The number of ranks / input tensors / output tensors.
+ * @param axis The axis to split and concatenate along.
+ * @param name The unique name of the model.
+ * @return A model that can be applied and returns exchanged tensors.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const int axis, const char* const name);
 /**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
  * or (q, k, v, attn_mask) if has_attn_mask is 1.
