@@ -10,6 +10,32 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("tensor symbol copy map grows dynamically on set copy")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	const ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a");
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, a, 1).d, CCV_NNC_NO_TENSOR_SYMBOL, "copy lookup should be empty before set_copy");
+	const ccv_nnc_tensor_symbol_t a_copy = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a_copy");
+	ccv_nnc_tensor_symbol_set_copy(symbolic_graph, a, 1, a_copy);
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, a, 1).d, a_copy.d, "set_copy should allocate the copy map when missing");
+	const ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b");
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, b, 1).d, CCV_NNC_NO_TENSOR_SYMBOL, "copy lookup should tolerate symbols outside the current map");
+	const ccv_nnc_tensor_symbol_t b_copy = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b_copy");
+	ccv_nnc_tensor_symbol_set_copy(symbolic_graph, b, 1, b_copy);
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, b, 1).d, b_copy.d, "set_copy should grow rows for later canonical symbols");
+	const ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "c");
+	const ccv_nnc_tensor_symbol_t c_copy = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "c_copy");
+	ccv_nnc_tensor_symbol_set_copy(symbolic_graph, c, 2, c_copy);
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, c, 2).d, c_copy.d, "set_copy should grow rank count when no exec copy map exists");
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, a, 1).d, a_copy.d, "rank growth should preserve existing copy entries");
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, a, 2).d, CCV_NNC_NO_TENSOR_SYMBOL, "new rank entries should default to no copy");
+	ccv_nnc_tensor_symbol_set_copy(symbolic_graph, a, 1, a_copy);
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, c, 2).d, c_copy.d, "setting a smaller rank should not shrink existing rank entries");
+	ccv_nnc_tensor_symbol_set_copy(symbolic_graph, b, 1, NO_TENSOR_SYMBOL);
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_copy(symbolic_graph, b, 1).d, CCV_NNC_NO_TENSOR_SYMBOL, "set_copy should clear an existing copy entry");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 TEST_CASE("schedule a simple graph for parallel execution")
 {
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();

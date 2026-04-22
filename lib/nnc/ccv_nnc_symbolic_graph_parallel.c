@@ -662,15 +662,17 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id)
 {
-	if (!graph->data_parallel.tensor_symbol_idx)
-		return NO_TENSOR_SYMBOL;
-	assert(graph->data_parallel.tensor_symbol_idx);
 	assert(symbol.d >= 0);
-	assert(symbol.d < graph->data_parallel.tensor_symbol_size);
 	assert(symbol.graph == graph);
 	if (device_id == 0)
 		return symbol;
+	if (!graph->data_parallel.tensor_symbol_idx)
+		return NO_TENSOR_SYMBOL;
 	const int parallel_count = graph->data_parallel.count;
+	if (parallel_count <= device_id)
+		return NO_TENSOR_SYMBOL;
+	if (symbol.d >= graph->data_parallel.tensor_symbol_size)
+		return NO_TENSOR_SYMBOL;
 	if (graph->data_parallel.tensor_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] < 0)
 		return NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t tensor = {
@@ -682,30 +684,68 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_
 
 void ccv_nnc_tensor_symbol_set_copy(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id, const ccv_nnc_tensor_symbol_t copy)
 {
-	assert(graph->data_parallel.tensor_symbol_idx);
 	assert(symbol.d >= 0);
 	assert(symbol.d < graph->tensor_symbol_info->rnum);
 	assert(symbol.graph == graph);
-	const int parallel_count = graph->data_parallel.count;
+	assert(device_id > 0);
 	if (copy.d == CCV_NNC_NO_TENSOR_SYMBOL)
 	{
-		assert(symbol.d < graph->data_parallel.tensor_symbol_size);
+		if (!graph->data_parallel.tensor_symbol_idx)
+			return;
+		const int parallel_count = graph->data_parallel.count;
+		if (parallel_count <= device_id)
+			return;
+		if (symbol.d >= graph->data_parallel.tensor_symbol_size)
+			return;
 		graph->data_parallel.tensor_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = -1;
 		return;
 	}
 	assert(copy.d >= 0);
 	assert(copy.d < graph->tensor_symbol_info->rnum);
 	assert(copy.graph == graph);
-	assert(parallel_count > 1);
-	if (symbol.d >= graph->data_parallel.tensor_symbol_size)
+	const int old_parallel_count = graph->data_parallel.count;
+	const int parallel_count = ccv_max(old_parallel_count, device_id + 1);
+	if (old_parallel_count > 0 && old_parallel_count < parallel_count)
 	{
-		graph->data_parallel.tensor_symbol_idx = ccrealloc(graph->data_parallel.tensor_symbol_idx, sizeof(int) * (parallel_count - 1) * (symbol.d + 1));
-		int i;
-		for (i = graph->data_parallel.tensor_symbol_size * (parallel_count - 1); i < (symbol.d + 1) * (parallel_count - 1); i++)
-			graph->data_parallel.tensor_symbol_idx[i] = -1;
-		graph->data_parallel.tensor_symbol_size = symbol.d + 1;
+		// exec_symbol_idx uses the same data_parallel.count; growing count while
+		// exec copies exist would require re-layouting that map too.
+		assert(!graph->data_parallel.exec_symbol_idx);
 	}
-	graph->data_parallel.tensor_symbol_idx[symbol.d * (parallel_count - 1) + device_id - 1] = copy.d;
+	assert(parallel_count > 1);
+	const int old_rank_count = old_parallel_count > 1 ? old_parallel_count - 1 : 0;
+	const int rank_count = parallel_count - 1;
+	assert(rank_count >= old_rank_count);
+	const int old_tensor_symbol_size = graph->data_parallel.tensor_symbol_size;
+	const int tensor_symbol_size = ccv_max(old_tensor_symbol_size, symbol.d + 1);
+	if (!graph->data_parallel.tensor_symbol_idx)
+	{
+		graph->data_parallel.tensor_symbol_idx = (int*)ccmalloc(sizeof(int) * rank_count * tensor_symbol_size);
+		int i;
+		for (i = 0; i < rank_count * tensor_symbol_size; i++)
+			graph->data_parallel.tensor_symbol_idx[i] = -1;
+		graph->data_parallel.tensor_symbol_size = tensor_symbol_size;
+	} else if (rank_count > old_rank_count) {
+		graph->data_parallel.tensor_symbol_idx = ccrealloc(graph->data_parallel.tensor_symbol_idx, sizeof(int) * rank_count * tensor_symbol_size);
+		int i, j;
+		for (i = old_tensor_symbol_size - 1; i >= 0; i--)
+		{
+			for (j = old_rank_count - 1; j >= 0; j--)
+				graph->data_parallel.tensor_symbol_idx[i * rank_count + j] = graph->data_parallel.tensor_symbol_idx[i * old_rank_count + j];
+			for (j = old_rank_count; j < rank_count; j++)
+				graph->data_parallel.tensor_symbol_idx[i * rank_count + j] = -1;
+		}
+		for (i = old_tensor_symbol_size * rank_count; i < tensor_symbol_size * rank_count; i++)
+			graph->data_parallel.tensor_symbol_idx[i] = -1;
+		graph->data_parallel.tensor_symbol_size = tensor_symbol_size;
+	} else if (symbol.d >= old_tensor_symbol_size) {
+		graph->data_parallel.tensor_symbol_idx = ccrealloc(graph->data_parallel.tensor_symbol_idx, sizeof(int) * rank_count * tensor_symbol_size);
+		int i;
+		for (i = old_tensor_symbol_size * rank_count; i < tensor_symbol_size * rank_count; i++)
+			graph->data_parallel.tensor_symbol_idx[i] = -1;
+		graph->data_parallel.tensor_symbol_size = tensor_symbol_size;
+	}
+	graph->data_parallel.count = parallel_count;
+	graph->data_parallel.tensor_symbol_idx[symbol.d * rank_count + device_id - 1] = copy.d;
 }
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id)
