@@ -136,6 +136,153 @@ TEST_CASE("cnnp replicated dense feeds all-to-all")
 	ccv_cnnp_model_free(model);
 }
 
+TEST_CASE("cnnp replicated embedding matches CPU reference")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(device_count > 1);
+	const int rank_count = device_count;
+	const int rows_per_rank = 3;
+	const int vocab_size = 11;
+	const int embed_size = 5;
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t chunks = ccv_cnnp_model_apply(ccv_cnnp_chunk(rank_count, 0, "chunk"), MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t sent[rank_count];
+	int i, j, r;
+	for (i = 0; i < rank_count; i++)
+	{
+		ccv_cnnp_model_io_t chunk_i = ccv_cnnp_model_apply(ccv_cnnp_extract(i, 0), &chunks, 1);
+		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
+	}
+	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32F, vocab_size, embed_size, 1, "embedding");
+	ccv_cnnp_model_io_t embedding_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(embedding, rank_count, "replicated_embedding"), sent, rank_count);
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(embedding_outputs), 0, "replicated_embedding");
+	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32S, rank_count * rows_per_rank);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const h_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rank_count * rows_per_rank), 0);
+	for (i = 0; i < rank_count * rows_per_rank; i++)
+		h_input->data.i32[i] = (i * 3 + 1) % vocab_size;
+	ccv_nnc_tensor_t* const h_vocab = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, vocab_size, embed_size), 0);
+	for (i = 0; i < vocab_size; i++)
+		for (j = 0; j < embed_size; j++)
+			h_vocab->data.f32[i * embed_size + j] = (float)(i * 0.5 + j * 0.25 + 1);
+	ccv_cnnp_model_set_parameter(model, ccv_cnnp_model_parameters(embedding, ALL_PARAMETERS, 0), h_vocab);
+	ccv_nnc_tensor_t* const d_input = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(h_input), TENSOR_LIST(d_input), 0);
+	ccv_nnc_tensor_param_t output_params[rank_count];
+	ccv_cnnp_model_tensor_auto(model, output_params, rank_count);
+	ccv_nnc_tensor_t* outputs[rank_count];
+	for (i = 0; i < rank_count; i++)
+	{
+		REQUIRE_EQ(CCV_TENSOR_GET_DEVICE_ID(output_params[i].type), i, "output device should match replicated rank");
+		outputs[i] = ccv_nnc_tensor_new(0, output_params[i], 0);
+	}
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(d_input), outputs, rank_count, 0, 0);
+	for (i = 0; i < rank_count; i++)
+	{
+		ccv_nnc_tensor_t* const h_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows_per_rank, embed_size), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[i]), TENSOR_LIST(h_output), 0);
+		for (r = 0; r < rows_per_rank; r++)
+		{
+			const int token = h_input->data.i32[i * rows_per_rank + r];
+			for (j = 0; j < embed_size; j++)
+				REQUIRE_EQ_WITH_TOLERANCE(h_output->data.f32[r * embed_size + j], h_vocab->data.f32[token * embed_size + j], 1e-5, "replicated embedding output should match CPU reference");
+		}
+		ccv_nnc_tensor_free(h_output);
+	}
+	for (i = 0; i < rank_count; i++)
+		ccv_nnc_tensor_free(outputs[i]);
+	ccv_nnc_tensor_free(d_input);
+	ccv_nnc_tensor_free(h_vocab);
+	ccv_nnc_tensor_free(h_input);
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("cnnp replicated layer norm matches CPU reference")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(device_count > 1);
+	const int rank_count = device_count;
+	const int rows_per_rank = 2;
+	const int cols = 6;
+	const float epsilon = 1e-5;
+	const int axis[] = {1};
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t chunks = ccv_cnnp_model_apply(ccv_cnnp_chunk(rank_count, 0, "chunk"), MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t sent[rank_count];
+	int i, j, r;
+	for (i = 0; i < rank_count; i++)
+	{
+		ccv_cnnp_model_io_t chunk_i = ccv_cnnp_model_apply(ccv_cnnp_extract(i, 0), &chunks, 1);
+		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
+	}
+	ccv_cnnp_model_t* const layer_norm = ccv_cnnp_layer_norm(epsilon, axis, 1, 1, 1, "layer_norm");
+	ccv_cnnp_model_io_t normalized = ccv_cnnp_model_apply(ccv_cnnp_replicated(layer_norm, rank_count, "replicated_layer_norm"), sent, rank_count);
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(normalized), 0, "replicated_layer_norm");
+	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, rank_count * rows_per_rank, cols);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const h_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rank_count * rows_per_rank, cols), 0);
+	for (i = 0; i < rank_count * rows_per_rank; i++)
+		for (j = 0; j < cols; j++)
+			h_input->data.f32[i * cols + j] = (float)((i + 1) * 0.75 + (j + 1) * 0.5);
+	ccv_nnc_tensor_t* const h_scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, cols), 0);
+	ccv_nnc_tensor_t* const h_bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, cols), 0);
+	for (j = 0; j < cols; j++)
+	{
+		h_scale->data.f32[j] = 0.5f + j * 0.125f;
+		h_bias->data.f32[j] = -0.75f + j * 0.2f;
+	}
+	ccv_cnnp_model_set_parameter(model, ccv_cnnp_model_parameters(layer_norm, ALL_PARAMETERS, 0), h_scale);
+	ccv_cnnp_model_set_parameter(model, ccv_cnnp_model_parameters(layer_norm, ALL_PARAMETERS, 1), h_bias);
+	ccv_nnc_tensor_t* const d_input = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(h_input), TENSOR_LIST(d_input), 0);
+	ccv_nnc_tensor_param_t output_params[rank_count];
+	ccv_cnnp_model_tensor_auto(model, output_params, rank_count);
+	ccv_nnc_tensor_t* outputs[rank_count];
+	for (i = 0; i < rank_count; i++)
+	{
+		REQUIRE_EQ(CCV_TENSOR_GET_DEVICE_ID(output_params[i].type), i, "output device should match replicated rank");
+		outputs[i] = ccv_nnc_tensor_new(0, output_params[i], 0);
+	}
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(d_input), outputs, rank_count, 0, 0);
+	for (i = 0; i < rank_count; i++)
+	{
+		ccv_nnc_tensor_t* const h_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows_per_rank, cols), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[i]), TENSOR_LIST(h_output), 0);
+		for (r = 0; r < rows_per_rank; r++)
+		{
+			const int row = i * rows_per_rank + r;
+			float mean = 0;
+			for (j = 0; j < cols; j++)
+				mean += h_input->data.f32[row * cols + j];
+			mean /= cols;
+			float variance = 0;
+			for (j = 0; j < cols; j++)
+			{
+				const float centered = h_input->data.f32[row * cols + j] - mean;
+				variance += centered * centered;
+			}
+			variance /= cols;
+			const float inv_std = 1.0 / sqrtf(variance + epsilon);
+			for (j = 0; j < cols; j++)
+			{
+				const float centered = h_input->data.f32[row * cols + j] - mean;
+				const float expected = centered * inv_std * h_scale->data.f32[j] + h_bias->data.f32[j];
+				REQUIRE_EQ_WITH_TOLERANCE(h_output->data.f32[r * cols + j], expected, 1e-4, "replicated layer norm output should match CPU reference");
+			}
+		}
+		ccv_nnc_tensor_free(h_output);
+	}
+	for (i = 0; i < rank_count; i++)
+		ccv_nnc_tensor_free(outputs[i]);
+	ccv_nnc_tensor_free(d_input);
+	ccv_nnc_tensor_free(h_bias);
+	ccv_nnc_tensor_free(h_scale);
+	ccv_nnc_tensor_free(h_input);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
