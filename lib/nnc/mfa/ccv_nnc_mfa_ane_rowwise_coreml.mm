@@ -14,6 +14,7 @@
 #import <objc/message.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -37,6 +38,7 @@ constexpr size_t kANEActivationSurfaceCacheLimitBytes = 512 * 1024 * 1024;
 constexpr size_t kANEWeightSurfaceCacheLimitBytes = 128 * 1024 * 1024;
 constexpr size_t kANEOutputSurfaceCacheLimitBytes = 1024 * 1024 * 1024;
 constexpr size_t kANEScratchBufferAlignment = 16 * 1024;
+constexpr uint32_t kFastFenceLaneCount = 2;
 
 static size_t align_up(const size_t value, const size_t alignment) noexcept
 {
@@ -59,6 +61,11 @@ static void set_error(char* const error_out, const size_t error_out_size, const 
 static inline id<MTLCommandBuffer> bridge_command_buffer(mtl_command_buffer_t* const command_buffer)
 {
   return (__bridge id<MTLCommandBuffer>)(void*)command_buffer;
+}
+
+static inline id<MTLComputeCommandEncoder> bridge_compute_encoder(mtl_compute_command_encoder_t* const encoder)
+{
+  return (__bridge id<MTLComputeCommandEncoder>)(void*)encoder;
 }
 
 static std::string describe_nserror(NSError* const error)
@@ -245,6 +252,14 @@ struct SharedScratch {
   mtl_buffer_t* activation_scales = nullptr;
 };
 
+struct FastFence {
+  mtl_buffer_t* timestamps = nullptr;
+  id<MTLComputePipelineState> coherent_pipeline = nil;
+  id<MTLComputePipelineState> update_pipeline = nil;
+  id<MTLComputePipelineState> wait_pipeline = nil;
+  uint32_t next_values[kFastFenceLaneCount] = {};
+};
+
 static void destroy_cached_surface(CachedSurface* const entry)
 {
   if (!entry)
@@ -295,6 +310,174 @@ static void destroy_shared_scratch(SharedScratch* const scratch)
   scratch->weight_surface_buffer = nullptr;
   scratch->output_surface_buffer = nullptr;
   scratch->activation_scales = nullptr;
+}
+
+static void destroy_fast_fence(FastFence* const fence)
+{
+  if (!fence)
+    return;
+  if (fence->timestamps)
+    fence->timestamps->release();
+  if (fence->coherent_pipeline)
+    [fence->coherent_pipeline release];
+  if (fence->update_pipeline)
+    [fence->update_pipeline release];
+  if (fence->wait_pipeline)
+    [fence->wait_pipeline release];
+  fence->timestamps = nullptr;
+  fence->coherent_pipeline = nil;
+  fence->update_pipeline = nil;
+  fence->wait_pipeline = nil;
+  memset(fence->next_values, 0, sizeof(fence->next_values));
+}
+
+static std::atomic_uint* fast_fence_cpu_values(FastFence* const fence)
+{
+  return fence && fence->timestamps
+      ? static_cast<std::atomic_uint*>(fence->timestamps->contents())
+      : nullptr;
+}
+
+static NSString* fast_fence_source(void)
+{
+  return @"#pragma METAL internals : enable\n"
+         @"#ifndef __METAL_MEMORY_SCOPE_SYSTEM__\n"
+         @"#define __METAL_MEMORY_SCOPE_SYSTEM__ 3\n"
+         @"#endif\n"
+         @"#include <metal_stdlib>\n"
+         @"#include <metal_atomic>\n"
+         @"namespace metal {\n"
+         @"constexpr constant metal::thread_scope thread_scope_system = static_cast<thread_scope>(__METAL_MEMORY_SCOPE_SYSTEM__);\n"
+         @"}\n"
+         @"using namespace metal;\n"
+         @"[[kernel]] void ccv_ane_rowwise_input_coherent(\n"
+         @"    volatile coherent(system) device uint* input [[buffer(0)]],\n"
+         @"    uint index [[thread_position_in_grid]]) {\n"
+         @"  input[index] = input[index];\n"
+         @"  metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);\n"
+         @"}\n"
+         @"[[kernel]] void ccv_ane_rowwise_fence_update(\n"
+         @"    volatile coherent(system) device uint* timestamp [[buffer(0)]],\n"
+         @"    constant uint& value [[buffer(1)]]) {\n"
+         @"  timestamp[0] = value;\n"
+         @"  metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);\n"
+         @"}\n"
+         @"[[kernel]] void ccv_ane_rowwise_fence_wait(\n"
+         @"    volatile coherent(system) device uint* timestamp [[buffer(0)]],\n"
+         @"    constant uint& value [[buffer(1)]]) {\n"
+         @"  while (true) {\n"
+         @"    metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);\n"
+         @"    if (timestamp[0] >= value)\n"
+         @"      break;\n"
+         @"  }\n"
+         @"}\n";
+}
+
+static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device, std::string* const error_out)
+{
+  if (!fence || !device) {
+    if (error_out)
+      *error_out = "fast fence cache is not available";
+    return false;
+  }
+  if (fence->timestamps && fence->coherent_pipeline && fence->update_pipeline && fence->wait_pipeline)
+    return true;
+
+  @autoreleasepool {
+    id<MTLDevice> const metal_device = (__bridge id<MTLDevice>)(void*)device;
+    if (!fence->timestamps) {
+      id<MTLBuffer> const buffer = [metal_device newBufferWithLength:sizeof(uint32_t) * kFastFenceLaneCount
+                                                             options:(MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked)];
+      if (!buffer) {
+        if (error_out)
+          *error_out = "failed to allocate fast fence timestamp buffer";
+        return false;
+      }
+      fence->timestamps = (mtl_buffer_t*)(void*)buffer;
+      std::atomic_uint* const values = fast_fence_cpu_values(fence);
+      for (uint32_t i = 0; i < kFastFenceLaneCount; ++i)
+        values[i].store(0, std::memory_order_relaxed);
+    }
+
+    if (!fence->coherent_pipeline || !fence->update_pipeline || !fence->wait_pipeline) {
+      NSError* ns_error = nil;
+      id<MTLLibrary> const library = [metal_device newLibraryWithSource:fast_fence_source()
+                                                                options:nil
+                                                                  error:&ns_error];
+      if (!library) {
+        if (error_out)
+          *error_out = "failed to compile fast fence kernels: " + describe_nserror(ns_error);
+        return false;
+      }
+      id<MTLFunction> const coherent_function = [library newFunctionWithName:@"ccv_ane_rowwise_input_coherent"];
+      id<MTLFunction> const update_function = [library newFunctionWithName:@"ccv_ane_rowwise_fence_update"];
+      id<MTLFunction> const wait_function = [library newFunctionWithName:@"ccv_ane_rowwise_fence_wait"];
+      if (!coherent_function || !update_function || !wait_function) {
+        if (error_out)
+          *error_out = "failed to create fast fence kernel functions";
+        [coherent_function release];
+        [update_function release];
+        [wait_function release];
+        [library release];
+        return false;
+      }
+      ns_error = nil;
+      id<MTLComputePipelineState> const coherent_pipeline =
+          [metal_device newComputePipelineStateWithFunction:coherent_function error:&ns_error];
+      if (!coherent_pipeline) {
+        if (error_out)
+          *error_out = "failed to create fast fence coherent pipeline: " + describe_nserror(ns_error);
+        [coherent_function release];
+        [update_function release];
+        [wait_function release];
+        [library release];
+        return false;
+      }
+      ns_error = nil;
+      id<MTLComputePipelineState> const update_pipeline =
+          [metal_device newComputePipelineStateWithFunction:update_function error:&ns_error];
+      if (!update_pipeline) {
+        if (error_out)
+          *error_out = "failed to create fast fence update pipeline: " + describe_nserror(ns_error);
+        [coherent_pipeline release];
+        [coherent_function release];
+        [update_function release];
+        [wait_function release];
+        [library release];
+        return false;
+      }
+      ns_error = nil;
+      id<MTLComputePipelineState> const wait_pipeline =
+          [metal_device newComputePipelineStateWithFunction:wait_function error:&ns_error];
+      if (!wait_pipeline) {
+        if (error_out)
+          *error_out = "failed to create fast fence wait pipeline: " + describe_nserror(ns_error);
+        [coherent_pipeline release];
+        [update_pipeline release];
+        [coherent_function release];
+        [update_function release];
+        [wait_function release];
+        [library release];
+        return false;
+      }
+      if (fence->coherent_pipeline)
+        [fence->coherent_pipeline release];
+      if (fence->update_pipeline)
+        [fence->update_pipeline release];
+      if (fence->wait_pipeline)
+        [fence->wait_pipeline release];
+      fence->coherent_pipeline = coherent_pipeline;
+      fence->update_pipeline = update_pipeline;
+      fence->wait_pipeline = wait_pipeline;
+      [coherent_function release];
+      [update_function release];
+      [wait_function release];
+      [library release];
+    }
+  }
+  if (error_out)
+    error_out->clear();
+  return true;
 }
 
 static void evict_surface_cache_entries(SurfaceCache* const cache, CachedSurface* const keep_entry)
@@ -726,6 +909,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
 struct ccv_nnc_mfa_ane_rowwise_coreml_cache_s {
   mtl_device_t* device = nullptr;
   SharedScratch scratch;
+  FastFence fast_fence;
   SurfaceCache activation_surface_cache;
   SurfaceCache weight_surface_cache;
   SurfaceCache output_surface_cache;
@@ -752,6 +936,7 @@ void ccv_nnc_mfa_ane_rowwise_coreml_cache_destroy(ccv_nnc_mfa_ane_rowwise_coreml
   if (!cache)
     return;
   destroy_shared_scratch(&cache->scratch);
+  destroy_fast_fence(&cache->fast_fence);
   destroy_surface_cache(&cache->activation_surface_cache);
   destroy_surface_cache(&cache->weight_surface_cache);
   destroy_surface_cache(&cache->output_surface_cache);
@@ -1023,7 +1208,184 @@ int ccv_nnc_mfa_ane_rowwise_coreml_append_weight_upload(
   return 1;
 }
 
+int ccv_nnc_mfa_ane_rowwise_fast_fence_prepare(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    char* error_out,
+    size_t error_out_size)
+{
+  std::string error;
+  const bool ok = cache && ensure_fast_fence(&cache->fast_fence, cache->device, &error);
+  set_error(error_out, error_out_size, ok ? std::string() : error);
+  return ok ? 1 : 0;
+}
+
+uint32_t ccv_nnc_mfa_ane_rowwise_fast_fence_next_value(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    const uint32_t fence_index)
+{
+  if (!cache || fence_index >= kFastFenceLaneCount)
+    return 0;
+  return ++cache->fast_fence.next_values[fence_index];
+}
+
+int ccv_nnc_mfa_ane_rowwise_fast_fence_append_update(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    mtl_command_batch_t* command_batch,
+    const uint32_t fence_index,
+    const uint32_t value,
+    char* error_out,
+    size_t error_out_size)
+{
+  if (!cache || !command_batch || !command_batch->commandBuffer ||
+      fence_index >= kFastFenceLaneCount || value == 0) {
+    set_error(error_out, error_out_size, "failed to append fast fence update");
+    return 0;
+  }
+  std::string error;
+  if (!ensure_fast_fence(&cache->fast_fence, cache->device, &error)) {
+    set_error(error_out, error_out_size, error);
+    return 0;
+  }
+  if (command_batch->commandEncoder) {
+    command_batch->commandEncoder->endEncoding();
+    command_batch->commandEncoder = nullptr;
+  }
+  id<MTLComputeCommandEncoder> const encoder =
+      [bridge_command_buffer(command_batch->commandBuffer) computeCommandEncoder];
+  if (!encoder) {
+    set_error(error_out, error_out_size, "failed to create fast fence update encoder");
+    return 0;
+  }
+  bool encoded_coherent_input = false;
+  const auto encode_coherent_buffer = [&](mtl_buffer_t* const buffer, const size_t bytes) {
+    if (!buffer || bytes == 0)
+      return;
+    const uint32_t words = (uint32_t)((bytes + sizeof(uint32_t) - 1) / sizeof(uint32_t));
+    if (words == 0)
+      return;
+    const NSUInteger threads_per_threadgroup =
+        std::min<NSUInteger>(1024, [cache->fast_fence.coherent_pipeline maxTotalThreadsPerThreadgroup]);
+    [encoder setComputePipelineState:cache->fast_fence.coherent_pipeline];
+    [encoder setBuffer:(__bridge id<MTLBuffer>)(void*)buffer offset:0 atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(words, 1, 1)
+        threadsPerThreadgroup:MTLSizeMake(threads_per_threadgroup, 1, 1)];
+    encoded_coherent_input = true;
+  };
+  // These IOSurface-backed buffers cross from Metal to CoreML/ANE. The counter
+  // only orders execution; this touch mirrors MLX's fast-sync visibility step.
+  encode_coherent_buffer(cache->scratch.activation_surface_buffer, cache->scratch.activation_surface_bytes);
+  encode_coherent_buffer(cache->scratch.weight_surface_buffer, cache->scratch.weight_surface_bytes);
+  if (encoded_coherent_input)
+    [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
+  [encoder setComputePipelineState:cache->fast_fence.update_pipeline];
+  [encoder setBuffer:(__bridge id<MTLBuffer>)(void*)cache->fast_fence.timestamps
+              offset:sizeof(uint32_t) * fence_index
+             atIndex:0];
+  [encoder setBytes:&value length:sizeof(value) atIndex:1];
+  [encoder dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+  [encoder endEncoding];
+  set_error(error_out, error_out_size, "");
+  return 1;
+}
+
+int ccv_nnc_mfa_ane_rowwise_fast_fence_encode_wait(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    mtl_compute_command_encoder_t* encoder_handle,
+    const uint32_t fence_index,
+    const uint32_t value,
+    char* error_out,
+    size_t error_out_size)
+{
+  if (!cache || !encoder_handle ||
+      fence_index >= kFastFenceLaneCount || value == 0) {
+    set_error(error_out, error_out_size, "failed to encode fast fence wait");
+    return 0;
+  }
+  std::string error;
+  if (!ensure_fast_fence(&cache->fast_fence, cache->device, &error)) {
+    set_error(error_out, error_out_size, error);
+    return 0;
+  }
+  id<MTLComputeCommandEncoder> const encoder = bridge_compute_encoder(encoder_handle);
+  [encoder setComputePipelineState:cache->fast_fence.wait_pipeline];
+  [encoder setBuffer:(__bridge id<MTLBuffer>)(void*)cache->fast_fence.timestamps
+              offset:sizeof(uint32_t) * fence_index
+             atIndex:0];
+  [encoder setBytes:&value length:sizeof(value) atIndex:1];
+  [encoder dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+  set_error(error_out, error_out_size, "");
+  return 1;
+}
+
+int ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    const uint32_t fence_index,
+    const uint32_t value,
+    char* error_out,
+    size_t error_out_size)
+{
+  if (!cache || fence_index >= kFastFenceLaneCount || value == 0) {
+    set_error(error_out, error_out_size, "failed to wait on fast fence");
+    return 0;
+  }
+  std::atomic_uint* const values = fast_fence_cpu_values(&cache->fast_fence);
+  if (!values) {
+    set_error(error_out, error_out_size, "fast fence timestamp buffer is not available");
+    return 0;
+  }
+  while (values[fence_index].load(std::memory_order_acquire) < value) {
+  }
+  set_error(error_out, error_out_size, "");
+  return 1;
+}
+
+void ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    const uint32_t fence_index,
+    const uint32_t value)
+{
+  if (!cache || fence_index >= kFastFenceLaneCount || value == 0)
+    return;
+  std::atomic_uint* const values = fast_fence_cpu_values(&cache->fast_fence);
+  if (values)
+    values[fence_index].store(value, std::memory_order_release);
+}
+
+static mtl_command_buffer_t* ccv_nnc_mfa_ane_rowwise_finish_command_batch_for_wait(
+    ccv_nnc_stream_context_t* stream_context,
+    mtl_command_batch_t* command_batch,
+    int use_mps_wrapper,
+    char* error_out,
+    size_t error_out_size);
+
+static int ccv_nnc_mfa_ane_rowwise_wait_and_release_command_buffer(
+    mtl_command_buffer_t* command_buffer_handle,
+    char* error_out,
+    size_t error_out_size);
+
 int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
+    ccv_nnc_stream_context_t* stream_context,
+    mtl_command_batch_t* command_batch,
+    int use_mps_wrapper,
+    char* error_out,
+    size_t error_out_size)
+{
+  mtl_command_buffer_t* const wait_command_buffer =
+      ccv_nnc_mfa_ane_rowwise_finish_command_batch_for_wait(
+          stream_context,
+          command_batch,
+          use_mps_wrapper,
+          error_out,
+          error_out_size);
+  if (!wait_command_buffer)
+    return 0;
+  return ccv_nnc_mfa_ane_rowwise_wait_and_release_command_buffer(
+      wait_command_buffer,
+      error_out,
+      error_out_size);
+}
+
+static mtl_command_buffer_t* ccv_nnc_mfa_ane_rowwise_finish_command_batch_for_wait(
     ccv_nnc_stream_context_t* stream_context,
     mtl_command_batch_t* command_batch,
     int use_mps_wrapper,
@@ -1032,7 +1394,7 @@ int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
 {
   if (!command_batch) {
     set_error(error_out, error_out_size, "command batch is not available");
-    return 0;
+    return nullptr;
   }
   if (use_mps_wrapper) {
     id const mps_command_buffer =
@@ -1040,27 +1402,33 @@ int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
     id<MTLCommandBuffer> const command_buffer =
         [((id<MTLCommandBuffer> (*)(id, SEL))objc_msgSend)(mps_command_buffer, @selector(commandBuffer)) retain];
     [mps_command_buffer commit];
-    [command_buffer waitUntilCompleted];
-    if (command_buffer.status != MTLCommandBufferStatusCompleted) {
-      [command_buffer release];
-      set_error(error_out, error_out_size, "command buffer execution failed");
-      return 0;
-    }
-    [command_buffer release];
     set_error(error_out, error_out_size, "");
-    return 1;
+    return (mtl_command_buffer_t*)(void*)command_buffer;
   }
   id<MTLCommandBuffer> const command_buffer = [bridge_command_buffer(command_batch->commandBuffer) retain];
   ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-  if (stream_context || (command_buffer && command_buffer.status != MTLCommandBufferStatusCompleted))
+  set_error(error_out, error_out_size, "");
+  return (mtl_command_buffer_t*)(void*)command_buffer;
+}
+
+static int ccv_nnc_mfa_ane_rowwise_wait_and_release_command_buffer(
+    mtl_command_buffer_t* command_buffer_handle,
+    char* error_out,
+    size_t error_out_size)
+{
+  id<MTLCommandBuffer> const command_buffer = bridge_command_buffer(command_buffer_handle);
+  if (!command_buffer) {
+    set_error(error_out, error_out_size, "command buffer is not available");
+    return 0;
+  }
+  if (command_buffer.status != MTLCommandBufferStatusCompleted)
     [command_buffer waitUntilCompleted];
-  if (command_buffer && command_buffer.status != MTLCommandBufferStatusCompleted) {
+  if (command_buffer.status != MTLCommandBufferStatusCompleted) {
     [command_buffer release];
     set_error(error_out, error_out_size, "command buffer execution failed");
     return 0;
   }
-  if (command_buffer)
-    [command_buffer release];
+  [command_buffer release];
   set_error(error_out, error_out_size, "");
   return 1;
 }

@@ -64,6 +64,38 @@ int ccv_nnc_mfa_ane_rowwise_coreml_append_weight_upload(
     char* error_out,
     size_t error_out_size);
 
+int ccv_nnc_mfa_ane_rowwise_fast_fence_prepare(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    char* error_out,
+    size_t error_out_size);
+uint32_t ccv_nnc_mfa_ane_rowwise_fast_fence_next_value(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    uint32_t fence_index);
+int ccv_nnc_mfa_ane_rowwise_fast_fence_append_update(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    mtl_command_batch_t* command_batch,
+    uint32_t fence_index,
+    uint32_t value,
+    char* error_out,
+    size_t error_out_size);
+int ccv_nnc_mfa_ane_rowwise_fast_fence_encode_wait(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    mtl_compute_command_encoder_t* encoder,
+    uint32_t fence_index,
+    uint32_t value,
+    char* error_out,
+    size_t error_out_size);
+int ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    uint32_t fence_index,
+    uint32_t value,
+    char* error_out,
+    size_t error_out_size);
+void ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    uint32_t fence_index,
+    uint32_t value);
+
 int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
     ccv_nnc_stream_context_t* stream_context,
     mtl_command_batch_t* command_batch,
