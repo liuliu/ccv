@@ -4,6 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 #include "_ccv_nnc_graph.h"
+#include "_ccv_nnc_symbolic_graph.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
@@ -191,6 +192,45 @@ static void _ccv_cnnp_compiled_data_init(ccv_cnnp_compiled_data_t* const compile
 	compiled_data->gradient_checkpoints = gradient_checkpoints;
 }
 
+static int _ccv_cnnp_model_root_parallel_count(const ccv_cnnp_model_t* const model)
+{
+	return ccv_max(model->parallel_count, 1);
+}
+
+static int _ccv_cnnp_model_effective_parallel_count(const ccv_cnnp_model_t* const model)
+{
+	int parallel_count = _ccv_cnnp_model_root_parallel_count(model);
+	if (model->graph && model->graph->data_parallel.count > parallel_count)
+		parallel_count = model->graph->data_parallel.count;
+	return parallel_count;
+}
+
+static int _ccv_cnnp_compiled_data_parallel_count(const ccv_cnnp_model_t* const model, const ccv_cnnp_compiled_data_t* const compiled_data)
+{
+	return compiled_data->parallel_count > 0 ? compiled_data->parallel_count : _ccv_cnnp_model_effective_parallel_count(model);
+}
+
+ccv_nnc_tensor_symbol_t ccv_cnnp_model_get_symbol(ccv_cnnp_model_t* const self, const ccv_nnc_tensor_symbol_t symbol)
+{
+	assert(self->data);
+	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)self->data;
+	if (build_data->parallel_count <= 1 || build_data->parallel_rank == 0)
+		return symbol;
+	const int rank = build_data->parallel_rank;
+	assert(rank > 0);
+	assert(rank < build_data->parallel_count);
+	ccv_nnc_symbolic_graph_t* const graph = (ccv_nnc_symbolic_graph_t*)symbol.graph;
+	ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(graph, symbol, rank);
+	if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
+		return copy;
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, symbol);
+	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
+		CCV_TENSOR_SET_DEVICE_ID(params.type, rank);
+	copy = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_tensor_symbol_set_copy(graph, symbol, rank, copy);
+	return copy;
+}
+
 typedef struct {
 	void* old_graph_exec_symbol_new_hook_context;
 	ccv_nnc_graph_exec_symbol_new_hook_f old_graph_exec_symbol_new_hook;
@@ -241,6 +281,8 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 	ccv_cnnp_model_build_data_t build_data = {
 		.exec_flags = 0,
 		.is_trainable = model->is_trainable >= 0 ? model->is_trainable : 1,
+		.parallel_count = 1,
+		.parallel_rank = 0,
 		.model_sequence = &model_sequence,
 		.add_to_array = ccv_cnnp_model_add_to_array,
 		.parameters = parameters,
@@ -980,7 +1022,8 @@ static int _ccv_cnnp_apply_parameters_with_minimizer(ccv_cnnp_model_t* const mod
 	ccv_nnc_graph_exec_symbol_t* const update_nodes = compiled_data->update_nodes;
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
 	assert(symbolic_graph);
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_model_root_parallel_count(model);
+	assert(_ccv_cnnp_model_effective_parallel_count(model) == parallel_count && "local replicated stateful models only support forward / no-grad evaluation for now");
 	ccv_array_t* const parameters = compiled_data->minimize.parameters;
 	ccv_array_t* const parameter_indices = ccv_array_new(sizeof(int), 0, 0);
 	int i, j, flag = 0;
@@ -1050,7 +1093,8 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	assert(gradient_mode != CCV_CNNP_COMPILED_DATA_GRADIENT_NONE);
 	const int evaluate_to_size = compiled_data->evaluate.to_size;
 	assert(evaluate_to_size > 0);
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_model_root_parallel_count(model);
+	assert(_ccv_cnnp_model_effective_parallel_count(model) == parallel_count && "local replicated stateful models only support forward / no-grad evaluation for now");
 	compiled_data->evaluate.tos = ccrealloc(compiled_data->evaluate.tos, sizeof(ccv_nnc_graph_exec_symbol_t) * evaluate_to_size * parallel_count + sizeof(ccv_nnc_graph_exec_t) * evaluate_to_size * parallel_count);
 	compiled_data->evaluate.to_ops = (ccv_nnc_graph_exec_t*)(compiled_data->evaluate.tos + evaluate_to_size * parallel_count);
 	int i, j;
@@ -1191,7 +1235,8 @@ void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp
 {
 	assert(!compiled_data->tensors.parameters);
 	const int parameter_size = compiled_data->parameters->rnum;
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_model_effective_parallel_count(model);
+	compiled_data->parallel_count = parallel_count;
 	const int internal_size = compiled_data->internals->rnum;
 	compiled_data->tensors_init.size = ccv_nnc_tensor_symbol_count(model->graph);
 	compiled_data->tensors_init.v = cccalloc(((compiled_data->tensors_init.size + 31) >> 5), sizeof(uint32_t));
@@ -1203,7 +1248,7 @@ int ccv_cnnp_model_tensors_any_to_alloc(const ccv_cnnp_model_t* const model, ccv
 {
 	int i, j;
 	const int parameter_size = compiled_data->parameters->rnum;
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_compiled_data_parallel_count(model, compiled_data);
 	const int internal_size = compiled_data->internals->rnum;
 	for (i = 0; i < parameter_size; i++)
 	{
@@ -1231,7 +1276,8 @@ void ccv_cnnp_model_tensors_init_1(const ccv_cnnp_model_t* const model, ccv_cnnp
 {
 	int i, j;
 	const int parameter_size = compiled_data->parameters->rnum;
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_compiled_data_parallel_count(model, compiled_data);
+	compiled_data->parallel_count = parallel_count;
 	const int internal_size = compiled_data->internals->rnum;
 	for (i = 0; i < parameter_size; i++)
 	{
@@ -1441,7 +1487,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(!compiled_data->graph || compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_FIT_MODE);
 	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_FIT_MODE;
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_model_root_parallel_count(model);
 	assert(output_size == model->output_size * parallel_count);
 	assert(!fits || output_size == fit_size);
 	assert(output_size > 0);
@@ -1639,6 +1685,7 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 	else if ((uintptr_t)compiled_data->tensors_init.v & (uintptr_t)1)
 	// Check if it is not fully allocated, if it is not, init_1.
 		ccv_cnnp_model_tensors_init_1(model, compiled_data);
+	const int tensor_parallel_count = _ccv_cnnp_compiled_data_parallel_count(model, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	assert((input_size % parallel_count) == 0);
 	assert((output_size % parallel_count) == 0);
@@ -1647,21 +1694,21 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 	const int output_size_per_p = output_size / parallel_count;
 	_ccv_cnnp_model_bind_tensors(model->graph, model->outputs, outputs, output_size_per_p, parallel_count, tensor_binds);
 	const int parameter_size = compiled_data->parameters->rnum;
-	_ccv_cnnp_model_bind_tensors(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), compiled_data->tensors.parameters, parameter_size, parallel_count, tensor_binds);
+	_ccv_cnnp_model_bind_tensors(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), compiled_data->tensors.parameters, parameter_size, tensor_parallel_count, tensor_binds);
 	const int internal_size = compiled_data->internals->rnum;
-	_ccv_cnnp_model_remove_nocopies(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, 0), compiled_data->tensors.internals, internal_size, parallel_count);
-	_ccv_cnnp_model_bind_tensors(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, 0), compiled_data->tensors.internals, internal_size, parallel_count, tensor_binds);
+	_ccv_cnnp_model_remove_nocopies(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, 0), compiled_data->tensors.internals, internal_size, tensor_parallel_count);
+	_ccv_cnnp_model_bind_tensors(model->graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, 0), compiled_data->tensors.internals, internal_size, tensor_parallel_count, tensor_binds);
 	// If we generated gradient for the graph, only compile part of the graph because the rest is irrelevant for evaluation.
 	ccv_nnc_symbolic_graph_compile(model->graph, compiled_data->compile_params, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), compiled_data->evaluate.tos, compiled_data->evaluate.to_size, &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
 	ccv_array_free(tensor_binds);
 	const uint32_t* const init_v = CCV_NNC_INIT_V(compiled_data->tensors_init.v);
 	// If tensor is not init'ed, we need to init states first.
-	if (tensors_init && parallel_count > 1)
-		_ccv_cnnp_model_copy_tensors(init_v, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), compiled_data->tensors.parameters, compiled_data->parameters->rnum, parallel_count);
+	if (tensors_init && tensor_parallel_count > 1)
+		_ccv_cnnp_model_copy_tensors(init_v, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, 0), compiled_data->tensors.parameters, compiled_data->parameters->rnum, tensor_parallel_count);
 	if (_ccv_cnnp_any_to_init(compiled_data))
 	{
 		ccv_nnc_tensor_init_states_t tensor_init_states = {
-			.parallel_count = parallel_count,
+			.parallel_count = tensor_parallel_count,
 			.graph = model->graph,
 			.compiled_data = compiled_data,
 			.tensor_arena = compiled_data->tensor_arena
@@ -2215,7 +2262,7 @@ void ccv_cnnp_model_set_parameter(ccv_cnnp_model_t* const model, const ccv_cnnp_
 	const int parameter_size = compiled_data->parameters->rnum;
 	assert(d >= 0);
 	assert(d < parameter_size);
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = _ccv_cnnp_compiled_data_parallel_count(model, compiled_data);
 	int i;
 	if (!this_tensor_init)
 	{
@@ -3287,7 +3334,7 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 	for (i = 0; i < internal_size; i++)
 		ccfree(*(char**)ccv_array_get(compiled_data->ids.internals, i));
 	ccv_array_free(compiled_data->ids.internals);
-	const int parallel_count = ccv_max(model->parallel_count, 1);
+	const int parallel_count = compiled_data->parallel_count > 0 ? compiled_data->parallel_count : _ccv_cnnp_model_root_parallel_count(model);
 	if (compiled_data->tensors.parameters)
 	{
 		for (i = 0; i < parameter_size * parallel_count; i++)

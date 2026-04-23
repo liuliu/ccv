@@ -160,6 +160,119 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 
 typedef struct {
 	ccv_cnnp_model_t super;
+	ccv_cnnp_model_t* model;
+	int count;
+	ccv_nnc_tensor_symbol_t outputs[1];
+} ccv_cnnp_replicated_model_t;
+
+static void _ccv_cnnp_replicated_model_deinit(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	if (self->model && !self->model->deinit_state)
+		ccv_cnnp_model_deinit(self->model);
+}
+
+static void _ccv_cnnp_replicated_model_dealloc(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	if (self->model)
+		ccv_cnnp_model_free(self->model);
+}
+
+static void _ccv_cnnp_replicated_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_t* const model = self->model;
+	const int count = self->count;
+	assert(count > 1);
+	assert(model->input_size > 0);
+	assert(model->output_size > 0);
+	assert(input_size == model->input_size * count);
+	assert(output_size == model->output_size * count);
+	assert(super->data);
+	ccv_cnnp_model_build_data_t* const build_data = (ccv_cnnp_model_build_data_t*)super->data;
+	const int old_parallel_count = build_data->parallel_count;
+	const int old_parallel_rank = build_data->parallel_rank;
+	assert(old_parallel_count <= 1);
+	int i;
+	for (i = 0; i < count; i++)
+	{
+		build_data->parallel_count = count;
+		build_data->parallel_rank = i;
+		void* const old_data = model->data;
+		model->data = super->data;
+		ccv_cnnp_model_build(model, graph, inputs + i * model->input_size, model->input_size, outputs + i * model->output_size, model->output_size);
+		model->data = old_data;
+	}
+	build_data->parallel_count = old_parallel_count;
+	build_data->parallel_rank = old_parallel_rank;
+}
+
+static void _ccv_cnnp_replicated_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_init_states(self->model, graph, initializer, context);
+}
+
+static void _ccv_cnnp_replicated_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_set_is_test(self->model, is_test, updater, context);
+}
+
+static void _ccv_cnnp_replicated_model_add_to_parameter_indices(ccv_cnnp_model_t* const super, const int index, ccv_array_t* const parameter_indices)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_add_to_parameter_indices(self->model, index, parameter_indices);
+}
+
+static void _ccv_cnnp_replicated_model_notify(const ccv_cnnp_model_t* const super, const int tag, void* const payload)
+{
+	ccv_cnnp_replicated_model_t* const self = (ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_notify(self->model, tag, payload);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_replicated_model_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_replicated_model_isa = {
+	.deinit = _ccv_cnnp_replicated_model_deinit,
+	.dealloc = _ccv_cnnp_replicated_model_dealloc,
+	.build = _ccv_cnnp_replicated_model_build,
+	.init_states = _ccv_cnnp_replicated_model_init_states,
+	.copy = _ccv_cnnp_replicated_model_copy,
+	.set_is_test = _ccv_cnnp_replicated_model_set_is_test,
+	.add_to_parameter_indices = _ccv_cnnp_replicated_model_add_to_parameter_indices,
+	.notify = _ccv_cnnp_replicated_model_notify,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int count, const char* const name)
+{
+	assert(model);
+	assert(count > 1);
+	assert(model->input_size > 0);
+	assert(model->output_size > 0);
+	const int output_size = model->output_size * count;
+	ccv_cnnp_replicated_model_t* const replicated_model = (ccv_cnnp_replicated_model_t*)cccalloc(1, sizeof(ccv_cnnp_replicated_model_t) + sizeof(ccv_nnc_tensor_symbol_t) * (output_size - 1));
+	replicated_model->super.isa = &ccv_cnnp_replicated_model_isa;
+	replicated_model->super.input_size = model->input_size * count;
+	replicated_model->super.outputs = replicated_model->outputs;
+	replicated_model->super.output_size = output_size;
+	replicated_model->super.is_trainable = -1;
+	ccv_cnnp_model_copy_name(&replicated_model->super, name);
+	replicated_model->model = model;
+	replicated_model->count = count;
+	return (ccv_cnnp_model_t*)replicated_model;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_replicated_model_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_replicated_model_t* const self = (const ccv_cnnp_replicated_model_t*)super;
+	ccv_cnnp_model_t* const model_copy = _ccv_cnnp_model_copy(self->model, context);
+	return ccv_cnnp_replicated(model_copy, self->count, self->super.name);
+}
+
+typedef struct {
+	ccv_cnnp_model_t super;
 	// The model's outputs, it is different from super.output_size, as latter is for actual tensor symbols.
 	int model_output_size;
 	// The name is similar to sequential model, but it is just topological sorted models.

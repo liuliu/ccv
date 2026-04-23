@@ -79,6 +79,7 @@ typedef struct {
 	int gradient_mode; // Have init gradient graph.
 	int is_test;
 	int stream_type;
+	int parallel_count; // Physical parameter / internal tensor count.
 	int outgrad_size;
 	uint64_t disable_outgrad;
 	ccv_nnc_symbolic_graph_compile_param_t compile_params;
@@ -274,6 +275,8 @@ typedef struct {
 	int exec_flags;
 	int is_trainable;
 	int is_gradient_checkpointing;
+	int parallel_count;
+	int parallel_rank;
 	ccv_cnnp_model_sequence_t* model_sequence;
 	ccv_cnnp_add_to_array_f add_to_array;
 	ccv_array_t* parameters;
@@ -473,6 +476,7 @@ typedef struct {
 void ccv_cnnp_model_tensors_init_0(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 void ccv_cnnp_model_tensors_init_1(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
 int ccv_cnnp_model_tensors_any_to_alloc(const ccv_cnnp_model_t* const model, ccv_cnnp_compiled_data_t* const compiled_data);
+ccv_nnc_tensor_symbol_t ccv_cnnp_model_get_symbol(ccv_cnnp_model_t* const self, const ccv_nnc_tensor_symbol_t symbol);
 ccv_nnc_stream_context_t* ccv_cnnp_compiled_data_get_stream(ccv_cnnp_compiled_data_t* const compiled_data, const int type);
 void ccv_cnnp_model_gradient_checkpoints_cleanup_after_build(ccv_cnnp_compiled_data_t* const compiled_data, ccv_nnc_symbolic_graph_t* const graph);
 void ccv_cnnp_model_apply_gradient_checkpoints(ccv_cnnp_compiled_data_t* const compiled_data, ccv_nnc_symbolic_graph_t* const graph);

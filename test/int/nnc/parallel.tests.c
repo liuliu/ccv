@@ -64,6 +64,78 @@ TEST_CASE("cnnp send to devices and all-to-all")
 	ccv_cnnp_model_free(model);
 }
 
+TEST_CASE("cnnp replicated dense feeds all-to-all")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMM_ALL_TO_ALL_FORWARD, CCV_NNC_BACKEND_GPU_NCCL));
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	GUARD_ELSE_RETURN(device_count > 1);
+	const int rank_count = device_count;
+	const int rows_per_rank = 2;
+	const int input_dim = 4;
+	const int output_chunk = 3;
+	const int output_dim = rank_count * output_chunk;
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	ccv_cnnp_model_io_t chunks = ccv_cnnp_model_apply(ccv_cnnp_chunk(rank_count, 0, "chunk"), MODEL_IO_LIST(x));
+	ccv_cnnp_model_io_t sent[rank_count];
+	int i, j, k, r;
+	for (i = 0; i < rank_count; i++)
+	{
+		ccv_cnnp_model_io_t chunk_i = ccv_cnnp_model_apply(ccv_cnnp_extract(i, 0), &chunks, 1);
+		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
+	}
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(output_dim, 1, 0, 1, "dense");
+	ccv_cnnp_model_io_t dense_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(dense, rank_count, "replicated_dense"), sent, rank_count);
+	ccv_cnnp_model_io_t exchanged = ccv_cnnp_model_apply(ccv_cnnp_all_to_all(rank_count, 1, "all_to_all"), MODEL_IO_LIST(dense_outputs));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), &exchanged, 1, 0, "replicated_dense_all_to_all");
+	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, rank_count * rows_per_rank, input_dim);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const h_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rank_count * rows_per_rank, input_dim), 0);
+	for (i = 0; i < rank_count * rows_per_rank; i++)
+		for (j = 0; j < input_dim; j++)
+			h_input->data.f32[i * input_dim + j] = (float)(i * 10 + j + 1);
+	ccv_nnc_tensor_t* const h_weight = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_dim, input_dim), 0);
+	for (i = 0; i < output_dim; i++)
+		for (j = 0; j < input_dim; j++)
+			h_weight->data.f32[i * input_dim + j] = (float)((i + 1) * 0.25 + (j + 1) * 0.125);
+	ccv_cnnp_model_set_parameter(model, ccv_cnnp_model_parameters(dense, ALL_PARAMETERS, 0), h_weight);
+	ccv_nnc_tensor_t* const d_input = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(h_input), TENSOR_LIST(d_input), 0);
+	ccv_nnc_tensor_param_t output_params[rank_count];
+	ccv_cnnp_model_tensor_auto(model, output_params, rank_count);
+	ccv_nnc_tensor_t* outputs[rank_count];
+	for (i = 0; i < rank_count; i++)
+	{
+		REQUIRE_EQ(CCV_TENSOR_GET_DEVICE_ID(output_params[i].type), i, "output device should match all-to-all rank");
+		outputs[i] = ccv_nnc_tensor_new(0, output_params[i], 0);
+	}
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(d_input), outputs, rank_count, 0, 0);
+	for (j = 0; j < rank_count; j++)
+	{
+		ccv_nnc_tensor_t* const h_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows_per_rank, output_dim), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(outputs[j]), TENSOR_LIST(h_output), 0);
+		for (r = 0; r < rows_per_rank; r++)
+			for (i = 0; i < rank_count; i++)
+				for (k = 0; k < output_chunk; k++)
+				{
+					float expected = 0;
+					const int input_row = i * rows_per_rank + r;
+					const int output_channel = j * output_chunk + k;
+					int l;
+					for (l = 0; l < input_dim; l++)
+						expected += h_input->data.f32[input_row * input_dim + l] * h_weight->data.f32[output_channel * input_dim + l];
+					REQUIRE_EQ_WITH_TOLERANCE(h_output->data.f32[r * output_dim + i * output_chunk + k], expected, 1e-4, "replicated dense all-to-all output should match CPU reference");
+				}
+		ccv_nnc_tensor_free(h_output);
+	}
+	for (i = 0; i < rank_count; i++)
+		ccv_nnc_tensor_free(outputs[i]);
+	ccv_nnc_tensor_free(d_input);
+	ccv_nnc_tensor_free(h_weight);
+	ccv_nnc_tensor_free(h_input);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
