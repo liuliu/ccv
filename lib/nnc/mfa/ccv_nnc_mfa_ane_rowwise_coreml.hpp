@@ -78,23 +78,12 @@ int ccv_nnc_mfa_ane_rowwise_fast_fence_append_update(
     uint32_t value,
     char* error_out,
     size_t error_out_size);
-int ccv_nnc_mfa_ane_rowwise_fast_fence_encode_wait(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
-    mtl_compute_command_encoder_t* encoder,
-    uint32_t fence_index,
-    uint32_t value,
-    char* error_out,
-    size_t error_out_size);
 int ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
     uint32_t fence_index,
     uint32_t value,
     char* error_out,
     size_t error_out_size);
-void ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
-    uint32_t fence_index,
-    uint32_t value);
 
 int ccv_nnc_mfa_ane_rowwise_finish_command_batch_and_wait(
     ccv_nnc_stream_context_t* stream_context,

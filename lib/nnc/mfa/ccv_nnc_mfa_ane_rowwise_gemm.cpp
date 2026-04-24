@@ -35,13 +35,12 @@ constexpr uint32_t kANERowAlignment = 128;
 constexpr uint32_t kHybridProbeM = 8192;
 constexpr uint32_t kHybridProbeN = 4096;
 constexpr uint32_t kHybridProbeK = 4096;
-constexpr double kANEReferenceTFlops = 10.0;
-constexpr uint32_t kHybridDisableRatioThreshold = 14;
+constexpr double kANEReferenceTFlops = 20.0;
+constexpr uint32_t kHybridDisableRatioThreshold = 7;
 constexpr uint64_t kHybridLargeANEWorkThreshold = 3ULL * 1024 * 1024;
 constexpr uint32_t kHybridMinANERowsForLargeWork = 512;
 constexpr uint32_t kHybridMinANERowsForSmallWork = 1024;
 constexpr uint32_t kHybridPrepFenceIndex = 0;
-constexpr uint32_t kHybridAneFenceIndex = 1;
 
 typedef struct {
   bool initialized;
@@ -551,8 +550,6 @@ static bool run_dequantize_output(
     const size_t output_offset,
     const uint32_t fused_bias,
     ccv_nnc_stream_context_t* const stream_context,
-    const bool wait_for_fast_fence,
-    const uint32_t fast_fence_value,
     std::string* const error_out)
 {
   mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -563,21 +560,6 @@ static bool run_dequantize_output(
     if (error_out)
       *error_out = "CoreML output buffer is not available for dequantize";
     return false;
-  }
-  if (wait_for_fast_fence) {
-    char fence_error_buffer[1024] = {};
-    const int fence_ok = ccv_nnc_mfa_ane_rowwise_fast_fence_encode_wait(
-        cache,
-        encoder,
-        kHybridAneFenceIndex,
-        fast_fence_value,
-        fence_error_buffer,
-        sizeof(fence_error_buffer));
-    if (!fence_ok) {
-      if (error_out)
-        *error_out = bridge_error(fence_error_buffer).empty() ? "failed to encode ANE completion fence wait" : bridge_error(fence_error_buffer);
-      return false;
-    }
   }
   encoder->setComputePipelineState(fused_bias ? transform_pipeline->fourth.get() : transform_pipeline->third.get());
   encoder->useResource(coreml_output_buffer, MTL::ResourceUsageRead);
@@ -845,8 +827,6 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
           tensor_offsets[2],
           params.fused_bias,
           stream_context,
-          false,
-          0,
           &error)) {
     ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
     log_ane_rowwise_error(context, error);
@@ -932,7 +912,6 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
     return 0;
   }
   const uint32_t prep_fence_value = ccv_nnc_mfa_ane_rowwise_fast_fence_next_value(cache, kHybridPrepFenceIndex);
-  const uint32_t ane_fence_value = ccv_nnc_mfa_ane_rowwise_fast_fence_next_value(cache, kHybridAneFenceIndex);
 
   if (!run_hybrid_prepare_inputs(
           cache,
@@ -974,6 +953,25 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
     return 0;
   }
 
+  const int prep_ok = ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
+      cache,
+      kHybridPrepFenceIndex,
+      prep_fence_value,
+      fence_error_buffer,
+      sizeof(fence_error_buffer));
+  if (!prep_ok) {
+    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
+    log_ane_rowwise_error(
+        context,
+        bridge_error(fence_error_buffer).empty() ? "split GEMM prep fence wait failed" : bridge_error(fence_error_buffer));
+    return 0;
+  }
+  const bool evaluated = evaluate_program(cache, program, &error);
+  if (!evaluated) {
+    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
+    log_ane_rowwise_error(context, error);
+    return -1;
+  }
   if (!run_dequantize_output(
           cache,
           transform_pipeline,
@@ -988,30 +986,7 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
           tensor_offsets[2],
           params.fused_bias,
           stream_context,
-          true,
-          ane_fence_value,
           &error)) {
-    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
-    log_ane_rowwise_error(context, error);
-    return -1;
-  }
-  const int prep_ok = ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
-      cache,
-      kHybridPrepFenceIndex,
-      prep_fence_value,
-      fence_error_buffer,
-      sizeof(fence_error_buffer));
-  if (!prep_ok) {
-    ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(cache, kHybridAneFenceIndex, ane_fence_value);
-    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
-    log_ane_rowwise_error(
-        context,
-        bridge_error(fence_error_buffer).empty() ? "split GEMM prep fence wait failed" : bridge_error(fence_error_buffer));
-    return 0;
-  }
-  const bool evaluated = evaluate_program(cache, program, &error);
-  ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(cache, kHybridAneFenceIndex, ane_fence_value);
-  if (!evaluated) {
     ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
     log_ane_rowwise_error(context, error);
     return -1;

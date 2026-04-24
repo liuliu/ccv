@@ -38,7 +38,7 @@ constexpr size_t kANEActivationSurfaceCacheLimitBytes = 512 * 1024 * 1024;
 constexpr size_t kANEWeightSurfaceCacheLimitBytes = 128 * 1024 * 1024;
 constexpr size_t kANEOutputSurfaceCacheLimitBytes = 1024 * 1024 * 1024;
 constexpr size_t kANEScratchBufferAlignment = 16 * 1024;
-constexpr uint32_t kFastFenceLaneCount = 2;
+constexpr uint32_t kFastFenceLaneCount = 1;
 
 static size_t align_up(const size_t value, const size_t alignment) noexcept
 {
@@ -61,11 +61,6 @@ static void set_error(char* const error_out, const size_t error_out_size, const 
 static inline id<MTLCommandBuffer> bridge_command_buffer(mtl_command_buffer_t* const command_buffer)
 {
   return (__bridge id<MTLCommandBuffer>)(void*)command_buffer;
-}
-
-static inline id<MTLComputeCommandEncoder> bridge_compute_encoder(mtl_compute_command_encoder_t* const encoder)
-{
-  return (__bridge id<MTLComputeCommandEncoder>)(void*)encoder;
 }
 
 static std::string describe_nserror(NSError* const error)
@@ -256,7 +251,6 @@ struct FastFence {
   mtl_buffer_t* timestamps = nullptr;
   id<MTLComputePipelineState> coherent_pipeline = nil;
   id<MTLComputePipelineState> update_pipeline = nil;
-  id<MTLComputePipelineState> wait_pipeline = nil;
   uint32_t next_values[kFastFenceLaneCount] = {};
 };
 
@@ -322,12 +316,9 @@ static void destroy_fast_fence(FastFence* const fence)
     [fence->coherent_pipeline release];
   if (fence->update_pipeline)
     [fence->update_pipeline release];
-  if (fence->wait_pipeline)
-    [fence->wait_pipeline release];
   fence->timestamps = nullptr;
   fence->coherent_pipeline = nil;
   fence->update_pipeline = nil;
-  fence->wait_pipeline = nil;
   memset(fence->next_values, 0, sizeof(fence->next_values));
 }
 
@@ -361,15 +352,6 @@ static NSString* fast_fence_source(void)
          @"    constant uint& value [[buffer(1)]]) {\n"
          @"  timestamp[0] = value;\n"
          @"  metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);\n"
-         @"}\n"
-         @"[[kernel]] void ccv_ane_rowwise_fence_wait(\n"
-         @"    volatile coherent(system) device uint* timestamp [[buffer(0)]],\n"
-         @"    constant uint& value [[buffer(1)]]) {\n"
-         @"  while (true) {\n"
-         @"    metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);\n"
-         @"    if (timestamp[0] >= value)\n"
-         @"      break;\n"
-         @"  }\n"
          @"}\n";
 }
 
@@ -380,7 +362,7 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
       *error_out = "fast fence cache is not available";
     return false;
   }
-  if (fence->timestamps && fence->coherent_pipeline && fence->update_pipeline && fence->wait_pipeline)
+  if (fence->timestamps && fence->coherent_pipeline && fence->update_pipeline)
     return true;
 
   @autoreleasepool {
@@ -399,7 +381,7 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
         values[i].store(0, std::memory_order_relaxed);
     }
 
-    if (!fence->coherent_pipeline || !fence->update_pipeline || !fence->wait_pipeline) {
+    if (!fence->coherent_pipeline || !fence->update_pipeline) {
       NSError* ns_error = nil;
       id<MTLLibrary> const library = [metal_device newLibraryWithSource:fast_fence_source()
                                                                 options:nil
@@ -411,13 +393,11 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
       }
       id<MTLFunction> const coherent_function = [library newFunctionWithName:@"ccv_ane_rowwise_input_coherent"];
       id<MTLFunction> const update_function = [library newFunctionWithName:@"ccv_ane_rowwise_fence_update"];
-      id<MTLFunction> const wait_function = [library newFunctionWithName:@"ccv_ane_rowwise_fence_wait"];
-      if (!coherent_function || !update_function || !wait_function) {
+      if (!coherent_function || !update_function) {
         if (error_out)
           *error_out = "failed to create fast fence kernel functions";
         [coherent_function release];
         [update_function release];
-        [wait_function release];
         [library release];
         return false;
       }
@@ -429,7 +409,6 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
           *error_out = "failed to create fast fence coherent pipeline: " + describe_nserror(ns_error);
         [coherent_function release];
         [update_function release];
-        [wait_function release];
         [library release];
         return false;
       }
@@ -442,21 +421,6 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
         [coherent_pipeline release];
         [coherent_function release];
         [update_function release];
-        [wait_function release];
-        [library release];
-        return false;
-      }
-      ns_error = nil;
-      id<MTLComputePipelineState> const wait_pipeline =
-          [metal_device newComputePipelineStateWithFunction:wait_function error:&ns_error];
-      if (!wait_pipeline) {
-        if (error_out)
-          *error_out = "failed to create fast fence wait pipeline: " + describe_nserror(ns_error);
-        [coherent_pipeline release];
-        [update_pipeline release];
-        [coherent_function release];
-        [update_function release];
-        [wait_function release];
         [library release];
         return false;
       }
@@ -464,14 +428,10 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
         [fence->coherent_pipeline release];
       if (fence->update_pipeline)
         [fence->update_pipeline release];
-      if (fence->wait_pipeline)
-        [fence->wait_pipeline release];
       fence->coherent_pipeline = coherent_pipeline;
       fence->update_pipeline = update_pipeline;
-      fence->wait_pipeline = wait_pipeline;
       [coherent_function release];
       [update_function release];
-      [wait_function release];
       [library release];
     }
   }
@@ -1288,35 +1248,6 @@ int ccv_nnc_mfa_ane_rowwise_fast_fence_append_update(
   return 1;
 }
 
-int ccv_nnc_mfa_ane_rowwise_fast_fence_encode_wait(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
-    mtl_compute_command_encoder_t* encoder_handle,
-    const uint32_t fence_index,
-    const uint32_t value,
-    char* error_out,
-    size_t error_out_size)
-{
-  if (!cache || !encoder_handle ||
-      fence_index >= kFastFenceLaneCount || value == 0) {
-    set_error(error_out, error_out_size, "failed to encode fast fence wait");
-    return 0;
-  }
-  std::string error;
-  if (!ensure_fast_fence(&cache->fast_fence, cache->device, &error)) {
-    set_error(error_out, error_out_size, error);
-    return 0;
-  }
-  id<MTLComputeCommandEncoder> const encoder = bridge_compute_encoder(encoder_handle);
-  [encoder setComputePipelineState:cache->fast_fence.wait_pipeline];
-  [encoder setBuffer:(__bridge id<MTLBuffer>)(void*)cache->fast_fence.timestamps
-              offset:sizeof(uint32_t) * fence_index
-             atIndex:0];
-  [encoder setBytes:&value length:sizeof(value) atIndex:1];
-  [encoder dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-  set_error(error_out, error_out_size, "");
-  return 1;
-}
-
 int ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
     const uint32_t fence_index,
@@ -1337,18 +1268,6 @@ int ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
   }
   set_error(error_out, error_out_size, "");
   return 1;
-}
-
-void ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_update(
-    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
-    const uint32_t fence_index,
-    const uint32_t value)
-{
-  if (!cache || fence_index >= kFastFenceLaneCount || value == 0)
-    return;
-  std::atomic_uint* const values = fast_fence_cpu_values(&cache->fast_fence);
-  if (values)
-    values[fence_index].store(value, std::memory_order_release);
 }
 
 static mtl_command_buffer_t* ccv_nnc_mfa_ane_rowwise_finish_command_batch_for_wait(
