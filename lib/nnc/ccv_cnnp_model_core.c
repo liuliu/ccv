@@ -245,7 +245,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_replicated_model_isa = {
 	.notify = _ccv_cnnp_replicated_model_notify,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int count, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int count, const int is_trainable, const char* const name)
 {
 	assert(model);
 	assert(count > 1);
@@ -257,7 +257,7 @@ ccv_cnnp_model_t* ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int c
 	replicated_model->super.input_size = model->input_size * count;
 	replicated_model->super.outputs = replicated_model->outputs;
 	replicated_model->super.output_size = output_size;
-	replicated_model->super.is_trainable = -1;
+	replicated_model->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&replicated_model->super, name);
 	replicated_model->model = model;
 	replicated_model->count = count;
@@ -268,7 +268,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_replicated_model_copy(const ccv_cnnp_model_t*
 {
 	const ccv_cnnp_replicated_model_t* const self = (const ccv_cnnp_replicated_model_t*)super;
 	ccv_cnnp_model_t* const model_copy = _ccv_cnnp_model_copy(self->model, context);
-	return ccv_cnnp_replicated(model_copy, self->count, self->super.name);
+	return ccv_cnnp_replicated(model_copy, self->count, self->super.is_trainable, self->super.name);
 }
 
 typedef struct {

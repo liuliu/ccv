@@ -4899,10 +4899,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_copy(const char* const name);
  * Replicate a model locally across a fixed number of rank-ordered inputs.
  * @param model The model to build once for each local rank.
  * @param count The number of local ranks.
+ * @param is_trainable Whether the parameters of this wrapper can be trained. -1 means inherent from parent.
  * @param name The unique name of the wrapper model.
  * @return A model with input / output sizes multiplied by count.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int count, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_replicated(ccv_cnnp_model_t* const model, const int count, const int is_trainable, const char* const name);
 /**
  * All-to-all exchange across input tensors.
  * @param count The number of ranks / input tensors / output tensors.

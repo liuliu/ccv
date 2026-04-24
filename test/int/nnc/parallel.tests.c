@@ -85,7 +85,7 @@ TEST_CASE("cnnp replicated dense feeds all-to-all")
 		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
 	}
 	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(output_dim, 1, 0, 1, "dense");
-	ccv_cnnp_model_io_t dense_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(dense, rank_count, "replicated_dense"), sent, rank_count);
+	ccv_cnnp_model_io_t dense_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(dense, rank_count, 1, "replicated_dense"), sent, rank_count);
 	ccv_cnnp_model_io_t exchanged = ccv_cnnp_model_apply(ccv_cnnp_all_to_all(rank_count, 1, "all_to_all"), MODEL_IO_LIST(dense_outputs));
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), &exchanged, 1, 0, "replicated_dense_all_to_all");
 	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, rank_count * rows_per_rank, input_dim);
@@ -155,7 +155,7 @@ TEST_CASE("cnnp replicated embedding matches CPU reference")
 		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
 	}
 	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32F, vocab_size, embed_size, 1, "embedding");
-	ccv_cnnp_model_io_t embedding_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(embedding, rank_count, "replicated_embedding"), sent, rank_count);
+	ccv_cnnp_model_io_t embedding_outputs = ccv_cnnp_model_apply(ccv_cnnp_replicated(embedding, rank_count, 1, "replicated_embedding"), sent, rank_count);
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(embedding_outputs), 0, "replicated_embedding");
 	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32S, rank_count * rows_per_rank);
 	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
@@ -218,7 +218,7 @@ TEST_CASE("cnnp replicated layer norm matches CPU reference")
 		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
 	}
 	ccv_cnnp_model_t* const layer_norm = ccv_cnnp_layer_norm(epsilon, axis, 1, 1, 1, "layer_norm");
-	ccv_cnnp_model_io_t normalized = ccv_cnnp_model_apply(ccv_cnnp_replicated(layer_norm, rank_count, "replicated_layer_norm"), sent, rank_count);
+	ccv_cnnp_model_io_t normalized = ccv_cnnp_model_apply(ccv_cnnp_replicated(layer_norm, rank_count, 1, "replicated_layer_norm"), sent, rank_count);
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(normalized), 0, "replicated_layer_norm");
 	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, rank_count * rows_per_rank, cols);
 	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
