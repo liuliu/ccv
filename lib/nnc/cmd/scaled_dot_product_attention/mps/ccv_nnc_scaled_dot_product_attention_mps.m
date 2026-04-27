@@ -92,6 +92,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	// O = sm(Q * K^T) * V
 	assert(input_size >= 3);
 	assert(output_size >= 1);
+	if (cmd.info.scaled_dot_product_attention.is_varlen)
+		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[2];
@@ -544,6 +546,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 {
 	assert(input_size >= 6);
 	assert(output_size >= 3);
+	if (cmd.info.scaled_dot_product_attention.is_varlen)
+		return CCV_NNC_EXEC_INVALID;
 	assert(!cmd.info.scaled_dot_product_attention.is_causal);
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];

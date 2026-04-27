@@ -17,14 +17,19 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 {
 	assert(input_size >= 3);
 	assert(output_size >= 1);
+	const int is_varlen = cmd.info.scaled_dot_product_attention.is_varlen;
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* const attn_mask = input_size > 3 ? (ccv_nnc_tensor_view_t*)inputs[3] : 0;
 	ccv_nnc_tensor_view_t* const w = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
 	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
+	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
+	ccv_nnc_tensor_view_t* const k_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
+	if (is_varlen && (attn_mask || w || bias || !q_seq_offsets || !k_seq_offsets))
+		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const c = (w) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	assert(q_nd == 3 || q_nd == 4);
@@ -35,6 +40,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	const int c_nd = ccv_nnc_tensor_nd(c->info.dim);
 	assert(c_nd == 3 || c_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd && v_nd == c_nd);
+	if (is_varlen && q_nd != 4)
+		return CCV_NNC_EXEC_INVALID;
 	// Assuming this is float 32.
 	int qdim[CCV_NNC_MAX_DIM_ALLOC];
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -45,6 +52,13 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_get_dim(k, kdim);
 	ccv_nnc_tensor_view_get_dim(v, vdim);
 	ccv_nnc_tensor_view_get_dim(c, cdim);
+	if (is_varlen)
+	{
+		assert(q_seq_offsets->info.datatype == CCV_32S);
+		assert(k_seq_offsets->info.datatype == CCV_32S);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(q_seq_offsets));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(k_seq_offsets));
+	}
 	if (q_nd == 3)
 	{
 		qdim[0] = qdim[1], qdim[1] = qdim[2], qdim[2] = 1;
@@ -100,6 +114,103 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	assert(kdim[2] == vdim[2]);
 	assert(qdim[2] >= kdim[2]);
 	assert(qdim[2] % kdim[2] == 0);
+	if (is_varlen)
+	{
+		const int batch_size = ccv_nnc_tensor_count(q_seq_offsets->info) - 1;
+		assert(batch_size > 0);
+		assert(ccv_nnc_tensor_count(k_seq_offsets->info) == batch_size + 1);
+		assert(qdim[0] == 1);
+		assert(kdim[0] == 1);
+		assert(vdim[0] == 1);
+		assert(cdim[0] == 1);
+		assert(cdim[1] == qdim[1]);
+		assert(cdim[2] == qdim[2]);
+		assert(cdim[3] == vdim[3]);
+		assert(kdim[1] == vdim[1]);
+		const int* const q_offset = q_seq_offsets->data.i32;
+		const int* const k_offset = k_seq_offsets->data.i32;
+		assert(q_offset[0] == 0);
+		assert(k_offset[0] == 0);
+		assert(q_offset[batch_size] == qdim[1]);
+		assert(k_offset[batch_size] == kdim[1]);
+		for (i[0] = 0; i[0] < batch_size; i[0]++)
+		{
+			const int q_start = q_offset[i[0]];
+			const int q_end = q_offset[i[0] + 1];
+			const int k_start = k_offset[i[0]];
+			const int k_end = k_offset[i[0] + 1];
+			assert(q_start <= q_end);
+			assert(k_start <= k_end);
+			const int R = q_end - q_start;
+			const int K = k_end - k_start;
+			assert(R > 0);
+			assert(K > 0);
+			assert(R <= cmd.info.scaled_dot_product_attention.max_seqlen_q);
+			assert(K <= cmd.info.scaled_dot_product_attention.max_seqlen_k);
+			const float* const qp0 = qp + q_start * qstride[1];
+			const float* const kp0 = kp + k_start * kstride[1];
+			const float* const vp0 = vp + k_start * vstride[1];
+			float* const cp0 = cp + q_start * cstride[1];
+			for (i[1] = 0; i[1] < qdim[2]; i[1]++)
+			{
+				const float* const qp1 = qp0 + i[1] * qstride[2];
+				const float* const kp1 = kp0 + (i[1] / h_h_k_ratio) * kstride[2];
+				const float* const vp1 = vp0 + (i[1] / h_h_k_ratio) * vstride[2];
+				float* const cp1 = cp0 + i[1] * cstride[2];
+				parallel_for(x, R) {
+					int y, k;
+					const float* const qp2 = qp1 + x * qstride[1];
+					float* const cp2 = cp1 + x * cstride[1];
+					float* const qk0 = qk + x * K;
+					for (y = 0; y < K; y++)
+					{
+						const float* const kp2 = kp1 + y * kstride[1];
+						float v = 0;
+						for (k = 0; k < qdim[3]; k++)
+							v += qp2[k * qstride[3]] * kp2[k * kstride[3]];
+						qk0[y] = scale * v;
+					}
+					if (is_causal)
+					{
+						const int x_end = ccv_max(x - R + K + 1, 0);
+						for (y = x_end; y < K; y++)
+							qk0[y] = 0;
+						double maxval = qk0[0];
+						for (y = 1; y < x_end; y++)
+							if (qk0[y] > maxval)
+								maxval = qk0[y];
+						double sumval = 0;
+						for (y = 0; y < x_end; y++)
+							sumval += (qk0[y] = expf(qk0[y] - maxval));
+						sumval = 1.0 / sumval;
+						for (y = 0; y < x_end; y++)
+							qk0[y] *= sumval;
+					} else {
+						double maxval = qk0[0];
+						for (y = 1; y < K; y++)
+							if (qk0[y] > maxval)
+								maxval = qk0[y];
+						double sumval = 0;
+						for (y = 0; y < K; y++)
+							sumval += (qk0[y] = expf(qk0[y] - maxval));
+						sumval = 1.0 / sumval;
+						for (y = 0; y < K; y++)
+							qk0[y] *= sumval;
+					}
+					for (k = 0; k < vdim[3]; k++)
+						cp2[k * cstride[3]] = 0;
+					for (y = 0; y < K; y++)
+					{
+						const float* const vp2 = vp1 + y * vstride[1];
+						const float v = qk0[y];
+						for (k = 0; k < vdim[3]; k++)
+							cp2[k * cstride[3]] += v * vp2[k * vstride[3]];
+					}
+				} parallel_endfor
+			}
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	for (i[0] = 0; i[0] < qdim[0]; i[0]++)
 	{
 		const float* const qp0 = qp + i[0] * qstride[0];
@@ -261,6 +372,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	// Assuming no saved_softmax, we need to recompute from q, k, v.
 	// We cannot do this with masks (yet).
 	assert(input_size >= 6);
+	if (cmd.info.scaled_dot_product_attention.is_varlen)
+		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[4];
@@ -481,7 +594,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw;

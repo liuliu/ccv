@@ -5,7 +5,10 @@
 static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
+	// 8 inputs with varlen (query, key, value, 0, 0, 0, q_seq_offsets, k_seq_offsets)
 	// 3 outputs (y, softmax_lse, [qkv])
+	if (cmd.scaled_dot_product_attention.is_varlen && input_size == 8 && (input_bitmasks[0] & 255u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7)) && (output_bitmasks[0] & 1u) == 1u)
+		return 1;
 	if (input_size == 6 && (input_bitmasks[0] & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
 	if (input_size == 5 && (input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
@@ -49,7 +52,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	const int v_nd = ccv_nnc_tensor_nd(inputs[2].dim);
 	assert(v_nd == 3 || v_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd);
-	if (input_size > 4)
+	if (!cmd.scaled_dot_product_attention.is_varlen && input_size > 4)
 	{
 		assert(output_size >= 3);
 		outputs[0] = inputs[0];
@@ -72,8 +75,19 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 		assert(output_size > 1);
 		// This is saved softmax_lse, which would be in 32F if exists.
 		outputs[1] = inputs[0];
-		outputs[1].dim[q_nd - 3] = inputs[0].dim[q_nd - 2];
-		outputs[1].dim[q_nd - 2] = inputs[0].dim[q_nd - 3];
+		if (cmd.scaled_dot_product_attention.is_varlen)
+		{
+			assert(input_size >= 8);
+			assert(q_nd == 4);
+			assert(inputs[6].dim[0] > 0);
+			assert(cmd.scaled_dot_product_attention.max_seqlen_q > 0);
+			outputs[1].dim[0] = inputs[6].dim[0] - 1;
+			outputs[1].dim[1] = inputs[0].dim[2];
+			outputs[1].dim[2] = cmd.scaled_dot_product_attention.max_seqlen_q;
+		} else {
+			outputs[1].dim[q_nd - 3] = inputs[0].dim[q_nd - 2];
+			outputs[1].dim[q_nd - 2] = inputs[0].dim[q_nd - 3];
+		}
 		outputs[1].dim[q_nd - 1] = 0;
 		outputs[1].datatype = CCV_32F;
 	}
