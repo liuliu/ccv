@@ -5,7 +5,7 @@
 static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
-	// 8 inputs with varlen (query, key, value, 0, 0, 0, q_seq_offsets, k_seq_offsets)
+	// 8 inputs with varlen (query, key, value, 0, 0, 0, q_seq_offsets, kv_seq_offsets)
 	// 3 outputs (y, softmax_lse, [qkv])
 	if (cmd.scaled_dot_product_attention.is_varlen && input_size == 8 && (input_bitmasks[0] & 255u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7)) && (output_bitmasks[0] & 1u) == 1u)
 		return 1;

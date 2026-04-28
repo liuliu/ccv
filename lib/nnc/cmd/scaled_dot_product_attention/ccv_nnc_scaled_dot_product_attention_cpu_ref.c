@@ -25,10 +25,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const w = input_size > 4 ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
 	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
-	ccv_nnc_tensor_view_t* const k_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
+	ccv_nnc_tensor_view_t* const kv_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
-	if (is_varlen && (attn_mask || w || bias || !q_seq_offsets || !k_seq_offsets))
+	if (is_varlen && (attn_mask || w || bias || !q_seq_offsets || !kv_seq_offsets))
 		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const c = (w) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
@@ -55,9 +55,9 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (is_varlen)
 	{
 		assert(q_seq_offsets->info.datatype == CCV_32S);
-		assert(k_seq_offsets->info.datatype == CCV_32S);
+		assert(kv_seq_offsets->info.datatype == CCV_32S);
 		assert(CCV_IS_TENSOR_CONTIGUOUS(q_seq_offsets));
-		assert(CCV_IS_TENSOR_CONTIGUOUS(k_seq_offsets));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(kv_seq_offsets));
 	}
 	if (q_nd == 3)
 	{
@@ -118,7 +118,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	{
 		const int batch_size = ccv_nnc_tensor_count(q_seq_offsets->info) - 1;
 		assert(batch_size > 0);
-		assert(ccv_nnc_tensor_count(k_seq_offsets->info) == batch_size + 1);
+		assert(ccv_nnc_tensor_count(kv_seq_offsets->info) == batch_size + 1);
 		assert(qdim[0] == 1);
 		assert(kdim[0] == 1);
 		assert(vdim[0] == 1);
@@ -128,17 +128,17 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		assert(cdim[3] == vdim[3]);
 		assert(kdim[1] == vdim[1]);
 		const int* const q_offset = q_seq_offsets->data.i32;
-		const int* const k_offset = k_seq_offsets->data.i32;
+		const int* const kv_offset = kv_seq_offsets->data.i32;
 		assert(q_offset[0] == 0);
-		assert(k_offset[0] == 0);
+		assert(kv_offset[0] == 0);
 		assert(q_offset[batch_size] == qdim[1]);
-		assert(k_offset[batch_size] == kdim[1]);
+		assert(kv_offset[batch_size] == kdim[1]);
 		for (i[0] = 0; i[0] < batch_size; i[0]++)
 		{
 			const int q_start = q_offset[i[0]];
 			const int q_end = q_offset[i[0] + 1];
-			const int k_start = k_offset[i[0]];
-			const int k_end = k_offset[i[0] + 1];
+			const int k_start = kv_offset[i[0]];
+			const int k_end = kv_offset[i[0] + 1];
 			assert(q_start <= q_end);
 			assert(k_start <= k_end);
 			const int R = q_end - q_start;
@@ -146,7 +146,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			assert(R > 0);
 			assert(K > 0);
 			assert(R <= cmd.info.scaled_dot_product_attention.max_seqlen_q);
-			assert(K <= cmd.info.scaled_dot_product_attention.max_seqlen_k);
+			assert(K <= cmd.info.scaled_dot_product_attention.max_seqlen_kv);
 			const float* const qp0 = qp + q_start * qstride[1];
 			const float* const kp0 = kp + k_start * kstride[1];
 			const float* const vp0 = vp + k_start * vstride[1];

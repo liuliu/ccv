@@ -27,10 +27,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	const int is_varlen = cmd.info.scaled_dot_product_attention.is_varlen;
 	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
-	ccv_nnc_tensor_view_t* const k_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
+	ccv_nnc_tensor_view_t* const kv_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(weights); }
-	if (is_varlen && (attn_mask || weights || bias || !q_seq_offsets || !k_seq_offsets))
+	if (is_varlen && (attn_mask || weights || bias || !q_seq_offsets || !kv_seq_offsets))
 		return CCV_NNC_EXEC_INVALID;
 
 	ccv_nnc_tensor_view_t* const saved_softmax_lse = output_size > 1 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
@@ -72,9 +72,9 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	assert(CCV_IS_TENSOR_CONTIGUOUS(o));
 	if (is_varlen) {
 		assert(q_seq_offsets->info.datatype == CCV_32S);
-		assert(k_seq_offsets->info.datatype == CCV_32S);
+		assert(kv_seq_offsets->info.datatype == CCV_32S);
 		assert(CCV_IS_TENSOR_CONTIGUOUS(q_seq_offsets));
-		assert(CCV_IS_TENSOR_CONTIGUOUS(k_seq_offsets));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(kv_seq_offsets));
 	}
 
 	if (attn_mask) {
@@ -90,16 +90,16 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (is_varlen) {
 		batch_size = ccv_nnc_tensor_count(q_seq_offsets->info) - 1;
 		assert(batch_size > 0);
-		assert(ccv_nnc_tensor_count(k_seq_offsets->info) == batch_size + 1);
+		assert(ccv_nnc_tensor_count(kv_seq_offsets->info) == batch_size + 1);
 		assert(cmd.info.scaled_dot_product_attention.max_seqlen_q > 0);
-		assert(cmd.info.scaled_dot_product_attention.max_seqlen_k > 0);
+		assert(cmd.info.scaled_dot_product_attention.max_seqlen_kv > 0);
 		assert(qdim[0] == 1);
 		assert(kdim[0] == 1);
 		assert(vdim[0] == 1);
 		assert(odim[0] == 1);
 		assert(odim[1] == qdim[1]);
 		R = cmd.info.scaled_dot_product_attention.max_seqlen_q;
-		C = cmd.info.scaled_dot_product_attention.max_seqlen_k;
+		C = cmd.info.scaled_dot_product_attention.max_seqlen_kv;
 		Hq = qdim[2];
 		Hk = kdim[2];
 		assert(Hq >= Hk);
@@ -189,7 +189,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	params.seqlen_k = C;
 	params.seqlen_k_rounded = round_multiple(C, 128);
 	params.cu_seqlens_q = is_varlen ? q_seq_offsets->data.i32 : 0;
-	params.cu_seqlens_k = is_varlen ? k_seq_offsets->data.i32 : 0;
+	params.cu_seqlens_k = is_varlen ? kv_seq_offsets->data.i32 : 0;
 	params.d = D;
 	assert(D % 8 == 0);
 	params.d_rounded = round_multiple(D, 32);

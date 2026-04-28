@@ -279,7 +279,7 @@ typedef struct {
 			int is_causal; /**< [scaled_dot_product_attention.is_causal] Whether we have causal matrix associated with the attention. The attention mask will be cut to triangular if provided. */
 			int is_varlen; /**< [scaled_dot_product_attention.is_varlen] Whether Q, K and V are packed variable-length sequences with sequence offsets supplied as inputs. */
 			int max_seqlen_q; /**< [scaled_dot_product_attention.max_seqlen_q] The maximum query sequence length for packed variable-length attention. */
-			int max_seqlen_k; /**< [scaled_dot_product_attention.max_seqlen_k] The maximum key / value sequence length for packed variable-length attention. */
+			int max_seqlen_kv; /**< [scaled_dot_product_attention.max_seqlen_kv] The maximum key / value sequence length for packed variable-length attention. */
 			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32, and whether to opt into quantized attention on supported backends. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 		} scaled_dot_product_attention;
