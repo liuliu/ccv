@@ -28,7 +28,6 @@
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
 #include "kernels/ShaderCache.hpp"
-#include <unordered_map>
 
 namespace ccv {
 namespace nnc {
@@ -36,30 +35,17 @@ namespace mfa {
 
 class context;
 
-template <typename T, typename U>
-class cache {
-public:
-  std::unordered_map<T, U*> map;
-  
-  cache();
-  ~cache();
-  
-  void prepare(context* context, T hash);
-};
-
 class context {
 public:
   bool supported;
   uint16_t log_level;
   
   NS::SharedPtr<MTL::Device> device;
-  NS::SharedPtr<MTL::Library> library;
   NS::SharedPtr<MTL::Buffer> scratch;
   void* ane_rowwise_gemm_cache;
   
   context(MTL::Device* device);
   
-  cache<attention::hash, attention::pipeline> attention_cache;
   ShaderCache kernel_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
@@ -68,8 +54,6 @@ public:
 } // namespace mfa
 } // namespace nnc
 } // namespace ccv
-
-std::pair<std::string, std::string> ccv_nnc_mfa_get_binary_artifacts(void);
 
 extern "C" {
 #endif // __cplusplus

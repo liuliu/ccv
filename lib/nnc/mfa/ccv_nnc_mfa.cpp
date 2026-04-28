@@ -1,6 +1,5 @@
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
-#include "libmfa.inc"
 using namespace ccv::nnc;
 
 #include <iostream>
@@ -112,52 +111,6 @@ void ccv_nnc_finish_command_batch(MTL::CommandBatch* command_batch) {
 
 // MARK: - C++
 
-template <typename T, typename U>
-mfa::cache<T, U>::cache()
-{
-  map = {};
-}
-
-template <typename T, typename U>
-mfa::cache<T, U>::~cache()
-{
-  for (auto it = map.begin(); it != map.end(); ++it) {
-    delete it->second;
-  }
-}
-
-// This is a workaround. If we use a template member function directly, the
-// symbols won't link.
-template <typename T, typename U>
-inline void _mfa_cache_prepare(std::unordered_map<T, U*>* map, mfa::context* context, T hash)
-{
-  if (map->find(hash) == map->end()) {
-    if (METAL_LOG_LEVEL(context) >= 2) {
-      std::cout << METAL_LOG_HEADER << "PSO cache miss." << std::endl;
-      std::cout << METAL_LOG_HEADER << "  Contents of map (before):" << std::endl;
-      for (auto it = map->begin(); it != map->end(); ++it) {
-        std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
-      }
-    }
-    
-    auto* pipeline = new U(context, hash);
-    (*map)[hash] = pipeline;
-    
-    if (METAL_LOG_LEVEL(context) >= 2) {
-      std::cout << METAL_LOG_HEADER << "  Contents of map (after):" << std::endl;
-      for (auto it = map->begin(); it != map->end(); ++it) {
-        std::cout << METAL_LOG_HEADER << "    " << it->first << ": " << it->second << std::endl;
-      }
-    }
-  }
-}
-
-template <>
-void mfa::cache<mfa::attention::hash, mfa::attention::pipeline>::prepare(mfa::context* context, mfa::attention::hash hash)
-{
-  _mfa_cache_prepare(&map, context, hash);
-}
-
 mfa::context::context(MTL::Device* device)
 {
   auto* pool = NS::AutoreleasePool::alloc()->init();
@@ -175,13 +128,6 @@ mfa::context::context(MTL::Device* device)
   }
 #endif
   
-  // Example: /usr/local/MetalFlashAttention/lib/libMetalFlashAttention.metallib
-  // We need to have two different variants based on the operating system. macOS
-  // will not accept a metallib compiled for iOS/tvOS/visionOS and vice versa.
-  if (METAL_LOG_LEVEL(this) >= 1) {
-    std::cerr << METAL_LOG_HEADER << "Started loading 'libMetalFlashAttention.metallib'." << std::endl;
-  }
-
   this->device = NS::RetainPtr(device);
 
   this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
@@ -191,49 +137,12 @@ mfa::context::context(MTL::Device* device)
   this->supported = device->supportsFamily(MTL::GPUFamilyApple7);
   if (!supported) {
     if (METAL_LOG_LEVEL(this) >= 1) {
-      std::cerr << METAL_LOG_HEADER << "Device architecture not supported by Metal FlashAttention." << std::endl;
+      std::cerr << METAL_LOG_HEADER << "Device architecture not supported by MFA." << std::endl;
     }
     pool->drain();
     return;
   }
-  
-  const char *external_metallib_path = nullptr;
-#if CCV_NNC_MFA_EXTERNAL_METALLIB_ENABLE
-  external_metallib_path = getenv("CCV_NNC_MFA_METALLIB_PATH");
-#endif
-  if (METAL_LOG_LEVEL(this) >= 1) {
-    if (external_metallib_path) {
-      std::cerr << METAL_LOG_HEADER << "Loading from path '" << external_metallib_path << "'." << std::endl;
-    } else {
-      std::cerr << METAL_LOG_HEADER << "Loading from embedded string." << std::endl;
-    }
-  }
-  
-  // Attempt to load the library, otherwise crash with a detailed log message.
-  NS::Error* error = nullptr;
-  if (external_metallib_path) {
-    auto string = NS::String::string(external_metallib_path, NS::UTF8StringEncoding);
-    auto url = NS::URL::fileURLWithPath(string);
-    this->library = NS::TransferPtr(device->newLibrary(url, &error));
-  } else {
-#if TARGET_OS_IPHONE
-    dispatch_data_t data = dispatch_data_create(libmfaios16_v1_0_2_b_metallib, sizeof(libmfaios16_v1_0_2_b_metallib), NULL, 0);
-#else
-    dispatch_data_t data = dispatch_data_create(libmfamacos13_v1_0_2_b_metallib, sizeof(libmfamacos13_v1_0_2_b_metallib), NULL, 0);
-#endif
-    this->library = NS::TransferPtr(device->newLibrary(data, &error));
-    dispatch_release(data);
-  }
-  if (!this->library) {
-    CCV_NNC_MFA_CHECK_ERROR(error)
-  }
-  
-  // Notify that this finished successfully, and is not just stalling on one of
-  // the previous lines of code.
-  if (METAL_LOG_LEVEL(this) >= 1) {
-    std::cerr << METAL_LOG_HEADER << "Finished loading 'libMetalFlashAttention.metallib'." << std::endl;
-  }
-  
+
   pool->drain();
 }
 

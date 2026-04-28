@@ -29,9 +29,8 @@ typedef struct {
 } ccv_nnc_mfa_attention_params_t;
 
 #ifdef __cplusplus
-#include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
-#include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
-#include <simd/simd.h>
+#include <functional>
+#include <ostream>
 
 namespace ccv {
 namespace nnc {
@@ -62,18 +61,6 @@ public:
   hash(ccv_nnc_mfa_attention_params_t);
   
   bool operator==(const hash& rhs) const;
-};
-
-class pipeline {
-public:
-  NS::SharedPtr<MTL::ComputePipelineState> attention_pso;
-  NS::SharedPtr<MTL::ComputePipelineState> generate_block_mask_pso;
-  
-  uint16_t threadgroup_memory_length;
-  MTL::Size grid_size;
-  MTL::Size group_size;
-  
-  pipeline(context* context, hash hash);
 };
 
 } // namespace attention
