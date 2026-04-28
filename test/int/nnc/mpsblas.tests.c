@@ -3970,6 +3970,178 @@ TEST_CASE("scaled dot product attention with masked NA mps")
 	ccv_nnc_tensor_free(q_tensor);
 }
 
+TEST_CASE("scaled dot product attention with generic causal and masked mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int B = 2;
+	const int R = 96;
+	const int C = 80;
+	const int H = 4;
+	const int D = 64;
+	const float scale = 1.0 / sqrt((float)D);
+	const int q_count = B * R * H * D;
+	const int kv_count = B * C * H * D;
+	const int out_count = q_count;
+	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+	ccv_nnc_tensor_t* const triangular_mask_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
+	ccv_nnc_tensor_t* const broadcast_mask_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
+	ccv_nnc_tensor_t* const batched_mask_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, 1, R, C), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 67);
+	for (int i = 0; i < q_count; ++i)
+		q_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (int i = 0; i < kv_count; ++i)
+		k_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (int i = 0; i < kv_count; ++i)
+		v_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (int i = 0; i < R; ++i)
+		for (int j = 0; j < C; ++j)
+		{
+			triangular_mask_tensor->data.f32[i * C + j] = (j <= i + C - R) ? 0 : -FLT_MAX;
+			const int slot = (i * 17 + j * 13) % 29;
+			broadcast_mask_tensor->data.f32[i * C + j] = (slot == 0) ? -FLT_MAX : ((slot == 1) ? -0.375 : ((slot == 2) ? 0.125 : 0));
+		}
+	for (int b = 0; b < B; ++b)
+		for (int i = 0; i < R; ++i)
+			for (int j = 0; j < C; ++j)
+			{
+				const int slot = (b * 37 + i * 11 + j * 5) % 31;
+				batched_mask_tensor->data.f32[(b * R + i) * C + j] = (slot == 0) ? -FLT_MAX : ((slot == 1) ? -0.5 : ((slot == 2) ? 0.25 : 0));
+			}
+
+	ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+	ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, H, D), 0);
+	ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, H, D), 0);
+	ccv_nnc_tensor_t* const gpu_triangular_mask_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, R, C), 0);
+	ccv_nnc_tensor_t* const gpu_broadcast_mask_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, R, C), 0);
+	ccv_nnc_tensor_t* const gpu_batched_mask_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, 1, R, C), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, triangular_mask_tensor, broadcast_mask_tensor, batched_mask_tensor), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_triangular_mask_tensor, gpu_broadcast_mask_tensor, gpu_batched_mask_tensor), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	for (int trial = 0; trial < 5; ++trial)
+	{
+		const int is_causal = (trial == 0 || trial == 4);
+		ccv_nnc_tensor_t* const cpu_mask = (trial == 1) ? triangular_mask_tensor : ((trial == 2 || trial == 4) ? broadcast_mask_tensor : (trial == 3 ? batched_mask_tensor : 0));
+		ccv_nnc_tensor_t* const gpu_mask = (trial == 1) ? gpu_triangular_mask_tensor : ((trial == 2 || trial == 4) ? gpu_broadcast_mask_tensor : (trial == 3 ? gpu_batched_mask_tensor : 0));
+		ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
+		if (cpu_mask)
+			ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, cpu_mask), TENSOR_LIST(o_tensor), 0);
+		else
+			ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(o_tensor), 0);
+		ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_cmd_t gpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		if (gpu_mask)
+			ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_mask), TENSOR_LIST(gpu_o_tensor), 0);
+		else
+			ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), TENSOR_LIST(gpu_o_tensor), 0);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
+		float max_abs_diff = 0;
+		float max_relative_diff = 0;
+		int max_diff_idx = 0;
+		for (int i = 0; i < out_count; ++i)
+		{
+			const float abs_diff = fabsf(o_tensor->data.f32[i] - copy_of_gpu_o_tensor->data.f32[i]);
+			const float denom = fmaxf(fmaxf(fabsf(o_tensor->data.f32[i]), fabsf(copy_of_gpu_o_tensor->data.f32[i])), 1.0f);
+			const float relative_diff = abs_diff / denom;
+			if (relative_diff > max_relative_diff)
+			{
+				max_abs_diff = abs_diff;
+				max_relative_diff = relative_diff, max_diff_idx = i;
+			}
+		}
+		ccv_nnc_tensor_free(copy_of_gpu_o_tensor);
+		ccv_nnc_tensor_free(gpu_o_tensor);
+		ccv_nnc_tensor_free(o_tensor);
+		REQUIRE(max_relative_diff <= 2e-2, "generic MPS attention should match CPU reference for trial=%d (max abs %g relative %g at %d)", trial, max_abs_diff, max_relative_diff, max_diff_idx);
+	}
+	{
+		ccv_nnc_tensor_t* const q_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const k_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const v_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const mask_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1, R, C), 0);
+		ccv_nnc_tensor_t* const q_tensor_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const k_tensor_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const v_tensor_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const mask_tensor_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
+		ccv_float_to_half_precision(q_tensor->data.f32, (uint16_t*)q_tensor_f16->data.f16, q_count);
+		ccv_float_to_half_precision(k_tensor->data.f32, (uint16_t*)k_tensor_f16->data.f16, kv_count);
+		ccv_float_to_half_precision(v_tensor->data.f32, (uint16_t*)v_tensor_f16->data.f16, kv_count);
+		ccv_float_to_half_precision(broadcast_mask_tensor->data.f32, (uint16_t*)mask_tensor_f16->data.f16, R * C);
+		ccv_half_precision_to_float((uint16_t*)q_tensor_f16->data.f16, q_tensor_ref->data.f32, q_count);
+		ccv_half_precision_to_float((uint16_t*)k_tensor_f16->data.f16, k_tensor_ref->data.f32, kv_count);
+		ccv_half_precision_to_float((uint16_t*)v_tensor_f16->data.f16, v_tensor_ref->data.f32, kv_count);
+		ccv_half_precision_to_float((uint16_t*)mask_tensor_f16->data.f16, mask_tensor_ref->data.f32, R * C);
+		ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_ref, k_tensor_ref, v_tensor_ref, mask_tensor_ref), TENSOR_LIST(o_tensor), 0);
+		ccv_nnc_tensor_t* const o_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, H, D), 0);
+		ccv_float_to_half_precision(o_tensor->data.f32, (uint16_t*)o_tensor_f16->data.f16, out_count);
+		ccv_half_precision_to_float((uint16_t*)o_tensor_f16->data.f16, o_tensor->data.f32, out_count);
+		ccv_nnc_tensor_t* const gpu_q_tensor_f16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_k_tensor_f16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_v_tensor_f16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, H, D), 0);
+		ccv_nnc_tensor_t* const gpu_mask_tensor_f16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 1, R, C), 0);
+		ccv_nnc_tensor_t* const gpu_o_tensor_f16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, H, D), 0);
+		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, H, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16, mask_tensor_f16), TENSOR_LIST(gpu_q_tensor_f16, gpu_k_tensor_f16, gpu_v_tensor_f16, gpu_mask_tensor_f16), 0);
+		ccv_nnc_cmd_t gpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
+		gpu_cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F;
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor_f16, gpu_k_tensor_f16, gpu_v_tensor_f16, gpu_mask_tensor_f16), TENSOR_LIST(gpu_o_tensor_f16), 0);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor_f16), TENSOR_LIST(copy_of_gpu_o_tensor_f16), 0);
+		float* const gpu_f32 = (float*)ccmalloc(sizeof(float) * out_count);
+		ccv_half_precision_to_float((uint16_t*)copy_of_gpu_o_tensor_f16->data.f16, gpu_f32, out_count);
+		float max_abs_diff = 0;
+		float max_relative_diff = 0;
+		int max_diff_idx = 0;
+		for (int i = 0; i < out_count; ++i)
+		{
+			const float abs_diff = fabsf(o_tensor->data.f32[i] - gpu_f32[i]);
+			const float denom = fmaxf(fmaxf(fabsf(o_tensor->data.f32[i]), fabsf(gpu_f32[i])), 1.0f);
+			const float relative_diff = abs_diff / denom;
+			if (relative_diff > max_relative_diff)
+				max_abs_diff = abs_diff, max_relative_diff = relative_diff, max_diff_idx = i;
+		}
+		REQUIRE(max_relative_diff <= 8e-2, "generic MPS attention should match CPU reference for broadcast masked 16F (max abs %g relative %g at %d)", max_abs_diff, max_relative_diff, max_diff_idx);
+		ccfree(gpu_f32);
+		ccv_nnc_tensor_free(copy_of_gpu_o_tensor_f16);
+		ccv_nnc_tensor_free(gpu_o_tensor_f16);
+		ccv_nnc_tensor_free(gpu_mask_tensor_f16);
+		ccv_nnc_tensor_free(gpu_v_tensor_f16);
+		ccv_nnc_tensor_free(gpu_k_tensor_f16);
+		ccv_nnc_tensor_free(gpu_q_tensor_f16);
+		ccv_nnc_tensor_free(o_tensor_f16);
+		ccv_nnc_tensor_free(o_tensor);
+		ccv_nnc_tensor_free(mask_tensor_ref);
+		ccv_nnc_tensor_free(v_tensor_ref);
+		ccv_nnc_tensor_free(k_tensor_ref);
+		ccv_nnc_tensor_free(q_tensor_ref);
+		ccv_nnc_tensor_free(mask_tensor_f16);
+		ccv_nnc_tensor_free(v_tensor_f16);
+		ccv_nnc_tensor_free(k_tensor_f16);
+		ccv_nnc_tensor_free(q_tensor_f16);
+	}
+	ccv_nnc_tensor_free(gpu_batched_mask_tensor);
+	ccv_nnc_tensor_free(gpu_broadcast_mask_tensor);
+	ccv_nnc_tensor_free(gpu_triangular_mask_tensor);
+	ccv_nnc_tensor_free(gpu_v_tensor);
+	ccv_nnc_tensor_free(gpu_k_tensor);
+	ccv_nnc_tensor_free(gpu_q_tensor);
+	ccv_nnc_tensor_free(batched_mask_tensor);
+	ccv_nnc_tensor_free(broadcast_mask_tensor);
+	ccv_nnc_tensor_free(triangular_mask_tensor);
+	ccv_nnc_tensor_free(v_tensor);
+	ccv_nnc_tensor_free(k_tensor);
+	ccv_nnc_tensor_free(q_tensor);
+}
+
 TEST_CASE("scaled dot product attention with NA mps for odd sequence lengths")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));

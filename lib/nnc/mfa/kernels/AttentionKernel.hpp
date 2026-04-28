@@ -11,6 +11,8 @@ struct AttentionAccumulateDescriptor;
 struct AttentionOuterProductDescriptor;
 
 struct AttentionKernel {
+  static constexpr uint16_t blockMaskThreads = 256;
+
   NS::SharedPtr<MTL::Library> library;
   
   std::string source;
@@ -36,6 +38,10 @@ struct AttentionKernel {
   simd::ushort3 blockDimensions;
 
   unsigned short headDimension;
+
+  bool isCausal;
+
+  bool masked;
 
   bool disableAsyncCopy;
 
@@ -78,6 +84,7 @@ private:
   std::string createAdjustOffsets() const noexcept;
   std::string createBufferBindings() const noexcept;
   std::string loopForward() const noexcept;
+  std::string loopForwardMasked() const noexcept;
   std::string loopBackwardQuery() const noexcept;
   std::string loopBackwardKeyValue() const noexcept;
 
@@ -116,10 +123,13 @@ private:
   /// AttentionKernel+Softmax
   std::string computeD() const noexcept;
   std::string maskAttentionMatrixEdge() const noexcept;
+  std::string maskAttentionMatrix() const noexcept;
   std::string onlineReduceMaximum() const noexcept;
+  std::string onlineReduceMaximum(bool scoresAlreadyScaled) const noexcept;
   std::string onlineCorrectO() const noexcept;
   std::string onlineReduceSum() const noexcept;
   std::string softmax(bool derivative) const noexcept;
+  std::string softmax(bool derivative, bool scoresAlreadyScaled) const noexcept;
   MTL::Library* findPrecompiledLibrary(AttentionKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept;
 };
 

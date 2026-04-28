@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <limits>
 
 AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Device *const device) {
   type = descriptor.type;
@@ -17,6 +18,8 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   blockDimensions = descriptor.blockDimensions;
   headDimension = descriptor.headDimension;
+  isCausal = descriptor.isCausal;
+  masked = descriptor.masked;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
 
@@ -431,6 +434,66 @@ std::string AttentionKernel::createSource() const noexcept {
 
   source += createConstants() + "\n";
 
+  if (type.value == AttentionKernelType::forward && masked) {
+    source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+    source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
+    source.SetValue("BLOCK_MASK_THREADS", std::to_string(blockMaskThreads));
+    source += R"(
+kernel void generate_attention_block_mask(
+    device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
+    device uchar *Block_mask_buf [[buffer(16)]],
+    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
+    ushort tid [[thread_index_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]]
+) {
+  const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  const uint c_start = tgid.y * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint q_extent = min((uint){{BLOCK_DIMENSIONS_PARALLELIZATION}}, R - q_start);
+  const uint c_extent = min((uint){{BLOCK_DIMENSIONS_TRAVERSAL}}, C - c_start);
+  const uint element_count = q_extent * c_extent;
+  uint all_zero = 1;
+  uint all_masked = 1;
+  for (uint i = tid; i < element_count; i += {{BLOCK_MASK_THREADS}}) {
+    const uint row = q_start + i / c_extent;
+    const uint column = c_start + i - (i / c_extent) * c_extent;
+)";
+    if (isCausal) {
+      source += R"(
+    if (int(column) > int(row) + int(C) - int(R)) {
+      continue;
+    }
+)";
+    }
+    source += R"(
+    const float value = (float)Mask_buf[tgid.z * Mask_batch_stride + row * C + column];
+    if (value != 0.0f) {
+      all_zero = 0;
+    }
+    if (!(value <= MASKED_THRESHOLD)) {
+      all_masked = 0;
+    }
+  }
+  threadgroup uint *zero_scratch = block_mask_scratch;
+  threadgroup uint *masked_scratch = block_mask_scratch + {{BLOCK_MASK_THREADS}};
+  zero_scratch[tid] = all_zero;
+  masked_scratch[tid] = all_masked;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    uint tile_all_zero = 1;
+    uint tile_all_masked = 1;
+    for (uint i = 0; i < {{BLOCK_MASK_THREADS}}; ++i) {
+      tile_all_zero &= zero_scratch[i];
+      tile_all_masked &= masked_scratch[i];
+    }
+    const uchar flag = tile_all_masked ? 0 : (tile_all_zero ? 1 : 2);
+    Block_mask_buf[tgid.z * Block_mask_batch_stride + tgid.x * K_block_tiles + tgid.y] = flag;
+  }
+}
+
+)";
+  }
+
   source += R"(
     
     // Declare the function.
@@ -508,6 +571,17 @@ std::string AttentionKernel::createConstants() const noexcept {
       output += std::to_string(operand.bufferIndex() + 15) + ")]];\n";
     }
   }
+  if (type.value == AttentionKernelType::forward && masked) {
+    std::ostringstream maskedThreshold;
+    maskedThreshold << std::setprecision(std::numeric_limits<float>::max_digits10)
+        << ((memoryPrecisions[AttentionOperand::Q].value() == GEMMOperandPrecision::FP16) ?
+            (-65504.0f * 0.5f) :
+            (-std::numeric_limits<float>::max() * 0.5f));
+    output += "\n  constant uint Mask_batch_stride [[function_constant(25)]];\n";
+    output += "  constant uint Block_mask_batch_stride [[function_constant(26)]];\n";
+    output += "  constant uint K_block_tiles = (C + " + std::to_string(blockDimensions[1]) + " - 1) / " + std::to_string(blockDimensions[1]) + ";\n";
+    output += "  constant float MASKED_THRESHOLD = " + maskedThreshold.str() + ";\n";
+  }
   return R"(
 
     // R = row dimension (output sequence)
@@ -544,6 +618,12 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += memoryName(operand);
     output += "* " + operand.name() + " [[buffer(";
     output += std::to_string(operand.bufferIndex()) + ")]],\n";
+  }
+  if (type.value == AttentionKernelType::forward && masked) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Mask_buf [[buffer(15)]],\n";
+    output += "  device const uchar* Block_mask_buf [[buffer(16)]],\n";
   }
   return output;
 }
@@ -597,6 +677,12 @@ std::string AttentionKernel::createAdjustOffsets() const noexcept {
     source.SetValue("OPERAND_LOCATION", operandLocationWithHeadOffsetValue(operand));
       source += R"(
     {{OPERAND}} = {{OPERAND_LOCATION}};
+)";
+  }
+  if (type.value == AttentionKernelType::forward && masked) {
+    source += R"(
+    Mask_buf += gid.z * Mask_batch_stride;
+    Block_mask_buf += gid.z * Block_mask_batch_stride;
 )";
   }
   return source.ToString();
@@ -673,6 +759,9 @@ struct AttentionAccumulateDescriptor {
 };
 
 std::string AttentionKernel::loopForward() const noexcept {
+  if (isCausal || masked) {
+    return loopForwardMasked();
+  }
   AttentionOuterProductDescriptor outerProductDesc(AttentionOperand::Q, AttentionOperand::K, AttentionOperand::S);
   auto QKT = outerProduct(outerProductDesc);
   
@@ -695,6 +784,76 @@ std::string AttentionKernel::loopForward() const noexcept {
     // S = Q * K^T
     {{QKT}}
     {{MASK_ATTENTION_MATRIX_EDGE}}
+
+    // m = reduce(m)
+    {{ONLINE_REDUCE_MAXIMUM}}
+
+    // correction = exp(m_old) / exp(m_new)
+    {{ONLINE_CORRECT_O}}
+
+    // P = softmax(S * scaleFactor)
+    {{SOFTMAX}}
+
+    // l = reduce(l)
+    {{ONLINE_REDUCE_SUM}}
+
+    // O *= correction
+    // O += P * V
+    // O /= l
+    {{PV}}
+  }
+
+)";
+  return source.ToString();
+}
+
+std::string AttentionKernel::loopForwardMasked() const noexcept {
+  AttentionOuterProductDescriptor outerProductDesc(AttentionOperand::Q, AttentionOperand::K, AttentionOperand::S);
+  auto QKT = outerProduct(outerProductDesc);
+
+  AttentionAccumulateDescriptor accumulateDesc(AttentionOperand::P, AttentionOperand::V, AttentionOperand::O, "correction", "fast::divide(1, l)");
+  auto PV = accumulate(accumulateDesc);
+
+  CodeWriter source;
+  source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+  source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
+  source.SetValue("QKT", QKT);
+  source.SetValue("MASK_ATTENTION_MATRIX", maskAttentionMatrix());
+  source.SetValue("ONLINE_REDUCE_MAXIMUM", onlineReduceMaximum(masked));
+  source.SetValue("ONLINE_CORRECT_O", onlineCorrectO());
+  source.SetValue("SOFTMAX", softmax(false, masked));
+  source.SetValue("ONLINE_REDUCE_SUM", onlineReduceSum());
+  source.SetValue("PV", PV);
+  if (isCausal) {
+    source += R"(
+
+  const int causal_column_offset = int(C) - int(R);
+  const int causal_last_column = int(parallelization_group_offset) + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
+  const uint traversal_end = causal_last_column < 0 ? 0 : min(C, uint(causal_last_column) + 1);
+)";
+  } else {
+    source += R"(
+
+  const uint traversal_end = C;
+)";
+  }
+  source += R"(
+
+  // Outer loop over the traversal dimension.
+  for (uint c = 0; c < traversal_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  if (masked) {
+    source += R"(
+    const uchar mask_flags = Block_mask_buf[gid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
+    if (mask_flags == 0) {
+      continue;
+    }
+)";
+  }
+  source += R"(
+    // S = Q * K^T
+    {{QKT}}
+    {{MASK_ATTENTION_MATRIX}}
 
     // m = reduce(m)
     {{ONLINE_REDUCE_MAXIMUM}}
@@ -2944,11 +3103,78 @@ std::string AttentionKernel::maskAttentionMatrixEdge() const noexcept {
   return source.ToString();
 }
 
+std::string AttentionKernel::maskAttentionMatrix() const noexcept {
+  CodeWriter source;
+  source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
+  source.SetValue("REGISTER_NAME_S", registerName(AttentionOperand::S));
+  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(false));
+  source.SetValue("UNSAFE_PARALLELIZATION_THREAD_OFFSET", unsafeParallelizationThreadOffsetValue());
+  if (masked) {
+    source.SetValue("MASK_TERM", R"(
+        if (row < R && column < C) {
+          score += (float)Mask_buf[row * C + column];
+        })");
+  } else {
+    source.SetValue("MASK_TERM", "");
+  }
+  if (isCausal) {
+    source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(C) - int(R)");
+  } else {
+    source.SetValue("CAUSAL_VALID", "");
+  }
+  if (masked) {
+    source += R"(
+
+  #pragma clang loop unroll(full)
+  for (ushort c_sram = 0; c_sram < {{BLOCK_DIMENSIONS_TRAVERSAL}}; c_sram += 8) {
+    auto S_elements = S_sram[c_sram / 8].thread_elements();
+    #pragma clang loop unroll(full)
+    for (ushort index = 0; index < 2; ++index) {
+      const uint row = {{UNSAFE_PARALLELIZATION_THREAD_OFFSET}};
+      const uint column = c + c_sram + morton_offset.x + index;
+      const bool valid = column < C{{CAUSAL_VALID}};
+      if (mask_flags == 2) {
+        float score = (float)(*S_elements)[index] * {{DOT_PRODUCT_SCALE}};
+        {{MASK_TERM}}
+        (*S_elements)[index] = valid ? ({{REGISTER_NAME_S}})score : -numeric_limits<{{REGISTER_NAME_S}}>::infinity();
+      } else if (!valid) {
+        (*S_elements)[index] = -numeric_limits<{{REGISTER_NAME_S}}>::infinity();
+      }
+    }
+  }
+
+)";
+  } else {
+    source += R"(
+
+  #pragma clang loop unroll(full)
+  for (ushort c_sram = 0; c_sram < {{BLOCK_DIMENSIONS_TRAVERSAL}}; c_sram += 8) {
+    auto S_elements = S_sram[c_sram / 8].thread_elements();
+    #pragma clang loop unroll(full)
+    for (ushort index = 0; index < 2; ++index) {
+      const uint row = {{UNSAFE_PARALLELIZATION_THREAD_OFFSET}};
+      const uint column = c + c_sram + morton_offset.x + index;
+      const bool valid = column < C{{CAUSAL_VALID}};
+      if (!valid) {
+        (*S_elements)[index] = -numeric_limits<{{REGISTER_NAME_S}}>::infinity();
+      }
+    }
+  }
+
+)";
+  }
+  return source.ToString();
+}
+
 std::string AttentionKernel::onlineReduceMaximum() const noexcept {
+  return onlineReduceMaximum(false);
+}
+
+std::string AttentionKernel::onlineReduceMaximum(bool scoresAlreadyScaled) const noexcept {
   CodeWriter source;
   source.SetValue("REGISTER_NAME_S", registerName(AttentionOperand::S));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
-  source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(false));
+  source.SetValue("M_NEW_SCALE", scoresAlreadyScaled ? "if (mask_flags != 2) {\n    m_new *= " + dotProductScale(false) + ";\n  }" : "m_new *= " + dotProductScale(false) + ";");
   source += R"(
 
   // update 'm'
@@ -2965,7 +3191,7 @@ std::string AttentionKernel::onlineReduceMaximum() const noexcept {
   float m_new = max(m_new_accumulator[0], m_new_accumulator[1]);
   m_new = max(m_new, simd_shuffle_xor(m_new, 1));
   m_new = max(m_new, simd_shuffle_xor(m_new, 8));
-  m_new *= {{DOT_PRODUCT_SCALE}};
+  {{M_NEW_SCALE}}
   
 )";
   return source.ToString();
@@ -3010,6 +3236,10 @@ std::string AttentionKernel::onlineReduceSum() const noexcept {
 }
 
 std::string AttentionKernel::softmax(bool derivative) const noexcept {
+  return softmax(derivative, false);
+}
+
+std::string AttentionKernel::softmax(bool derivative, bool scoresAlreadyScaled) const noexcept {
   AttentionOperand operand = derivative ? AttentionOperand::D : AttentionOperand::L;
 
   auto allocateOutput =
@@ -3111,11 +3341,24 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
   auto overwriteAttentionMatrixElements =
   [=]() -> std::string {
     CodeWriter source;
-    source.SetValue("SCALE", dotProductScale(derivative));
+    source.SetValue("SCALE", scoresAlreadyScaled ? "1" : dotProductScale(derivative));
  
     if (!derivative) {
       source.SetValue("REGISTER_NAME_P", registerName(AttentionOperand::P));
-      source += R"(
+      if (scoresAlreadyScaled) {
+        source.SetValue("SCALE", dotProductScale(false));
+        source += R"(
+
+      auto S = *(S_sram[c / 8].thread_elements());
+      auto P = vec<{{REGISTER_NAME_P}}, 2>(
+        mask_flags == 2 ?
+        fast::exp2(float2(S) - float2(L_elements)) :
+        fast::exp2(float2(S) * {{SCALE}} - float2(L_elements)));
+      *(P_sram[c / 8].thread_elements()) = P;
+
+)";
+      } else {
+        source += R"(
 
       auto S = *(S_sram[c / 8].thread_elements());
       auto P = vec<{{REGISTER_NAME_P}}, 2>(
@@ -3123,6 +3366,7 @@ std::string AttentionKernel::softmax(bool derivative) const noexcept {
       *(P_sram[c / 8].thread_elements()) = P;
 
 )";
+      }
     } else {
       source.SetValue("REGISTER_NAME_DS", registerName(AttentionOperand::dS));
       source += R"(

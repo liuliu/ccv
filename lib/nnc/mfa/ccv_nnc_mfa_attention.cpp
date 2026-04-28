@@ -34,18 +34,16 @@ static uint32_t ccv_nnc_mfa_ceil_log2_u32(uint32_t x)
 
 void ccv_nnc_mfa_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
 {
-  if (params.masked &&
-      !(params.type == 0 && params.use_neural_accelerators)) {
-    context->attention_cache.prepare(context, mfa::attention::hash(params));
-  }
+  (void)context;
+  (void)params;
+  // Generated attention kernels are compiled lazily through the shader cache.
 }
 
 void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
   mfa::attention::hash hash(params);
 
-  if (!params.masked ||
-      (params.type == 0 && params.use_neural_accelerators)) {
+  if (!params.masked || params.type == 0) {
     simd::ushort2 num_batch_dims(0);
     simd::uint2 batch_sizes(1);
     if (params.batched) {
@@ -397,7 +395,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       return;
     }
     CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
-    CCV_NNC_MFA_PRECONDITION(!params.is_causal);
+    if (params.type != 0) {
+      CCV_NNC_MFA_PRECONDITION(!params.is_causal);
+      CCV_NNC_MFA_PRECONDITION(!params.masked);
+    }
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
     attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
@@ -413,6 +414,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.Hk = hash.Hk;
     attentionDesc.batchDimension = batch_sizes[0];
     attentionDesc.scale = hash.alpha;
+    attentionDesc.isCausal = hash.is_causal;
+    attentionDesc.masked = hash.masked;
+    if (hash.masked && batch_sizes[1] > 1) {
+      attentionDesc.maskBatchStride = hash.R * hash.C;
+    }
     if (params.batched) {
       attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
       attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
@@ -439,7 +445,38 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       pool->drain();
       auto kernel = pipelineValue->kernel;
       auto pipeline = pipelineValue->pipeline;
-        // Allocate a new command.
+      auto blockMaskPipeline = pipelineValue->second;
+      const uint64_t outputScratchBytes = attentionDesc.lowPrecisionInputs ?
+        sizeof(float) * hash.R * hash.D * hash.Hq * attentionDesc.batchDimension : 0;
+      const uint64_t lScratchBytes = !tensors[5] ?
+        sizeof(float) * hash.R * hash.Hq * attentionDesc.batchDimension : 0;
+      const uint32_t qTiles = (hash.R + kernel->blockDimensions[0] - 1) / kernel->blockDimensions[0];
+      const uint32_t kTiles = (hash.C + kernel->blockDimensions[1] - 1) / kernel->blockDimensions[1];
+      auto align_up =
+      [&](uint64_t value) -> uint64_t {
+        return (value + 255) & ~((uint64_t)255);
+      };
+      uint64_t scratch_size = outputScratchBytes + lScratchBytes;
+      const uint64_t blockMaskOffset = hash.masked ? align_up(scratch_size) : scratch_size;
+      if (hash.masked) {
+        scratch_size = blockMaskOffset + (uint64_t)batch_sizes[1] * qTiles * kTiles * sizeof(uint8_t);
+      }
+      auto scratch = scratch_size > 0 ? context->request_scratch(scratch_size) : NULL;
+      if (hash.masked) {
+        auto blockMaskEncoder = command_batch->startCommand();
+        blockMaskEncoder->setComputePipelineState(blockMaskPipeline.get());
+        blockMaskEncoder->setThreadgroupMemoryLength(AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
+        blockMaskEncoder->useResource(tensors[4], MTL::ResourceUsageRead);
+        blockMaskEncoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        blockMaskEncoder->setBuffer(tensors[4], tensor_offsets[4], 15);
+        blockMaskEncoder->setBuffer(scratch, blockMaskOffset, 16);
+        blockMaskEncoder->dispatchThreadgroups(
+            MTL::Size(qTiles, kTiles, batch_sizes[1]),
+            MTL::Size(AttentionKernel::blockMaskThreads, 1, 1));
+        command_batch->finishCommand(blockMaskEncoder);
+      }
+
+      // Allocate a new command.
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
       encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
@@ -448,21 +485,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->useResource(tensors[0], MTL::ResourceUsageRead);
       encoder->useResource(tensors[1], MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-      uint64_t scratch_size = 0;
-      if (attentionDesc.lowPrecisionInputs) {
-        // Need scratch space for FP16 output.
-        scratch_size += sizeof(float) * hash.R * hash.D * hash.Hq * attentionDesc.batchDimension;
-      }
-      if (!tensors[5]) {
-        // Need scratch space for LSE.
-        scratch_size += sizeof(float) * hash.R * hash.Hq * attentionDesc.batchDimension;
-      }
-      auto scratch = scratch_size > 0 ? context->request_scratch(scratch_size) : NULL;
       if (attentionDesc.lowPrecisionInputs) {
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
       } else {
         encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
-        if (!tensors[5]) {
+        if (!tensors[5] || hash.masked) {
           encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         }
       }
@@ -477,7 +504,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         if (tensors[5]) {
           encoder->setBuffer(tensors[5], tensor_offsets[5], AttentionOperand(AttentionOperand::L).bufferIndex());
         } else {
-          encoder->setBuffer(scratch, sizeof(float) * hash.R * hash.D * hash.Hq * attentionDesc.batchDimension, AttentionOperand(AttentionOperand::L).bufferIndex());
+          encoder->setBuffer(scratch, outputScratchBytes, AttentionOperand(AttentionOperand::L).bufferIndex());
         }
       } else {
         encoder->setBuffer(tensors[3], tensor_offsets[3], AttentionOperand(AttentionOperand::O).bufferIndex());
@@ -486,6 +513,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         } else {
           encoder->setBuffer(scratch, 0, AttentionOperand(AttentionOperand::L).bufferIndex());
         }
+      }
+      if (hash.masked) {
+        encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
+        encoder->setBuffer(scratch, blockMaskOffset, 16);
       }
     
       MTL::Size gridSize

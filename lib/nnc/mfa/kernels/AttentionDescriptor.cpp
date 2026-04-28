@@ -10,6 +10,9 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   Hq == rhs.Hq &&
   Hk == rhs.Hk &&
   scale == rhs.scale &&
+  isCausal == rhs.isCausal &&
+  masked == rhs.masked &&
+  maskBatchStride == rhs.maskBatchStride &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
@@ -36,7 +39,11 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
     combine_32(seed, hash.leadingDimensions.value()[3]);
   }
   combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, 0 }));
+  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
+  combine_32(seed, pack_32(simd::ushort2 {
+      (uint16_t)(hash.masked ? 1 : 0),
+      (uint16_t)0 }));
+  combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
@@ -120,16 +127,16 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     return output;
   };
 
-  if (device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
+  if (device && device->supportsFamily(MTL::GPUFamily(1009))) {
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked);
   }
 }
 
 std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> AttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept {
   auto createPipeline =
-  [=](MTL::Library* library) -> MTL::ComputePipelineState* {
+  [=](MTL::Library* library, const AttentionKernelDescriptor& kernelDesc) -> MTL::ComputePipelineState* {
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
@@ -174,6 +181,14 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
         }
       }
     }
+    if (type.value == AttentionKernelType::forward && masked) {
+      const uint32_t qTiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
+      const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
+      const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
+      const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
+      constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
+      constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+    }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
     NS::Error* error = nil;
@@ -203,12 +218,37 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
 
   auto kernelDesc = kernelDescriptor(device, dprops);
   AttentionKernel* kernel = createKernel(kernelDesc);
-  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc));
+  NS::SharedPtr<MTL::ComputePipelineState> second;
+  if (type.value == AttentionKernelType::forward && masked) {
+    auto constants = NS::TransferPtr
+    (MTL::FunctionConstantValues::alloc()->init());
+    uint32_t rowDimension = matrixDimensions[0];
+    uint32_t columnDimension = matrixDimensions[1];
+    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
+    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    const uint32_t qTiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
+    const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
+    const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
+    const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
+    constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
+    constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+
+    NS::String* swiftName = NS::String::string("generate_attention_block_mask", NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    auto pipelineDesc = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    pipelineDesc->setComputeFunction(NS::TransferPtr
+    (kernel->library->newFunction(swiftName, constants.get(), &error)).get());
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    second = NS::TransferPtr(device->newComputePipelineState(pipelineDesc.get(), MTL::PipelineOptionNone, NULL, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
 
   // Force the user to retrieve the return value from the cache. We ensure
   // the cache takes ownership, and the pointer doesn't become a zombie
   // object.
   PipelineValue<AttentionKernel>* output = new PipelineValue<AttentionKernel> { kernel, pipeline };
+  output->second = second;
   return std::make_pair(kernelDesc, output);
 }
 
@@ -367,7 +407,7 @@ AttentionOperands<GEMMOperandPrecision> AttentionDescriptor::createRegisterPreci
   
   // Query whether the hardware fuses the promotion of BF16 to FP32 with
   // the FMA assembly instruction.
-  const bool hasNativeBF16Casting = device->supportsFamily(MTL::GPUFamily(1009));
+  const bool hasNativeBF16Casting = device && device->supportsFamily(MTL::GPUFamily(1009));
   
   // Inputs have the same register precision across kernels.
   if (lowPrecisionInputs) {

@@ -59,6 +59,12 @@ struct AttentionDescriptor {
 
   float scale;
 
+  bool isCausal = false;
+
+  bool masked = false;
+
+  uint32_t maskBatchStride = 0;
+
   bool operator==(const AttentionDescriptor& rhs) const;
 
   std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<AttentionKernelDescriptor, std::unique_ptr<AttentionKernel>> *const libraryCache) const noexcept;
@@ -87,4 +93,3 @@ struct std::hash<AttentionDescriptor>
 };
 
 #endif
-
