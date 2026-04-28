@@ -24,6 +24,9 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
       !leadingDimensions[AttentionOperand::dQ].value_or(true)) { // Only precompiled versions with transposeState = false and leadingDimensions = true.
     return 0;
   }
+  if (isVarlen) {
+    return 0;
+  }
   // Not low precision inputs.
   if (memoryPrecisions[AttentionOperand::Q].value() == GEMMOperandPrecision::FP32 ||
       memoryPrecisions[AttentionOperand::K].value() == GEMMOperandPrecision::FP32 ||

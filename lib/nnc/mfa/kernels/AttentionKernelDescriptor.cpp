@@ -17,6 +17,7 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
   leadingDimensions == rhs.leadingDimensions &&
   isCausal == rhs.isCausal &&
   masked == rhs.masked &&
+  isVarlen == rhs.isVarlen &&
   type == rhs.type;
 }
 
@@ -26,6 +27,9 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
   combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
   combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncCache, hash.preferAsyncLoad, hash.isCausal, hash.masked }));
+  if (hash.isVarlen) {
+    combine_32(seed, pack_32(simd::ushort2 { 1, 0 }));
+  }
   return seed;
 }
 
@@ -34,7 +38,10 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
 AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type) noexcept
   : AttentionKernelDescriptor(blockDimensions, cacheState, headDimension, memoryPrecisions, preferAsyncCache, preferAsyncLoad, registerPrecisions, transposeState, leadingDimensions, type, false, false) {}
 
-AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked) noexcept {
+AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked) noexcept
+  : AttentionKernelDescriptor(blockDimensions, cacheState, headDimension, memoryPrecisions, preferAsyncCache, preferAsyncLoad, registerPrecisions, transposeState, leadingDimensions, type, isCausal, masked, false) {}
+
+AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked, bool isVarlen) noexcept {
   this->blockDimensions = blockDimensions;
   this->cacheState = cacheState;
   this->headDimension = headDimension;
@@ -47,4 +54,5 @@ AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensio
   this->type = type;
   this->isCausal = isCausal;
   this->masked = masked;
+  this->isVarlen = isVarlen;
 }

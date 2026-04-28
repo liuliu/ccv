@@ -48,6 +48,7 @@ static AttentionKernel* create_kernel(const AttentionKernelDescriptor& kernel_de
   kernel->headDimension = kernel_descriptor.headDimension;
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
+  kernel->isVarlen = kernel_descriptor.isVarlen;
   kernel->memoryPrecisions = kernel_descriptor.memoryPrecisions;
   kernel->preferAsyncCache = kernel_descriptor.preferAsyncCache;
   kernel->preferAsyncLoad = kernel_descriptor.preferAsyncLoad;
@@ -82,6 +83,14 @@ int main(int argc, char** argv)
   const bool masked = std::strcmp(masked_arg, "1") == 0 ||
       std::strcmp(masked_arg, "on") == 0 ||
       std::strcmp(masked_arg, "masked") == 0;
+  const char* varlen_arg = (argc > 12) ? argv[12] : "off";
+  const bool is_varlen = std::strcmp(varlen_arg, "1") == 0 ||
+      std::strcmp(varlen_arg, "on") == 0 ||
+      std::strcmp(varlen_arg, "varlen") == 0;
+  if (is_varlen && masked) {
+    std::cerr << "generic Attention varlen does not support mask\n";
+    return 1;
+  }
 
   DeviceProperties dprops = DeviceProperties();
   AttentionDescriptor descriptor;
@@ -97,6 +106,7 @@ int main(int argc, char** argv)
   descriptor.scale = 1.0f / std::sqrt(static_cast<float>(D));
   descriptor.isCausal = is_causal;
   descriptor.masked = masked;
+  descriptor.isVarlen = is_varlen;
   if (use_leading_dimensions)
     descriptor.leadingDimensions = simd::uint4 { Hq * D, Hk * D, Hk * D, Hq * D };
 
@@ -125,11 +135,13 @@ int main(int argc, char** argv)
       " useLeadingDimensions=" + std::string(use_leading_dimensions ? "1" : "0") +
       " isCausal=" + std::string(is_causal ? "1" : "0") +
       " masked=" + std::string(masked ? "1" : "0") +
+      std::string(is_varlen ? " isVarlen=1" : "") +
       "\n\n";
 
   const std::string suffix =
       (is_causal ? "_causal" : "") +
-      std::string(masked ? "_masked" : "");
+      std::string(masked ? "_masked" : "") +
+      std::string(is_varlen ? "_varlen" : "");
   write_text_file("../../attention_forward_source" + suffix + "_current.metal", header + shader_preamble() + forward_kernel->createSource());
   write_text_file("../../attention_backward_query_source_current.metal", header + shader_preamble() + query_kernel->createSource());
   write_text_file("../../attention_backward_keyvalue_source_current.metal", header + shader_preamble() + keyvalue_kernel->createSource());

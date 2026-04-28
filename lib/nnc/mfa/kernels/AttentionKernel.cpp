@@ -20,6 +20,7 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
   headDimension = descriptor.headDimension;
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
+  isVarlen = descriptor.isVarlen;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
 
@@ -165,16 +166,16 @@ std::string AttentionKernel::sequenceLength(AttentionOperand operand) const noex
   switch (operand.value) {
   case AttentionOperand::Q:
   case AttentionOperand::dQ:
-    return "R";
+    return (type.value == AttentionKernelType::forward && isVarlen) ? "R_seq" : "R";
   case AttentionOperand::K:
   case AttentionOperand::dK:
-    return "C";
+    return (type.value == AttentionKernelType::forward && isVarlen) ? "C_seq" : "C";
   case AttentionOperand::V:
   case AttentionOperand::dV:
-    return "C";
+    return (type.value == AttentionKernelType::forward && isVarlen) ? "C_seq" : "C";
   case AttentionOperand::O:
   case AttentionOperand::dO:
-    return "R";
+    return (type.value == AttentionKernelType::forward && isVarlen) ? "R_seq" : "R";
   default:
     CCV_NNC_MFA_PRECONDITION(false);
   }
@@ -245,6 +246,9 @@ unsigned short AttentionKernel::leadingBlockDimension(AttentionOperand operand) 
 }
 
 std::string AttentionKernel::parallelizationDimensionValue() const noexcept {
+  if (type.value == AttentionKernelType::forward && isVarlen) {
+    return "R_seq";
+  }
   switch (type.value) {
   case AttentionKernelType::forward:
   case AttentionKernelType::backwardQuery:
@@ -268,6 +272,9 @@ std::string AttentionKernel::clampedParallelizationThreadOffsetValue() const noe
 }
 
 std::string AttentionKernel::traversalDimensionValue() const noexcept {
+  if (type.value == AttentionKernelType::forward && isVarlen) {
+    return "C_seq";
+  }
   switch (type.value) {
   case AttentionKernelType::forward:
   case AttentionKernelType::backwardQuery:
@@ -513,7 +520,7 @@ kernel void generate_attention_block_mask(
   }
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
-  source.SetValue("PARALLELIZATION_DIMENSION", parallelizationDimensionValue());
+  source.SetValue("PARALLELIZATION_DIMENSION", (type.value == AttentionKernelType::forward && isVarlen) ? "R" : parallelizationDimensionValue());
   source += R"(
       threadgroup uchar *threadgroup_block [[threadgroup(0)]],
       
@@ -531,6 +538,19 @@ kernel void generate_attention_block_mask(
         return;
       }
 )";
+  if (type.value == AttentionKernelType::forward && isVarlen) {
+    source += R"(
+      const uint q_start = uint(QSeqOffsets_buf[gid.z]);
+      const uint q_end = uint(QSeqOffsets_buf[gid.z + 1]);
+      const uint kv_start = uint(KVSeqOffsets_buf[gid.z]);
+      const uint kv_end = uint(KVSeqOffsets_buf[gid.z + 1]);
+      const uint R_seq = q_end - q_start;
+      const uint C_seq = kv_end - kv_start;
+      if (parallelization_group_offset >= R_seq) {
+        return;
+      }
+)";
+  }
   source += createAdjustOffsets() + "\n";
   source += createSetup() + "\n";
   switch (type.value) {
@@ -625,6 +645,10 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "* Mask_buf [[buffer(15)]],\n";
     output += "  device const uchar* Block_mask_buf [[buffer(16)]],\n";
   }
+  if (type.value == AttentionKernelType::forward && isVarlen) {
+    output += "  device const int* QSeqOffsets_buf [[buffer(17)]],\n";
+    output += "  device const int* KVSeqOffsets_buf [[buffer(18)]],\n";
+  }
   return output;
 }
 
@@ -683,6 +707,15 @@ std::string AttentionKernel::createAdjustOffsets() const noexcept {
     source += R"(
     Mask_buf += gid.z * Mask_batch_stride;
     Block_mask_buf += gid.z * Block_mask_batch_stride;
+)";
+  }
+  if (type.value == AttentionKernelType::forward && isVarlen) {
+    source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+    source += R"(
+    Q += q_start * Hq * {{HEAD_DIMENSION}};
+    K += kv_start * (Hq / H_Hk_ratio) * {{HEAD_DIMENSION}};
+    V += kv_start * (Hq / H_Hk_ratio) * {{HEAD_DIMENSION}};
+    O += q_start * Hq * {{HEAD_DIMENSION}};
 )";
   }
   return source.ToString();
@@ -759,7 +792,7 @@ struct AttentionAccumulateDescriptor {
 };
 
 std::string AttentionKernel::loopForward() const noexcept {
-  if (isCausal || masked) {
+  if (isCausal || masked || isVarlen) {
     return loopForwardMasked();
   }
   AttentionOuterProductDescriptor outerProductDesc(AttentionOperand::Q, AttentionOperand::K, AttentionOperand::S);
@@ -824,17 +857,19 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
   source.SetValue("SOFTMAX", softmax(false, masked));
   source.SetValue("ONLINE_REDUCE_SUM", onlineReduceSum());
   source.SetValue("PV", PV);
+  source.SetValue("R_LENGTH", parallelizationDimensionValue());
+  source.SetValue("C_LENGTH", traversalDimensionValue());
   if (isCausal) {
     source += R"(
 
-  const int causal_column_offset = int(C) - int(R);
+  const int causal_column_offset = int({{C_LENGTH}}) - int({{R_LENGTH}});
   const int causal_last_column = int(parallelization_group_offset) + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
-  const uint traversal_end = causal_last_column < 0 ? 0 : min(C, uint(causal_last_column) + 1);
+  const uint traversal_end = causal_last_column < 0 ? 0 : min({{C_LENGTH}}, uint(causal_last_column) + 1);
 )";
   } else {
     source += R"(
 
-  const uint traversal_end = C;
+  const uint traversal_end = {{C_LENGTH}};
 )";
   }
   source += R"(
@@ -3109,6 +3144,8 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
   source.SetValue("REGISTER_NAME_S", registerName(AttentionOperand::S));
   source.SetValue("DOT_PRODUCT_SCALE", dotProductScale(false));
   source.SetValue("UNSAFE_PARALLELIZATION_THREAD_OFFSET", unsafeParallelizationThreadOffsetValue());
+  source.SetValue("R_LENGTH", parallelizationDimensionValue());
+  source.SetValue("C_LENGTH", traversalDimensionValue());
   if (masked) {
     source.SetValue("MASK_TERM", R"(
         if (row < R && column < C) {
@@ -3118,7 +3155,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
     source.SetValue("MASK_TERM", "");
   }
   if (isCausal) {
-    source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(C) - int(R)");
+    source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")");
   } else {
     source.SetValue("CAUSAL_VALID", "");
   }
@@ -3132,7 +3169,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
     for (ushort index = 0; index < 2; ++index) {
       const uint row = {{UNSAFE_PARALLELIZATION_THREAD_OFFSET}};
       const uint column = c + c_sram + morton_offset.x + index;
-      const bool valid = column < C{{CAUSAL_VALID}};
+      const bool valid = column < {{C_LENGTH}}{{CAUSAL_VALID}};
       if (mask_flags == 2) {
         float score = (float)(*S_elements)[index] * {{DOT_PRODUCT_SCALE}};
         {{MASK_TERM}}
@@ -3154,7 +3191,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
     for (ushort index = 0; index < 2; ++index) {
       const uint row = {{UNSAFE_PARALLELIZATION_THREAD_OFFSET}};
       const uint column = c + c_sram + morton_offset.x + index;
-      const bool valid = column < C{{CAUSAL_VALID}};
+      const bool valid = column < {{C_LENGTH}}{{CAUSAL_VALID}};
       if (!valid) {
         (*S_elements)[index] = -numeric_limits<{{REGISTER_NAME_S}}>::infinity();
       }

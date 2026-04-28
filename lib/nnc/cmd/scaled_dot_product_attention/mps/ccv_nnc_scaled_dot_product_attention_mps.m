@@ -342,8 +342,6 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)) &&
 			(D > 128 || (D % 8) == 0);
-		if (is_varlen && !use_neural_accelerators)
-			return CCV_NNC_EXEC_INVALID;
 		const int use_quantized_attention =
 			use_neural_accelerators &&
 			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
@@ -358,6 +356,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.Hq = (uint32_t)Hq,
 			.Hk = (uint32_t)Hk,
 			.D = (uint32_t)D,
+			.output_rows = (uint32_t)(is_varlen ? qdim[1] : R * batch_size),
 			.Q_trans = false,
 			.K_trans = true,
 			.V_trans = false,

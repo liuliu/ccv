@@ -19,6 +19,7 @@ typedef struct {
   uint32_t Hq;
   uint32_t Hk;
   uint32_t D;
+  uint32_t output_rows;
   float alpha;
   uint64_t data_type;
 

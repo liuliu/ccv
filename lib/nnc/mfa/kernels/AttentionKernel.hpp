@@ -43,6 +43,8 @@ struct AttentionKernel {
 
   bool masked;
 
+  bool isVarlen;
+
   bool disableAsyncCopy;
 
   unsigned short threadgroupMemoryAllocation;
