@@ -42,6 +42,12 @@ static bool writeMetalFile(const std::string& directory, const std::string& file
 	return (bool)output;
 }
 
+static std::string forwardVariantSuffix(bool isCausal, bool masked, bool isVarlen) {
+	if (!isCausal && !masked && !isVarlen)
+		return "";
+	return std::string("_causal") + std::to_string(isCausal) + "_masked" + std::to_string(masked) + "_varlen" + std::to_string(isVarlen);
+}
+
 static AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16) noexcept {
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
   
@@ -424,7 +430,7 @@ static std::vector<AttentionParameterRow> parameterFile(AttentionKernelType type
   return defaultParameters(family1009);
 }
 
-static AttentionKernelDescriptor kernelDescriptor(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16, bool family1009, unsigned short headDimension) noexcept {
+static AttentionKernelDescriptor kernelDescriptor(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16, bool family1009, unsigned short headDimension, bool isCausal, bool masked, bool isVarlen) noexcept {
   std::vector table = parameterFile(type, lowPrecisionInputs, lowPrecisionIntermediates, family1009);
   auto row = fetchRow(table, headDimension);
   auto createBlockDimensions =
@@ -497,9 +503,9 @@ static AttentionKernelDescriptor kernelDescriptor(AttentionKernelType type, bool
   };
 
   if (family1009) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), true, false, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), true, false, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), false, true, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), headDimension, createMemoryPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16), false, true, createRegisterPrecisions(type, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen);
   }
 }
 
@@ -562,41 +568,51 @@ int main(int argc, char** argv)
 					for (m = 0; m < 6; m++)
 					{
 						unsigned short headDimension = headDimensions[m];
+						bool forwardIsCausalVariants[] = { false, true, false, true, false, true };
+						bool forwardMaskedVariants[] = { false, false, true, true, false, false };
+						bool forwardIsVarlenVariants[] = { false, false, false, false, true, true };
+						for (int n = 0; n < 6; n++)
 						{
-							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::forward, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
-							std::string file = std::string("f_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
-							if (emitMetal) {
-								AttentionKernel kernel(kernelDesc, nullptr);
-								if (!writeMetalFile(metalDirectory, file, kernel.source))
-									return 1;
-							}
-							/*
-							std::cout << "///filename: " << file << std::endl;
-							std::cout << "#include <metal_stdlib>" << std::endl;
-							auto kernel = new AttentionKernel(kernelDesc, device.get());
-							delete kernel;
-							*/
-							file = toLower(file);
-							std::cout << R"(
+							bool isCausal = forwardIsCausalVariants[n];
+							bool masked = forwardMaskedVariants[n];
+							bool isVarlen = forwardIsVarlenVariants[n];
+							{
+								AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::forward, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension, isCausal, masked, isVarlen);
+								std::string file = std::string("f_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad) + forwardVariantSuffix(isCausal, masked, isVarlen);
+								if (emitMetal) {
+									AttentionKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
+								/*
+								std::cout << "///filename: " << file << std::endl;
+								std::cout << "#include <metal_stdlib>" << std::endl;
+								auto kernel = new AttentionKernel(kernelDesc, device.get());
+								delete kernel;
+								*/
+								file = toLower(file);
+								std::cout << R"(
   } else if (type.value == AttentionKernelType::forward &&
 )";
-							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
-							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
-							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
-							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
-							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
-							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
-							std::cout << "#else" << std::endl;
-							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_macosx_metallib, sizeof(" << file << "_macosx_metallib), NULL, 0);" << std::endl;
-							std::cout << "#endif";
-							std::cout << R"(
+								std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
+								std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
+								std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+								std::cout << "    isCausal == " << isCausal << " && masked == " << masked << " && isVarlen == " << isVarlen << " &&" << std::endl;
+								std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
+								std::cout << "#if TARGET_OS_IPHONE" << std::endl;
+								std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
+								std::cout << "#else" << std::endl;
+								std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_macosx_metallib, sizeof(" << file << "_macosx_metallib), NULL, 0);" << std::endl;
+								std::cout << "#endif";
+								std::cout << R"(
     auto library = device->newLibrary(data, error);
     dispatch_release(data);
     return library;
 )";
+							}
 						}
 						{
-							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardQuery, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
+							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardQuery, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension, false, false, false);
 							std::string file = std::string("bq_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
 							if (emitMetal) {
 								AttentionKernel kernel(kernelDesc, nullptr);
@@ -616,6 +632,7 @@ int main(int argc, char** argv)
 							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
 							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
 							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+							std::cout << "    isCausal == 0 && masked == 0 && isVarlen == 0 &&" << std::endl;
 							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
 							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
 							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;
@@ -629,7 +646,7 @@ int main(int argc, char** argv)
 )";
 						}
 						{
-							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardKeyValue, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
+							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardKeyValue, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension, false, false, false);
 							std::string file = std::string("bkv_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
 							if (emitMetal) {
 								AttentionKernel kernel(kernelDesc, nullptr);
@@ -649,6 +666,7 @@ int main(int argc, char** argv)
 							std::cout << "    blockDimensions[0] == " << kernelDesc.blockDimensions[0] << " && blockDimensions[1] == " << kernelDesc.blockDimensions[1] << " && blockDimensions[2] == " << kernelDesc.blockDimensions[2] << " &&" << std::endl;
 							std::cout << "    headDimension == " << headDimension << " &&" << std::endl;
 							std::cout << "    lowPrecisionIntermediates == " << lowPrecisionIntermediates << " && isBF16 == " << isBF16 << " &&" << std::endl;
+							std::cout << "    isCausal == 0 && masked == 0 && isVarlen == 0 &&" << std::endl;
 							std::cout << "    preferAsyncCache == " << kernelDesc.preferAsyncCache << " && preferAsyncLoad == " << kernelDesc.preferAsyncLoad << ") {" << std::endl;
 							std::cout << "#if TARGET_OS_IPHONE" << std::endl;
 							std::cout << "    dispatch_data_t data = dispatch_data_create(" << file << "_iphoneos_metallib, sizeof(" << file << "_iphoneos_metallib), NULL, 0);" << std::endl;

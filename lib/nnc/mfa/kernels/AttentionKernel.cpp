@@ -3146,6 +3146,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
   source.SetValue("UNSAFE_PARALLELIZATION_THREAD_OFFSET", unsafeParallelizationThreadOffsetValue());
   source.SetValue("R_LENGTH", parallelizationDimensionValue());
   source.SetValue("C_LENGTH", traversalDimensionValue());
+  source.SetValue("ROW_DECL", isCausal ? "const uint row = " + unsafeParallelizationThreadOffsetValue() + ";\n      " : "");
   if (masked) {
     source.SetValue("MASK_TERM", R"(
         if (row < R && column < C) {
@@ -3189,8 +3190,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
     auto S_elements = S_sram[c_sram / 8].thread_elements();
     #pragma clang loop unroll(full)
     for (ushort index = 0; index < 2; ++index) {
-      const uint row = {{UNSAFE_PARALLELIZATION_THREAD_OFFSET}};
-      const uint column = c + c_sram + morton_offset.x + index;
+      {{ROW_DECL}}const uint column = c + c_sram + morton_offset.x + index;
       const bool valid = column < {{C_LENGTH}}{{CAUSAL_VALID}};
       if (!valid) {
         (*S_elements)[index] = -numeric_limits<{{REGISTER_NAME_S}}>::infinity();
