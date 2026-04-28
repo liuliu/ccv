@@ -60,6 +60,7 @@ static NAAttentionKernel* create_kernel(const NAAttentionKernelDescriptor& kerne
   kernel->checkCEdge1 = kernel_descriptor.checkCEdge1;
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
+  kernel->isVarlen = kernel_descriptor.isVarlen;
   return kernel;
 }
 
@@ -93,6 +94,10 @@ int main(int argc, char** argv)
   const bool masked = std::strcmp(masked_arg, "1") == 0 ||
       std::strcmp(masked_arg, "on") == 0 ||
       std::strcmp(masked_arg, "masked") == 0;
+  const char* varlen_arg = (argc > 12) ? argv[12] : "off";
+  const bool is_varlen = std::strcmp(varlen_arg, "1") == 0 ||
+      std::strcmp(varlen_arg, "on") == 0 ||
+      std::strcmp(varlen_arg, "varlen") == 0;
   BypassMode bypass_mode = BypassMode::Auto;
   if (std::strcmp(bypass_arg, "0") == 0 || std::strcmp(bypass_arg, "off") == 0 || std::strcmp(bypass_arg, "disable") == 0) {
     bypass_mode = BypassMode::Disable;
@@ -114,6 +119,7 @@ int main(int argc, char** argv)
     .scale = 1.0f / std::sqrt(static_cast<float>(D)),
     .isCausal = is_causal,
     .masked = masked,
+    .isVarlen = is_varlen,
   };
 
   descriptor.type = AttentionKernelType::forward;
@@ -144,6 +150,8 @@ int main(int argc, char** argv)
       is_causal ? "_causal" : "";
   const std::string masked_suffix =
       masked ? "_masked" : "";
+  const std::string varlen_suffix =
+      is_varlen ? "_varlen" : "";
 
   const std::string header =
       "// Generated from current NAAttention backward source generator\n"
@@ -157,13 +165,14 @@ int main(int argc, char** argv)
       " lowPrecisionIntermediates=" + std::string(low_precision_intermediates ? "1" : "0") +
       " isCausal=" + std::string(is_causal ? "1" : "0") +
       " masked=" + std::string(masked ? "1" : "0") +
+      (is_varlen ? " isVarlen=1" : "") +
       " blockR=" + std::to_string(forward_descriptor.blockDimensions[0]) +
       " blockC=" + std::to_string(forward_descriptor.blockDimensions[1]) +
       " executionSIMDGroups=" + std::to_string(forward_descriptor.executionSIMDGroups) +
       " bypassThreadgroupMemory=" + suffix +
       "\n\n";
 
-  write_text_file("../../na_attention_source_" + suffix + causal_suffix + masked_suffix + "_current.metal", header + forward_kernel->createSource());
+  write_text_file("../../na_attention_source_" + suffix + causal_suffix + masked_suffix + varlen_suffix + "_current.metal", header + forward_kernel->createSource());
   write_text_file("../../na_attention_compute_d_source_" + suffix + "_current.metal", header + create_compute_d_source(*query_kernel));
   write_text_file("../../na_attention_backward_query_source_" + suffix + "_current.metal", header + query_kernel->createSource());
   write_text_file("../../na_attention_backward_keyvalue_source_" + suffix + "_current.metal", header + keyvalue_kernel->createSource());

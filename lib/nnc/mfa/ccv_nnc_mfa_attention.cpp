@@ -107,6 +107,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.scale = hash.alpha;
       attentionDesc.isCausal = hash.is_causal;
       attentionDesc.masked = hash.masked;
+      attentionDesc.isVarlen = hash.is_varlen;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -180,27 +181,39 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const size_t lBufferOffset = tensors[5] ? tensor_offsets[5] : lOffset;
 
       auto encodeQuantize =
-      [&](NS::SharedPtr<MTL::ComputePipelineState> quantizePipeline, uint16_t threads, MTL::Buffer* source, size_t sourceOffset, size_t int8Offset, size_t scaleOffset, uint32_t scaleTiles, uint32_t heads) {
+      [&](NS::SharedPtr<MTL::ComputePipelineState> quantizePipeline, uint16_t threads, MTL::Buffer* source, size_t sourceOffset, size_t int8Offset, size_t scaleOffset, uint32_t scaleTiles, uint32_t heads, MTL::Buffer* seqOffsets, size_t seqOffsetsOffset) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(quantizePipeline.get());
         encoder->useResource(source, MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        if (hash.is_varlen) {
+          encoder->useResource(seqOffsets, MTL::ResourceUsageRead);
+        }
         encoder->setBuffer(source, sourceOffset, 0);
         encoder->setBuffer(scratch, int8Offset, 1);
         encoder->setBuffer(scratch, scaleOffset, 2);
+        if (hash.is_varlen) {
+          encoder->setBuffer(seqOffsets, seqOffsetsOffset, 17);
+        }
         encoder->dispatchThreadgroups(MTL::Size(scaleTiles, heads, batchDimension), MTL::Size(threads, 1, 1));
         command_batch->finishCommand(encoder);
       };
 
-      encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq);
-      encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk);
+      encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq, tensors[6], tensor_offsets[6]);
+      encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk, tensors[7], tensor_offsets[7]);
       {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(computeVMeanPipeline.get());
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        if (hash.is_varlen) {
+          encoder->useResource(tensors[7], MTL::ResourceUsageRead);
+        }
         encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
         encoder->setBuffer(scratch, vMeanOffset, 1);
+        if (hash.is_varlen) {
+          encoder->setBuffer(tensors[7], tensor_offsets[7], 17);
+        }
         const uint32_t meanTiles = (hash.D % 4) == 0 ? (hash.D / 4) : hash.D;
         const uint32_t meanTileBits = ccv_nnc_mfa_ceil_log2_u32(meanTiles);
         const uint32_t headBits = ccv_nnc_mfa_ceil_log2_u32(hash.Hk);
@@ -219,6 +232,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(scratch, vInt8Offset, 1);
         encoder->setBuffer(scratch, vScaleOffset, 2);
         encoder->setBuffer(scratch, vMeanOffset, 3);
+        if (hash.is_varlen) {
+          encoder->useResource(tensors[7], MTL::ResourceUsageRead);
+          encoder->setBuffer(tensors[7], tensor_offsets[7], 17);
+        }
         encoder->dispatchThreadgroups(MTL::Size(kTiles, hash.Hk, batchDimension), MTL::Size(NAInt8AttentionKernel::kvQuantizeThreads, 1, 1));
         command_batch->finishCommand(encoder);
       }
@@ -256,6 +273,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
         encoder->setBuffer(scratch, blockMaskOffset, 16);
       }
+      if (hash.is_varlen) {
+        encoder->useResource(tensors[6], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[7], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[6], tensor_offsets[6], 17);
+        encoder->setBuffer(tensors[7], tensor_offsets[7], 18);
+      }
       encoder->dispatchThreadgroups(
           kernel->threadgroupsPerGrid(batchDimension, hash.R),
           MTL::Size(kernel->threadgroupSize(pipeline.get()), 1, 1));
@@ -276,6 +299,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.scale = hash.alpha;
       attentionDesc.isCausal = hash.is_causal;
       attentionDesc.masked = hash.masked;
+      attentionDesc.isVarlen = hash.is_varlen;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -354,6 +378,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
         encoder->setBuffer(scratch, blockMaskOffset, 16);
       }
+      if (hash.is_varlen) {
+        encoder->useResource(tensors[6], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[7], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[6], tensor_offsets[6], 17);
+        encoder->setBuffer(tensors[7], tensor_offsets[7], 18);
+      }
 
       // Calculate the grid size.
       MTL::Size gridSize = kernel->threadgroupsPerGrid(attentionDesc);
@@ -366,6 +396,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       command_batch->finishCommand(encoder);
       return;
     }
+    CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
     CCV_NNC_MFA_PRECONDITION(!params.is_causal);
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
@@ -1120,6 +1151,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   batched = params.batched;
   masked = params.masked;
   is_causal = params.is_causal;
+  is_varlen = params.is_varlen;
   upcast = params.upcast;
   type = params.type;
   use_quantized_attention = params.use_quantized_attention;
@@ -1141,6 +1173,7 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (batched == hash.batched) &&
   (masked == hash.masked) &&
   (is_causal == hash.is_causal) &&
+  (is_varlen == hash.is_varlen) &&
   (upcast == hash.upcast) &&
   (type == hash.type) &&
   (use_quantized_attention == hash.use_quantized_attention);
@@ -1162,6 +1195,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .batched = " << bool(hash.batched) << ',';
   os << " .masked = " << bool(hash.masked) << ", ";
   os << " .is_causal = " << bool(hash.is_causal) << ", ";
+  os << " .is_varlen = " << bool(hash.is_varlen) << ", ";
   os << " .upcast = " << bool(hash.upcast) << " ";
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
   os << " .type = " << hash.type << " ";
@@ -1176,9 +1210,10 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   combine_64(seed, pack_64(simd::uint2 { hash.R, hash.C }));
   combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.upcast })}));
+  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.is_varlen })}));
   combine_32(seed, hash.type);
   combine_32(seed, hash.use_quantized_attention);
+  combine_32(seed, hash.upcast);
   return seed;
 }
 

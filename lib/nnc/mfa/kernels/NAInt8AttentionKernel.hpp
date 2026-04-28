@@ -39,6 +39,7 @@ struct NAInt8AttentionKernel {
   float scale;
   bool isCausal;
   bool masked;
+  bool isVarlen;
   bool hasCausalEmptyRows;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);

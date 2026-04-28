@@ -46,6 +46,8 @@ struct NAAttentionDescriptor {
 
   bool masked = false;
 
+  bool isVarlen = false;
+
   uint32_t maskBatchStride = 0;
 
   bool operator==(const NAAttentionDescriptor& rhs) const;

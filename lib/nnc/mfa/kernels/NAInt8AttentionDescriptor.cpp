@@ -25,6 +25,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     scale == rhs.scale &&
     isCausal == rhs.isCausal &&
     masked == rhs.masked &&
+    isVarlen == rhs.isVarlen &&
     maskBatchStride == rhs.maskBatchStride &&
     batchStrides == rhs.batchStrides &&
     simd_all(matrixDimensions == rhs.matrixDimensions);
@@ -43,6 +44,7 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.isCausal ? 1 : 0),
       (uint16_t)(hash.masked ? 1 : 0) }));
+  combine_32(seed, hash.isVarlen ? 1 : 0);
   combine_32(seed, hash.maskBatchStride);
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
@@ -85,12 +87,12 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       NAInt8AttentionKernel::largeSequenceVMeanThreads;
   const bool has_c_remainder =
       type == AttentionKernelType::forward &&
-      (matrixDimensions[1] % blockDimensions[1]) != 0;
+      (isVarlen || (matrixDimensions[1] % blockDimensions[1]) != 0);
   const bool has_causal_empty_rows =
       type == AttentionKernelType::forward &&
       isCausal &&
       !masked &&
-      matrixDimensions[0] > matrixDimensions[1];
+      (isVarlen || matrixDimensions[0] > matrixDimensions[1]);
   return NAInt8AttentionKernelDescriptor(
       blockDimensions,
       (unsigned short)matrixDimensions[2],
@@ -108,7 +110,8 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       scale,
       isCausal,
       masked,
-      has_causal_empty_rows);
+      has_causal_empty_rows,
+      isVarlen);
 }
 
 std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> NAInt8AttentionDescriptor::findKernel(

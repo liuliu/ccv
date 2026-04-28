@@ -24,6 +24,7 @@ struct NAInt8AttentionDescriptor {
   float scale;
   bool isCausal = false;
   bool masked = false;
+  bool isVarlen = false;
   uint32_t maskBatchStride = 0;
 
   bool operator==(const NAInt8AttentionDescriptor& rhs) const;

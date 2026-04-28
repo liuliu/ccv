@@ -57,6 +57,7 @@ static NAInt8AttentionKernel* create_kernel(const NAInt8AttentionKernelDescripto
   kernel->scale = kernel_descriptor.scale;
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
+  kernel->isVarlen = kernel_descriptor.isVarlen;
   kernel->hasCausalEmptyRows = kernel_descriptor.hasCausalEmptyRows;
   return kernel;
 }
@@ -89,6 +90,10 @@ int main(int argc, char** argv)
       std::string(argv[10]) == "1" ||
       std::string(argv[10]) == "on" ||
       std::string(argv[10]) == "masked") : false;
+  const bool is_varlen = (argc > 11) ? (
+      std::string(argv[11]) == "1" ||
+      std::string(argv[11]) == "on" ||
+      std::string(argv[11]) == "varlen") : false;
 
   NAInt8AttentionDescriptor descriptor;
   descriptor.batchDimension = batch;
@@ -103,6 +108,7 @@ int main(int argc, char** argv)
   descriptor.lowPrecisionIntermediates = !fp32;
   descriptor.isCausal = is_causal;
   descriptor.masked = masked;
+  descriptor.isVarlen = is_varlen;
 
   descriptor.type = AttentionKernelType::forward;
   const auto forward_descriptor = descriptor.kernelDescriptor();
@@ -130,11 +136,13 @@ int main(int argc, char** argv)
       " ioPrecision=" + precision +
       " isCausal=" + std::string(is_causal ? "1" : "0") +
       " masked=" + std::string(masked ? "1" : "0") +
+      (is_varlen ? " isVarlen=1" : "") +
       " lowPrecisionIntermediates=" + std::string(descriptor.lowPrecisionIntermediates ? "true" : "false") + "\n\n";
 
   const std::string causal_suffix = is_causal ? "_causal" : "";
   const std::string masked_suffix = masked ? "_masked" : "";
-  write_text_file("../../na_int8_attention_source" + causal_suffix + masked_suffix + "_current.metal", header + forward_kernel->createSource());
+  const std::string varlen_suffix = is_varlen ? "_varlen" : "";
+  write_text_file("../../na_int8_attention_source" + causal_suffix + masked_suffix + varlen_suffix + "_current.metal", header + forward_kernel->createSource());
   write_text_file("../../na_int8_attention_compute_d_source_current.metal", header + create_compute_d_source(*query_kernel));
   write_text_file("../../na_int8_attention_backward_query_source_current.metal", header + query_kernel->createSource());
   write_text_file("../../na_int8_attention_backward_keyvalue_source_current.metal", header + keyvalue_kernel->createSource());

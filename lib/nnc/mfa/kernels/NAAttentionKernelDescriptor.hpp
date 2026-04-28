@@ -31,6 +31,8 @@ struct NAAttentionKernelDescriptor {
 
   bool masked;
 
+  bool isVarlen;
+
   AttentionOperands<GEMMOperandPrecision> memoryPrecisions;
 
   AttentionKernelType type;
@@ -45,6 +47,7 @@ struct NAAttentionKernelDescriptor {
   NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale) noexcept;
   NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory) noexcept;
   NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal, bool masked) noexcept;
+  NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal, bool masked, bool isVarlen) noexcept;
 
   bool operator==(const NAAttentionKernelDescriptor& rhs) const;
 };

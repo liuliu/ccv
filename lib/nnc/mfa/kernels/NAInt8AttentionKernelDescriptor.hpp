@@ -23,6 +23,7 @@ struct NAInt8AttentionKernelDescriptor {
   float scale;
   bool isCausal;
   bool masked;
+  bool isVarlen;
   bool hasCausalEmptyRows;
 
   NAInt8AttentionKernelDescriptor() = delete;
@@ -43,7 +44,8 @@ struct NAInt8AttentionKernelDescriptor {
       float scale,
       bool isCausal,
       bool masked,
-      bool hasCausalEmptyRows) noexcept;
+      bool hasCausalEmptyRows,
+      bool isVarlen) noexcept;
 
   bool operator==(const NAInt8AttentionKernelDescriptor& rhs) const;
 };
