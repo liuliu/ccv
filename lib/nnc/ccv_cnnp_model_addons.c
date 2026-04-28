@@ -4325,6 +4325,9 @@ typedef struct {
 	float scale;
 	int is_causal;
 	int has_attn_mask;
+	int is_varlen;
+	int max_seqlen_q;
+	int max_seqlen_kv;
 	int flags;
 	int fused_unify_head_weights;
 	int no_bias;
@@ -4333,12 +4336,16 @@ typedef struct {
 static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_scaled_dot_product_attention_build] -\n");
-	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 1);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const self = (ccv_cnnp_model_scaled_dot_product_attention_t*)super;
+	assert(input_size == (self->is_varlen ? 5 : (self->has_attn_mask ? 4 : 3)));
+	assert(!self->is_varlen || !self->has_attn_mask);
+	assert(!self->is_varlen || !self->fused_unify_head_weights);
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t k_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	const ccv_nnc_tensor_param_t v_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
+	const ccv_nnc_tensor_param_t q_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[3]) : (ccv_nnc_tensor_param_t){};
+	const ccv_nnc_tensor_param_t kv_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[4]) : (ccv_nnc_tensor_param_t){};
 	const int v_nd = ccv_nnc_tensor_nd(v_params.dim);
 	assert(v_nd == 3 || v_nd == 4);
 	const int hEv = (v_nd == 3 ? 1 : v_params.dim[2]) * v_params.dim[v_nd - 1];
@@ -4353,6 +4360,9 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.cmd = CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD;
 	cmd.info.scaled_dot_product_attention.scale = self->scale;
 	cmd.info.scaled_dot_product_attention.is_causal = self->is_causal;
+	cmd.info.scaled_dot_product_attention.is_varlen = self->is_varlen;
+	cmd.info.scaled_dot_product_attention.max_seqlen_q = self->max_seqlen_q;
+	cmd.info.scaled_dot_product_attention.max_seqlen_kv = self->max_seqlen_kv;
 	cmd.info.scaled_dot_product_attention.flags = self->flags;
 	ccv_nnc_tensor_param_t output_params[3];
 	ccv_nnc_tensor_symbol_t output;
@@ -4363,7 +4373,22 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	ccv_nnc_tensor_symbol_t bias = NO_TENSOR_SYMBOL;
 	if (self->has_attn_mask)
 		attn_mask = inputs[3];
-	if (self->fused_unify_head_weights)
+	if (self->is_varlen)
+	{
+		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
+				q_params,
+				k_params,
+				v_params,
+				(ccv_nnc_tensor_param_t){},
+				(ccv_nnc_tensor_param_t){},
+				(ccv_nnc_tensor_param_t){},
+				q_seq_offsets_params,
+				kv_seq_offsets_params,
+			}, 8, ccv_nnc_no_hint, output_params, 2);
+		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
+		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, inputs[3], inputs[4]), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
+	} else if (self->fused_unify_head_weights)
 	{
 		if (!self->weights.graph)
 			self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
@@ -4387,6 +4412,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
 		saved_v_proj = ccv_nnc_tensor_symbol_new(graph, output_params[2], 0);
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 	} else {
 		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
 				q_params,
@@ -4395,8 +4421,8 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 			}, 3, ccv_nnc_no_hint, output_params, 2);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 	}
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 	outputs[0] = output;
 }
 
@@ -4442,11 +4468,13 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_i
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int flags, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
+	assert(!is_varlen || !has_attn_mask);
+	assert(!is_varlen || !fused_unify_head_weights);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const model_scaled_dot_product_attention = (ccv_cnnp_model_scaled_dot_product_attention_t*)cccalloc(1, sizeof(ccv_cnnp_model_scaled_dot_product_attention_t));
 	model_scaled_dot_product_attention->super.isa = fused_unify_head_weights ? &ccv_cnnp_scaled_dot_product_attention_fused_isa : &ccv_cnnp_scaled_dot_product_attention_isa;
-	model_scaled_dot_product_attention->super.input_size = has_attn_mask ? 4 : 3;
+	model_scaled_dot_product_attention->super.input_size = is_varlen ? 5 : (has_attn_mask ? 4 : 3);
 	model_scaled_dot_product_attention->super.outputs = &model_scaled_dot_product_attention->output;
 	model_scaled_dot_product_attention->super.output_size = 1;
 	model_scaled_dot_product_attention->super.is_trainable = is_trainable;
@@ -4458,6 +4486,9 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 	model_scaled_dot_product_attention->scale = scale;
 	model_scaled_dot_product_attention->is_causal = is_causal;
 	model_scaled_dot_product_attention->has_attn_mask = has_attn_mask;
+	model_scaled_dot_product_attention->is_varlen = is_varlen;
+	model_scaled_dot_product_attention->max_seqlen_q = max_seqlen_q;
+	model_scaled_dot_product_attention->max_seqlen_kv = max_seqlen_kv;
 	model_scaled_dot_product_attention->flags = flags;
 	model_scaled_dot_product_attention->fused_unify_head_weights = fused_unify_head_weights;
 	model_scaled_dot_product_attention->no_bias = no_bias;
@@ -4467,7 +4498,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_scaled_dot_product_attention_t* const self = (const ccv_cnnp_model_scaled_dot_product_attention_t*)super;
-	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->flags, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->is_varlen, self->max_seqlen_q, self->max_seqlen_kv, self->flags, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Debug Layer

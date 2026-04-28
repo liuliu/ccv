@@ -213,7 +213,7 @@ TEST_CASE("run scaled dot product attention with cnnp model")
 	ccv_nnc_graph_run(sdp_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 0, 0, 0, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[3];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
@@ -230,6 +230,62 @@ TEST_CASE("run scaled dot product attention with cnnp model")
 	ccv_nnc_tensor_free(k_tensor);
 	ccv_nnc_tensor_free(v_tensor);
 	ccv_nnc_tensor_free(r_tensor);
+	ccv_cnnp_model_free(scaled_dot_product_attention);
+}
+
+TEST_CASE("run varlen scaled dot product attention with cnnp model")
+{
+	const int B = 4;
+	const int Hq = 4;
+	const int Hk = 2;
+	const int D = 64;
+	const int q_offsets[5] = { 0, 5, 8, 15, 17 };
+	const int kv_offsets[5] = { 0, 6, 13, 16, 22 };
+	const int total_q = q_offsets[B];
+	const int total_kv = kv_offsets[B];
+	const float scale = 1.0 / sqrt((float)D);
+	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, total_q, Hq, D), 0);
+	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, total_kv, Hk, D), 0);
+	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, total_kv, Hk, D), 0);
+	int i;
+	for (i = 0; i < total_q * Hq * D; ++i)
+		q_tensor->data.f32[i] = (float)((i * 17) % 97 - 48) / 256;
+	for (i = 0; i < total_kv * Hk * D; ++i)
+	{
+		k_tensor->data.f32[i] = (float)((i * 13) % 89 - 44) / 256;
+		v_tensor->data.f32[i] = (float)((i * 19) % 101 - 50) / 128;
+	}
+	ccv_nnc_tensor_t* const q_seq_offsets = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, B + 1), 0);
+	ccv_nnc_tensor_t* const kv_seq_offsets = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, B + 1), 0);
+	for (i = 0; i < B + 1; ++i)
+	{
+		q_seq_offsets->data.i32[i] = q_offsets[i];
+		kv_seq_offsets->data.i32[i] = kv_offsets[i];
+	}
+	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1);
+	cmd.info.scaled_dot_product_attention.is_varlen = 1;
+	cmd.info.scaled_dot_product_attention.max_seqlen_q = 7;
+	cmd.info.scaled_dot_product_attention.max_seqlen_kv = 7;
+	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, total_q, Hq, D), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, NULL, NULL, NULL, q_seq_offsets, kv_seq_offsets), TENSOR_LIST(r_tensor, NULL), 0);
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(scale, 1, 0, 1, 7, 7, 0, 0, 0, 0, "scaled_dot_product_attention");
+	ccv_nnc_tensor_param_t qkv_offsets[5];
+	qkv_offsets[0] = q_tensor->info;
+	qkv_offsets[1] = k_tensor->info;
+	qkv_offsets[2] = v_tensor->info;
+	qkv_offsets[3] = q_seq_offsets->info;
+	qkv_offsets[4] = kv_seq_offsets->info;
+	ccv_cnnp_model_compile(scaled_dot_product_attention, qkv_offsets, 5, CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const cnnp_r_tensor = ccv_nnc_tensor_new(0, r_tensor->info, 0);
+	ccv_cnnp_model_evaluate(scaled_dot_product_attention, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(q_tensor, k_tensor, v_tensor, q_seq_offsets, kv_seq_offsets), TENSOR_LIST(cnnp_r_tensor), 0, 0);
+	REQUIRE_TENSOR_EQ(cnnp_r_tensor, r_tensor, "cnnp computed result should match varlen scaled dot product attention op result");
+	ccv_nnc_tensor_free(q_tensor);
+	ccv_nnc_tensor_free(k_tensor);
+	ccv_nnc_tensor_free(v_tensor);
+	ccv_nnc_tensor_free(q_seq_offsets);
+	ccv_nnc_tensor_free(kv_seq_offsets);
+	ccv_nnc_tensor_free(r_tensor);
+	ccv_nnc_tensor_free(cnnp_r_tensor);
 	ccv_cnnp_model_free(scaled_dot_product_attention);
 }
 
@@ -275,7 +331,7 @@ TEST_CASE("run scaled dot product attention + unify head output with cnnp model"
 	memcpy(v_tensor->data.f32, bv_tensor->data.f32, sizeof(float) * 32 * 8 * 128 * 96);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 1, 0, 1, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 0, 0, 0, 0, 0, 1, 0, 1, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[3];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
@@ -341,7 +397,7 @@ TEST_CASE("run scaled dot product attention + attention mask with cnnp model")
 	ccv_nnc_graph_run(sdp_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const br_tensor = ccv_nnc_tensor_from_symbol(sdp_tensor_arena, br);
 	ccv_nnc_tensor_t* const r_tensor = ccv_nnc_tensor_new(0, br_tensor->info, 0);
-	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 1, 0, 0, 0, 0, "scaled_dot_product_attention");
+	ccv_cnnp_model_t* scaled_dot_product_attention = ccv_cnnp_scaled_dot_product_attention(1.0 / 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, "scaled_dot_product_attention");
 	ccv_nnc_tensor_param_t qkv[4];
 	qkv[0] = q_tensor->info;
 	qkv[1] = k_tensor->info;
