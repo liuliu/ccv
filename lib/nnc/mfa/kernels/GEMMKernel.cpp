@@ -222,6 +222,10 @@ GEMMKernel::GEMMKernel(GEMMKernelDescriptor descriptor, MTL::Device *const devic
 
   source = createSource();
 
+  if (!device) {
+    return;
+  }
+
   // Compile the shader source.
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);

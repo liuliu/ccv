@@ -26,6 +26,10 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
 
   source = createSource();
 
+  if (!device) {
+    return;
+  }
+
   // Compile the shader source.
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);

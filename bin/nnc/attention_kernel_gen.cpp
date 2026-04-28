@@ -9,6 +9,7 @@ extern "C" {
 #include "nnc/mfa/kernels/AttentionKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/AttentionKernel.hpp"
 #include "3rdparty/dsfmt/dSFMT.h"
+#include <fstream>
 #include <iostream>
 
 static std::string cacheState(AttentionOperands<bool> cacheStates) noexcept {
@@ -27,6 +28,18 @@ static std::string toLower(std::string s) noexcept {
 	std::transform(s.begin(), s.end(), s.begin(),
 		[](unsigned char c){ return std::tolower(c); });
 	return s;
+}
+
+static bool writeMetalFile(const std::string& directory, const std::string& file, const std::string& source) {
+	std::ofstream output(directory + "/" + file + ".metal", std::ios::binary);
+	if (!output) {
+		std::cerr << "cannot open " << directory << "/" << file << ".metal" << std::endl;
+		return false;
+	}
+	output << "#include <metal_stdlib>\n\n";
+	output << (source.size() > 0 && source[0] == '\n' ? source.substr(1) : source);
+	output << "\n";
+	return (bool)output;
 }
 
 static AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions(AttentionKernelType type, bool lowPrecisionInputs, bool lowPrecisionIntermediates, bool isBF16) noexcept {
@@ -492,9 +505,28 @@ static AttentionKernelDescriptor kernelDescriptor(AttentionKernelType type, bool
 
 int main(int argc, char** argv)
 {
+	bool emitMetal = false;
+	std::string metalDirectory;
+	for (int i = 1; i < argc; i++) {
+		std::string arg(argv[i]);
+		if (arg == "--emit-metal") {
+			if (++i >= argc) {
+				std::cerr << "--emit-metal requires an output directory" << std::endl;
+				return 1;
+			}
+			emitMetal = true;
+			metalDirectory = argv[i];
+		} else if (arg == "--emit-selector") {
+			emitMetal = false;
+		} else {
+			std::cerr << "usage: " << argv[0] << " [--emit-selector] [--emit-metal <directory>]" << std::endl;
+			return 1;
+		}
+	}
+	if (emitMetal)
+		std::cout.setstate(std::ios_base::failbit);
 	ccv_nnc_init();
 	{
-		NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
 		AttentionOperands<bool> transposeState;
 		transposeState[AttentionOperand::Q] = false;
 		transposeState[AttentionOperand::K] = false;
@@ -533,6 +565,11 @@ int main(int argc, char** argv)
 						{
 							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::forward, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
 							std::string file = std::string("f_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							if (emitMetal) {
+								AttentionKernel kernel(kernelDesc, nullptr);
+								if (!writeMetalFile(metalDirectory, file, kernel.source))
+									return 1;
+							}
 							/*
 							std::cout << "///filename: " << file << std::endl;
 							std::cout << "#include <metal_stdlib>" << std::endl;
@@ -561,6 +598,11 @@ int main(int argc, char** argv)
 						{
 							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardQuery, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
 							std::string file = std::string("bq_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							if (emitMetal) {
+								AttentionKernel kernel(kernelDesc, nullptr);
+								if (!writeMetalFile(metalDirectory, file, kernel.source))
+									return 1;
+							}
 							/*
 							std::cout << "///filename: " << file << std::endl;
 							std::cout << "#include <metal_stdlib>" << std::endl;
@@ -589,6 +631,11 @@ int main(int argc, char** argv)
 						{
 							AttentionKernelDescriptor kernelDesc = kernelDescriptor(AttentionKernelType::backwardKeyValue, lowPrecisionInputs, lowPrecisionIntermediates, isBF16, family1009, headDimension);
 							std::string file = std::string("bkv_b") + std::to_string(kernelDesc.blockDimensions[0]) + "x" + std::to_string(kernelDesc.blockDimensions[1]) + "x" + std::to_string(kernelDesc.blockDimensions[2]) + "_h" + std::to_string(headDimension) + "_i" + std::to_string(lowPrecisionInputs) + "_t" + std::to_string(lowPrecisionIntermediates) + "_c" + cacheState(kernelDesc.cacheState) + "_b" + std::to_string(isBF16) + "_c" + std::to_string(kernelDesc.preferAsyncCache) + "_l" + std::to_string(kernelDesc.preferAsyncLoad);
+							if (emitMetal) {
+								AttentionKernel kernel(kernelDesc, nullptr);
+								if (!writeMetalFile(metalDirectory, file, kernel.source))
+									return 1;
+							}
 							/*
 							std::cout << "///filename: " << file << std::endl;
 							std::cout << "#include <metal_stdlib>" << std::endl;

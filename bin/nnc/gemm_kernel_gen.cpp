@@ -9,6 +9,7 @@ extern "C" {
 #include "nnc/mfa/kernels/GEMMKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/GEMMKernel.hpp"
 #include "3rdparty/dsfmt/dSFMT.h"
+#include <fstream>
 #include <iostream>
 
 static std::string name(GEMMOperandPrecision value) {
@@ -20,11 +21,42 @@ static std::string name(GEMMOperandPrecision value) {
 	return "GEMMOperandPrecision::FP32";
 }
 
+static bool writeMetalFile(const std::string& directory, const std::string& file, const std::string& source) {
+	std::ofstream output(directory + "/" + file + ".metal", std::ios::binary);
+	if (!output) {
+		std::cerr << "cannot open " << directory << "/" << file << ".metal" << std::endl;
+		return false;
+	}
+	output << "#include <metal_stdlib>\n\n";
+	output << (source.size() > 0 && source[0] == '\n' ? source.substr(1) : source);
+	output << "\n";
+	return (bool)output;
+}
+
 int main(int argc, char** argv)
 {
+	bool emitMetal = false;
+	std::string metalDirectory;
+	for (int i = 1; i < argc; i++) {
+		std::string arg(argv[i]);
+		if (arg == "--emit-metal") {
+			if (++i >= argc) {
+				std::cerr << "--emit-metal requires an output directory" << std::endl;
+				return 1;
+			}
+			emitMetal = true;
+			metalDirectory = argv[i];
+		} else if (arg == "--emit-selector") {
+			emitMetal = false;
+		} else {
+			std::cerr << "usage: " << argv[0] << " [--emit-selector] [--emit-metal <directory>]" << std::endl;
+			return 1;
+		}
+	}
+	if (emitMetal)
+		std::cout.setstate(std::ios_base::failbit);
 	ccv_nnc_init();
 	{
-		NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
 		// Loop through precisions, useBias, loadM, transposeStates
 		bool transposeStates[] = {
 			false, false,
@@ -71,6 +103,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b32x32x8_") + "p32x32x32_" + memoryPrecisions[j].name() + "_c" + registerPrecisionC.name() + "_l0_s0_" + "s1x1_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -95,8 +132,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							} else {
 								GEMMKernelDescriptor kernelDesc = GEMMKernelDescriptor(
 									simd::ushort3 { 32, 32, 8 }, // Block dimensions
@@ -112,6 +147,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b32x32x8_") + "pnil_" + memoryPrecisions[j].name() + "_c" + registerPrecisionC.name() + "_l0_s0_" + "s1x1_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -136,8 +176,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							}
 							// M1 / M2 kernels.
 							GEMMOperandPrecision registerPrecisionA = memoryPrecisions[j];
@@ -161,6 +199,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b48x48x32_") + "pnil_" + memoryPrecisions[j].name() + "_a" + registerPrecisionA.name() + "_b" + registerPrecisionB.name() + "_c" + registerPrecisionC.name() + "_l1_s0_" + "s2x2_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -185,8 +228,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							}
 							{
 								GEMMKernelDescriptor kernelDesc = GEMMKernelDescriptor(
@@ -203,6 +244,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b48x48x40_") + "pnil_" + memoryPrecisions[j].name() + "_a" + registerPrecisionA.name() + "_b" + registerPrecisionB.name() + "_c" + registerPrecisionC.name() + "_l1_s0_" + "s2x2_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -227,8 +273,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							}
 							{
 								GEMMKernelDescriptor kernelDesc = GEMMKernelDescriptor(
@@ -245,6 +289,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b48x48x32_") + "pnil_" + memoryPrecisions[j].name() + "_a" + registerPrecisionA.name() + "_b" + registerPrecisionB.name() + "_c" + registerPrecisionC.name() + "_l1_s1_" + "s2x2_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -269,8 +318,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							}
 							{
 								GEMMKernelDescriptor kernelDesc = GEMMKernelDescriptor(
@@ -287,6 +334,11 @@ int main(int argc, char** argv)
 									simd::uchar3 { transposeStates[i * 2], transposeStates[i * 2 + 1], false }, // transpose states
 									useBias[k], loadM[l]); // useBias, loadM
 								std::string file = std::string("b48x48x40_") + "pnil_" + memoryPrecisions[j].name() + "_a" + registerPrecisionA.name() + "_b" + registerPrecisionB.name() + "_c" + registerPrecisionC.name() + "_l1_s1_" + "s2x2_" + "a" + std::to_string(transposeStates[i * 2]) + "_b" + std::to_string(transposeStates[i * 2 + 1]) + "_b" + std::to_string(useBias[k]) + "_m" + std::to_string(loadM[l]);
+								if (emitMetal) {
+									GEMMKernel kernel(kernelDesc, nullptr);
+									if (!writeMetalFile(metalDirectory, file, kernel.source))
+										return 1;
+								}
 								/*
 								std::cout << "///filename: " << file << std::endl;
 								std::cout << "#include <metal_stdlib>" << std::endl;
@@ -311,8 +363,6 @@ int main(int argc, char** argv)
     dispatch_release(data);
     return library;
 )";
-								auto kernel = new GEMMKernel(kernelDesc, device.get());
-								delete kernel;
 							}
 						}
 	}
