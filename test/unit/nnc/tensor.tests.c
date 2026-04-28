@@ -170,6 +170,96 @@ TEST_CASE("tensor persistence")
 	ccv_nnc_tensor_free(tensor);
 }
 
+static int _tensor_split_count(sqlite3* const handle, const char* const name)
+{
+	const char tensor_split_count_qs[] = "SELECT COUNT(*) FROM tensor_splits WHERE name=$name";
+	sqlite3_stmt* tensor_split_count_stmt = 0;
+	if (sqlite3_prepare_v2(handle, tensor_split_count_qs, sizeof(tensor_split_count_qs), &tensor_split_count_stmt, 0) != SQLITE_OK)
+		return -1;
+	sqlite3_bind_text(tensor_split_count_stmt, 1, name, -1, SQLITE_STATIC);
+	int count = -1;
+	if (sqlite3_step(tensor_split_count_stmt) == SQLITE_ROW)
+		count = sqlite3_column_int(tensor_split_count_stmt, 0);
+	sqlite3_finalize(tensor_split_count_stmt);
+	return count;
+}
+
+static int _tensor_split_table_exists(sqlite3* const handle)
+{
+	const char tensor_split_table_qs[] = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tensor_splits'";
+	sqlite3_stmt* tensor_split_table_stmt = 0;
+	if (sqlite3_prepare_v2(handle, tensor_split_table_qs, sizeof(tensor_split_table_qs), &tensor_split_table_stmt, 0) != SQLITE_OK)
+		return -1;
+	int exists = -1;
+	if (sqlite3_step(tensor_split_table_stmt) == SQLITE_ROW)
+		exists = sqlite3_column_int(tensor_split_table_stmt, 0);
+	sqlite3_finalize(tensor_split_table_stmt);
+	return exists;
+}
+
+static sqlite_int64 _tensor_format(sqlite3* const handle, const char* const name)
+{
+	const char tensor_format_qs[] = "SELECT format FROM tensors WHERE name=$name";
+	sqlite3_stmt* tensor_format_stmt = 0;
+	if (sqlite3_prepare_v2(handle, tensor_format_qs, sizeof(tensor_format_qs), &tensor_format_stmt, 0) != SQLITE_OK)
+		return -1;
+	sqlite3_bind_text(tensor_format_stmt, 1, name, -1, SQLITE_STATIC);
+	sqlite_int64 format = -1;
+	if (sqlite3_step(tensor_format_stmt) == SQLITE_ROW)
+		format = sqlite3_column_int64(tensor_format_stmt, 0);
+	sqlite3_finalize(tensor_format_stmt);
+	return format;
+}
+
+TEST_CASE("tensor persistence without split blobs does not create split table")
+{
+	sqlite3* handle;
+	sqlite3_open(":memory:", &handle);
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	int i;
+	for (i = 0; i < 10; i++)
+		tensor->data.f32[i] = (float)(i + 1);
+	REQUIRE_EQ(ccv_nnc_tensor_write(tensor, handle, "x", 0), CCV_IO_FINAL, "write should succeed");
+	REQUIRE_EQ(_tensor_split_table_exists(handle), 0, "non-split write should not create tensor_splits");
+	ccv_nnc_tensor_t* tensor1 = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &tensor1), CCV_IO_FINAL, "read should succeed");
+	REQUIRE_TENSOR_EQ(tensor1, tensor, "tensor should round-trip");
+	sqlite3_close(handle);
+	ccv_nnc_tensor_free(tensor1);
+	ccv_nnc_tensor_free(tensor);
+}
+
+TEST_CASE("tensor persistence with split blobs")
+{
+	sqlite3* handle;
+	sqlite3_open("tensors_split.sqlite3", &handle);
+	sqlite3_limit(handle, SQLITE_LIMIT_LENGTH, 8192);
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5000), 0);
+	int i;
+	for (i = 0; i < 5000; i++)
+		tensor->data.f32[i] = (float)(i + 1);
+	REQUIRE_EQ(ccv_nnc_tensor_write(tensor, handle, "x", 0), CCV_IO_FINAL, "write should succeed");
+	const int split_count = _tensor_split_count(handle, "x");
+	REQUIRE(split_count > 0, "large tensor should be split");
+	ccv_nnc_tensor_t* tensor1 = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &tensor1), CCV_IO_FINAL, "read should succeed");
+	REQUIRE_TENSOR_EQ(tensor1, tensor, "split tensor should round-trip");
+	ccv_nnc_tensor_t* const small_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	for (i = 0; i < 10; i++)
+		small_tensor->data.f32[i] = (float)(i + 1) * 0.5;
+	REQUIRE_EQ(ccv_nnc_tensor_write(small_tensor, handle, "x", 0), CCV_IO_FINAL, "small rewrite should succeed");
+	REQUIRE_EQ(_tensor_format(handle, "x") >> 32, 0, "small rewrite should clear split marker");
+	REQUIRE_EQ(_tensor_split_count(handle, "x"), split_count, "small rewrite should not touch old split rows");
+	ccv_nnc_tensor_t* small_tensor1 = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(handle, "x", 0, 0, 0, &small_tensor1), CCV_IO_FINAL, "small read should succeed");
+	REQUIRE_TENSOR_EQ(small_tensor1, small_tensor, "rewritten small tensor should round-trip");
+	sqlite3_close(handle);
+	ccv_nnc_tensor_free(tensor1);
+	ccv_nnc_tensor_free(small_tensor1);
+	ccv_nnc_tensor_free(tensor);
+	ccv_nnc_tensor_free(small_tensor);
+}
+
 static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, ccv_nnc_tensor_param_t* const params, unsigned int* const identifier)
 {
 	unsigned char* const u8 = (unsigned char*)data;
@@ -210,6 +300,29 @@ static int _tensor_noop_encode(const void* const data, const size_t data_size, c
 static int _tensor_noop_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, const ccv_nnc_tensor_param_t tensor_params, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size)
 {
 	return 0;
+}
+
+TEST_CASE("tensor persistence with split blobs and encoder / decoder")
+{
+	sqlite3* handle;
+	sqlite3_open("tensors_split_de.sqlite3", &handle);
+	sqlite3_limit(handle, SQLITE_LIMIT_LENGTH, 8192);
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5000), 0);
+	int i;
+	for (i = 0; i < 5000; i++)
+		tensor->data.f32[i] = (float)(i + 1);
+	ccv_nnc_tensor_io_option_t options = {
+		.encode = _tensor_xor_encode,
+		.decode = _tensor_xor_decode
+	};
+	REQUIRE_EQ(ccv_nnc_tensor_write(tensor, handle, "x", &options), CCV_IO_FINAL, "write should succeed");
+	REQUIRE(_tensor_split_count(handle, "x") > 0, "encoded large tensor should be split");
+	ccv_nnc_tensor_t* tensor1 = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(handle, "x", &options, 0, 0, &tensor1), CCV_IO_FINAL, "read should succeed");
+	REQUIRE_TENSOR_EQ(tensor1, tensor, "split encoded tensor should round-trip");
+	sqlite3_close(handle);
+	ccv_nnc_tensor_free(tensor1);
+	ccv_nnc_tensor_free(tensor);
 }
 
 TEST_CASE("tensor persistence with encoder / decoder")
