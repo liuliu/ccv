@@ -4025,8 +4025,10 @@ TEST_CASE("scaled dot product attention with generic causal and masked mps")
 		ccv_nnc_tensor_t* const cpu_mask = (trial == 1) ? triangular_mask_tensor : ((trial == 2 || trial == 4) ? broadcast_mask_tensor : (trial == 3 ? batched_mask_tensor : 0));
 		ccv_nnc_tensor_t* const gpu_mask = (trial == 1) ? gpu_triangular_mask_tensor : ((trial == 2 || trial == 4) ? gpu_broadcast_mask_tensor : (trial == 3 ? gpu_batched_mask_tensor : 0));
 		ccv_nnc_tensor_t* const o_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, H, D), 0);
-		ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
-		if (cpu_mask)
+		ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, trial == 1 ? 1 : is_causal);
+		if (trial == 1)
+			ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(o_tensor), 0);
+		else if (cpu_mask)
 			ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, cpu_mask), TENSOR_LIST(o_tensor), 0);
 		else
 			ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(o_tensor), 0);

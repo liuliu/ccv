@@ -6,6 +6,7 @@ extern "C" {
 }
 
 MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept {
+  return 0;
   if (transposeState[AttentionOperand::Q].value_or(true) ||
       transposeState[AttentionOperand::K].value_or(true) ||
       transposeState[AttentionOperand::V].value_or(true) ||

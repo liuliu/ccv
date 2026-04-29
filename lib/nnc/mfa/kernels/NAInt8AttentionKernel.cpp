@@ -2098,7 +2098,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       source += R"(
           float score = (float)score_0 * block_scale;
           if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column];
+            score += (float)Mask_buf[row * C + column] * 1.442695041;
           }
           cP_0[k] = column <= row + causal_column_offset ?
               score :
@@ -2123,7 +2123,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
             const int row = causal_row_start + idx[1];
             const int column = int(c) + idx[0];
             if (row < int({{R_LENGTH}})) {
-              score += (float)Mask_buf[row * C + column];
+              score += (float)Mask_buf[row * C + column] * 1.442695041;
             }
           }
           cP_0[k] = score;
@@ -2150,7 +2150,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           const int row = causal_row_start + idx[1];
           const int column = int(c) + idx[0];
           if (row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column];
+            score += (float)Mask_buf[row * C + column] * 1.442695041;
           }
         }
         cP_0[k] = score;
@@ -2367,7 +2367,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
             const int row = causal_row_start + idx[1];
             const int column = int(c) + idx[0];
             if (row < int({{R_LENGTH}})) {
-              score += (float)Mask_buf[row * C + column];
+              score += (float)Mask_buf[row * C + column] * 1.442695041;
             }
           }
           cP_0[k] = score;

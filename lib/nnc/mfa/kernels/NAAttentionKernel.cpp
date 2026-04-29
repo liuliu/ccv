@@ -891,7 +891,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         const int column = int(c) + idx[0];
         float score = cS_0[k] * {{DOT_SCALE}};
         if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-          score += (float)Mask_buf[row * C + column];
+          score += (float)Mask_buf[row * C + column] * 1.442695041;
         }
 )";
     if (isCausal) {
@@ -1128,7 +1128,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         } else {
           float score = cS_0[k] * {{DOT_SCALE}};
           if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column];
+            score += (float)Mask_buf[row * C + column] * 1.442695041;
           }
 )";
     if (isCausal) {
