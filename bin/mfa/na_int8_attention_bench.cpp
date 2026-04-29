@@ -2019,7 +2019,8 @@ Int8Pipeline create_int8_pipeline(
       create_scale(attention),
       variant.is_causal,
       variant.zero_mask,
-      variant.is_causal && !variant.zero_mask && attention.R > attention.C);
+      variant.is_causal && !variant.zero_mask && attention.R > attention.C,
+      false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
   const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];

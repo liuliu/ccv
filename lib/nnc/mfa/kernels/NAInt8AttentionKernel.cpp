@@ -801,7 +801,7 @@ kernel void {{MAIN_KERNEL_NAME}}(
     source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
     source.SetValue("MATMUL_SIMDGROUPS", "1");
     source.SetValue("THREAD_BARRIER_EVERY_C", std::to_string(threadBarrierEveryC));
-    source.SetValue("THREAD_INDEX_PARAMETER", isVarlen ? "" : "\t    ushort tid [[thread_index_in_threadgroup]],\n");
+    source.SetValue("THREAD_INDEX_PARAMETER", (isVarlen || masked) ? "" : "\t    ushort tid [[thread_index_in_threadgroup]],\n");
 	    source += R"(
 	    threadgroup uchar *threadgroup_block [[threadgroup(0)]],
 {{THREAD_INDEX_PARAMETER}}	    ushort sgid [[simdgroup_index_in_threadgroup]],
@@ -1938,6 +1938,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   source.SetValue("R_REMAINDER", isVarlen ? "R_remainder_seq" : "R_remainder");
   source.SetValue("C_EDGE", isVarlen ? "C_edge_seq" : "C_edge");
   source.SetValue("C_REMAINDER", isVarlen ? "C_remainder_seq" : "C_remainder");
+  source.SetValue("MASK_SCALE", dot_product_scale(1.0f));
 
   source += R"(
   auto Q = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, {{R_LENGTH}}));
@@ -2098,7 +2099,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       source += R"(
           float score = (float)score_0 * block_scale;
           if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column] * 1.442695041;
+            score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
           }
           cP_0[k] = column <= row + causal_column_offset ?
               score :
@@ -2123,7 +2124,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
             const int row = causal_row_start + idx[1];
             const int column = int(c) + idx[0];
             if (row < int({{R_LENGTH}})) {
-              score += (float)Mask_buf[row * C + column] * 1.442695041;
+              score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
             }
           }
           cP_0[k] = score;
@@ -2150,7 +2151,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           const int row = causal_row_start + idx[1];
           const int column = int(c) + idx[0];
           if (row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column] * 1.442695041;
+            score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
           }
         }
         cP_0[k] = score;
@@ -2367,7 +2368,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
             const int row = causal_row_start + idx[1];
             const int column = int(c) + idx[0];
             if (row < int({{R_LENGTH}})) {
-              score += (float)Mask_buf[row * C + column] * 1.442695041;
+              score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
             }
           }
           cP_0[k] = score;

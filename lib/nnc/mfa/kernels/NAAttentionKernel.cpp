@@ -766,6 +766,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   source.SetValue("C_SINGLE_EDGE", isVarlen ? "C_single_edge_seq" : "C_single_edge");
   source.SetValue("C_SINGLE_REMAINDER", isVarlen ? "C_single_remainder_seq" : "C_single_remainder");
   source.SetValue("DOT_SCALE", dotProductScale(scale, false));
+  source.SetValue("MASK_SCALE", dotProductScale(1.0f, false));
   source += R"(
   auto Q = tensor<device {{MEMORY_NAME_Q}},  dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, {{R_LENGTH}}));
   auto K = tensor<device {{MEMORY_NAME_K}},  dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, {{C_LENGTH}}));
@@ -891,7 +892,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         const int column = int(c) + idx[0];
         float score = cS_0[k] * {{DOT_SCALE}};
         if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-          score += (float)Mask_buf[row * C + column] * 1.442695041;
+          score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
         }
 )";
     if (isCausal) {
@@ -1128,7 +1129,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         } else {
           float score = cS_0[k] * {{DOT_SCALE}};
           if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column] * 1.442695041;
+            score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
           }
 )";
     if (isCausal) {
