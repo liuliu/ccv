@@ -4426,7 +4426,6 @@ TEST_CASE("scaled dot product attention with NA mps for odd sequence lengths")
 TEST_CASE("scaled dot product attention with varlen NA mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	const int B = 4;
 	const int Hq = 4;
 	const int Hk = 2;
