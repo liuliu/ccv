@@ -5,6 +5,19 @@
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 
+static MPSGraphTensor* _ccv_nnc_mps_graph_stable_log1p(MPSGraph* graph, MPSGraphTensor* x)
+{
+	const MPSDataType data_type = x.dataType;
+	MPSGraphTensor* one = [graph constantWithScalar:1.0 dataType:data_type];
+	MPSGraphTensor* xp1 = [graph additionWithPrimaryTensor:one secondaryTensor:x name:nil];
+	MPSGraphTensor* log_xp1 = [graph logarithmWithTensor:xp1 name:nil];
+	MPSGraphTensor* denom = [graph subtractionWithPrimaryTensor:xp1 secondaryTensor:one name:nil];
+	MPSGraphTensor* quotient = [graph divisionWithPrimaryTensor:log_xp1 secondaryTensor:denom name:nil];
+	MPSGraphTensor* y = [graph multiplicationWithPrimaryTensor:x secondaryTensor:quotient name:nil];
+	MPSGraphTensor* predicate = [graph equalWithPrimaryTensor:xp1 secondaryTensor:one name:nil];
+	return [graph selectWithPredicateTensor:predicate truePredicateTensor:x falsePredicateTensor:y name:nil];
+}
+
 static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size >= 1);
@@ -269,22 +282,88 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == c->info.dim[i]); }
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
-		int indices[1];
-		MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
-			MPSGraphTensor* mps_input_a;
-			MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
-			[inputTensors addObject:mps_input_a];
-			MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
-			[inputShapedTypes addObject:mps_a_shape];
-			MPSGraphTensor* mps_c = [graph exponentWithTensor:mps_a name:nil];
-			[resultTensors addObject:mps_c];
-		});
-		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
-		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
-		[command_buffer commit];
-		[command_buffer waitUntilCompleted];
+		bool use_mfa = true;
+		const char *fallback_reason = NULL;
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA)) {
+			use_mfa = false;
+			fallback_reason = "Disabled.";
+		}
+
+		uint32_t mtl_data_type = UINT32_MAX;
+		if (use_mfa) {
+			if (a->info.datatype != c->info.datatype) {
+				use_mfa = false;
+				fallback_reason = "Mixed precision.";
+			}
+
+			switch (a->info.datatype) {
+				case CCV_16F:
+					mtl_data_type = 16;
+					break;
+				case CCV_16BF:
+					mtl_data_type = 121;
+					break;
+				case CCV_32F:
+					mtl_data_type = 3;
+					break;
+				default:
+					use_mfa = false;
+					fallback_reason = "Unsupported data type.";
+					break;
+			}
+		}
+
+		if (use_mfa) {
+			if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(c))
+			{
+				use_mfa = false;
+				fallback_reason = "Strided.";
+			}
+		}
+		if (use_mfa) {
+			ccv_nnc_mfa_exp_params_t params = {
+				.data_type = mtl_data_type,
+				.length = (uint32_t)ccv_nnc_tensor_count(a->info),
+			};
+			ccv_nnc_mfa_prepare_exp(context, params);
+
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[3] = {
+				mpgetbuffer(inputs[0]),
+				mpgetbuffer(outputs[0]),
+				NULL,
+			};
+			size_t tensor_offsets[2] = {
+				a->dataof,
+				c->dataof
+			};
+			ccv_nnc_mfa_encode_exp(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else {
+			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+			int indices[1];
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				[inputTensors addObject:mps_input_a];
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				[inputShapedTypes addObject:mps_a_shape];
+				MPSGraphTensor* mps_a_f32 = mps_a;
+				if (a->info.datatype != CCV_32F)
+					mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				MPSGraphTensor* mps_c_f32 = [graph exponentWithTensor:mps_a_f32 name:nil];
+				MPSGraphTensor* mps_c = mps_c_f32;
+				if (c->info.datatype != CCV_32F)
+					mps_c = [graph castTensor:mps_c_f32 toType:ccv_nnc_mps_datatype(c->info.datatype) name:@"mps_c"];
+				[resultTensors addObject:mps_c];
+			});
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -292,10 +371,121 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_ewexp_forw;
+}
+
+static int _ccv_nnc_ewsoftplus_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size >= 1);
+	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
+	assert(output_size == 1);
+	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+		{ assert(a->info.dim[i] == c->info.dim[i]); }
+	@autoreleasepool {
+		bool use_mfa = true;
+		const char *fallback_reason = NULL;
+		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA)) {
+			use_mfa = false;
+			fallback_reason = "Disabled.";
+		}
+
+		uint32_t mtl_data_type = UINT32_MAX;
+		if (use_mfa) {
+			if (a->info.datatype != c->info.datatype) {
+				use_mfa = false;
+				fallback_reason = "Mixed precision.";
+			}
+
+			switch (a->info.datatype) {
+				case CCV_16F:
+					mtl_data_type = 16;
+					break;
+				case CCV_16BF:
+					mtl_data_type = 121;
+					break;
+				case CCV_32F:
+					mtl_data_type = 3;
+					break;
+				default:
+					use_mfa = false;
+					fallback_reason = "Unsupported data type.";
+					break;
+			}
+		}
+
+		if (use_mfa) {
+			if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(c))
+			{
+				use_mfa = false;
+				fallback_reason = "Strided.";
+			}
+		}
+		if (use_mfa) {
+			ccv_nnc_mfa_softplus_params_t params = {
+				.data_type = mtl_data_type,
+				.length = (uint32_t)ccv_nnc_tensor_count(a->info),
+			};
+			ccv_nnc_mfa_prepare_softplus(context, params);
+
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[3] = {
+				mpgetbuffer(inputs[0]),
+				mpgetbuffer(outputs[0]),
+				NULL,
+			};
+			size_t tensor_offsets[2] = {
+				a->dataof,
+				c->dataof
+			};
+			ccv_nnc_mfa_encode_softplus(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else {
+			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+			int indices[1];
+			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
+				MPSGraphTensor* mps_input_a;
+				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
+				[inputTensors addObject:mps_input_a];
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				[inputShapedTypes addObject:mps_a_shape];
+				MPSGraphTensor* mps_a_f32 = mps_a;
+				if (a->info.datatype != CCV_32F)
+					mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				MPSGraphTensor* mps_zero = [graph constantWithScalar:0.0 dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* mps_pos = [graph maximumWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_zero name:nil];
+				MPSGraphTensor* mps_abs = [graph absoluteWithTensor:mps_a_f32 name:nil];
+				MPSGraphTensor* mps_neg_abs = [graph negativeWithTensor:mps_abs name:nil];
+				MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_neg_abs name:nil];
+				MPSGraphTensor* mps_log = _ccv_nnc_mps_graph_stable_log1p(graph, mps_exp);
+				MPSGraphTensor* mps_c_f32 = [graph additionWithPrimaryTensor:mps_pos secondaryTensor:mps_log name:nil];
+				MPSGraphTensor* mps_c = mps_c_f32;
+				if (c->info.datatype != CCV_32F)
+					mps_c = [graph castTensor:mps_c_f32 toType:ccv_nnc_mps_datatype(c->info.datatype) name:@"mps_c"];
+				[resultTensors addObject:mps_c];
+			});
+			MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
+			ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &c, (int*[]){ c->info.dim }, (int*[]){ c->stride }, 1, 0);
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		}
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWSOFTPLUS_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
+	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_ewsoftplus_forw;
 }
 
 static int _ccv_nnc_ewpow_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
