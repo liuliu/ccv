@@ -145,6 +145,55 @@ TEST_CASE("mps forward convolution in nchw format")
 	ccv_nnc_tensor_free(ga);
 }
 
+TEST_CASE("mps forward grouped convolution falls back with mfa enabled")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int groups = 2;
+	const int input_dim = 4;
+	const int output_dim = 6;
+	const int batch_size = 2;
+	const int input_size = 8;
+	const int kernel_size = 3;
+	const int output_size = input_size - kernel_size + 1;
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, input_dim, input_size, input_size), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, output_size, output_size), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, output_dim, input_dim / groups, kernel_size, kernel_size), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(groups, output_dim, kernel_size, kernel_size, input_dim / groups);
+	ccv_nnc_hint_t hint = HINT((1, 1), (0, 0));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < batch_size * input_dim * input_size * input_size; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < output_dim * (input_dim / groups) * kernel_size * kernel_size; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (input_dim / groups * kernel_size * kernel_size);
+	ccv_nnc_cmd_t cpu_cmd = cmd;
+	cpu_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert(cpu_cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cpu_cmd, hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, input_dim, input_size, input_size), 0);
+	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, output_dim, input_dim / groups, kernel_size, kernel_size), 0);
+	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, output_dim, output_size, output_size), 0);
+	ccv_nnc_cmd_t move = CMD_DATA_TRANSFER_FORWARD();
+	move.backend = CCV_NNC_BACKEND_MPS;
+	assert(move.backend >= 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(ga, gw), 0);
+	ccv_nnc_cmd_t mps_cmd = cmd;
+	mps_cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(mps_cmd.backend >= 0);
+	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(mps_cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gc), 0));
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, output_dim, output_size, output_size), 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, batch_size * output_dim * output_size * output_size, 1e-5, "grouped convolution output from mps should match from CPU");
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(gw);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("mps forward convolution with 1x1 kernel")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
