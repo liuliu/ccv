@@ -4126,7 +4126,7 @@ static int _ccv_nnc_cmul_convert_to_float(const ccv_nnc_tensor_t* const typed, c
 	return CCV_NNC_EXEC_INVALID;
 }
 
-static int _ccv_nnc_cmul_mixed_precision_mps_case(const int a_datatype, const int b_datatype, const int c_datatype, float* const max_diff)
+static int _ccv_nnc_cmul_mixed_precision_case(const int backend, const int a_datatype, const int b_datatype, const int c_datatype, float* const max_diff)
 {
 	const int count = 2 * 3 * 10;
 	ccv_nnc_tensor_param_t ha32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
@@ -4166,7 +4166,7 @@ static int _ccv_nnc_cmul_mixed_precision_mps_case(const int a_datatype, const in
 	if (status == CCV_NNC_EXEC_SUCCESS)
 	{
 		ccv_nnc_cmd_t cmd = CMD_CMUL_FORWARD();
-		cmd.backend = CCV_NNC_BACKEND_MPS;
+		cmd.backend = backend;
 		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(gc), 0);
 	}
 	if (status == CCV_NNC_EXEC_SUCCESS)
@@ -4207,7 +4207,7 @@ static int _ccv_nnc_cmul_mixed_precision_mps_case(const int a_datatype, const in
 	return status;
 }
 
-static int _ccv_nnc_cmul_mixed_precision_mps_backward_case(const int g_datatype, const int a_datatype, const int b_datatype, const int c_datatype, const int d_datatype, float* const max_diff_c, float* const max_diff_d)
+static int _ccv_nnc_cmul_mixed_precision_backward_case(const int backend, const int g_datatype, const int a_datatype, const int b_datatype, const int c_datatype, const int d_datatype, float* const max_diff_c, float* const max_diff_d)
 {
 	const int count = 2 * 3 * 10;
 	ccv_nnc_tensor_param_t h32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
@@ -4262,7 +4262,7 @@ static int _ccv_nnc_cmul_mixed_precision_mps_backward_case(const int g_datatype,
 	if (status == CCV_NNC_EXEC_SUCCESS)
 	{
 		ccv_nnc_cmd_t cmd = CMD_CMUL_BACKWARD();
-		cmd.backend = CCV_NNC_BACKEND_MPS;
+		cmd.backend = backend;
 		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gb), TENSOR_LIST(gc, gd), 0);
 	}
 	if (status == CCV_NNC_EXEC_SUCCESS)
@@ -4334,16 +4334,16 @@ TEST_CASE("cmul mixed half and bfloat precision with mps")
 	float max_diff_mfa_0 = 1e30f;
 	float max_diff_mfa_1 = 1e30f;
 	float max_diff_mfa_2 = 1e30f;
-	const int status_mfa_0 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_0);
-	const int status_mfa_1 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16BF, CCV_16F, CCV_16BF, &max_diff_mfa_1);
-	const int status_mfa_2 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_32F, &max_diff_mfa_2);
+	const int status_mfa_0 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_0);
+	const int status_mfa_1 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16BF, CCV_16F, CCV_16BF, &max_diff_mfa_1);
+	const int status_mfa_2 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_32F, &max_diff_mfa_2);
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	float max_diff_graph_0 = 1e30f;
 	float max_diff_graph_1 = 1e30f;
 	float max_diff_graph_2 = 1e30f;
-	const int status_graph_0 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_0);
-	const int status_graph_1 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16BF, CCV_16F, CCV_16BF, &max_diff_graph_1);
-	const int status_graph_2 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_32F, &max_diff_graph_2);
+	const int status_graph_0 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_0);
+	const int status_graph_1 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16BF, CCV_16F, CCV_16BF, &max_diff_graph_1);
+	const int status_graph_2 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_32F, &max_diff_graph_2);
 	if (old_flags & CCV_NNC_DISABLE_MFA)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	else
@@ -4370,11 +4370,11 @@ TEST_CASE("cmul gradient mixed half and bfloat precision with mps")
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	float max_diff_mfa_c = 1e30f;
 	float max_diff_mfa_d = 1e30f;
-	const int status_mfa = _ccv_nnc_cmul_mixed_precision_mps_backward_case(CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_c, &max_diff_mfa_d);
+	const int status_mfa = _ccv_nnc_cmul_mixed_precision_backward_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_c, &max_diff_mfa_d);
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	float max_diff_graph_c = 1e30f;
 	float max_diff_graph_d = 1e30f;
-	const int status_graph = _ccv_nnc_cmul_mixed_precision_mps_backward_case(CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_c, &max_diff_graph_d);
+	const int status_graph = _ccv_nnc_cmul_mixed_precision_backward_case(CCV_NNC_BACKEND_MPS, CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_c, &max_diff_graph_d);
 	if (old_flags & CCV_NNC_DISABLE_MFA)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	else
@@ -4385,6 +4385,34 @@ TEST_CASE("cmul gradient mixed half and bfloat precision with mps")
 	REQUIRE(max_diff_mfa_d <= 3e-2, "mixed half / bfloat cmul gradient second output through mfa should match fp32 reference rounded to output dtype");
 	REQUIRE(max_diff_graph_c <= 3e-2, "mixed half / bfloat cmul gradient first output through graph fallback should match fp32 reference rounded to output dtype");
 	REQUIRE(max_diff_graph_d <= 3e-2, "mixed half / bfloat cmul gradient second output through graph fallback should match fp32 reference rounded to output dtype");
+}
+
+TEST_CASE("cmul mixed half and bfloat precision with cuda")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	float max_diff_0 = 1e30f;
+	float max_diff_1 = 1e30f;
+	float max_diff_2 = 1e30f;
+	const int status_0 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_GPU_REF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_0);
+	const int status_1 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_GPU_REF, CCV_16BF, CCV_16F, CCV_16BF, &max_diff_1);
+	const int status_2 = _ccv_nnc_cmul_mixed_precision_case(CCV_NNC_BACKEND_GPU_REF, CCV_16F, CCV_16BF, CCV_32F, &max_diff_2);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_0, "mixed half / bfloat cmul through cuda should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_1, "mixed bfloat / half cmul through cuda should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_2, "mixed half / bfloat cmul to float through cuda should run");
+	REQUIRE(max_diff_0 <= 3e-2, "mixed half / bfloat cmul through cuda should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_1 <= 3e-2, "mixed bfloat / half cmul through cuda should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_2 <= 3e-2, "mixed half / bfloat cmul to float through cuda should match fp32 reference");
+}
+
+TEST_CASE("cmul gradient mixed half and bfloat precision with cuda")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	float max_diff_c = 1e30f;
+	float max_diff_d = 1e30f;
+	const int status = _ccv_nnc_cmul_mixed_precision_backward_case(CCV_NNC_BACKEND_GPU_REF, CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_c, &max_diff_d);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "mixed half / bfloat cmul gradient through cuda should run");
+	REQUIRE(max_diff_c <= 3e-2, "mixed half / bfloat cmul gradient first output through cuda should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_d <= 3e-2, "mixed half / bfloat cmul gradient second output through cuda should match fp32 reference rounded to output dtype");
 }
 
 TEST_CASE("cmul in float")

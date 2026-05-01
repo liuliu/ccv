@@ -9,6 +9,11 @@ extern "C" {
 
 #ifdef HAVE_CUDA
 
+static int _ccv_nnc_cmul_datatype_supported(const int datatype)
+{
+	return datatype == CCV_32F || datatype == CCV_16F || datatype == CCV_16BF;
+}
+
 template<typename NUM1, typename NUM2, typename NUM3>
 __global__ void _ccv_nnc_cmul_kernel(const size_t count, const NUM1* const a, const NUM2* const b, NUM3* const c)
 {
@@ -17,6 +22,19 @@ __global__ void _ccv_nnc_cmul_kernel(const size_t count, const NUM1* const a, co
 		const NUM1 a1 = a[i * 2 + 1];
 		const NUM1 b0 = b[i * 2];
 		const NUM1 b1 = b[i * 2 + 1];
+		c[i * 2] = (NUM3)(a0 * b0 - a1 * b1);
+		c[i * 2 + 1] = (NUM3)(a0 * b1 + a1 * b0);
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_float_kernel(const size_t count, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const float a0 = (float)a[i * 2];
+		const float a1 = (float)a[i * 2 + 1];
+		const float b0 = (float)b[i * 2];
+		const float b1 = (float)b[i * 2 + 1];
 		c[i * 2] = (NUM3)(a0 * b0 - a1 * b1);
 		c[i * 2 + 1] = (NUM3)(a0 * b1 + a1 * b0);
 	}
@@ -44,6 +62,27 @@ __global__ void _ccv_nnc_cmul_kernel_4d_0(const int z_start, const int astride2,
 }
 
 template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_float_kernel_4d_0(const int z_start, const int astride2, const int astride1, const int astride0, const int bstride2, const int bstride1, const int bstride0, const int cstride2, const int cstride1, const int cstride0, const int dim2, const int dim1, const int dim0, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	const int z = blockIdx.z * blockDim.z + threadIdx.z + z_start;
+	const int y = blockIdx.y * blockDim.y + threadIdx.y;
+	const int x = blockIdx.x * blockDim.x + threadIdx.x;
+	if (y >= dim1 || x >= dim0)
+		return;
+	const int u = z % dim2;
+	const int v = z / dim2;
+	const int ida = v * astride2 + u * astride1 + y * astride0 + x * 2;
+	const int idb = v * bstride2 + u * bstride1 + y * bstride0 + x * 2;
+	const int idc = v * cstride2 + u * cstride1 + y * cstride0 + x * 2;
+	const float a0 = (float)a[ida];
+	const float a1 = (float)a[ida + 1];
+	const float b0 = (float)b[idb];
+	const float b1 = (float)b[idb + 1];
+	c[idc] = (NUM3)(a0 * b0 - a1 * b1);
+	c[idc + 1] = (NUM3)(a0 * b1 + a1 * b0);
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
 __global__ void _ccv_nnc_cmul_kernel_3d_0(const int astride1, const int astride0, const int bstride1, const int bstride0, const int cstride1, const int cstride0, const int dim1, const int dim0, const NUM1* const a, const NUM2* const b, NUM3* const c)
 {
 	const int z = blockIdx.z * blockDim.z + threadIdx.z;
@@ -58,6 +97,25 @@ __global__ void _ccv_nnc_cmul_kernel_3d_0(const int astride1, const int astride0
 	const NUM1 a1 = a[ida + 1];
 	const NUM1 b0 = b[idb];
 	const NUM1 b1 = b[idb + 1];
+	c[idc] = (NUM3)(a0 * b0 - a1 * b1);
+	c[idc + 1] = (NUM3)(a0 * b1 + a1 * b0);
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_float_kernel_3d_0(const int astride1, const int astride0, const int bstride1, const int bstride0, const int cstride1, const int cstride0, const int dim1, const int dim0, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	const int z = blockIdx.z * blockDim.z + threadIdx.z;
+	const int y = blockIdx.y * blockDim.y + threadIdx.y;
+	const int x = blockIdx.x * blockDim.x + threadIdx.x;
+	if (y >= dim1 || x >= dim0)
+		return;
+	const int ida = z * astride1 + y * astride0 + x * 2;
+	const int idb = z * bstride1 + y * bstride0 + x * 2;
+	const int idc = z * cstride1 + y * cstride0 + x * 2;
+	const float a0 = (float)a[ida];
+	const float a1 = (float)a[ida + 1];
+	const float b0 = (float)b[idb];
+	const float b1 = (float)b[idb + 1];
 	c[idc] = (NUM3)(a0 * b0 - a1 * b1);
 	c[idc + 1] = (NUM3)(a0 * b1 + a1 * b0);
 }
@@ -80,6 +138,24 @@ __global__ void _ccv_nnc_cmul_kernel_2d_0(const int astride, const int bstride, 
 	c[idc + 1] = (NUM3)(a0 * b1 + a1 * b0);
 }
 
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_float_kernel_2d_0(const int astride, const int bstride, const int cstride, const int dim1, const int dim0, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	const int y = blockIdx.y * blockDim.y + threadIdx.y;
+	const int x = blockIdx.x * blockDim.x + threadIdx.x;
+	if (y >= dim1 || x >= dim0)
+		return;
+	const int ida = y * astride + x * 2;
+	const int idb = y * bstride + x * 2;
+	const int idc = y * cstride + x * 2;
+	const float a0 = (float)a[ida];
+	const float a1 = (float)a[ida + 1];
+	const float b0 = (float)b[idb];
+	const float b1 = (float)b[idb + 1];
+	c[idc] = (NUM3)(a0 * b0 - a1 * b1);
+	c[idc + 1] = (NUM3)(a0 * b1 + a1 * b0);
+}
+
 static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
@@ -93,7 +169,10 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const size_t count = ccv_nnc_tensor_count(c->info) / 2;
 	int i;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	assert(a->info.datatype == b->info.datatype);
+	if (!_ccv_nnc_cmul_datatype_supported(a->info.datatype) ||
+		!_ccv_nnc_cmul_datatype_supported(b->info.datatype) ||
+		!_ccv_nnc_cmul_datatype_supported(c->info.datatype))
+		return CCV_NNC_EXEC_INVALID;
 	// If there is no broadcast, just do the simplest cmul.
 	if (ccv_nnc_tensor_count(a->info) == count * 2 && ccv_nnc_tensor_count(b->info) == count * 2)
 	{
@@ -101,21 +180,78 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{ assert(b->info.dim[i] == c->info.dim[i]); }
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 			{ assert(a->info.dim[i] == b->info.dim[i]); }
-		if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+		if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 		{
-			_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
-		} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-			_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
-		} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-			_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
-		} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-			_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
-		}
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+			if (c->info.datatype == CCV_32F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+			else if (c->info.datatype == CCV_16F)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+			else if (c->info.datatype == CCV_16BF)
+				_ccv_nnc_cmul_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+		} else
+			return CCV_NNC_EXEC_INVALID;
+		CUDA_ENFORCE(cudaGetLastError());
 	} else {
 		// Otherwise, find strides for both to increment.
 		int nd = ccv_nnc_tensor_nd(a->info.dim);
-		assert(nd = ccv_nnc_tensor_nd(b->info.dim));
-		assert(nd = ccv_nnc_tensor_nd(c->info.dim));
+		assert(nd == ccv_nnc_tensor_nd(b->info.dim));
+		assert(nd == ccv_nnc_tensor_nd(c->info.dim));
 		int adim[CCV_NNC_MAX_DIM_ALLOC];
 		int bdim[CCV_NNC_MAX_DIM_ALLOC];
 		int cdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -163,44 +299,218 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			for (i = 0; i < (cdim[2] * cdim[3] + 0xfffe) / 0xffff; i++)
 			{
 				const int z_start = i * 0xffff;
-				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				const dim3 blocks((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] * cdim[3] - z_start, 0xffff));
+				const dim3 threads(64, 8, 1);
+				if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_cmul_kernel_4d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] * cdim[3] - z_start, 0xffff)), dim3(64, 8, 1), 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, c->data.f32);
-				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_kernel_4d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] * cdim[3] - z_start, 0xffff)), dim3(64, 8, 1), 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__half*)c->data.f16);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_cmul_kernel_4d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] * cdim[3] - z_start, 0xffff)), dim3(64, 8, 1), 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_kernel_4d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] * cdim[3] - z_start, 0xffff)), dim3(64, 8, 1), 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_4d_0<<<blocks, threads, 0, stream>>>(z_start, astride[3], astride[2], astride[1], bstride[3], bstride[2], bstride[1], cstride[3], cstride[2], cstride[1], cdim[2], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			}
 		} else if (nd == 3) {
 			// Make sure when we launch, the grid.z won't exceed the limit which is 65535.
 			for (i = 0; i < (cdim[2] + 0xfffe) / 0xffff; i++)
 			{
-				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				const dim3 blocks((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] - i * 0xffff, 0xffff));
+				const dim3 threads(64, 8, 1);
+				if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_cmul_kernel_3d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] - i * 0xffff, 0xffff)), dim3(64, 8, 1), 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
-				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_kernel_3d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] - i * 0xffff, 0xffff)), dim3(64, 8, 1), 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_cmul_kernel_3d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] - i * 0xffff, 0xffff)), dim3(64, 8, 1), 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_kernel_3d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, ccv_min(cdim[2] - i * 0xffff, 0xffff)), dim3(64, 8, 1), 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, a->data.f32 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], b->data.f32 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__half*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], c->data.f32 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__half*)c->data.f16 + 0xffff * i * cstride[2]);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_float_kernel_3d_0<<<blocks, threads, 0, stream>>>(astride[2], astride[1], bstride[2], bstride[1], cstride[2], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16 + 0xffff * i * astride[2], (__nv_bfloat16*)b->data.f16 + 0xffff * i * bstride[2], (__nv_bfloat16*)c->data.f16 + 0xffff * i * cstride[2]);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			}
 		} else if (nd == 2) {
 			assert(adim[0] == bdim[0] && adim[0] == cdim[0]);
-			if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+			const dim3 blocks((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1);
+			const dim3 threads(64, 8, 1);
+			if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 			{
-				_ccv_nnc_cmul_kernel_2d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1), dim3(64, 8, 1), 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, c->data.f32);
-			} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-				_ccv_nnc_cmul_kernel_2d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1), dim3(64, 8, 1), 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__half*)c->data.f16);
-			} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-				_ccv_nnc_cmul_kernel_2d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1), dim3(64, 8, 1), 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
-			} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-				_ccv_nnc_cmul_kernel_2d_0<<<dim3((cdim[0] / 2 + 63) / 64, (cdim[1] + 7) / 8, 1), dim3(64, 8, 1), 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
-			}
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, b->data.f32, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, a->data.f32, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+				if (c->info.datatype == CCV_32F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+				else if (c->info.datatype == CCV_16F)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+				else if (c->info.datatype == CCV_16BF)
+					_ccv_nnc_cmul_float_kernel_2d_0<<<blocks, threads, 0, stream>>>(astride[1], bstride[1], cstride[1], cdim[1], cdim[0] / 2, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+			} else
+				return CCV_NNC_EXEC_INVALID;
 		}
 		CUDA_ENFORCE(cudaGetLastError());
 	}
@@ -218,6 +528,17 @@ __global__ void _ccv_nnc_conj_kernel(const size_t count, const NUM2* const b, NU
 	}
 }
 
+template<typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_conj_float_kernel(const size_t count, const NUM2* const b, NUM3* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const float b0 = (float)b[i * 2];
+		const float b1 = (float)b[i * 2 + 1];
+		c[i * 2] = (NUM3)(b0);
+		c[i * 2 + 1] = (NUM3)(-b1);
+	}
+}
+
 template<typename NUM1, typename NUM2, typename NUM3>
 __global__ void _ccv_nnc_cmul_conj_kernel(const size_t count, const NUM1* const a, const NUM2* const b, NUM3* const c)
 {
@@ -226,6 +547,19 @@ __global__ void _ccv_nnc_cmul_conj_kernel(const size_t count, const NUM1* const 
 		const NUM1 a1 = a[i * 2 + 1];
 		const NUM1 b0 = b[i * 2];
 		const NUM1 b1 = b[i * 2 + 1];
+		c[i * 2] = (NUM3)(a0 * b0 + a1 * b1);
+		c[i * 2 + 1] = (NUM3)(-a0 * b1 + a1 * b0);
+	}
+}
+
+template<typename NUM1, typename NUM2, typename NUM3>
+__global__ void _ccv_nnc_cmul_conj_float_kernel(const size_t count, const NUM1* const a, const NUM2* const b, NUM3* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const float a0 = (float)a[i * 2];
+		const float a1 = (float)a[i * 2 + 1];
+		const float b0 = (float)b[i * 2];
+		const float b1 = (float)b[i * 2 + 1];
 		c[i * 2] = (NUM3)(a0 * b0 + a1 * b1);
 		c[i * 2 + 1] = (NUM3)(-a0 * b1 + a1 * b0);
 	}
@@ -251,6 +585,12 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	}
 	int i;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	if ((inputs[0] && !_ccv_nnc_cmul_datatype_supported(inputs[0]->info.datatype)) ||
+		(input_size > 1 && inputs[1] && !_ccv_nnc_cmul_datatype_supported(inputs[1]->info.datatype)) ||
+		(input_size > 2 && inputs[2] && !_ccv_nnc_cmul_datatype_supported(inputs[2]->info.datatype)) ||
+		(outputs[0] && !_ccv_nnc_cmul_datatype_supported(outputs[0]->info.datatype)) ||
+		(output_size > 1 && outputs[1] && !_ccv_nnc_cmul_datatype_supported(outputs[1]->info.datatype)))
+		return CCV_NNC_EXEC_INVALID;
 	if (no_broadcasting)
 	{
 		if (outputs[0])
@@ -265,31 +605,101 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					{ assert(b->info.dim[i] == c->info.dim[i]); }
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == b->info.dim[i]); }
-				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
-				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			} else {
 				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[2];
 				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 					{ assert(b->info.dim[i] == c->info.dim[i]); }
-				if (b->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				if (b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
-				} else if (b->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
-				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
-				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			}
 		}
 		if (output_size > 1 && outputs[1])
@@ -304,33 +714,104 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					{ assert(b->info.dim[i] == c->info.dim[i]); }
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 					{ assert(a->info.dim[i] == b->info.dim[i]); }
-				if (a->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				if (a->info.datatype == CCV_32F && b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
-				} else if (a->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
-				} else if (a->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, a->data.f32, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_cmul_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)a->data.f16, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			} else {
 				ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[1];
 				ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[1];
 				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 					{ assert(b->info.dim[i] == c->info.dim[i]); }
-				if (b->info.datatype == CCV_32F && c->info.datatype == CCV_32F)
+				if (b->info.datatype == CCV_32F)
 				{
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
-				} else if (b->info.datatype == CCV_32F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
-				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_32F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
-				} else if (b->info.datatype == CCV_16F && c->info.datatype == CCV_16F) {
-					_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
-				}
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, b->data.f32, (__nv_bfloat16*)c->data.f16);
+				} else if (b->info.datatype == CCV_16F) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__half*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else if (b->info.datatype == CCV_16BF) {
+					if (c->info.datatype == CCV_32F)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, c->data.f32);
+					else if (c->info.datatype == CCV_16F)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, (__half*)c->data.f16);
+					else if (c->info.datatype == CCV_16BF)
+						_ccv_nnc_conj_float_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, (__nv_bfloat16*)b->data.f16, (__nv_bfloat16*)c->data.f16);
+				} else
+					return CCV_NNC_EXEC_INVALID;
 			}
 		}
+		CUDA_ENFORCE(cudaGetLastError());
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	return CCV_NNC_EXEC_INVALID;
@@ -342,7 +823,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_
 {
 #ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_cmul_forw;
@@ -353,10 +834,9 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc
 {
 #ifdef HAVE_CUDA
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_cmul_back;
 #endif
 }
-
