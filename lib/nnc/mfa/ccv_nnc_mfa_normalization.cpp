@@ -68,6 +68,10 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
         data_type_size = 2;
         break;
       }
+      case MTL::DataTypeBFloat: {
+        data_type_size = 2;
+        break;
+      }
       case MTL::DataTypeFloat: {
         data_type_size = 4;
         break;

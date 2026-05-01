@@ -32,7 +32,7 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
 
   // FlashNorm not supported for group normalization yet.
   CCV_NNC_MFA_PRECONDITION(normalizationType == 0 || normalizationType == 2);
-  CCV_NNC_MFA_PRECONDITION(dataType == MTL::DataTypeFloat || dataType == MTL::DataTypeHalf);
+  CCV_NNC_MFA_PRECONDITION(dataType == MTL::DataTypeFloat || dataType == MTL::DataTypeHalf || dataType == MTL::DataTypeBFloat);
   CCV_NNC_MFA_PRECONDITION(channelGroups == 1);
 
   const uint16_t threadgroup_size = (channelCount <= 384) ? 128 : 256;
@@ -90,19 +90,19 @@ kernel void normalization(
 #endif
   
   const uint cache_bulk_size = bulk_size / threadgroup_size;
-  real cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
-  real cache_padding;
+  accumulator cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
+  accumulator cache_padding;
   threadgroup float partials[threadgroup_size / 32];
   
 #pragma clang loop unroll(full)
   for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-    cache_bulk[i / threadgroup_size] = source[i];
+    cache_bulk[i / threadgroup_size] = accumulator(source[i]);
   }
   if (padding_size > 0 && lid < padding_size) {
-    cache_padding = source[bulk_size];
+    cache_padding = accumulator(source[bulk_size]);
   }
 #if REUSE_SAVED_STATISTICS
-  float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[threadgroup_index];
+  float standard_deviation_reciprocal = accumulator(saved_standard_deviation_reciprocal[threadgroup_index]);
 #else
   float variance = 0;
 #pragma clang loop unroll(full)
@@ -126,7 +126,7 @@ kernel void normalization(
     float standard_deviation_reciprocal = rsqrt(variance);
     partials[lid] = standard_deviation_reciprocal;
     
-    saved_standard_deviation_reciprocal[threadgroup_index] =  standard_deviation_reciprocal;
+    saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -135,25 +135,25 @@ kernel void normalization(
 
 #pragma clang loop unroll(full)
   for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-    real deviation = cache_bulk[i / threadgroup_size];
+    accumulator deviation = cache_bulk[i / threadgroup_size];
     deviation *= standard_deviation_reciprocal;
 
 #if ELEMENTWISE_AFFINE
-    real scale = channel_scales[i];
-    destination[i] = scale * deviation;
+    accumulator scale = accumulator(channel_scales[i]);
+    destination[i] = real(scale * deviation);
 #else
-    destination[i] = deviation;
+    destination[i] = real(deviation);
 #endif
   }
   if (padding_size > 0 && lid < padding_size) {
-    real deviation = cache_padding;
+    accumulator deviation = cache_padding;
     deviation *= standard_deviation_reciprocal;
 
 #if ELEMENTWISE_AFFINE
-    real scale = channel_scales[bulk_size];
-    destination[bulk_size] = scale * deviation;
+    accumulator scale = accumulator(channel_scales[bulk_size]);
+    destination[bulk_size] = real(scale * deviation);
 #else
-    destination[bulk_size] = deviation;
+    destination[bulk_size] = real(deviation);
 #endif
   }
 }
@@ -204,23 +204,23 @@ kernel void normalization(
 #endif
   
   const uint cache_bulk_size = bulk_size / threadgroup_size;
-  real cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
-  real cache_padding;
+  accumulator cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
+  accumulator cache_padding;
   threadgroup float partials[threadgroup_size / 32];
   
   float sum = 0;
 #pragma clang loop unroll(full)
   for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-    cache_bulk[i / threadgroup_size] = source[i];
+    cache_bulk[i / threadgroup_size] = accumulator(source[i]);
     sum += cache_bulk[i / threadgroup_size];
   }
   if (padding_size > 0 && lid < padding_size) {
-    cache_padding = source[bulk_size];
+    cache_padding = accumulator(source[bulk_size]);
     sum += cache_padding;
   }
 #if REUSE_SAVED_STATISTICS
-  float mean = saved_mean[threadgroup_index];
-  float standard_deviation_reciprocal = saved_standard_deviation_reciprocal[threadgroup_index];
+  float mean = accumulator(saved_mean[threadgroup_index]);
+  float standard_deviation_reciprocal = accumulator(saved_standard_deviation_reciprocal[threadgroup_index]);
 #else
   partials[sidx] = simd_sum(sum);
   
@@ -240,7 +240,7 @@ kernel void normalization(
   for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
     float centered = float(cache_bulk[slot]) - mean;
     variance += centered * centered;
-    cache_bulk[slot] = real(centered);
+    cache_bulk[slot] = accumulator(centered);
   }
   if (padding_size > 0 && lid < padding_size) {
     cache_padding -= mean;
@@ -259,8 +259,8 @@ kernel void normalization(
     float standard_deviation_reciprocal = rsqrt(variance);
     partials[lid] = standard_deviation_reciprocal;
     
-    saved_mean[threadgroup_index] = mean;
-    saved_standard_deviation_reciprocal[threadgroup_index] =  standard_deviation_reciprocal;
+    saved_mean[threadgroup_index] = real(mean);
+    saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -269,27 +269,27 @@ kernel void normalization(
 
 #pragma clang loop unroll(full)
   for (uint i = 0; i < bulk_size; i += threadgroup_size) {
-    real deviation = cache_bulk[i / threadgroup_size];
+    accumulator deviation = cache_bulk[i / threadgroup_size];
     deviation *= standard_deviation_reciprocal;
 
 #if ELEMENTWISE_AFFINE
-    real scale = channel_scales[i];
-    real translation = channel_translations[i];
-    destination[i] = scale * deviation + translation;
+    accumulator scale = accumulator(channel_scales[i]);
+    accumulator translation = accumulator(channel_translations[i]);
+    destination[i] = real(scale * deviation + translation);
 #else
-    destination[i] = deviation;
+    destination[i] = real(deviation);
 #endif
   }
   if (padding_size > 0 && lid < padding_size) {
-    real deviation = cache_padding;
+    accumulator deviation = cache_padding;
     deviation *= standard_deviation_reciprocal;
 
 #if ELEMENTWISE_AFFINE
-    real scale = channel_scales[bulk_size];
-    real translation = channel_translations[bulk_size];
-    destination[bulk_size] = scale * deviation + translation;
+    accumulator scale = accumulator(channel_scales[bulk_size]);
+    accumulator translation = accumulator(channel_translations[bulk_size]);
+    destination[bulk_size] = real(scale * deviation + translation);
 #else
-    destination[bulk_size] = deviation;
+    destination[bulk_size] = real(deviation);
 #endif
   }
 }
@@ -299,8 +299,17 @@ kernel void normalization(
   if (dataType == MTL::DataTypeFloat) {
     defines += std::string("typedef float real;");
     defines += "\n";
-  } else {
+    defines += std::string("typedef real accumulator;");
+    defines += "\n";
+  } else if (dataType == MTL::DataTypeHalf) {
     defines += std::string("typedef half real;");
+    defines += "\n";
+    defines += std::string("typedef real accumulator;");
+    defines += "\n";
+  } else {
+    defines += std::string("typedef bfloat real;");
+    defines += "\n";
+    defines += std::string("typedef float accumulator;");
     defines += "\n";
   }
 

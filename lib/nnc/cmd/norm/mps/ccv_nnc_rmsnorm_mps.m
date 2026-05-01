@@ -36,7 +36,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			const int is_same_dtype =
 				(inputs[0]->info.datatype == outputs[0]->info.datatype) &&
 				(inputs[0]->info.datatype == outputs[1]->info.datatype) &&
-				(inputs[0]->info.datatype == inputs[1]->info.datatype);
+				(!elementwise_affine || inputs[0]->info.datatype == inputs[1]->info.datatype);
 			if (!is_same_dtype) {
 				use_mfa = false;
 				fallback_reason = "Mixed precision.";
@@ -45,6 +45,10 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			switch (at.info.datatype) {
 				case CCV_16F: {
 					mtl_data_type = 16;
+					break;
+				}
+				case CCV_16BF: {
+					mtl_data_type = 121;
 					break;
 				}
 				case CCV_32F: {
@@ -71,7 +75,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			if (!(!CCV_IS_TENSOR_VIEW(&at) || ccv_nnc_tensor_view_is_contiguous(at.info.dim, at.stride)) ||
 					!(!CCV_IS_TENSOR_VIEW(&bt) || ccv_nnc_tensor_view_is_contiguous(bt.info.dim, bt.stride)) ||
 					!CCV_IS_TENSOR_CONTIGUOUS(outputs[1]) ||
-					!CCV_IS_TENSOR_CONTIGUOUS(inputs[1]))
+					(elementwise_affine && !CCV_IS_TENSOR_CONTIGUOUS(inputs[1])))
 			{
 				use_mfa = false;
 				fallback_reason = "Strided.";
@@ -161,7 +165,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				mpgetbuffer(inputs[0]), // source
 				mpgetbuffer(outputs[0]), // destination
 				mpgetbuffer(outputs[1]), // saved_standard_deviation_reciprocal
-				mpgetbuffer(inputs[1]), // channel_scales
+				elementwise_affine ? mpgetbuffer(inputs[1]) : NULL, // channel_scales
 				NULL,
 			};
 			size_t tensor_offsets[4] = {
@@ -199,28 +203,20 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 						[axes addObject:@(i)];
 				MPSGraphTensor* mps_saved_inv_std;
 				const double epsilon = cmd.info.rmsnorm.epsilon;
-				MPSGraphTensor* mps_b;
-				if (at.info.datatype == CCV_32F)
-				{
-					MPSGraphTensor* mps_square = [graph squareWithTensor:mps_a name:nil];
-					MPSGraphTensor* mps_variance = [graph meanOfTensor:mps_square axes:axes name:nil];
-					[axes release];
-					MPSGraphTensor* mps_epsilon = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
-					mps_saved_inv_std = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance secondaryTensor:mps_epsilon name:nil] name:nil] name:nil];
-					mps_b = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_saved_inv_std name:nil];
-				} else {
-					// Compute variance at higher resolution.
-					MPSGraphTensor* mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"float"];
-					MPSGraphTensor* mps_square_f32 = [graph squareWithTensor:mps_a_f32 name:nil];
-					MPSGraphTensor* mps_variance_f32 = [graph meanOfTensor:mps_square_f32 axes:axes name:nil];
-					[axes release];
-					MPSGraphTensor* mps_epsilon_f32 = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
-					MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
-					mps_saved_inv_std = [graph castTensor:mps_inv_std_f32 toType:MPSDataTypeFloat16 name:@"inv_std"];
-					mps_b = [graph castTensor:[graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_inv_std_f32 name:nil] toType:MPSDataTypeFloat16 name:@"b"];
-				}
+				MPSGraphTensor* mps_a_f32 = at.info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				MPSGraphTensor* mps_square_f32 = [graph squareWithTensor:mps_a_f32 name:nil];
+				MPSGraphTensor* mps_variance_f32 = [graph meanOfTensor:mps_square_f32 axes:axes name:nil];
+				[axes release];
+				MPSGraphTensor* mps_epsilon_f32 = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
+				mps_saved_inv_std = saved_inv_stdt.info.datatype == CCV_32F ? mps_inv_std_f32 : [graph castTensor:mps_inv_std_f32 toType:ccv_nnc_mps_datatype(saved_inv_stdt.info.datatype) name:@"inv_std"];
+				MPSGraphTensor* mps_b = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_inv_std_f32 name:nil];
 				if (elementwise_affine)
-					mps_b = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_scale name:nil];
+				{
+					MPSGraphTensor* mps_scale_f32 = scalet.info.datatype == CCV_32F ? mps_scale : [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
+					mps_b = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_scale_f32 name:nil];
+				}
+				mps_b = bt.info.datatype == CCV_32F ? mps_b : [graph castTensor:mps_b toType:ccv_nnc_mps_datatype(bt.info.datatype) name:@"b"];
 				[resultTensors addObject:mps_b];
 				[resultTensors addObject:mps_saved_inv_std];
 			});
@@ -312,21 +308,16 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 				MPSGraphTensor* mps_h = nil;
 
-				if (a->info.datatype == CCV_16F)
-					mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
-
-				if (saved_inv_std->info.datatype == CCV_16F)
-					mps_saved_inv_std = [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
+				mps_a = a->info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				mps_saved_inv_std = saved_inv_std->info.datatype == CCV_32F ? mps_saved_inv_std : [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
 
 				// ahp[x] = ap1[x] * inv_stdp2[0];
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_saved_inv_std name:nil];
 
-				if (g->info.datatype == CCV_16F)
-					mps_g = [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
 				if (elementwise_affine)
 				{
-					if (scale->info.datatype == CCV_16F)
-						mps_scale = [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
+					mps_scale = scale->info.datatype == CCV_32F ? mps_scale : [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
 					// gp1[x] * scalep2[x]
 					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_scale name:nil];
 				}
@@ -352,8 +343,7 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				// h = gssp[x] - inv_n * ahp[x] * ahgssrp2[x]
 				mps_h = [graph subtractionWithPrimaryTensor:gss secondaryTensor:gssrp_ahp_ahgssrp name:nil];
 
-				if (h->info.datatype == CCV_16F)
-					mps_h = [graph castTensor:mps_h toType:MPSDataTypeFloat16 name:@"mps_h_half"];
+				mps_h = h->info.datatype == CCV_32F ? mps_h : [graph castTensor:mps_h toType:ccv_nnc_mps_datatype(h->info.datatype) name:@"mps_h"];
 
 				[resultTensors addObject:mps_h];
 			
@@ -403,6 +393,9 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				MPSGraphTensor* mps_dscale = nil;
 
 				// ahp[x] = ap1[x] * inv_stdp2[0];
+				mps_a = a->info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+				mps_saved_inv_std = saved_inv_std->info.datatype == CCV_32F ? mps_saved_inv_std : [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
+				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_saved_inv_std name:nil];
 
 				NSMutableArray<NSNumber*>* dscale_axes = [NSMutableArray new];
@@ -416,6 +409,7 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				//	dscalep2[x] += ahp[x] * gp1[x]; reduce
 				mps_dscale = [graph reductionSumWithTensor:mps_dscale_original axes:dscale_axes name:nil];
 				[dscale_axes release];
+				mps_dscale = dscale->info.datatype == CCV_32F ? mps_dscale : [graph castTensor:mps_dscale toType:ccv_nnc_mps_datatype(dscale->info.datatype) name:@"mps_dscale"];
 
 				[resultTensors addObject:mps_dscale];
 			});
@@ -434,7 +428,7 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 REGISTER_COMMAND_BACKEND(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_rmsnorm_forw;
@@ -443,7 +437,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_c
 REGISTER_COMMAND_BACKEND(CCV_NNC_RMSNORM_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_rmsnorm_back;
