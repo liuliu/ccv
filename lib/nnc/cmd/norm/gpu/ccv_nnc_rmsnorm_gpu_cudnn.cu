@@ -48,6 +48,75 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
 		rcount *= rdim[x];
 	const float inv_n = 1. / n;
+	const int use_bfloat = inputs[0]->info.datatype == CCV_16BF || outputs[0]->info.datatype == CCV_16BF || outputs[1]->info.datatype == CCV_16BF || (elementwise_affine && inputs[1]->info.datatype == CCV_16BF);
+	if (use_bfloat)
+	{
+		const int acount = n * rcount;
+		ccv_nnc_tensor_param_t a32_info = inputs[0]->info;
+		a32_info.datatype = CCV_32F;
+		ccv_nnc_tensor_param_t b32_info = outputs[0]->info;
+		b32_info.datatype = CCV_32F;
+		ccv_nnc_tensor_param_t saved_inv_std32_info = outputs[1]->info;
+		saved_inv_std32_info.datatype = CCV_32F;
+		size_t placeholder = 0;
+		ccv_nnc_tensor_t a32t = ccv_nnc_tensor(&placeholder, a32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t a32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&a32t);
+		ccv_nnc_tensor_t b32t = ccv_nnc_tensor(&placeholder, b32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t b32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&b32t);
+		ccv_nnc_tensor_t saved_inv_std32t = ccv_nnc_tensor(&placeholder, saved_inv_std32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t saved_inv_std32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&saved_inv_std32t);
+		ccv_nnc_cudnn_tensor_view_descriptor_t scale32 = {};
+		int scale_count = 0;
+		if (elementwise_affine)
+		{
+			ccv_nnc_tensor_param_t scale32_info = inputs[1]->info;
+			scale32_info.datatype = CCV_32F;
+			scale_count = ccv_nnc_tensor_count(scale32_info);
+			ccv_nnc_tensor_t scale32t = ccv_nnc_tensor(&placeholder, scale32_info, 0);
+			scale32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&scale32t);
+		}
+		cudnnReduceTensorDescriptor_t reduce = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
+		size_t saved_inv_std_workspace_size = 0;
+		cudnnSetReduceTensorDescriptor(reduce, CUDNN_REDUCE_TENSOR_NORM2, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, a32.descriptor, saved_inv_std32.descriptor, &saved_inv_std_workspace_size));
+		uint8_t* const workspace = (uint8_t*)ccv_nnc_stream_context_get_workspace(stream_context, saved_inv_std_workspace_size + sizeof(float) * (acount * 2 + rcount + scale_count), CCV_TENSOR_GPU_MEMORY);
+		float* const a32p = (float*)(workspace + saved_inv_std_workspace_size);
+		a32.data.u8 = (uint8_t*)a32p;
+		float* const b32p = a32p + acount;
+		b32.data.u8 = (uint8_t*)b32p;
+		float* const saved_inv_std32p = b32p + acount;
+		saved_inv_std32.data.u8 = (uint8_t*)saved_inv_std32p;
+		if (elementwise_affine)
+		{
+			float* const scale32p = saved_inv_std32p + rcount;
+			scale32.data.u8 = (uint8_t*)scale32p;
+		}
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8, &zero, a32.descriptor, a32.data.u8));
+		if (elementwise_affine)
+			{ CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, scale.descriptor, scale.data.u8, &zero, scale32.descriptor, scale32.data.u8)); }
+		const float inv_n_sqrt = sqrt(inv_n);
+		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, workspace, saved_inv_std_workspace_size, &inv_n_sqrt, a32.descriptor, a32.data.u8, &zero, saved_inv_std32.descriptor, saved_inv_std32.data.u8));
+		const float epsilon = cmd.info.rmsnorm.epsilon;
+		_ccv_nnc_inv_std_kernel<<<CUDA_GET_BLOCKS(rcount), CUDA_NUM_THREADS, 0, stream>>>(rcount, epsilon, saved_inv_std32.data.f32, saved_inv_std32.data.f32);
+		cudnnOpTensorDescriptor_t op = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
+		cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, a32.descriptor, a32.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, b32.descriptor, b32.data.u8));
+		if (elementwise_affine)
+			{ CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b32.descriptor, b32.data.u8, &one, scale32.descriptor, scale32.data.u8, &zero, b32.descriptor, b32.data.u8)); }
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, b32.descriptor, b32.data.u8, &zero, b.descriptor, b.data.u8));
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, saved_inv_std.descriptor, saved_inv_std.data.u8));
+		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce);
+		ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, op);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(saved_inv_std);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(saved_inv_std32);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	cudnnReduceTensorDescriptor_t reduce = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
 	size_t saved_inv_std_workspace_size = 0;
 	cudnnSetReduceTensorDescriptor(reduce, CUDNN_REDUCE_TENSOR_NORM2, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
@@ -114,12 +183,138 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const float neg_inv_n = -1. / n;
 	cudnnReduceTensorDescriptor_t reduce = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
 	cudnnSetReduceTensorDescriptor(reduce, CUDNN_REDUCE_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
+	const int use_bfloat = inputs[0]->info.datatype == CCV_16BF || inputs[2]->info.datatype == CCV_16BF || inputs[elementwise_affine ? 5 : 4]->info.datatype == CCV_16BF || outputs[0]->info.datatype == CCV_16BF || (elementwise_affine && inputs[3]->info.datatype == CCV_16BF) || (output_size > 1 && outputs[1] && outputs[1]->info.datatype == CCV_16BF);
 	size_t scale_workspace_size = 0;
-	if (dscale.descriptor)
+	if (!use_bfloat && dscale.descriptor)
 		{ CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, g.descriptor, dscale.descriptor, &scale_workspace_size)); }
 	size_t inv_std_workspace_size = 0;
-	CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, g.descriptor, saved_inv_std.descriptor, &inv_std_workspace_size));
+	if (!use_bfloat)
+		{ CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, g.descriptor, saved_inv_std.descriptor, &inv_std_workspace_size)); }
 	const size_t workspace_size = ccv_max(scale_workspace_size, inv_std_workspace_size);
+	if (use_bfloat)
+	{
+		ccv_nnc_tensor_param_t g32_info = inputs[0]->info;
+		g32_info.datatype = CCV_32F;
+		ccv_nnc_tensor_param_t a32_info = inputs[2]->info;
+		a32_info.datatype = CCV_32F;
+		ccv_nnc_tensor_param_t h32_info = outputs[0]->info;
+		h32_info.datatype = CCV_32F;
+		ccv_nnc_tensor_param_t saved_inv_std32_info = inputs[elementwise_affine ? 5 : 4]->info;
+		saved_inv_std32_info.datatype = CCV_32F;
+		size_t placeholder = 0;
+		ccv_nnc_tensor_t g32t = ccv_nnc_tensor(&placeholder, g32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t g32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&g32t);
+		ccv_nnc_tensor_t a32t = ccv_nnc_tensor(&placeholder, a32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t a32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&a32t);
+		ccv_nnc_tensor_t h32t = ccv_nnc_tensor(&placeholder, h32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t h32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&h32t);
+		ccv_nnc_tensor_t saved_inv_std32t = ccv_nnc_tensor(&placeholder, saved_inv_std32_info, 0);
+		ccv_nnc_cudnn_tensor_view_descriptor_t saved_inv_std32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&saved_inv_std32t);
+		ccv_nnc_cudnn_tensor_view_descriptor_t scale32 = {};
+		int scale_count = 0;
+		if (elementwise_affine)
+		{
+			ccv_nnc_tensor_param_t scale32_info = inputs[3]->info;
+			scale32_info.datatype = CCV_32F;
+			scale_count = ccv_nnc_tensor_count(scale32_info);
+			ccv_nnc_tensor_t scale32t = ccv_nnc_tensor(&placeholder, scale32_info, 0);
+			scale32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&scale32t);
+		}
+		ccv_nnc_cudnn_tensor_view_descriptor_t dscale32 = {};
+		int dscale_count = 0;
+		if (dscale.descriptor)
+		{
+			ccv_nnc_tensor_param_t dscale32_info = outputs[1]->info;
+			dscale32_info.datatype = CCV_32F;
+			dscale_count = ccv_nnc_tensor_count(dscale32_info);
+			ccv_nnc_tensor_t dscale32t = ccv_nnc_tensor(&placeholder, dscale32_info, 0);
+			dscale32 = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&dscale32t);
+		}
+		size_t bfloat_scale_workspace_size = 0;
+		if (dscale32.descriptor)
+			{ CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, g32.descriptor, dscale32.descriptor, &bfloat_scale_workspace_size)); }
+		size_t bfloat_inv_std_workspace_size = 0;
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce, g32.descriptor, saved_inv_std32.descriptor, &bfloat_inv_std_workspace_size));
+		const size_t bfloat_workspace_size = ccv_max(bfloat_scale_workspace_size, bfloat_inv_std_workspace_size);
+		uint8_t* const bfloat_workspace = (uint8_t*)ccv_nnc_stream_context_get_workspace(stream_context, bfloat_workspace_size + sizeof(float) * (gcount * 6 + rcount * 2 + scale_count + dscale_count), CCV_TENSOR_GPU_MEMORY);
+		float* const g32p = (float*)(bfloat_workspace + bfloat_workspace_size);
+		g32.data.u8 = (uint8_t*)g32p;
+		float* const a32p = g32p + gcount;
+		a32.data.u8 = (uint8_t*)a32p;
+		float* const h32p = a32p + gcount;
+		h32.data.u8 = (uint8_t*)h32p;
+		float* const saved_inv_std32p = h32p + gcount;
+		saved_inv_std32.data.u8 = (uint8_t*)saved_inv_std32p;
+		float* scale32p = saved_inv_std32p + rcount;
+		if (elementwise_affine)
+		{
+			scale32.data.u8 = (uint8_t*)scale32p;
+			scale32p += scale_count;
+		}
+		float* dscale32p = scale32p;
+		if (dscale32.descriptor)
+		{
+			dscale32.data.u8 = (uint8_t*)dscale32p;
+			dscale32p += dscale_count;
+		}
+		float* const ahp = dscale32p;
+		const ccv_nnc_tensor_t aht = ccv_nnc_tensor(ahp, g32_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t ah = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&aht);
+		float* const gssp = ahp + gcount;
+		const ccv_nnc_tensor_t gsst = ccv_nnc_tensor(gssp, g32_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t gss = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&gsst);
+		float* const ahgssp = gssp + gcount;
+		const ccv_nnc_tensor_t ahgsst = ccv_nnc_tensor(ahgssp, g32_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t ahgss = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&ahgsst);
+		float* const ahgssrp = ahgssp + gcount;
+		const ccv_nnc_tensor_t ahgssrt = ccv_nnc_tensor(ahgssrp, saved_inv_std32_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t ahgssr = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&ahgssrt);
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, g.descriptor, g.data.u8, &zero, g32.descriptor, g32.data.u8));
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8, &zero, a32.descriptor, a32.data.u8));
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, saved_inv_std32.descriptor, saved_inv_std32.data.u8));
+		if (elementwise_affine)
+			{ CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, scale.descriptor, scale.data.u8, &zero, scale32.descriptor, scale32.data.u8)); }
+		cudnnOpTensorDescriptor_t op = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
+		cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, a32.descriptor, a32.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, ah.descriptor, ah.data.u8));
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, ah.descriptor, ah.data.u8, &one, g32.descriptor, g32.data.u8, &zero, ahgss.descriptor, ahgss.data.u8));
+		if (dscale32.descriptor)
+			{ CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, bfloat_workspace, bfloat_workspace_size, &one, ahgss.descriptor, ahgss.data.u8, &zero, dscale32.descriptor, dscale32.data.u8)); }
+		if (elementwise_affine)
+		{
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, g32.descriptor, g32.data.u8, &one, scale32.descriptor, scale32.data.u8, &zero, gss.descriptor, gss.data.u8));
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, gss.descriptor, gss.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, gss.descriptor, gss.data.u8));
+		} else {
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, g32.descriptor, g32.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, gss.descriptor, gss.data.u8));
+		}
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, ah.descriptor, ah.data.u8, &one, gss.descriptor, gss.data.u8, &zero, ahgss.descriptor, ahgss.data.u8));
+		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce, 0, 0, bfloat_workspace, bfloat_workspace_size, &one, ahgss.descriptor, ahgss.data.u8, &zero, ahgssr.descriptor, ahgssr.data.u8));
+		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, ah.descriptor, ah.data.u8, &one, ahgssr.descriptor, ahgssr.data.u8, &zero, ah.descriptor, ah.data.u8));
+		cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, gss.descriptor, gss.data.u8, &neg_inv_n, ah.descriptor, ah.data.u8, &zero, h32.descriptor, h32.data.u8));
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, h32.descriptor, h32.data.u8, &zero, h.descriptor, h.data.u8));
+		if (dscale32.descriptor)
+			{ CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, dscale32.descriptor, dscale32.data.u8, &zero, dscale.descriptor, dscale.data.u8)); }
+		ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, op);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(saved_inv_std);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(dscale);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(g32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(saved_inv_std32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(dscale32);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(ah);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(gss);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(ahgss);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(ahgssr);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	uint8_t* const workspace = (uint8_t*)ccv_nnc_stream_context_get_workspace(stream_context, workspace_size + sizeof(float) * gcount * 3 + sizeof(float) * rcount, CCV_TENSOR_GPU_MEMORY);
 	float* const ahp = (float*)(workspace + workspace_size);
 	const ccv_nnc_tensor_t aht = ccv_nnc_tensor(ahp, inputs[0]->info, 0);
@@ -172,7 +367,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN)(ccv
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_rmsnorm_forw;
@@ -183,7 +378,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RMSNORM_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN)(cc
 {
 #ifdef HAVE_CUDNN
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_rmsnorm_back;

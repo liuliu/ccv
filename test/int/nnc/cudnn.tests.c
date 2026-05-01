@@ -5,6 +5,7 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
+#include <math.h>
 
 TEST_SETUP()
 {
@@ -2838,6 +2839,194 @@ TEST_CASE("compare rmsnorm only gradient with cudnn without scale")
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(dy_tensor);
 	ccv_nnc_tensor_free(dx_tensor);
+}
+
+TEST_CASE("compare layer norm with cudnn in bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	const int batch_size = 2;
+	const int sequence_length = 3;
+	const int channels = 257;
+	const int rows = batch_size * sequence_length;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const saved_mean = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const saved_inv_std = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const hbias16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hmean = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const hinv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const hy16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hmean16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const hinv16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected_mean = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_inv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_y16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected_mean16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_inv16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 21);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < channels; i++)
+	{
+		hscale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+		hbias->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 0.25;
+	}
+	ccv_float_to_bfloat(ha->data.f32, (uint16_t*)ha16bf->data.f16, element_count);
+	ccv_float_to_bfloat(hscale->data.f32, (uint16_t*)hscale16bf->data.f16, channels);
+	ccv_float_to_bfloat(hbias->data.f32, (uint16_t*)hbias16bf->data.f16, channels);
+	ccv_bfloat_to_float((uint16_t*)ha16bf->data.f16, ha->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)hscale16bf->data.f16, hscale->data.f32, channels);
+	ccv_bfloat_to_float((uint16_t*)hbias16bf->data.f16, hbias->data.f32, channels);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16bf, hscale16bf, hbias16bf), TENSOR_LIST(a, scale, bias), 0);
+	for (i = 0; i < rows; i++)
+	{
+		float mean = 0;
+		for (j = 0; j < channels; j++)
+			mean += ha->data.f32[i * channels + j];
+		mean = mean / channels;
+		float variance = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float centered = ha->data.f32[i * channels + j] - mean;
+			variance += centered * centered;
+		}
+		const float inv_std = 1.0f / sqrtf(variance / channels + 1e-6f);
+		expected_mean->data.f32[i] = mean;
+		expected_inv->data.f32[i] = inv_std;
+		for (j = 0; j < channels; j++)
+			expected_y->data.f32[i * channels + j] = (ha->data.f32[i * channels + j] - mean) * inv_std * hscale->data.f32[j] + hbias->data.f32[j];
+	}
+	ccv_float_to_bfloat(expected_y->data.f32, (uint16_t*)expected_y16bf->data.f16, element_count);
+	ccv_float_to_bfloat(expected_mean->data.f32, (uint16_t*)expected_mean16bf->data.f16, rows);
+	ccv_float_to_bfloat(expected_inv->data.f32, (uint16_t*)expected_inv16bf->data.f16, rows);
+	ccv_bfloat_to_float((uint16_t*)expected_y16bf->data.f16, expected_y->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)expected_mean16bf->data.f16, expected_mean->data.f32, rows);
+	ccv_bfloat_to_float((uint16_t*)expected_inv16bf->data.f16, expected_inv->data.f32, rows);
+	ccv_nnc_cmd_t cmd = CMD_LAYER_NORM_FORWARD(1e-6, 1, 2);
+	cmd.backend = CCV_NNC_BACKEND_GPU_CUDNN;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, scale, bias), TENSOR_LIST(b, saved_mean, saved_inv_std), 0), "bfloat layer norm should run");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, saved_mean, saved_inv_std), TENSOR_LIST(hy16bf, hmean16bf, hinv16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hy16bf->data.f16, hy->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)hmean16bf->data.f16, hmean->data.f32, rows);
+	ccv_bfloat_to_float((uint16_t*)hinv16bf->data.f16, hinv->data.f32, rows);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected_y->data.f32, element_count, 2e-2, "bfloat layer norm result from cudnn should match fp32 reference rounded to bfloat");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hmean->data.f32, expected_mean->data.f32, rows, 2e-2, "bfloat layer norm saved mean from cudnn should match fp32 reference rounded to bfloat");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hinv->data.f32, expected_inv->data.f32, rows, 2e-2, "bfloat layer norm saved inv std from cudnn should match fp32 reference rounded to bfloat");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(scale);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(saved_mean);
+	ccv_nnc_tensor_free(saved_inv_std);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hscale);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(ha16bf);
+	ccv_nnc_tensor_free(hscale16bf);
+	ccv_nnc_tensor_free(hbias16bf);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hmean);
+	ccv_nnc_tensor_free(hinv);
+	ccv_nnc_tensor_free(hy16bf);
+	ccv_nnc_tensor_free(hmean16bf);
+	ccv_nnc_tensor_free(hinv16bf);
+	ccv_nnc_tensor_free(expected_y);
+	ccv_nnc_tensor_free(expected_mean);
+	ccv_nnc_tensor_free(expected_inv);
+	ccv_nnc_tensor_free(expected_y16bf);
+	ccv_nnc_tensor_free(expected_mean16bf);
+	ccv_nnc_tensor_free(expected_inv16bf);
+}
+
+TEST_CASE("compare rmsnorm with cudnn in bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	const int batch_size = 2;
+	const int sequence_length = 3;
+	const int channels = 257;
+	const int rows = batch_size * sequence_length;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const saved_inv_std = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hinv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const hy16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hinv16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected_inv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, 1), 0);
+	ccv_nnc_tensor_t* const expected_y16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected_inv16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, 1), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 22);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < channels; i++)
+		hscale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	ccv_float_to_bfloat(ha->data.f32, (uint16_t*)ha16bf->data.f16, element_count);
+	ccv_float_to_bfloat(hscale->data.f32, (uint16_t*)hscale16bf->data.f16, channels);
+	ccv_bfloat_to_float((uint16_t*)ha16bf->data.f16, ha->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)hscale16bf->data.f16, hscale->data.f32, channels);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16bf, hscale16bf), TENSOR_LIST(a, scale), 0);
+	for (i = 0; i < rows; i++)
+	{
+		float variance = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float v = ha->data.f32[i * channels + j];
+			variance += v * v;
+		}
+		const float inv_std = 1.0f / sqrtf(variance / channels + 1e-6f);
+		expected_inv->data.f32[i] = inv_std;
+		for (j = 0; j < channels; j++)
+			expected_y->data.f32[i * channels + j] = ha->data.f32[i * channels + j] * inv_std * hscale->data.f32[j];
+	}
+	ccv_float_to_bfloat(expected_y->data.f32, (uint16_t*)expected_y16bf->data.f16, element_count);
+	ccv_float_to_bfloat(expected_inv->data.f32, (uint16_t*)expected_inv16bf->data.f16, rows);
+	ccv_bfloat_to_float((uint16_t*)expected_y16bf->data.f16, expected_y->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)expected_inv16bf->data.f16, expected_inv->data.f32, rows);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_FORWARD(1e-6, 1, 2);
+	cmd.backend = CCV_NNC_BACKEND_GPU_CUDNN;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, scale), TENSOR_LIST(b, saved_inv_std), 0), "bfloat rmsnorm should run");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, saved_inv_std), TENSOR_LIST(hy16bf, hinv16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hy16bf->data.f16, hy->data.f32, element_count);
+	ccv_bfloat_to_float((uint16_t*)hinv16bf->data.f16, hinv->data.f32, rows);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected_y->data.f32, element_count, 2e-2, "bfloat rmsnorm result from cudnn should match fp32 reference rounded to bfloat");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hinv->data.f32, expected_inv->data.f32, rows, 2e-2, "bfloat rmsnorm saved inv std from cudnn should match fp32 reference rounded to bfloat");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(scale);
+	ccv_nnc_tensor_free(saved_inv_std);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hscale);
+	ccv_nnc_tensor_free(ha16bf);
+	ccv_nnc_tensor_free(hscale16bf);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hinv);
+	ccv_nnc_tensor_free(hy16bf);
+	ccv_nnc_tensor_free(hinv16bf);
+	ccv_nnc_tensor_free(expected_y);
+	ccv_nnc_tensor_free(expected_inv);
+	ccv_nnc_tensor_free(expected_y16bf);
+	ccv_nnc_tensor_free(expected_inv16bf);
 }
 
 TEST_CASE("compare average pooling with cudnn")
