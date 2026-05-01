@@ -4682,6 +4682,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
 /**
+ * Apply the gated delta recurrent update.
+ * Inputs are (q, k, v, log_decay, beta, state_in), and outputs are (y, state_out).
+ * @param name The unique name of the model.
+ * @return A model that can be applied with six inputs and generates output plus updated recurrent state.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const char* const name);
+/**
  * Multiply two input tensors together as if these are complex numbers.
  * @param name The unique name of the model.
  * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
