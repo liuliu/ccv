@@ -9,6 +9,16 @@ using namespace ccv::nnc;
 
 // MARK: - C
 
+static GEMMOperandPrecision _ccv_nnc_mfa_cmul_precision(const uint64_t data_type)
+{
+  if (data_type == MTL::DataTypeFloat) {
+    return GEMMOperandPrecision::FP32;
+  } else if (data_type == MTL::DataTypeBFloat) {
+    return GEMMOperandPrecision::BF16;
+  }
+  return GEMMOperandPrecision::FP16;
+}
+
 void ccv_nnc_mfa_prepare_cmul(mfa::context* context, ccv_nnc_mfa_cmul_params_t params)
 {
   // Do nothing now.
@@ -27,7 +37,9 @@ void ccv_nnc_mfa_encode_cmul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cmul_pa
 
   CMulDescriptor descriptor;
   descriptor.conjugate = params.conjugate ? 1 : 0;
-  descriptor.memoryPrecision = (params.data_type == MTL::DataTypeFloat) ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::FP16;
+  descriptor.memoryPrecisionA = _ccv_nnc_mfa_cmul_precision(params.data_type_a);
+  descriptor.memoryPrecisionB = _ccv_nnc_mfa_cmul_precision(params.data_type_b);
+  descriptor.memoryPrecisionC = _ccv_nnc_mfa_cmul_precision(params.data_type_c);
   descriptor.stridesA[0] = params.astride[0];
   descriptor.stridesA[1] = params.astride[1];
   descriptor.stridesA[2] = params.astride[2];
@@ -90,4 +102,3 @@ void ccv_nnc_mfa_encode_cmul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cmul_pa
 
   command_batch->finishCommand(encoder);
 }
-

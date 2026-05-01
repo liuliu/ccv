@@ -9,7 +9,11 @@ CMulKernel::CMulKernel(CMulKernelDescriptor descriptor, MTL::Device *const devic
 
   value = descriptor.value;
 
-  memoryPrecision = descriptor.memoryPrecision;
+  memoryPrecisionA = descriptor.memoryPrecisionA;
+
+  memoryPrecisionB = descriptor.memoryPrecisionB;
+
+  memoryPrecisionC = descriptor.memoryPrecisionC;
 
   source = createSource();
 
@@ -47,9 +51,9 @@ std::string CMulKernel::createSource() const noexcept {
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -60,8 +64,8 @@ kernel void cmul(
   const float a1 = (float)src0[idx * 2 + 1];
   const float b0 = (float)src1[idx * 2];
   const float b1 = (float)src1[idx * 2 + 1];
-  destination[idx * 2] = (real)(a0 * b0 + a1 * b1);
-  destination[idx * 2 + 1] = (real)(-a0 * b1 + a1 * b0);
+  destination[idx * 2] = (dst_t)(a0 * b0 + a1 * b1);
+  destination[idx * 2 + 1] = (dst_t)(-a0 * b1 + a1 * b0);
 }
     )";
     } else if (value == 1) {
@@ -70,9 +74,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -87,8 +91,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 + a1 * b1);
-  destination[idc + 1] = (real)(-a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 + a1 * b1);
+  destination[idc + 1] = (dst_t)(-a0 * b1 + a1 * b0);
 }
     )";
     } else if (value == 2) {
@@ -97,9 +101,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -115,8 +119,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 + a1 * b1);
-  destination[idc + 1] = (real)(-a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 + a1 * b1);
+  destination[idc + 1] = (dst_t)(-a0 * b1 + a1 * b0);
 }
     )";
     } else {
@@ -125,9 +129,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -145,8 +149,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 + a1 * b1);
-  destination[idc + 1] = (real)(-a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 + a1 * b1);
+  destination[idc + 1] = (dst_t)(-a0 * b1 + a1 * b0);
 }
     )";
     }
@@ -157,9 +161,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -170,8 +174,8 @@ kernel void cmul(
   const float a1 = (float)src0[idx * 2 + 1];
   const float b0 = (float)src1[idx * 2];
   const float b1 = (float)src1[idx * 2 + 1];
-  destination[idx * 2] = (real)(a0 * b0 - a1 * b1);
-  destination[idx * 2 + 1] = (real)(a0 * b1 + a1 * b0);
+  destination[idx * 2] = (dst_t)(a0 * b0 - a1 * b1);
+  destination[idx * 2 + 1] = (dst_t)(a0 * b1 + a1 * b0);
 }
     )";
     } else if (value == 1) {
@@ -180,9 +184,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -197,8 +201,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 - a1 * b1);
-  destination[idc + 1] = (real)(a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 - a1 * b1);
+  destination[idc + 1] = (dst_t)(a0 * b1 + a1 * b0);
 }
     )";
     } else if (value == 2) {
@@ -207,9 +211,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -225,8 +229,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 - a1 * b1);
-  destination[idc + 1] = (real)(a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 - a1 * b1);
+  destination[idc + 1] = (dst_t)(a0 * b1 + a1 * b0);
 }
     )";
     } else {
@@ -235,9 +239,9 @@ kernel void cmul(
 using namespace metal;
 
 kernel void cmul(
-  device real *src0 [[buffer(0)]],
-  device real *src1 [[buffer(1)]],
-  device real *destination [[buffer(2)]],
+  device src0_t *src0 [[buffer(0)]],
+  device src1_t *src1 [[buffer(1)]],
+  device dst_t *destination [[buffer(2)]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -255,8 +259,8 @@ kernel void cmul(
   const float a1 = (float)src0[ida + 1];
   const float b0 = (float)src1[idb];
   const float b1 = (float)src1[idb + 1];
-  destination[idc] = (real)(a0 * b0 - a1 * b1);
-  destination[idc + 1] = (real)(a0 * b1 + a1 * b0);
+  destination[idc] = (dst_t)(a0 * b0 - a1 * b1);
+  destination[idc + 1] = (dst_t)(a0 * b1 + a1 * b0);
 }
     )";
     }
@@ -267,16 +271,12 @@ kernel void cmul(
 std::string CMulKernel::createConstants() const noexcept {
 
   std::string defines = "";
-  if (memoryPrecision == GEMMOperandPrecision::FP32) {
-    defines += std::string("typedef float real;");
-    defines += "\n";
-  } else if (memoryPrecision == GEMMOperandPrecision::BF16) {
-    defines += std::string("typedef bfloat real;");
-    defines += "\n";
-  } else {
-    defines += std::string("typedef half real;");
-    defines += "\n";
-  }
+  defines += "typedef " + memoryPrecisionA.name() + " src0_t;";
+  defines += "\n";
+  defines += "typedef " + memoryPrecisionB.name() + " src1_t;";
+  defines += "\n";
+  defines += "typedef " + memoryPrecisionC.name() + " dst_t;";
+  defines += "\n";
 
   defines += "constant uint dim0 [[function_constant(0)]];";
   defines += "\n";

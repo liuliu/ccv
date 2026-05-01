@@ -10,14 +10,22 @@
 struct CMulKernelDescriptor {
   uint8_t conjugate;
   uint8_t value;
-  GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const CMulKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision && conjugate == rhs.conjugate; }
+  GEMMOperandPrecision memoryPrecisionA;
+  GEMMOperandPrecision memoryPrecisionB;
+  GEMMOperandPrecision memoryPrecisionC;
+  constexpr bool operator==(const CMulKernelDescriptor &rhs) const {
+    return value == rhs.value &&
+      memoryPrecisionA == rhs.memoryPrecisionA &&
+      memoryPrecisionB == rhs.memoryPrecisionB &&
+      memoryPrecisionC == rhs.memoryPrecisionC &&
+      conjugate == rhs.conjugate;
+  }
 };
 
 template<>
 struct std::hash<CMulKernelDescriptor>
 {
-  std::size_t operator()(const CMulKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const CMulKernelDescriptor& hash) const noexcept;
 };
 
 struct CMulKernel;
@@ -27,7 +35,11 @@ struct CMulDescriptor {
 
   uint8_t value;
 
-  GEMMOperandPrecision memoryPrecision;
+  GEMMOperandPrecision memoryPrecisionA;
+
+  GEMMOperandPrecision memoryPrecisionB;
+
+  GEMMOperandPrecision memoryPrecisionC;
 
   simd::uint3 stridesA;
 
@@ -49,4 +61,3 @@ struct std::hash<CMulDescriptor>
 };
 
 #endif
-

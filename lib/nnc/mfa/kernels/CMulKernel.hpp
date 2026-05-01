@@ -19,7 +19,11 @@ struct CMulKernel {
 
   uint8_t value;
 
-  GEMMOperandPrecision memoryPrecision;
+  GEMMOperandPrecision memoryPrecisionA;
+
+  GEMMOperandPrecision memoryPrecisionB;
+
+  GEMMOperandPrecision memoryPrecisionC;
 
   CMulKernel(CMulKernelDescriptor descriptor, MTL::Device *const device);
 
@@ -30,4 +34,3 @@ private:
 };
 
 #endif /* CMulKernel_hpp */
-

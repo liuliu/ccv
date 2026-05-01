@@ -3,7 +3,9 @@
 
 typedef struct {
   uint8_t conjugate;
-  uint64_t data_type;
+  uint64_t data_type_a;
+  uint64_t data_type_b;
+  uint64_t data_type_c;
   uint32_t astride[3];
   uint32_t bstride[3];
   uint32_t cstride[3];

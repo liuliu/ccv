@@ -5,7 +5,9 @@
 
 bool CMulDescriptor::operator==(const CMulDescriptor& rhs) const {
   return
-  memoryPrecision == rhs.memoryPrecision &&
+  memoryPrecisionA == rhs.memoryPrecisionA &&
+  memoryPrecisionB == rhs.memoryPrecisionB &&
+  memoryPrecisionC == rhs.memoryPrecisionC &&
   conjugate == rhs.conjugate &&
   value == rhs.value &&
   simd_all(stridesA == rhs.stridesA) &&
@@ -14,10 +16,21 @@ bool CMulDescriptor::operator==(const CMulDescriptor& rhs) const {
   simd_all(dimensions == rhs.dimensions);
 }
 
+std::size_t std::hash<CMulKernelDescriptor>::operator()(const CMulKernelDescriptor& hash) const noexcept {
+  using namespace ccv::nnc::mfa::hash;
+  std::size_t seed = 0;
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
+  combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
+  return seed;
+}
+
 std::size_t std::hash<CMulDescriptor>::operator()(const CMulDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
+  combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[0], (unsigned int)hash.stridesA[1] }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[2], (unsigned int)hash.stridesB[0] }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesB[1], (unsigned int)hash.stridesB[2] }));
@@ -46,7 +59,9 @@ std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> CMulDescriptor::fin
   CMulKernelDescriptor kernelDesc;
   kernelDesc.conjugate = conjugate;
   kernelDesc.value = value;
-  kernelDesc.memoryPrecision = memoryPrecision;
+  kernelDesc.memoryPrecisionA = memoryPrecisionA;
+  kernelDesc.memoryPrecisionB = memoryPrecisionB;
+  kernelDesc.memoryPrecisionC = memoryPrecisionC;
 
   // WARNING: The owner must explicitly retain the compute pipeline.
   auto createPipeline =

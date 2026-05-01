@@ -4072,6 +4072,321 @@ TEST_CASE("scaled dot product attention gradient with flash_attn")
 #undef num_trials
 }
 
+static ccv_nnc_tensor_param_t _ccv_nnc_cmul_mixed_params(const int memory, const int datatype)
+{
+	return (ccv_nnc_tensor_param_t){
+		.type = memory,
+		.format = CCV_TENSOR_FORMAT_NCHW,
+		.datatype = datatype,
+		.dim = { 2, 3, 10, 0 },
+	};
+}
+
+static int _ccv_nnc_cmul_round_to_datatype(const ccv_nnc_tensor_t* const source, ccv_nnc_tensor_t* const typed, ccv_nnc_tensor_t* const rounded, const int count)
+{
+	int i;
+	switch (typed->info.datatype)
+	{
+		case CCV_32F:
+			for (i = 0; i < count; i++)
+			{
+				typed->data.f32[i] = source->data.f32[i];
+				rounded->data.f32[i] = source->data.f32[i];
+			}
+			return CCV_NNC_EXEC_SUCCESS;
+		case CCV_16F: {
+			int status = ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)source), TENSOR_LIST(typed), 0);
+			if (status != CCV_NNC_EXEC_SUCCESS)
+				return status;
+			return ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(typed), TENSOR_LIST(rounded), 0);
+		}
+		case CCV_16BF:
+			ccv_float_to_bfloat(source->data.f32, (uint16_t*)typed->data.f16, count);
+			ccv_bfloat_to_float((uint16_t*)typed->data.f16, rounded->data.f32, count);
+			return CCV_NNC_EXEC_SUCCESS;
+	}
+	return CCV_NNC_EXEC_INVALID;
+}
+
+static int _ccv_nnc_cmul_convert_to_float(const ccv_nnc_tensor_t* const typed, ccv_nnc_tensor_t* const rounded, const int count)
+{
+	int i;
+	switch (typed->info.datatype)
+	{
+		case CCV_32F:
+			for (i = 0; i < count; i++)
+				rounded->data.f32[i] = typed->data.f32[i];
+			return CCV_NNC_EXEC_SUCCESS;
+		case CCV_16F:
+			return ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)typed), TENSOR_LIST(rounded), 0);
+		case CCV_16BF:
+			ccv_bfloat_to_float((uint16_t*)typed->data.f16, rounded->data.f32, count);
+			return CCV_NNC_EXEC_SUCCESS;
+	}
+	return CCV_NNC_EXEC_INVALID;
+}
+
+static int _ccv_nnc_cmul_mixed_precision_mps_case(const int a_datatype, const int b_datatype, const int c_datatype, float* const max_diff)
+{
+	const int count = 2 * 3 * 10;
+	ccv_nnc_tensor_param_t ha32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
+	ccv_nnc_tensor_param_t hb32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
+	ccv_nnc_tensor_param_t hc32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
+	ccv_nnc_tensor_param_t ha_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, a_datatype);
+	ccv_nnc_tensor_param_t hb_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, b_datatype);
+	ccv_nnc_tensor_param_t hc_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, c_datatype);
+	ccv_nnc_tensor_param_t ga_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, a_datatype);
+	ccv_nnc_tensor_param_t gb_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, b_datatype);
+	ccv_nnc_tensor_param_t gc_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, c_datatype);
+	ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, ha32_params, 0);
+	ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, hb32_params, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, hc_params, 0);
+	ccv_nnc_tensor_t* const ha_rounded = ccv_nnc_tensor_new(0, ha32_params, 0);
+	ccv_nnc_tensor_t* const hb_rounded = ccv_nnc_tensor_new(0, hb32_params, 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, hc32_params, 0);
+	ccv_nnc_tensor_t* const expected_rounded = ccv_nnc_tensor_new(0, hc32_params, 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, hc32_params, 0);
+	ccv_nnc_tensor_t* const expected_typed = ccv_nnc_tensor_new(0, hc_params, 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, gc_params, 0);
+	int i;
+	for (i = 0; i < count; i++)
+	{
+		ha32->data.f32[i] = (float)((i % 13) - 6) * 0.07f;
+		hb32->data.f32[i] = (float)(((i * 5 + 3) % 17) - 8) * 0.05f;
+	}
+	int status = _ccv_nnc_cmul_round_to_datatype(ha32, ha, ha_rounded, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_round_to_datatype(hb32, hb, hb_rounded, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(ga, gb), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		ccv_nnc_cmd_t cmd = CMD_CMUL_FORWARD();
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(gc), 0);
+	}
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(hc), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_convert_to_float(hc, actual, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		for (i = 0; i < count; i += 2)
+		{
+			const float a0 = ha_rounded->data.f32[i];
+			const float a1 = ha_rounded->data.f32[i + 1];
+			const float b0 = hb_rounded->data.f32[i];
+			const float b1 = hb_rounded->data.f32[i + 1];
+			expected->data.f32[i] = a0 * b0 - a1 * b1;
+			expected->data.f32[i + 1] = a0 * b1 + a1 * b0;
+		}
+		status = _ccv_nnc_cmul_round_to_datatype(expected, expected_typed, expected_rounded, count);
+	}
+	*max_diff = 0;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		for (i = 0; i < count; i++)
+			*max_diff = ccv_max(*max_diff, fabsf(actual->data.f32[i] - expected_rounded->data.f32[i]));
+	ccv_nnc_tensor_free(ha32);
+	ccv_nnc_tensor_free(hb32);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(ha_rounded);
+	ccv_nnc_tensor_free(hb_rounded);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(expected_rounded);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(expected_typed);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+	return status;
+}
+
+static int _ccv_nnc_cmul_mixed_precision_mps_backward_case(const int g_datatype, const int a_datatype, const int b_datatype, const int c_datatype, const int d_datatype, float* const max_diff_c, float* const max_diff_d)
+{
+	const int count = 2 * 3 * 10;
+	ccv_nnc_tensor_param_t h32_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, CCV_32F);
+	ccv_nnc_tensor_param_t hg_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, g_datatype);
+	ccv_nnc_tensor_param_t ha_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, a_datatype);
+	ccv_nnc_tensor_param_t hb_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, b_datatype);
+	ccv_nnc_tensor_param_t hc_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, c_datatype);
+	ccv_nnc_tensor_param_t hd_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_CPU_MEMORY, d_datatype);
+	ccv_nnc_tensor_param_t gg_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, g_datatype);
+	ccv_nnc_tensor_param_t ga_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, a_datatype);
+	ccv_nnc_tensor_param_t gb_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, b_datatype);
+	ccv_nnc_tensor_param_t gc_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, c_datatype);
+	ccv_nnc_tensor_param_t gd_params = _ccv_nnc_cmul_mixed_params(CCV_TENSOR_GPU_MEMORY | 000, d_datatype);
+	ccv_nnc_tensor_t* const hg32 = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, hg_params, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, hc_params, 0);
+	ccv_nnc_tensor_t* const hd = ccv_nnc_tensor_new(0, hd_params, 0);
+	ccv_nnc_tensor_t* const hg_rounded = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const ha_rounded = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const hb_rounded = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const expected_c = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const expected_d = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const expected_c_rounded = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const expected_d_rounded = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const actual_c = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const actual_d = ccv_nnc_tensor_new(0, h32_params, 0);
+	ccv_nnc_tensor_t* const expected_c_typed = ccv_nnc_tensor_new(0, hc_params, 0);
+	ccv_nnc_tensor_t* const expected_d_typed = ccv_nnc_tensor_new(0, hd_params, 0);
+	ccv_nnc_tensor_t* const gg = ccv_nnc_tensor_new(0, gg_params, 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+	ccv_nnc_tensor_t* const gc = ccv_nnc_tensor_new(0, gc_params, 0);
+	ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, gd_params, 0);
+	int i;
+	for (i = 0; i < count; i++)
+	{
+		hg32->data.f32[i] = (float)(((i * 7 + 1) % 19) - 9) * 0.04f;
+		ha32->data.f32[i] = (float)((i % 13) - 6) * 0.07f;
+		hb32->data.f32[i] = (float)(((i * 5 + 3) % 17) - 8) * 0.05f;
+	}
+	int status = _ccv_nnc_cmul_round_to_datatype(hg32, hg, hg_rounded, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_round_to_datatype(ha32, ha, ha_rounded, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_round_to_datatype(hb32, hb, hb_rounded, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha, hb), TENSOR_LIST(gg, ga, gb), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		ccv_nnc_cmd_t cmd = CMD_CMUL_BACKWARD();
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gb), TENSOR_LIST(gc, gd), 0);
+	}
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gc, gd), TENSOR_LIST(hc, hd), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_convert_to_float(hc, actual_c, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_convert_to_float(hd, actual_d, count);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		for (i = 0; i < count; i += 2)
+		{
+			const float g0 = hg_rounded->data.f32[i];
+			const float g1 = hg_rounded->data.f32[i + 1];
+			const float a0 = ha_rounded->data.f32[i];
+			const float a1 = ha_rounded->data.f32[i + 1];
+			const float b0 = hb_rounded->data.f32[i];
+			const float b1 = hb_rounded->data.f32[i + 1];
+			expected_c->data.f32[i] = g0 * b0 + g1 * b1;
+			expected_c->data.f32[i + 1] = -g0 * b1 + g1 * b0;
+			expected_d->data.f32[i] = g0 * a0 + g1 * a1;
+			expected_d->data.f32[i + 1] = -g0 * a1 + g1 * a0;
+		}
+		status = _ccv_nnc_cmul_round_to_datatype(expected_c, expected_c_typed, expected_c_rounded, count);
+	}
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = _ccv_nnc_cmul_round_to_datatype(expected_d, expected_d_typed, expected_d_rounded, count);
+	*max_diff_c = 0;
+	*max_diff_d = 0;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		for (i = 0; i < count; i++)
+		{
+			*max_diff_c = ccv_max(*max_diff_c, fabsf(actual_c->data.f32[i] - expected_c_rounded->data.f32[i]));
+			*max_diff_d = ccv_max(*max_diff_d, fabsf(actual_d->data.f32[i] - expected_d_rounded->data.f32[i]));
+		}
+	ccv_nnc_tensor_free(hg32);
+	ccv_nnc_tensor_free(ha32);
+	ccv_nnc_tensor_free(hb32);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(hd);
+	ccv_nnc_tensor_free(hg_rounded);
+	ccv_nnc_tensor_free(ha_rounded);
+	ccv_nnc_tensor_free(hb_rounded);
+	ccv_nnc_tensor_free(expected_c);
+	ccv_nnc_tensor_free(expected_d);
+	ccv_nnc_tensor_free(expected_c_rounded);
+	ccv_nnc_tensor_free(expected_d_rounded);
+	ccv_nnc_tensor_free(actual_c);
+	ccv_nnc_tensor_free(actual_d);
+	ccv_nnc_tensor_free(expected_c_typed);
+	ccv_nnc_tensor_free(expected_d_typed);
+	ccv_nnc_tensor_free(gg);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gc);
+	ccv_nnc_tensor_free(gd);
+	return status;
+}
+
+TEST_CASE("cmul mixed half and bfloat precision with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	float max_diff_mfa_0 = 1e30f;
+	float max_diff_mfa_1 = 1e30f;
+	float max_diff_mfa_2 = 1e30f;
+	const int status_mfa_0 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_0);
+	const int status_mfa_1 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16BF, CCV_16F, CCV_16BF, &max_diff_mfa_1);
+	const int status_mfa_2 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_32F, &max_diff_mfa_2);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	float max_diff_graph_0 = 1e30f;
+	float max_diff_graph_1 = 1e30f;
+	float max_diff_graph_2 = 1e30f;
+	const int status_graph_0 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_0);
+	const int status_graph_1 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16BF, CCV_16F, CCV_16BF, &max_diff_graph_1);
+	const int status_graph_2 = _ccv_nnc_cmul_mixed_precision_mps_case(CCV_16F, CCV_16BF, CCV_32F, &max_diff_graph_2);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_mfa_0, "mixed half / bfloat cmul through mfa should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_mfa_1, "mixed bfloat / half cmul through mfa should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_mfa_2, "mixed half / bfloat cmul to float through mfa should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_graph_0, "mixed half / bfloat cmul through graph fallback should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_graph_1, "mixed bfloat / half cmul through graph fallback should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_graph_2, "mixed half / bfloat cmul to float through graph fallback should run");
+	REQUIRE(max_diff_mfa_0 <= 3e-2, "mixed half / bfloat cmul through mfa should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_mfa_1 <= 3e-2, "mixed bfloat / half cmul through mfa should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_mfa_2 <= 3e-2, "mixed half / bfloat cmul to float through mfa should match fp32 reference");
+	REQUIRE(max_diff_graph_0 <= 3e-2, "mixed half / bfloat cmul through graph fallback should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_graph_1 <= 3e-2, "mixed bfloat / half cmul through graph fallback should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_graph_2 <= 3e-2, "mixed half / bfloat cmul to float through graph fallback should match fp32 reference");
+}
+
+TEST_CASE("cmul gradient mixed half and bfloat precision with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	float max_diff_mfa_c = 1e30f;
+	float max_diff_mfa_d = 1e30f;
+	const int status_mfa = _ccv_nnc_cmul_mixed_precision_mps_backward_case(CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_mfa_c, &max_diff_mfa_d);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	float max_diff_graph_c = 1e30f;
+	float max_diff_graph_d = 1e30f;
+	const int status_graph = _ccv_nnc_cmul_mixed_precision_mps_backward_case(CCV_16F, CCV_16BF, CCV_16F, CCV_16BF, CCV_16F, &max_diff_graph_c, &max_diff_graph_d);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_mfa, "mixed half / bfloat cmul gradient through mfa should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status_graph, "mixed half / bfloat cmul gradient through graph fallback should run");
+	REQUIRE(max_diff_mfa_c <= 3e-2, "mixed half / bfloat cmul gradient first output through mfa should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_mfa_d <= 3e-2, "mixed half / bfloat cmul gradient second output through mfa should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_graph_c <= 3e-2, "mixed half / bfloat cmul gradient first output through graph fallback should match fp32 reference rounded to output dtype");
+	REQUIRE(max_diff_graph_d <= 3e-2, "mixed half / bfloat cmul gradient second output through graph fallback should match fp32 reference rounded to output dtype");
+}
+
 TEST_CASE("cmul in float")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));

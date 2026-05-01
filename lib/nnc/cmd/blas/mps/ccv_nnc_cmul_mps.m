@@ -5,6 +5,28 @@
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 
+static int _ccv_nnc_cmul_mtl_data_type(const int datatype, uint32_t* const mtl_data_type)
+{
+	switch (datatype) {
+		case CCV_32F:
+			*mtl_data_type = 3;
+			return 1;
+		case CCV_16F:
+			*mtl_data_type = 16;
+			return 1;
+		case CCV_16BF:
+			*mtl_data_type = 121;
+			return 1;
+	}
+	return 0;
+}
+
+static int _ccv_nnc_cmul_compute_f32(const int a_datatype, const int b_datatype, const int c_datatype)
+{
+	return a_datatype == CCV_16BF || b_datatype == CCV_16BF || c_datatype == CCV_16BF ||
+		a_datatype != b_datatype || b_datatype != c_datatype;
+}
+
 static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
@@ -25,30 +47,15 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			fallback_reason = "Disabled.";
 		}
 
-		uint32_t mtl_data_type = UINT32_MAX;
+		uint32_t a_mtl_data_type = UINT32_MAX;
+		uint32_t b_mtl_data_type = UINT32_MAX;
+		uint32_t c_mtl_data_type = UINT32_MAX;
 		if (use_mfa) {
-			const int is_same_dtype =
-				(a->info.datatype == b->info.datatype) &&
-				(a->info.datatype == c->info.datatype);
-			if (!is_same_dtype) {
+			if (!_ccv_nnc_cmul_mtl_data_type(a->info.datatype, &a_mtl_data_type) ||
+				!_ccv_nnc_cmul_mtl_data_type(b->info.datatype, &b_mtl_data_type) ||
+				!_ccv_nnc_cmul_mtl_data_type(c->info.datatype, &c_mtl_data_type)) {
 				use_mfa = false;
-				fallback_reason = "Mixed precision.";
-			}
-
-			switch (a->info.datatype) {
-				case CCV_16F: {
-					mtl_data_type = 16;
-					break;
-				}
-				case CCV_32F: {
-					mtl_data_type = 3;
-					break;
-				}
-				default: {
-					use_mfa = false;
-					fallback_reason = "Unsupported data type.";
-					break;
-				}
+				fallback_reason = "Unsupported data type.";
 			}
 		}
 
@@ -64,7 +71,9 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
 				.conjugate = 0,
-				.data_type = mtl_data_type,
+				.data_type_a = a_mtl_data_type,
+				.data_type_b = b_mtl_data_type,
+				.data_type_c = c_mtl_data_type,
 				.astride = {0, 0, 0},
 				.bstride = {0, 0, 0},
 				.cstride = {0, 0, 0},
@@ -161,6 +170,7 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			int nd = ccv_nnc_tensor_nd(a->info.dim);
 			assert(nd == ccv_nnc_tensor_nd(b->info.dim));
 			assert(nd == ccv_nnc_tensor_nd(c->info.dim));
+			const int compute_f32 = _ccv_nnc_cmul_compute_f32(a->info.datatype, b->info.datatype, c->info.datatype);
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 				MPSGraphTensor* mps_input_a;
 				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
@@ -172,6 +182,13 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				[inputTensors addObject:mps_input_b];
 				MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 				[inputShapedTypes addObject:mps_b_shape];
+				if (compute_f32)
+				{
+					if (a->info.datatype != CCV_32F)
+						mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+					if (b->info.datatype != CCV_32F)
+						mps_b = [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:@"mps_b_float"];
+				}
 				int i;
 				// Reshape to [..., n / 2, 2]
 				NSMutableArray<NSNumber*>* a_shape = [NSMutableArray new];
@@ -196,6 +213,8 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				for (i = 0; i < nd; i++)
 					[c_shape addObject:@(c->info.dim[i])];
 				MPSGraphTensor* mps_c = [graph reshapeTensor:[graph concatTensor:mps_c_0 withTensor:mps_c_1 dimension:nd name:nil] withShape:c_shape name:nil];
+				if (compute_f32 && c->info.datatype != CCV_32F)
+					mps_c = [graph castTensor:mps_c toType:ccv_nnc_mps_datatype(c->info.datatype) name:@"mps_c"];
 				[resultTensors addObject:mps_c];
 				[c_shape release];
 			});
@@ -252,38 +271,19 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			fallback_reason = "Disabled.";
 		}
 
-		uint32_t mtl_data_type = UINT32_MAX;
+		uint32_t g_mtl_data_type = UINT32_MAX;
+		uint32_t a_mtl_data_type = UINT32_MAX;
+		uint32_t b_mtl_data_type = UINT32_MAX;
+		uint32_t c_mtl_data_type = UINT32_MAX;
+		uint32_t d_mtl_data_type = UINT32_MAX;
 		if (use_mfa) {
-			const int is_same_dtype =
-				(!g || !a || g->info.datatype == a->info.datatype) &&
-				(!a || !b || a->info.datatype == b->info.datatype) &&
-				(!g || !b || g->info.datatype == b->info.datatype) &&
-				(!a || !d || a->info.datatype == d->info.datatype) &&
-				(!b || !c || b->info.datatype == c->info.datatype);
-			if (!is_same_dtype) {
+			if (!_ccv_nnc_cmul_mtl_data_type(g->info.datatype, &g_mtl_data_type) ||
+				(a && !_ccv_nnc_cmul_mtl_data_type(a->info.datatype, &a_mtl_data_type)) ||
+				(b && !_ccv_nnc_cmul_mtl_data_type(b->info.datatype, &b_mtl_data_type)) ||
+				(c && !_ccv_nnc_cmul_mtl_data_type(c->info.datatype, &c_mtl_data_type)) ||
+				(d && !_ccv_nnc_cmul_mtl_data_type(d->info.datatype, &d_mtl_data_type))) {
 				use_mfa = false;
-				fallback_reason = "Mixed precision.";
-			}
-
-			int datatype = 0;
-			if (a)
-				datatype = a->info.datatype;
-			else if (b)
-				datatype = b->info.datatype;
-			switch (datatype) {
-				case CCV_16F: {
-					mtl_data_type = 16;
-					break;
-				}
-				case CCV_32F: {
-					mtl_data_type = 3;
-					break;
-				}
-				default: {
-					use_mfa = false;
-					fallback_reason = "Unsupported data type.";
-					break;
-				}
+				fallback_reason = "Unsupported data type.";
 			}
 		}
 
@@ -301,7 +301,9 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
 				.conjugate = 1,
-				.data_type = mtl_data_type,
+				.data_type_a = g_mtl_data_type,
+				.data_type_b = UINT32_MAX,
+				.data_type_c = UINT32_MAX,
 				.astride = {0, 0, 0},
 				.bstride = {0, 0, 0},
 				.cstride = {0, 0, 0},
@@ -312,6 +314,9 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				if (b && c)
 				{
+					params.data_type_a = g_mtl_data_type;
+					params.data_type_b = b_mtl_data_type;
+					params.data_type_c = c_mtl_data_type;
 					const size_t count = ccv_nnc_tensor_count(c->info);
 					if (ccv_nnc_tensor_count(g->info) == count && ccv_nnc_tensor_count(b->info) == count) {
 						params.dim[0] = count;
@@ -394,6 +399,9 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 				if (a && d)
 				{
+					params.data_type_a = g_mtl_data_type;
+					params.data_type_b = a_mtl_data_type;
+					params.data_type_c = d_mtl_data_type;
 					const size_t count = ccv_nnc_tensor_count(d->info);
 					if (ccv_nnc_tensor_count(g->info) == count && ccv_nnc_tensor_count(a->info) == count) {
 						params.dim[0] = count;
@@ -490,6 +498,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					int nd = ccv_nnc_tensor_nd(g->info.dim);
 					assert(nd == ccv_nnc_tensor_nd(b->info.dim));
 					assert(nd == ccv_nnc_tensor_nd(c->info.dim));
+					const int compute_f32 = _ccv_nnc_cmul_compute_f32(g->info.datatype, b->info.datatype, c->info.datatype);
 					MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 						MPSGraphTensor* mps_input_a;
 						MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_a);
@@ -501,6 +510,13 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						[inputTensors addObject:mps_input_b];
 						MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 						[inputShapedTypes addObject:mps_b_shape];
+						if (compute_f32)
+						{
+							if (g->info.datatype != CCV_32F)
+								mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+							if (b->info.datatype != CCV_32F)
+								mps_b = [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:@"mps_b_float"];
+						}
 						int i;
 						// Reshape to [..., n / 2, 2]
 						NSMutableArray<NSNumber*>* a_shape = [NSMutableArray new];
@@ -525,6 +541,8 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						for (i = 0; i < nd; i++)
 							[c_shape addObject:@(c->info.dim[i])];
 						MPSGraphTensor* mps_c = [graph reshapeTensor:[graph concatTensor:mps_c_0 withTensor:mps_c_1 dimension:nd name:nil] withShape:c_shape name:nil];
+						if (compute_f32 && c->info.datatype != CCV_32F)
+							mps_c = [graph castTensor:mps_c toType:ccv_nnc_mps_datatype(c->info.datatype) name:@"mps_c"];
 						[resultTensors addObject:mps_c];
 						[c_shape release];
 					});
@@ -543,6 +561,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					int nd = ccv_nnc_tensor_nd(g->info.dim);
 					assert(nd == ccv_nnc_tensor_nd(a->info.dim));
 					assert(nd == ccv_nnc_tensor_nd(d->info.dim));
+					const int compute_f32 = _ccv_nnc_cmul_compute_f32(g->info.datatype, a->info.datatype, d->info.datatype);
 					MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 						MPSGraphTensor* mps_input_a;
 						MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, g, g->info.dim, g->stride, &mps_input_a);
@@ -554,6 +573,13 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						[inputTensors addObject:mps_input_b];
 						MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 						[inputShapedTypes addObject:mps_b_shape];
+						if (compute_f32)
+						{
+							if (g->info.datatype != CCV_32F)
+								mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+							if (a->info.datatype != CCV_32F)
+								mps_b = [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:@"mps_b_float"];
+						}
 						int i;
 						// Reshape to [..., n / 2, 2]
 						NSMutableArray<NSNumber*>* a_shape = [NSMutableArray new];
@@ -578,6 +604,8 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						for (i = 0; i < nd; i++)
 							[c_shape addObject:@(d->info.dim[i])];
 						MPSGraphTensor* mps_c = [graph reshapeTensor:[graph concatTensor:mps_c_0 withTensor:mps_c_1 dimension:nd name:nil] withShape:c_shape name:nil];
+						if (compute_f32 && d->info.datatype != CCV_32F)
+							mps_c = [graph castTensor:mps_c toType:ccv_nnc_mps_datatype(d->info.datatype) name:@"mps_c"];
 						[resultTensors addObject:mps_c];
 						[c_shape release];
 					});
@@ -596,7 +624,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_cmul_forw;
@@ -605,7 +633,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_
 REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_16F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_cmul_back;
