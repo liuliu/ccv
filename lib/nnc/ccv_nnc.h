@@ -4480,6 +4480,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
 /**
+ * An exp activation layer model.
+ * @param name The unique name of the model.
+ * @return An exp activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_exp(const char* const name);
+/**
+ * A softplus activation layer model.
+ * @param name The unique name of the model.
+ * @return A softplus activation layer model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softplus(const char* const name);
+/**
  * A swish activation layer model.
  * @param beta The beta coefficient in swish: x * sigmoid(beta * x).
  * @param name The unique name of the model.

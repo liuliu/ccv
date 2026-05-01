@@ -1482,6 +1482,46 @@ TEST_CASE("FPN-RPN use cnnp model with multiple outputs")
 	ccv_cnnp_model_free(rpn);
 }
 
+TEST_CASE("use exp cnnp model")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_exp("exp"), MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, "tiny");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(x->info), CMD_NOOP(), CMD_NOOP());
+	x->data.f32[0] = -1;
+	x->data.f32[1] = 0;
+	x->data.f32[2] = 1;
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[0], exp(-1), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[1], 1, 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[2], exp(1), 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("use softplus cnnp model")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_softplus("softplus"), MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, "tiny");
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(x->info), CMD_NOOP(), CMD_NOOP());
+	x->data.f32[0] = -20;
+	x->data.f32[1] = 0;
+	x->data.f32[2] = 20;
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[0], log1p(exp(-20)), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[1], log(2), 1e-5, "should be equal to expected value");
+	REQUIRE_EQ_WITH_TOLERANCE(y->data.f32[2], 20 + log1p(exp(-20)), 1e-5, "should be equal to expected value");
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("extract one output each feed into different feed-forward")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();

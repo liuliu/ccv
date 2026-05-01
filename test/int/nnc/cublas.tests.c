@@ -2596,6 +2596,168 @@ TEST_CASE("ewdiv backward with output 2")
 	ccv_nnc_tensor_free(dbt);
 }
 
+static ccv_nnc_tensor_param_t _ccv_nnc_ew_cpu_nchw_datatype(const int datatype)
+{
+	ccv_nnc_tensor_param_t params = CPU_TENSOR_NCHW(32F, 10, 100);
+	params.datatype = datatype;
+	return params;
+}
+
+static ccv_nnc_tensor_param_t _ccv_nnc_ew_gpu_nchw_datatype(const int datatype)
+{
+	ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 32F, 10, 100);
+	params.datatype = datatype;
+	return params;
+}
+
+static void _ccv_nnc_ewexp_gpu_ref_datatype(const int datatype, float* const forward_max_diff, float* const backward_max_diff)
+{
+	ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hg32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const har = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hgr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hbr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hda = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hda32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const dat32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const datr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 1000; i++)
+		ha32->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 6 - 3;
+	for (i = 0; i < 1000; i++)
+		hg32->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha32, hg32), TENSOR_LIST(ha, hg), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(har, hgr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(a, g), 0);
+	ccv_nnc_cmd_exec(CMD_EWEXP_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_EWEXP_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(har), TENSOR_LIST(hb32), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb32), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hbr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
+	*forward_max_diff = 0;
+	for (i = 0; i < 1000; i++)
+	{
+		const float max_val = ccv_max(ccv_max(fabsf(hbr->data.f32[i]), fabsf(hb32->data.f32[i])), 1);
+		*forward_max_diff = ccv_max(*forward_max_diff, fabsf(hbr->data.f32[i] - hb32->data.f32[i]) / max_val);
+	}
+	ccv_nnc_cmd_exec(CMD_EWEXP_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, b), TENSOR_LIST(da), 0);
+	ccv_nnc_cmd_exec(CMD_EWEXP_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hgr, 0, hbr), TENSOR_LIST(dat32), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dat32), TENSOR_LIST(dat), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dat), TENSOR_LIST(datr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(da), TENSOR_LIST(hda), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hda), TENSOR_LIST(hda32), 0);
+	*backward_max_diff = 0;
+	for (i = 0; i < 1000; i++)
+	{
+		const float max_val = ccv_max(ccv_max(fabsf(datr->data.f32[i]), fabsf(hda32->data.f32[i])), 1);
+		*backward_max_diff = ccv_max(*backward_max_diff, fabsf(datr->data.f32[i] - hda32->data.f32[i]) / max_val);
+	}
+	ccv_nnc_tensor_free(ha32);
+	ccv_nnc_tensor_free(hg32);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(har);
+	ccv_nnc_tensor_free(hgr);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hb32);
+	ccv_nnc_tensor_free(hbr);
+	ccv_nnc_tensor_free(hda);
+	ccv_nnc_tensor_free(hda32);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dat32);
+	ccv_nnc_tensor_free(datr);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(da);
+}
+
+static void _ccv_nnc_ewsoftplus_gpu_ref_datatype(const int datatype, float* const forward_max_diff, float* const backward_max_diff)
+{
+	ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hg32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const har = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hgr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hbr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const hda = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const hda32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const dat = ccv_nnc_tensor_new(0, _ccv_nnc_ew_cpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const dat32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const datr = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, _ccv_nnc_ew_gpu_nchw_datatype(datatype), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 1000; i++)
+		ha32->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 16 - 8;
+	for (i = 0; i < 1000; i++)
+		hg32->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha32, hg32), TENSOR_LIST(ha, hg), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(har, hgr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(a, g), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(har), TENSOR_LIST(hb32), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb32), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hbr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
+	*forward_max_diff = 0;
+	for (i = 0; i < 1000; i++)
+	{
+		const float max_val = ccv_max(ccv_max(fabsf(hbr->data.f32[i]), fabsf(hb32->data.f32[i])), 1);
+		*forward_max_diff = ccv_max(*forward_max_diff, fabsf(hbr->data.f32[i] - hb32->data.f32[i]) / max_val);
+	}
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a), TENSOR_LIST(da), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hgr, har), TENSOR_LIST(dat32), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dat32), TENSOR_LIST(dat), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dat), TENSOR_LIST(datr), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(da), TENSOR_LIST(hda), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hda), TENSOR_LIST(hda32), 0);
+	*backward_max_diff = 0;
+	for (i = 0; i < 1000; i++)
+	{
+		const float max_val = ccv_max(ccv_max(fabsf(datr->data.f32[i]), fabsf(hda32->data.f32[i])), 1);
+		*backward_max_diff = ccv_max(*backward_max_diff, fabsf(datr->data.f32[i] - hda32->data.f32[i]) / max_val);
+	}
+	ccv_nnc_tensor_free(ha32);
+	ccv_nnc_tensor_free(hg32);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(har);
+	ccv_nnc_tensor_free(hgr);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hb32);
+	ccv_nnc_tensor_free(hbr);
+	ccv_nnc_tensor_free(hda);
+	ccv_nnc_tensor_free(hda32);
+	ccv_nnc_tensor_free(dat);
+	ccv_nnc_tensor_free(dat32);
+	ccv_nnc_tensor_free(datr);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(da);
+}
+
 TEST_CASE("exp forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_GPU_REF));
@@ -2657,6 +2819,109 @@ TEST_CASE("ewexp backward")
 	ccv_nnc_tensor_free(hg);
 	ccv_nnc_tensor_free(hda);
 	ccv_nnc_tensor_free(dat);
+}
+
+TEST_CASE("ewexp half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	float forward_max_diff, backward_max_diff;
+	_ccv_nnc_ewexp_gpu_ref_datatype(CCV_16F, &forward_max_diff, &backward_max_diff);
+	REQUIRE(forward_max_diff <= 5e-3, "GPU computed output should be close to CPU computed ones after 16F rounding");
+	REQUIRE(backward_max_diff <= 5e-3, "GPU computed gradient should be close to CPU computed ones after 16F rounding");
+}
+
+TEST_CASE("ewexp bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	float forward_max_diff, backward_max_diff;
+	_ccv_nnc_ewexp_gpu_ref_datatype(CCV_16BF, &forward_max_diff, &backward_max_diff);
+	REQUIRE(forward_max_diff <= 2e-2, "GPU computed output should be close to CPU computed ones after 16BF rounding");
+	REQUIRE(backward_max_diff <= 2e-2, "GPU computed gradient should be close to CPU computed ones after 16BF rounding");
+}
+
+TEST_CASE("ewsoftplus forward")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 1000; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 40 - 20;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(bt), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, bt->data.f32, hb->data.f32, 1000, 1e-5, "GPU computed output should be the same as CPU computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("ewsoftplus backward")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* da = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 10, 100), 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* hda = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* hg = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	ccv_nnc_tensor_t* dat = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10, 100), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 1000; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 40 - 20;
+	for (i = 0; i < 1000; i++)
+		hg->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(a, g), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a), TENSOR_LIST(da), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_EWSOFTPLUS_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha), TENSOR_LIST(dat), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(da), TENSOR_LIST(hda), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dat->data.f32, hda->data.f32, 1000, 1e-5, "GPU computed output should be the same as CPU computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(hda);
+	ccv_nnc_tensor_free(dat);
+}
+
+TEST_CASE("ewsoftplus half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	float forward_max_diff, backward_max_diff;
+	_ccv_nnc_ewsoftplus_gpu_ref_datatype(CCV_16F, &forward_max_diff, &backward_max_diff);
+	REQUIRE(forward_max_diff <= 5e-3, "GPU computed output should be close to CPU computed ones after 16F rounding");
+	REQUIRE(backward_max_diff <= 5e-3, "GPU computed gradient should be close to CPU computed ones after 16F rounding");
+}
+
+TEST_CASE("ewsoftplus bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_EWSOFTPLUS_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	float forward_max_diff, backward_max_diff;
+	_ccv_nnc_ewsoftplus_gpu_ref_datatype(CCV_16BF, &forward_max_diff, &backward_max_diff);
+	REQUIRE(forward_max_diff <= 2e-2, "GPU computed output should be close to CPU computed ones after 16BF rounding");
+	REQUIRE(backward_max_diff <= 2e-2, "GPU computed gradient should be close to CPU computed ones after 16BF rounding");
 }
 
 TEST_CASE("ewpow forward")

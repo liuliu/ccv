@@ -1736,6 +1736,98 @@ static ccv_cnnp_model_t* _ccv_cnnp_tanh_copy(const ccv_cnnp_model_t* const self,
 	return ccv_cnnp_tanh(self->name);
 }
 
+// MARK - Exp Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_exp_t;
+
+static void _ccv_cnnp_exp_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_exp_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t exp = CMD_EWEXP_FORWARD();
+	ccv_nnc_hint_tensor_auto(exp, (ccv_nnc_tensor_param_t []){
+			params,
+		}, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t exp_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, exp, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(exp_output), "exp");
+	outputs[0] = exp_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_exp_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_exp_isa = {
+	.build = _ccv_cnnp_exp_build,
+	.copy = _ccv_cnnp_exp_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_exp(const char* const name)
+{
+	ccv_cnnp_model_exp_t* const model_exp = (ccv_cnnp_model_exp_t*)cccalloc(1, sizeof(ccv_cnnp_model_exp_t));
+	model_exp->super.isa = &ccv_cnnp_exp_isa;
+	model_exp->super.input_size = 1;
+	model_exp->super.outputs = &model_exp->output;
+	model_exp->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_exp->super, name);
+	return (ccv_cnnp_model_t*)model_exp;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_exp_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_exp(self->name);
+}
+
+// MARK - Softplus Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_softplus_t;
+
+static void _ccv_cnnp_softplus_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_softplus_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t softplus = CMD_EWSOFTPLUS_FORWARD();
+	ccv_nnc_hint_tensor_auto(softplus, (ccv_nnc_tensor_param_t []){
+			params,
+		}, 1, ccv_nnc_no_hint, &output_params, 1);
+	const ccv_nnc_tensor_symbol_t softplus_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, softplus, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(softplus_output), "softplus");
+	outputs[0] = softplus_output;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_softplus_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_softplus_isa = {
+	.build = _ccv_cnnp_softplus_build,
+	.copy = _ccv_cnnp_softplus_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_softplus(const char* const name)
+{
+	ccv_cnnp_model_softplus_t* const model_softplus = (ccv_cnnp_model_softplus_t*)cccalloc(1, sizeof(ccv_cnnp_model_softplus_t));
+	model_softplus->super.isa = &ccv_cnnp_softplus_isa;
+	model_softplus->super.input_size = 1;
+	model_softplus->super.outputs = &model_softplus->output;
+	model_softplus->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_softplus->super, name);
+	return (ccv_cnnp_model_t*)model_softplus;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_softplus_copy(const ccv_cnnp_model_t* const self, void* const context)
+{
+	return ccv_cnnp_softplus(self->name);
+}
+
 // MARK - Swish Layer
 
 typedef struct {

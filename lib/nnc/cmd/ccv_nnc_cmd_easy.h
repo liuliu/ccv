@@ -98,6 +98,10 @@
 #define CMD_EWEXP_FORWARD() ccv_nnc_cmd(CCV_NNC_EWEXP_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWEXP_BACKWARD
 #define CMD_EWEXP_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWEXP_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSOFTPLUS_FORWARD
+#define CMD_EWSOFTPLUS_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSOFTPLUS_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSOFTPLUS_BACKWARD
+#define CMD_EWSOFTPLUS_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSOFTPLUS_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWPOW_FORWARD
 #define CMD_EWPOW_FORWARD(_exponent) ccv_nnc_cmd(CCV_NNC_EWPOW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.pow={.exponent=_exponent}}), 0)
 // CCV_NNC_EWPOW_BACKWARD
