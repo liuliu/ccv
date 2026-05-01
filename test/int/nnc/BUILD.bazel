@@ -164,6 +164,16 @@ cc_binary(
 )
 
 cc_binary(
+	name = "gated_delta.tests",
+	srcs = ["gated_delta.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "mpsdnn.tests",
 	srcs = ["mpsdnn.tests.c"],
 	copts = ccv_default_copts(),

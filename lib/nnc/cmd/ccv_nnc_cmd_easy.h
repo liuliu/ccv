@@ -130,6 +130,8 @@
 #define CMD_CLAMP_FORWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
 // CCV_NNC_CLAMP_BACKWARD
 #define CMD_CLAMP_BACKWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
+// CCV_NNC_GATED_DELTA_FORWARD
+#define CMD_GATED_DELTA_FORWARD() ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
 // CCV_NNC_GELU_FORWARD
 #define CMD_GELU_FORWARD(_tanh) ccv_nnc_cmd(CCV_NNC_GELU_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gelu={.tanh=_tanh}}, 0)
 // CCV_NNC_GELU_BACKWARD
