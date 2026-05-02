@@ -14,7 +14,7 @@ struct GatedDeltaKernel {
 
   MTL::Size threadgroupSize;
 
-  uint8_t value;
+  uint8_t stateElementsPerLane;
 
   GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device);
 

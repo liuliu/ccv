@@ -36,7 +36,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
   };
 
   GatedDeltaKernelDescriptor kernelDesc;
-  kernelDesc.value = 0;
+  kernelDesc.stateElementsPerLane = (uint8_t)((keyDim + 31) / 32);
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {

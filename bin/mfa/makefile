@@ -3,7 +3,7 @@ include ../../lib/config.mk
 CFLAGS := -std=c++17 -O0 -g -Wall -I"../.." -I"../../lib" $(CFLAGS)
 LDFLAGS := $(LDFLAGS) -framework QuartzCore
 
-TARGETS = gemm_scaffold gemv_thin_tensorop_bench na_gemm_splitk_bench na_int8_attention_bench na_attention_causal_bench na_int8_attention_backward_probe na_attention_backward_bench attention_backward_compare_probe sdpa_backward_compare_bench rotate_half_bench na_int8_matmul_bench ane_fp16_matmul_harness ane_int8_matmul_probe ane_int8_conv_matmul_harness ane_int8_rowwise_conv_harness ane_na_int8_matmul_harness dump_attention_source dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
+TARGETS = gemm_scaffold gemv_thin_tensorop_bench na_gemm_splitk_bench na_int8_attention_bench na_attention_causal_bench na_int8_attention_backward_probe na_attention_backward_bench attention_backward_compare_probe sdpa_backward_compare_bench rotate_half_bench gated_delta_bench na_int8_matmul_bench ane_fp16_matmul_harness ane_int8_matmul_probe ane_int8_conv_matmul_harness ane_int8_rowwise_conv_harness ane_na_int8_matmul_harness dump_attention_source dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
@@ -64,12 +64,16 @@ ROTATE_HALF_OBJS = \
 	RotateHalfDescriptor.local.o \
 	RotateHalfKernel.local.o
 
+GATED_DELTA_OBJS = \
+	GatedDeltaDescriptor.local.o \
+	GatedDeltaKernel.local.o
+
 .PHONY: all clean
 
 all: $(TARGETS)
 
 clean:
-	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o gemv_thin_tensorop_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(TARGETS) dump_na_source
+	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o gemv_thin_tensorop_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o gated_delta_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(GATED_DELTA_OBJS) $(TARGETS) dump_na_source
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -93,6 +97,8 @@ sdpa_backward_compare_bench: sdpa_backward_compare_bench.o $(COMMON_OBJS) $(NA_A
 	$(CC) -o $@ $^ $(MPSGRAPH_LDFLAGS)
 rotate_half_bench: rotate_half_bench.o $(COMMON_OBJS) $(ROTATE_HALF_OBJS)
 	$(CC) -o $@ $^ $(MPSGRAPH_LDFLAGS)
+gated_delta_bench: gated_delta_bench.o Metal.local.o Dispatch.local.o ccv_nnc_mfa_error.local.o $(GATED_DELTA_OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 ane_fp16_matmul_harness: ane_fp16_matmul_harness.o
@@ -158,6 +164,8 @@ sdpa_backward_compare_bench.o: sdpa_backward_compare_bench.mm
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
 rotate_half_bench.o: rotate_half_bench.mm
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
+gated_delta_bench.o: gated_delta_bench.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
 na_int8_matmul_bench.o: na_int8_matmul_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 ane_fp16_matmul_harness.o: ane_fp16_matmul_harness.mm
@@ -289,6 +297,12 @@ RotateHalfDescriptor.local.o: ../../lib/nnc/mfa/kernels/RotateHalfDescriptor.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 RotateHalfKernel.local.o: ../../lib/nnc/mfa/kernels/RotateHalfKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+GatedDeltaDescriptor.local.o: ../../lib/nnc/mfa/kernels/GatedDeltaDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+GatedDeltaKernel.local.o: ../../lib/nnc/mfa/kernels/GatedDeltaKernel.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAInt8MatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.cpp

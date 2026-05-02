@@ -7,14 +7,14 @@
 #include "DeviceProperties.hpp"
 
 struct GatedDeltaKernelDescriptor {
-  uint8_t value;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return value == rhs.value; }
+  uint8_t stateElementsPerLane;
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane; }
 };
 
 struct GatedDeltaKernel;

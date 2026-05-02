@@ -2,12 +2,12 @@
 #include "../ccv_nnc_mfa.hpp"
 
 GatedDeltaKernel::GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device) {
-  value = descriptor.value;
+  stateElementsPerLane = descriptor.stateElementsPerLane;
 
   source = createSource();
 
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
-  threadgroupSize = MTL::Size(256, 1, 1);
+  threadgroupSize = MTL::Size(32, 4, 1);
 
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -18,7 +18,7 @@ GatedDeltaKernel::GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::D
 }
 
 unsigned short GatedDeltaKernel::createThreadgroupMemoryAllocation() const noexcept {
-  return 256 * sizeof(float);
+  return 0;
 }
 
 std::string GatedDeltaKernel::createSource() const noexcept {
@@ -33,7 +33,8 @@ constant uint Hv [[function_constant(3)]];
 constant uint Dk [[function_constant(4)]];
 constant uint Dv [[function_constant(5)]];
 constant uint hv_per_hk = Hv / Hk;
-constant uint threadgroup_size = 256;
+constant uint dv_per_threadgroup = 4;
+constant uint state_elements_per_lane = )" + std::to_string(stateElementsPerLane) + R"(;
 
 kernel void gated_delta(
   device const float* q [[buffer(0)]],
@@ -44,63 +45,71 @@ kernel void gated_delta(
   device const float* state_in [[buffer(5)]],
   device float* y [[buffer(6)]],
   device float* state_out [[buffer(7)]],
-  threadgroup float* partials [[threadgroup(0)]],
 
-  uint group [[threadgroup_position_in_grid]],
-  uint tid [[thread_position_in_threadgroup]]
+  uint3 group [[threadgroup_position_in_grid]],
+  uint3 tid [[thread_position_in_threadgroup]],
+  ushort lane_id [[thread_index_in_simdgroup]]
 ) {
-  const uint dv = group % Dv;
-  const uint hv = (group / Dv) % Hv;
-  const uint b = group / (Dv * Hv);
+  const uint dv = group.x * dv_per_threadgroup + tid.y;
+  if (dv >= Dv) {
+    return;
+  }
+  const uint hv = group.y;
+  const uint b = group.z;
   const uint hk = hv / hv_per_hk;
   const uint state_offset = ((b * Hv + hv) * Dv + dv) * Dk;
 
-  for (uint dk = tid; dk < Dk; dk += threadgroup_size) {
-    state_out[state_offset + dk] = state_in[state_offset + dk];
+  float state[state_elements_per_lane];
+  for (uint i = 0; i < state_elements_per_lane; i++) {
+    const uint dk = state_elements_per_lane * lane_id + i;
+    state[i] = (dk < Dk) ? state_in[state_offset + dk] : 0.0f;
   }
-  threadgroup_barrier(mem_flags::mem_device);
+
+  device const float* q_ptr = q + (b * T * Hk + hk) * Dk;
+  device const float* k_ptr = k + (b * T * Hk + hk) * Dk;
+  device const float* v_ptr = v + (b * T * Hv + hv) * Dv + dv;
+  device const float* log_decay_ptr = log_decay + (b * T * Hv + hv);
+  device const float* beta_ptr = beta + (b * T * Hv + hv);
+  device float* y_ptr = y + (b * T * Hv + hv) * Dv + dv;
 
   for (uint t = 0; t < T; t++) {
-    const uint qk_offset = ((b * T + t) * Hk + hk) * Dk;
-    const uint gate_offset = (b * T + t) * Hv + hv;
-    const float decay = precise::exp(log_decay[gate_offset]);
+    float decay = (lane_id == 0) ? precise::exp(log_decay_ptr[0]) : 0.0f;
+    decay = simd_broadcast_first(decay);
     float memory = 0.0f;
-    for (uint dk = tid; dk < Dk; dk += threadgroup_size) {
-      const uint idx = state_offset + dk;
-      const float decayed = state_out[idx] * decay;
-      state_out[idx] = decayed;
-      memory += decayed * k[qk_offset + dk];
-    }
-    partials[tid] = memory;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint offset = threadgroup_size / 2; offset > 0; offset /= 2) {
-      if (tid < offset) {
-        partials[tid] += partials[tid + offset];
+    for (uint i = 0; i < state_elements_per_lane; i++) {
+      const uint dk = state_elements_per_lane * lane_id + i;
+      if (dk < Dk) {
+        state[i] *= decay;
+        memory += state[i] * k_ptr[dk];
       }
-      threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    const float kv_mem = partials[0];
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+    memory = simd_sum(memory);
 
-    const uint v_offset = ((b * T + t) * Hv + hv) * Dv + dv;
-    const float delta = (v[v_offset] - kv_mem) * beta[gate_offset];
+    const float delta = (v_ptr[0] - memory) * beta_ptr[0];
     float out = 0.0f;
-    for (uint dk = tid; dk < Dk; dk += threadgroup_size) {
-      const uint idx = state_offset + dk;
-      const float next = state_out[idx] + delta * k[qk_offset + dk];
-      state_out[idx] = next;
-      out += next * q[qk_offset + dk];
-    }
-    partials[tid] = out;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint offset = threadgroup_size / 2; offset > 0; offset /= 2) {
-      if (tid < offset) {
-        partials[tid] += partials[tid + offset];
+    for (uint i = 0; i < state_elements_per_lane; i++) {
+      const uint dk = state_elements_per_lane * lane_id + i;
+      if (dk < Dk) {
+        state[i] += delta * k_ptr[dk];
+        out += state[i] * q_ptr[dk];
       }
-      threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    if (tid == 0) {
-      y[v_offset] = partials[0];
+    out = simd_sum(out);
+    if (lane_id == 0) {
+      y_ptr[0] = out;
+    }
+    q_ptr += Hk * Dk;
+    k_ptr += Hk * Dk;
+    v_ptr += Hv * Dv;
+    y_ptr += Hv * Dv;
+    log_decay_ptr += Hv;
+    beta_ptr += Hv;
+  }
+
+  for (uint i = 0; i < state_elements_per_lane; i++) {
+    const uint dk = state_elements_per_lane * lane_id + i;
+    if (dk < Dk) {
+      state_out[state_offset + dk] = state[i];
     }
   }
 }

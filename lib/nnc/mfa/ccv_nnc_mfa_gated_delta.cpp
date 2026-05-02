@@ -48,8 +48,8 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->useResource(tensors[7], MTL::ResourceUsageWrite);
   }
 
-  const uint32_t row_count = params.batch_size * params.value_head_count * params.value_dim;
-  MTL::Size gridSize = MTL::Size(row_count, 1, 1);
+  const uint32_t value_dim_threadgroups = (params.value_dim + 3) / 4;
+  MTL::Size gridSize = MTL::Size(value_dim_threadgroups, params.value_head_count, params.batch_size);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
   command_batch->finishCommand(encoder);
