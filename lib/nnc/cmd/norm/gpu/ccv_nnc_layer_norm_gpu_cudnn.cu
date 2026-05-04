@@ -6,6 +6,7 @@ extern "C" {
 #include <nnc/ccv_nnc_internal.h>
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
+#include "ccv_nnc_flash_norm_gpu.h"
 
 #ifdef HAVE_CUDNN
 
@@ -20,12 +21,18 @@ __global__ void _ccv_nnc_inv_std_kernel(const int count, const float epsilon, co
 static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 3 || input_size == 1);
+	assert(output_size == 3);
+	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
+#ifdef HAVE_CUDA_SM80
+	ccv_nnc_flash_norm_info_t flash_norm = {};
+	if (_ccv_nnc_flash_norm_check(cmd.info.lnorm.axis, cmd.info.lnorm.count, inputs[0], outputs[0], outputs[1], outputs[2], elementwise_affine ? inputs[1] : 0, elementwise_affine ? inputs[2] : 0, elementwise_affine, &flash_norm) &&
+		_ccv_nnc_flash_norm_forw(stream_context, inputs[0], elementwise_affine ? inputs[1] : 0, elementwise_affine ? inputs[2] : 0, outputs[0], outputs[1], outputs[2], flash_norm, cmd.info.lnorm.epsilon, 0))
+		return CCV_NNC_EXEC_SUCCESS;
+#endif
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	static const float one = 1, zero = 0, neg_one = -1;
-	assert(output_size == 3);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
-	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
 	if (elementwise_affine)
 	{
 		assert(CCV_IS_TENSOR_CONTIGUOUS(inputs[1]));

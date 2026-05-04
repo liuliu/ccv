@@ -2846,7 +2846,7 @@ TEST_CASE("compare layer norm with cudnn in bfloat precision")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
 	const int batch_size = 2;
 	const int sequence_length = 3;
-	const int channels = 257;
+	const int channels = 256;
 	const int rows = batch_size * sequence_length;
 	const int element_count = rows * channels;
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
@@ -2955,7 +2955,7 @@ TEST_CASE("compare rmsnorm with cudnn in bfloat precision")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
 	const int batch_size = 2;
 	const int sequence_length = 3;
-	const int channels = 257;
+	const int channels = 256;
 	const int rows = batch_size * sequence_length;
 	const int element_count = rows * channels;
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
