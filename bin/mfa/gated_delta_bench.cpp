@@ -25,6 +25,7 @@ struct BenchmarkConfig {
   int warmup_iterations = 3;
   int timed_iterations = 10;
   int duplicated_dispatches = 8;
+  bool log_decay_input = true;
 };
 
 struct GatedDeltaCase {
@@ -87,11 +88,14 @@ std::vector<T> make_data(size_t count, float scale, uint32_t salt)
   return values;
 }
 
-std::vector<float> make_log_decay(size_t count)
+std::vector<float> make_decay(size_t count, bool log_decay_input)
 {
   std::vector<float> values(count);
   for (size_t i = 0; i < count; ++i)
-    values[i] = -0.01f * (float)((i % 7) + 1);
+  {
+    const float log_decay = -0.01f * (float)((i % 7) + 1);
+    values[i] = log_decay_input ? log_decay : std::exp(log_decay);
+  }
   return values;
 }
 
@@ -109,13 +113,13 @@ NS::SharedPtr<MTL::Buffer> make_buffer(MTL::Device* device, const std::vector<fl
       values.data(), values.size() * sizeof(float), kSharedResourceOptions));
 }
 
-Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench)
+Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench, bool log_decay_input)
 {
   Buffers buffers;
   buffers.q = make_buffer(device, make_data<float>(qk_count(bench), 0.0015f, 1));
   buffers.k = make_buffer(device, make_data<float>(qk_count(bench), 0.0013f, 2));
   buffers.v = make_buffer(device, make_data<float>(v_count(bench), 0.0011f, 3));
-  buffers.log_decay = make_buffer(device, make_log_decay(gate_count(bench)));
+  buffers.log_decay = make_buffer(device, make_decay(gate_count(bench), log_decay_input));
   buffers.beta = make_buffer(device, make_beta(gate_count(bench)));
   buffers.state_in = make_buffer(device, make_data<float>(state_count(bench), 0.0007f, 4));
   buffers.y = NS::TransferPtr(device->newBuffer(v_count(bench) * sizeof(float), kSharedResourceOptions));
@@ -123,7 +127,7 @@ Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench)
   return buffers;
 }
 
-GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench)
+GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, bool log_decay_input)
 {
   GatedDeltaDescriptor descriptor;
   descriptor.batchSize = bench.B;
@@ -132,6 +136,8 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench)
   descriptor.valueHeadCount = bench.Hv;
   descriptor.keyDim = bench.Dk;
   descriptor.valueDim = bench.Dv;
+  descriptor.inputMemoryPrecision = GEMMOperandPrecision::FP32;
+  descriptor.logDecay = log_decay_input;
   return descriptor;
 }
 
@@ -180,7 +186,7 @@ double run_once(
   encoder->setBuffer(buffers.state_in.get(), 0, 5);
   encoder->setBuffer(buffers.y.get(), 0, 6);
   encoder->setBuffer(buffers.state_out.get(), 0, 7);
-  const MTL::Size grid_size((bench.Dv + 3) / 4, bench.Hv, bench.B);
+  const MTL::Size grid_size(1, (bench.Dv + 3) / 4, bench.B * bench.Hv);
   for (int i = 0; i < config.duplicated_dispatches; ++i)
     encoder->dispatchThreadgroups(grid_size, pipeline_value->kernel->threadgroupSize);
   encoder->endEncoding();
@@ -208,7 +214,7 @@ double modeled_register_state_bytes(const GatedDeltaCase& bench)
   return 2.0 * state_bytes;
 }
 
-void print_stats(const GatedDeltaCase& bench, const Stats& stats)
+void print_stats(const GatedDeltaCase& bench, const BenchmarkConfig& config, const Stats& stats)
 {
   const double flops = modeled_flops(bench);
   const double legacy_state_gib =
@@ -222,6 +228,7 @@ void print_stats(const GatedDeltaCase& bench, const Stats& stats)
             << " Hv=" << bench.Hv
             << " Dk=" << bench.Dk
             << " Dv=" << bench.Dv
+            << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
             << " avg_ms=" << std::fixed << std::setprecision(4) << stats.average_seconds * 1e3
             << " best3_avg_ms=" << stats.best3_average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
@@ -239,7 +246,7 @@ void print_usage(const char* argv0)
   std::cerr
       << "usage: " << argv0
       << " [--single] [--label NAME] [--B N] [--T N] [--Hk N] [--Hv N] [--Dk N] [--Dv N]"
-      << " [--warmup N] [--iters N] [--dups N]\n";
+      << " [--warmup N] [--iters N] [--dups N] [--log-decay-input|--decay-input]\n";
 }
 
 bool parse_u32(const char* text, uint32_t* value)
@@ -322,6 +329,10 @@ int main(int argc, char** argv)
         config.timed_iterations = parsed;
       else
         config.duplicated_dispatches = parsed;
+    } else if (arg == "--log-decay-input") {
+      config.log_decay_input = true;
+    } else if (arg == "--decay-input") {
+      config.log_decay_input = false;
     } else if (arg == "--help" || arg == "-h") {
       print_usage(argv[0]);
       return 0;
@@ -363,6 +374,7 @@ int main(int argc, char** argv)
             << " warmup=" << config.warmup_iterations
             << " iters=" << config.timed_iterations
             << " duplicated_dispatches=" << config.duplicated_dispatches
+            << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
             << '\n';
 
   ShaderCache shader_cache;
@@ -373,11 +385,11 @@ int main(int argc, char** argv)
       std::cerr << "invalid shape for " << bench.label << ".\n";
       return 1;
     }
-    const auto descriptor = create_descriptor(bench);
+    const auto descriptor = create_descriptor(bench, config.log_decay_input);
     auto pipeline_value =
         shader_cache.findKernel<GatedDeltaKernel, GatedDeltaDescriptor, GatedDeltaKernelDescriptor>(
             descriptor, device.get(), dprops);
-    Buffers buffers = create_buffers(device.get(), bench);
+    Buffers buffers = create_buffers(device.get(), bench, config.log_decay_input);
     if (!buffers.q || !buffers.k || !buffers.v || !buffers.log_decay || !buffers.beta ||
         !buffers.state_in || !buffers.y || !buffers.state_out) {
       std::cerr << "buffer allocation failed for " << bench.label << ".\n";
@@ -391,7 +403,7 @@ int main(int argc, char** argv)
       std::cerr << "benchmark failed for " << bench.label << ".\n";
       return 1;
     }
-    print_stats(bench, stats);
+    print_stats(bench, config, stats);
   }
   (void)pool;
   return 0;

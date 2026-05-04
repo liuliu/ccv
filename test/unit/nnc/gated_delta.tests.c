@@ -67,10 +67,13 @@ TEST_CASE("gated delta forward with grouped heads")
 	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hk, Dk), 0);
 	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
 	ccv_nnc_tensor_t* const log_decay = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const decay = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
 	ccv_nnc_tensor_t* const beta = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
 	ccv_nnc_tensor_t* const state_in = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
 	ccv_nnc_tensor_t* const state_out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
+	ccv_nnc_tensor_t* const decay_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const decay_state = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
 	ccv_nnc_tensor_t* const inplace_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
 	ccv_nnc_tensor_t* const inplace_state = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
 	ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
@@ -86,26 +89,33 @@ TEST_CASE("gated delta forward with grouped heads")
 	for (i = 0; i < B * T * Hv; i++)
 	{
 		log_decay->data.f32[i] = -0.01f * (float)((i % 7) + 1);
+		decay->data.f32[i] = expf(log_decay->data.f32[i]);
 		beta->data.f32[i] = 0.15f + 0.07f * (float)(i % 5);
 	}
 	for (i = 0; i < B * Hv * Dv * Dk; i++)
 		state_in->data.f32[i] = _gated_delta_value(i, 23, 41, 0.01f);
 	_gated_delta_reference(q->data.f32, k->data.f32, v->data.f32, log_decay->data.f32, beta->data.f32, state_in->data.f32, B, T, Hk, Dk, Hv, Dv, expected_y->data.f32, expected_state->data.f32);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
+	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, decay, beta, state_in), TENSOR_LIST(decay_y, decay_state), 0);
 	memcpy(inplace_state->data.f32, state_in->data.f32, sizeof(float) * B * Hv * Dv * Dk);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, inplace_state), TENSOR_LIST(inplace_y, inplace_state), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, y->data.f32, B * T * Hv * Dv, 1e-6, "gated delta output should match scalar reference");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, state_out->data.f32, B * Hv * Dv * Dk, 1e-6, "gated delta state should match scalar reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, decay_y->data.f32, B * T * Hv * Dv, 1e-6, "gated delta output with precomputed decay should match scalar reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, decay_state->data.f32, B * Hv * Dv * Dk, 1e-6, "gated delta state with precomputed decay should match scalar reference");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, inplace_y->data.f32, B * T * Hv * Dv, 1e-6, "in-place gated delta output should match scalar reference");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, inplace_state->data.f32, B * Hv * Dv * Dk, 1e-6, "in-place gated delta state should match scalar reference");
 	ccv_nnc_tensor_free(q);
 	ccv_nnc_tensor_free(k);
 	ccv_nnc_tensor_free(v);
 	ccv_nnc_tensor_free(log_decay);
+	ccv_nnc_tensor_free(decay);
 	ccv_nnc_tensor_free(beta);
 	ccv_nnc_tensor_free(state_in);
 	ccv_nnc_tensor_free(y);
 	ccv_nnc_tensor_free(state_out);
+	ccv_nnc_tensor_free(decay_y);
+	ccv_nnc_tensor_free(decay_state);
 	ccv_nnc_tensor_free(inplace_y);
 	ccv_nnc_tensor_free(inplace_state);
 	ccv_nnc_tensor_free(expected_y);
@@ -203,8 +213,16 @@ TEST_CASE("ccv_cnnp gated delta forward")
 	const ccv_cnnp_model_io_t log_decay_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t beta_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t state_input = ccv_cnnp_input();
-	ccv_cnnp_model_io_t outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta("gated_delta"), MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input));
+	ccv_cnnp_model_io_t outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(1, "gated_delta"), MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input));
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input), MODEL_IO_LIST(outputs), 0, "gated_delta");
+	const ccv_cnnp_model_io_t q_decay_input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t k_decay_input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t v_decay_input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t decay_input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t beta_decay_input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t state_decay_input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t decay_outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(0, "gated_delta_decay"), MODEL_IO_LIST(q_decay_input, k_decay_input, v_decay_input, decay_input, beta_decay_input, state_decay_input));
+	ccv_cnnp_model_t* const decay_model = ccv_cnnp_model_new(MODEL_IO_LIST(q_decay_input, k_decay_input, v_decay_input, decay_input, beta_decay_input, state_decay_input), MODEL_IO_LIST(decay_outputs), 0, "gated_delta_decay");
 	ccv_nnc_tensor_param_t q_params = CPU_TENSOR_NHWC(32F, B, T, Hk, Dk);
 	ccv_nnc_tensor_param_t k_params = CPU_TENSOR_NHWC(32F, B, T, Hk, Dk);
 	ccv_nnc_tensor_param_t v_params = CPU_TENSOR_NHWC(32F, B, T, Hv, Dv);
@@ -212,14 +230,18 @@ TEST_CASE("ccv_cnnp gated delta forward")
 	ccv_nnc_tensor_param_t beta_params = CPU_TENSOR_NHWC(32F, B, T, Hv);
 	ccv_nnc_tensor_param_t state_params = CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk);
 	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(q_params, k_params, v_params, log_decay_params, beta_params, state_params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_compile(decay_model, TENSOR_PARAM_LIST(q_params, k_params, v_params, log_decay_params, beta_params, state_params), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
 	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, k_params, 0);
 	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, v_params, 0);
 	ccv_nnc_tensor_t* const log_decay = ccv_nnc_tensor_new(0, log_decay_params, 0);
+	ccv_nnc_tensor_t* const decay = ccv_nnc_tensor_new(0, log_decay_params, 0);
 	ccv_nnc_tensor_t* const beta = ccv_nnc_tensor_new(0, beta_params, 0);
 	ccv_nnc_tensor_t* const state_in = ccv_nnc_tensor_new(0, state_params, 0);
 	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, v_params, 0);
 	ccv_nnc_tensor_t* const state_out = ccv_nnc_tensor_new(0, state_params, 0);
+	ccv_nnc_tensor_t* const decay_y = ccv_nnc_tensor_new(0, v_params, 0);
+	ccv_nnc_tensor_t* const decay_state = ccv_nnc_tensor_new(0, state_params, 0);
 	ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, v_params, 0);
 	ccv_nnc_tensor_t* const expected_state = ccv_nnc_tensor_new(0, state_params, 0);
 	int i;
@@ -233,25 +255,33 @@ TEST_CASE("ccv_cnnp gated delta forward")
 	for (i = 0; i < B * T * Hv; i++)
 	{
 		log_decay->data.f32[i] = -0.03f * (float)((i % 4) + 1);
+		decay->data.f32[i] = expf(log_decay->data.f32[i]);
 		beta->data.f32[i] = 0.12f + 0.06f * (float)(i % 3);
 	}
 	for (i = 0; i < B * Hv * Dv * Dk; i++)
 		state_in->data.f32[i] = _gated_delta_value(i, 13, 29, 0.01f);
 	_gated_delta_reference(q->data.f32, k->data.f32, v->data.f32, log_decay->data.f32, beta->data.f32, state_in->data.f32, B, T, Hk, Dk, Hv, Dv, expected_y->data.f32, expected_state->data.f32);
 	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){.requires_grad = 0}, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_out), 0, 0);
+	ccv_cnnp_model_evaluate(decay_model, (ccv_cnnp_evaluate_param_t){.requires_grad = 0}, TENSOR_LIST(q, k, v, decay, beta, state_in), TENSOR_LIST(decay_y, decay_state), 0, 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, y->data.f32, B * T * Hv * Dv, 1e-6, "ccv_cnnp gated delta output should match scalar reference");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, state_out->data.f32, B * Hv * Dv * Dk, 1e-6, "ccv_cnnp gated delta state should match scalar reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, decay_y->data.f32, B * T * Hv * Dv, 1e-6, "ccv_cnnp gated delta output with precomputed decay should match scalar reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, decay_state->data.f32, B * Hv * Dv * Dk, 1e-6, "ccv_cnnp gated delta state with precomputed decay should match scalar reference");
 	ccv_nnc_tensor_free(q);
 	ccv_nnc_tensor_free(k);
 	ccv_nnc_tensor_free(v);
 	ccv_nnc_tensor_free(log_decay);
+	ccv_nnc_tensor_free(decay);
 	ccv_nnc_tensor_free(beta);
 	ccv_nnc_tensor_free(state_in);
 	ccv_nnc_tensor_free(y);
 	ccv_nnc_tensor_free(state_out);
+	ccv_nnc_tensor_free(decay_y);
+	ccv_nnc_tensor_free(decay_state);
 	ccv_nnc_tensor_free(expected_y);
 	ccv_nnc_tensor_free(expected_state);
 	ccv_cnnp_model_free(model);
+	ccv_cnnp_model_free(decay_model);
 }
 
 #include "case_main.h"

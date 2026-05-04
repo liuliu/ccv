@@ -4,7 +4,7 @@
 
 static int _ccv_nnc_gated_delta_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// Inputs: q, k, v, log_decay, beta, state_in.
+	// Inputs: q, k, v, decay / log_decay, beta, state_in.
 	// Outputs: y, state_out.
 	if (input_size == 6 && output_size == 2 && (input_bitmasks[0] & 63u) == 63u && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
@@ -74,4 +74,8 @@ REGISTER_COMMAND(CCV_NNC_GATED_DELTA_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GATED_DELTA_FORWARD)
-#define CMD_GATED_DELTA_FORWARD() ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}), 0)
+#define CMD_GATED_DELTA_FORWARD_X_F(...) ("This should not be used, you should have either 0 or 1 parameter for CMD_GATED_DELTA_FORWARD")
+#define CMD_GATED_DELTA_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=1}}), 0)
+#define CMD_GATED_DELTA_FORWARD_X_1(_log_decay) ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=(_log_decay)}}), 0)
+#define CMD_GATED_DELTA_FORWARD_X_SEL(_0, _1, _FX, ...) _FX
+#define CMD_GATED_DELTA_FORWARD(...) CMD_GATED_DELTA_FORWARD_X_SEL(CMD_GATED_DELTA_FORWARD_X_F, ##__VA_ARGS__, CMD_GATED_DELTA_FORWARD_X_1, CMD_GATED_DELTA_FORWARD_X_0)(__VA_ARGS__)

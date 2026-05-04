@@ -5,16 +5,18 @@
 #include <utility>
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
+#include "GEMMOperandPrecision.hpp"
 
 struct GatedDeltaKernelDescriptor {
   uint8_t stateElementsPerLane;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane; }
+  GEMMOperandPrecision inputMemoryPrecision;
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && inputMemoryPrecision == rhs.inputMemoryPrecision; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane; }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8); }
 };
 
 struct GatedDeltaKernel;
@@ -31,6 +33,10 @@ struct GatedDeltaDescriptor {
   uint32_t keyDim;
 
   uint32_t valueDim;
+
+  GEMMOperandPrecision inputMemoryPrecision;
+
+  bool logDecay;
 
   bool operator==(const GatedDeltaDescriptor& rhs) const;
 

@@ -10,7 +10,9 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   keyHeadCount == rhs.keyHeadCount &&
   valueHeadCount == rhs.valueHeadCount &&
   keyDim == rhs.keyDim &&
-  valueDim == rhs.valueDim;
+  valueDim == rhs.valueDim &&
+  inputMemoryPrecision == rhs.inputMemoryPrecision &&
+  logDecay == rhs.logDecay;
 }
 
 std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescriptor& hash) const noexcept {
@@ -19,6 +21,8 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   combine_64(seed, pack_64(simd::uint2 { hash.batchSize, hash.sequenceLength }));
   combine_64(seed, pack_64(simd::uint2 { hash.keyHeadCount, hash.valueHeadCount }));
   combine_64(seed, pack_64(simd::uint2 { hash.keyDim, hash.valueDim }));
+  combine_64(seed, hash.inputMemoryPrecision.value);
+  combine_64(seed, hash.logDecay ? 1 : 0);
   return seed;
 }
 
@@ -37,6 +41,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
 
   GatedDeltaKernelDescriptor kernelDesc;
   kernelDesc.stateElementsPerLane = (uint8_t)((keyDim + 31) / 32);
+  kernelDesc.inputMemoryPrecision = inputMemoryPrecision;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
@@ -47,6 +52,11 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
     constants->setConstantValue(&valueHeadCount, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&keyDim, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&valueDim, MTL::DataTypeUInt, NS::UInteger(5));
+    constants->setConstantValue(&logDecay, MTL::DataTypeBool, NS::UInteger(6));
+    const bool keyDimMultipleOf32 = (keyDim % 32) == 0;
+    const bool valueDimMultipleOf4 = (valueDim % 4) == 0;
+    constants->setConstantValue(&keyDimMultipleOf32, MTL::DataTypeBool, NS::UInteger(7));
+    constants->setConstantValue(&valueDimMultipleOf4, MTL::DataTypeBool, NS::UInteger(8));
 
     NS::String* swiftName = NS::String::string("gated_delta", NS::UTF8StringEncoding);
     NS::Error* error = nil;

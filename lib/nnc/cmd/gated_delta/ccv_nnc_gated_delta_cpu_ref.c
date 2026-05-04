@@ -87,6 +87,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(state_out->info.dim[2] == Dv);
 	assert(state_out->info.dim[3] == Dk);
 	assert(Hv % Hk == 0);
+	const int log_decay_input = cmd.info.gated_delta.log_decay;
 	const int hv_per_hk = Hv / Hk;
 	const float* const qp = q->data.f32;
 	const float* const kp = k->data.f32;
@@ -113,7 +114,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					const float* const q_row = qp + qk_offset;
 					const float* const k_row = kp + qk_offset;
 					const size_t gate_offset = ((size_t)b * T + t) * Hv + hv;
-					const float decay = expf(gp[gate_offset]);
+					const float decay = log_decay_input ? expf(gp[gate_offset]) : gp[gate_offset];
 					float memory = 0;
 					for (dk = 0; dk < Dk; dk++)
 					{

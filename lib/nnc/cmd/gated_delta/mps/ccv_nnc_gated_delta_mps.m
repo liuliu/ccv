@@ -5,6 +5,12 @@
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 
+enum {
+	CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT = 3,
+	CCV_NNC_MFA_MTL_DATA_TYPE_HALF = 16,
+	CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT = 121,
+};
+
 static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 6);
@@ -68,9 +74,11 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 			return CCV_NNC_EXEC_INVALID;
-		if (q->info.datatype != CCV_32F || k->info.datatype != CCV_32F || v->info.datatype != CCV_32F ||
+		const int input_datatype = q->info.datatype;
+		if ((input_datatype != CCV_32F && input_datatype != CCV_16F && input_datatype != CCV_16BF) ||
+			k->info.datatype != input_datatype || v->info.datatype != input_datatype ||
 			log_decay->info.datatype != CCV_32F || beta->info.datatype != CCV_32F ||
-			state_in->info.datatype != CCV_32F || y->info.datatype != CCV_32F || state_out->info.datatype != CCV_32F)
+			state_in->info.datatype != CCV_32F || y->info.datatype != input_datatype || state_out->info.datatype != CCV_32F)
 			return CCV_NNC_EXEC_INVALID;
 		if (!CCV_IS_TENSOR_CONTIGUOUS(q) || !CCV_IS_TENSOR_CONTIGUOUS(k) || !CCV_IS_TENSOR_CONTIGUOUS(v) ||
 			!CCV_IS_TENSOR_CONTIGUOUS(log_decay) || !CCV_IS_TENSOR_CONTIGUOUS(beta) ||
@@ -83,6 +91,8 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			.value_head_count = (uint32_t)Hv,
 			.key_dim = (uint32_t)Dk,
 			.value_dim = (uint32_t)Dv,
+			.data_type = input_datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (input_datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
+			.log_decay = cmd.info.gated_delta.log_decay != 0,
 		};
 		ccv_nnc_mfa_prepare_gated_delta(context, params);
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -116,7 +126,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_gated_delta_forw;

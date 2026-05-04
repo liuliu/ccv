@@ -252,6 +252,9 @@ typedef struct {
 			int align_corners;
 		} grid_sample;
 		struct {
+			int log_decay; /**< [gated_delta.log_decay] If 1, input 3 is log-decay and should be exponentiated. If 0, input 3 is precomputed decay. */
+		} gated_delta;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
@@ -4683,11 +4686,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
 /**
  * Apply the gated delta recurrent update.
- * Inputs are (q, k, v, log_decay, beta, state_in), and outputs are (y, state_out).
+ * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).
+ * @param log_decay If 1, the fourth input is log-decay and should be exponentiated. If 0, the fourth input is precomputed decay.
  * @param name The unique name of the model.
  * @return A model that can be applied with six inputs and generates output plus updated recurrent state.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const char* const name);
 /**
  * Multiply two input tensors together as if these are complex numbers.
  * @param name The unique name of the model.

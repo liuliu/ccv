@@ -16,6 +16,8 @@ struct GatedDeltaKernel {
 
   uint8_t stateElementsPerLane;
 
+  GEMMOperandPrecision inputMemoryPrecision;
+
   GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device);
 
 private:

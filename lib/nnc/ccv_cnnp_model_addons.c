@@ -2517,11 +2517,13 @@ static ccv_cnnp_model_t* _ccv_cnnp_rotate_half_copy(const ccv_cnnp_model_t* cons
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t outputs[2];
+	int log_decay;
 } ccv_cnnp_model_gated_delta_t;
 
 static void _ccv_cnnp_gated_delta_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_gated_delta_build] -\n");
+	ccv_cnnp_model_gated_delta_t* const self = (ccv_cnnp_model_gated_delta_t*)super;
 	assert(input_size == 6);
 	assert(output_size == 2);
 	ccv_nnc_tensor_param_t input_params[6];
@@ -2529,7 +2531,7 @@ static void _ccv_cnnp_gated_delta_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 	for (i = 0; i < 6; i++)
 		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
 	ccv_nnc_tensor_param_t output_params[2];
-	const ccv_nnc_cmd_t gated_delta = CMD_GATED_DELTA_FORWARD();
+	const ccv_nnc_cmd_t gated_delta = CMD_GATED_DELTA_FORWARD(self->log_decay);
 	ccv_nnc_hint_tensor_auto(gated_delta, input_params, 6, ccv_nnc_no_hint, output_params, 2);
 	for (i = 0; i < 2; i++)
 		outputs[i] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
@@ -2543,20 +2545,22 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_gated_delta_isa = {
 	.copy = _ccv_cnnp_gated_delta_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_gated_delta(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_gated_delta(const int log_decay, const char* const name)
 {
 	ccv_cnnp_model_gated_delta_t* const model_gated_delta = (ccv_cnnp_model_gated_delta_t*)cccalloc(1, sizeof(ccv_cnnp_model_gated_delta_t));
 	model_gated_delta->super.isa = &ccv_cnnp_gated_delta_isa;
 	model_gated_delta->super.input_size = 6;
 	model_gated_delta->super.outputs = model_gated_delta->outputs;
 	model_gated_delta->super.output_size = 2;
+	model_gated_delta->log_decay = log_decay;
 	ccv_cnnp_model_copy_name(&model_gated_delta->super, name);
 	return (ccv_cnnp_model_t*)model_gated_delta;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_gated_delta_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_gated_delta(super->name);
+	const ccv_cnnp_model_gated_delta_t* const self = (const ccv_cnnp_model_gated_delta_t*)super;
+	return ccv_cnnp_gated_delta(self->log_decay, super->name);
 }
 
 // MARK - Cmul Layer

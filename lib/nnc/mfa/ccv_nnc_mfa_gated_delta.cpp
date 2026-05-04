@@ -26,6 +26,9 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.valueHeadCount = params.value_head_count;
   descriptor.keyDim = params.key_dim;
   descriptor.valueDim = params.value_dim;
+  CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || params.data_type == MTL::DataTypeHalf || params.data_type == MTL::DataTypeBFloat);
+  descriptor.inputMemoryPrecision = params.data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
+  descriptor.logDecay = params.log_decay != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -49,7 +52,7 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   }
 
   const uint32_t value_dim_threadgroups = (params.value_dim + 3) / 4;
-  MTL::Size gridSize = MTL::Size(value_dim_threadgroups, params.value_head_count, params.batch_size);
+  MTL::Size gridSize = MTL::Size(1, value_dim_threadgroups, params.batch_size * params.value_head_count);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
   command_batch->finishCommand(encoder);
