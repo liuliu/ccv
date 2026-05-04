@@ -11,6 +11,12 @@ typedef struct {
 	ccv_nnc_mfa_dequantize_8i_rowwise_params_t dequantize_8i_rowwise_params;
 } ccv_nnc_mfa_qx_decode_params_t;
 
+enum {
+	CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT = 3,
+	CCV_NNC_MFA_MTL_DATA_TYPE_HALF = 16,
+	CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT = 121,
+};
+
 static size_t _ccv_nnc_conv_qx_dense_data_size(const ccv_nnc_tensor_param_t params)
 {
 	const int subtype = params.datatype & 0xf00;
@@ -163,11 +169,17 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 			switch (a->info.datatype) {
 				case CCV_16F: {
-					mtl_data_type = 16;
+					mtl_data_type = CCV_NNC_MFA_MTL_DATA_TYPE_HALF;
+					break;
+				}
+				case CCV_16BF: {
+					mtl_data_type = CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT;
+					use_mfa_conv3d = false;
+					fallback_reason_conv3d = "Unsupported data type.";
 					break;
 				}
 				case CCV_32F: {
-					mtl_data_type = 3;
+					mtl_data_type = CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT;
 					break;
 				}
 				default: {
@@ -179,7 +191,9 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 			}
 			if (mtl_data_type != UINT32_MAX)
-				use_neural_accelerators = ccv_nnc_mfa_has_neural_accelerators(context);
+				use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
+					ccv_nnc_mfa_has_neural_accelerators(context) &&
+					(mtl_data_type != CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 			if (cmd.info.convolution.groups != 1) {
 				use_mfa_gemm = false;
 				use_mfa_conv3d = false;
@@ -781,7 +795,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conv_forw;
@@ -790,7 +804,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_n
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conv_back;
