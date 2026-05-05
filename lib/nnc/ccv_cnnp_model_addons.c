@@ -1878,6 +1878,58 @@ static ccv_cnnp_model_t* _ccv_cnnp_swish_copy(const ccv_cnnp_model_t* const self
 	return ccv_cnnp_swish(swish->beta, self->name);
 }
 
+// MARK - Swish Mul Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float beta;
+	float scale;
+} ccv_cnnp_model_swish_mul_t;
+
+static void _ccv_cnnp_swish_mul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_swish_mul_build] -\n");
+	assert(input_size == 2);
+	assert(output_size == 1);
+	const ccv_cnnp_model_swish_mul_t* const self = (const ccv_cnnp_model_swish_mul_t*)super;
+	ccv_nnc_tensor_param_t input_params[2];
+	int i;
+	for (i = 0; i < 2; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t swish_mul = CMD_SWISH_MUL_FORWARD(self->beta, self->scale);
+	ccv_nnc_hint_tensor_auto(swish_mul, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, swish_mul, inputs, input_size, outputs, output_size, "swish_mul");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swish_mul_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_swish_mul_isa = {
+	.build = _ccv_cnnp_swish_mul_build,
+	.copy = _ccv_cnnp_swish_mul_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_swish_mul(const float beta, const float scale, const char* const name)
+{
+	ccv_cnnp_model_swish_mul_t* const model_swish_mul = (ccv_cnnp_model_swish_mul_t*)cccalloc(1, sizeof(ccv_cnnp_model_swish_mul_t));
+	model_swish_mul->super.isa = &ccv_cnnp_swish_mul_isa;
+	model_swish_mul->super.input_size = 2;
+	model_swish_mul->super.outputs = &model_swish_mul->output;
+	model_swish_mul->super.output_size = 1;
+	model_swish_mul->beta = beta;
+	model_swish_mul->scale = scale;
+	ccv_cnnp_model_copy_name(&model_swish_mul->super, name);
+	return (ccv_cnnp_model_t*)model_swish_mul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swish_mul_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_swish_mul_t* const self = (const ccv_cnnp_model_swish_mul_t*)super;
+	return ccv_cnnp_swish_mul(self->beta, self->scale, self->super.name);
+}
+
 // MARK - GELU Layer
 
 typedef struct {
@@ -2979,6 +3031,103 @@ static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_copy(const ccv_cnnp_model_t* const su
 {
 	const ccv_cnnp_model_rmsnorm_t* const self = (const ccv_cnnp_model_rmsnorm_t*)super;
 	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->super.is_trainable, self->super.name);
+}
+
+// MARK - RMSNorm Gated Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t scale;
+	ccv_nnc_cmd_param_t params;
+} ccv_cnnp_model_rmsnorm_gated_t;
+
+static void _ccv_cnnp_rmsnorm_gated_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_rmsnorm_gated_build] -\n");
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_cnnp_model_rmsnorm_gated_t* const self = (ccv_cnnp_model_rmsnorm_gated_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const ccv_nnc_tensor_param_t gate_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	ccv_nnc_tensor_param_t scale_params = params;
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	int i;
+	for (i = 0; i < nd; i++)
+		scale_params.dim[i] = 1;
+	for (i = 0; i < self->params.rmsnorm_gated.count; i++)
+		scale_params.dim[self->params.rmsnorm_gated.axis[i]] = params.dim[self->params.rmsnorm_gated.axis[i]];
+	if (self->params.rmsnorm_gated.elementwise_affine)
+	{
+		if (!self->scale.graph)
+			self->scale = ccv_nnc_tensor_symbol_new(graph, scale_params, "scale");
+	}
+	const ccv_nnc_tensor_symbol_t scale = self->params.rmsnorm_gated.elementwise_affine ? ccv_cnnp_model_get_symbol(super, self->scale) : NO_TENSOR_SYMBOL;
+	const ccv_nnc_cmd_t rmsnorm_gated = ccv_nnc_cmd(CCV_NNC_RMSNORM_GATED_FORWARD, 0, self->params, 0);
+	ccv_nnc_tensor_param_t output_params;
+	if (self->params.rmsnorm_gated.elementwise_affine)
+		ccv_nnc_hint_tensor_auto(rmsnorm_gated, (ccv_nnc_tensor_param_t []){
+				params,
+				gate_params,
+				scale_params,
+			}, 3, ccv_nnc_no_hint, &output_params, 1);
+	else
+		ccv_nnc_hint_tensor_auto(rmsnorm_gated, (ccv_nnc_tensor_param_t []){
+				params,
+				gate_params,
+			}, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	if (self->params.rmsnorm_gated.elementwise_affine)
+		ccv_nnc_graph_exec_symbol_new(graph, rmsnorm_gated, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], scale), outputs, output_size, "rmsnorm_gated");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, rmsnorm_gated, inputs, input_size, outputs, output_size, "rmsnorm_gated");
+}
+
+static void _ccv_cnnp_rmsnorm_gated_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_rmsnorm_gated_t* const self = (ccv_cnnp_model_rmsnorm_gated_t*)super;
+	if (self->scale.graph)
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
+}
+
+static void _ccv_cnnp_rmsnorm_gated_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_rmsnorm_gated_t* const self = (ccv_cnnp_model_rmsnorm_gated_t*)super;
+	if (self->scale.graph)
+		add_to_array(parameters, self->scale, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_gated_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_rmsnorm_gated_isa = {
+	.build = _ccv_cnnp_rmsnorm_gated_build,
+	.init_states = _ccv_cnnp_rmsnorm_gated_init_states,
+	.add_to_parameter = _ccv_cnnp_rmsnorm_gated_add_to_parameter,
+	.copy = _ccv_cnnp_rmsnorm_gated_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_rmsnorm_gated_t* const model_rmsnorm_gated = (ccv_cnnp_model_rmsnorm_gated_t*)cccalloc(1, sizeof(ccv_cnnp_model_rmsnorm_gated_t));
+	model_rmsnorm_gated->super.isa = &ccv_cnnp_rmsnorm_gated_isa;
+	model_rmsnorm_gated->super.input_size = 2;
+	model_rmsnorm_gated->super.outputs = &model_rmsnorm_gated->output;
+	model_rmsnorm_gated->super.output_size = 1;
+	model_rmsnorm_gated->super.is_trainable = is_trainable;
+	ccv_cnnp_model_copy_name(&model_rmsnorm_gated->super, name);
+	model_rmsnorm_gated->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_rmsnorm_gated->scale.graph = 0;
+	model_rmsnorm_gated->params.rmsnorm_gated.epsilon = epsilon;
+	model_rmsnorm_gated->params.rmsnorm_gated.count = axis_count;
+	model_rmsnorm_gated->params.rmsnorm_gated.elementwise_affine = elementwise_affine;
+	memcpy(model_rmsnorm_gated->params.rmsnorm_gated.axis, axis, sizeof(int) * axis_count);
+	return (ccv_cnnp_model_t*)model_rmsnorm_gated;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_gated_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_rmsnorm_gated_t* const self = (const ccv_cnnp_model_rmsnorm_gated_t*)super;
+	return ccv_cnnp_rmsnorm_gated(self->params.rmsnorm_gated.epsilon, self->params.rmsnorm_gated.axis, self->params.rmsnorm_gated.count, self->params.rmsnorm_gated.elementwise_affine, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Batched Matrix Mul Layer

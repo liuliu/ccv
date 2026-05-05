@@ -3727,6 +3727,291 @@ TEST_CASE("compare rmsnorm with mps in bfloat precision through mfa and graph")
 	ccv_nnc_tensor_free(expected_inv16bf);
 }
 
+TEST_CASE("compare rmsnorm gated with cpu ref")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_CPU_REF));
+	const int rows = 4;
+	const int channels = 17;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, channels), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, channels), 0);
+	ccv_nnc_tensor_t* const inplace = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 23);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+	{
+		a->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		gate->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 5;
+		inplace->data.f32[i] = a->data.f32[i];
+	}
+	for (i = 0; i < channels; i++)
+		scale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	for (i = 0; i < rows; i++)
+	{
+		float variance = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float v = a->data.f32[i * channels + j];
+			variance += v * v;
+		}
+		const float inv_std = 1.0f / sqrtf(variance / channels + 1e-6f);
+		for (j = 0; j < channels; j++)
+		{
+			const float z = gate->data.f32[i * channels + j];
+			const float ez = expf(-fabsf(z));
+			const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
+			expected->data.f32[i * channels + j] = a->data.f32[i * channels + j] * inv_std * scale->data.f32[j] * z * sigmoid;
+		}
+	}
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_GATED_FORWARD(1e-6, 1, 1);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate, scale), TENSOR_LIST(b), 0), "rmsnorm gated cpu ref should run");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected->data.f32, element_count, 1e-6, "rmsnorm gated cpu ref should match expected result");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(inplace, gate, scale), TENSOR_LIST(inplace), 0), "rmsnorm gated cpu ref should run in-place on first input");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, inplace->data.f32, expected->data.f32, element_count, 1e-6, "rmsnorm gated cpu ref in-place result should match expected result");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(scale);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(inplace);
+	ccv_nnc_tensor_free(expected);
+}
+
+TEST_CASE("compare rmsnorm gated with mps in mixed bfloat precision through mfa and graph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batch_size = 2;
+	const int sequence_length = 3;
+	const int channels = 257;
+	const int rows = batch_size * sequence_length;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hgate16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hy16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected16bf = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, batch_size, sequence_length, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 24);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+	{
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		hgate->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 4;
+	}
+	for (i = 0; i < channels; i++)
+		hscale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	ccv_float_to_bfloat(ha->data.f32, (uint16_t*)ha16bf->data.f16, element_count);
+	ccv_bfloat_to_float((uint16_t*)ha16bf->data.f16, ha->data.f32, element_count);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hgate), TENSOR_LIST(hgate16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hgate16), TENSOR_LIST(hgate), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16bf, hgate16, hscale), TENSOR_LIST(a, gate, scale), 0);
+	for (i = 0; i < rows; i++)
+	{
+		float variance = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float v = ha->data.f32[i * channels + j];
+			variance += v * v;
+		}
+		const float inv_std = 1.0f / sqrtf(variance / channels + 1e-6f);
+		for (j = 0; j < channels; j++)
+		{
+			const float z = hgate->data.f32[i * channels + j];
+			const float ez = expf(-fabsf(z));
+			const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
+			expected->data.f32[i * channels + j] = ha->data.f32[i * channels + j] * inv_std * hscale->data.f32[j] * z * sigmoid;
+		}
+	}
+	ccv_float_to_bfloat(expected->data.f32, (uint16_t*)expected16bf->data.f16, element_count);
+	ccv_bfloat_to_float((uint16_t*)expected16bf->data.f16, expected->data.f32, element_count);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_GATED_FORWARD(1e-6, 1, 2);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate, scale), TENSOR_LIST(b), 0), "mixed bfloat rmsnorm gated mfa should run");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hy16bf->data.f16, hy->data.f32, element_count);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-1, "mixed bfloat rmsnorm gated result from mfa should match fp32 reference rounded to bfloat");
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate, scale), TENSOR_LIST(b), 0), "mixed bfloat rmsnorm gated graph fallback should run");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16bf), 0);
+	ccv_bfloat_to_float((uint16_t*)hy16bf->data.f16, hy->data.f32, element_count);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-1, "mixed bfloat rmsnorm gated result from graph fallback should match fp32 reference rounded to bfloat");
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(scale);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(hscale);
+	ccv_nnc_tensor_free(ha16bf);
+	ccv_nnc_tensor_free(hgate16);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hy16bf);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(expected16bf);
+}
+
+TEST_CASE("compare rmsnorm gated with mps across non-last axis without scale")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batch_size = 2;
+	const int sequence_length = 5;
+	const int channels = 7;
+	const int element_count = batch_size * sequence_length * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 26);
+	int i, j, k;
+	for (i = 0; i < element_count; i++)
+	{
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		hgate->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 4;
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hgate), TENSOR_LIST(a, gate), 0);
+	for (i = 0; i < batch_size; i++)
+		for (k = 0; k < channels; k++)
+		{
+			float variance = 0;
+			for (j = 0; j < sequence_length; j++)
+			{
+				const float v = ha->data.f32[(i * sequence_length + j) * channels + k];
+				variance += v * v;
+			}
+			const float inv_std = 1.0f / sqrtf(variance / sequence_length + 1e-6f);
+			for (j = 0; j < sequence_length; j++)
+			{
+				const int offset = (i * sequence_length + j) * channels + k;
+				const float z = hgate->data.f32[offset];
+				const float ez = expf(-fabsf(z));
+				const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
+				expected->data.f32[offset] = ha->data.f32[offset] * inv_std * z * sigmoid;
+			}
+		}
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_GATED_FORWARD(1e-6, 0, 1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate), TENSOR_LIST(y), 0), "rmsnorm gated mps should run without scale across a non-last axis");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-5, "rmsnorm gated mps result without scale across a non-last axis should match fp32 reference");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(expected);
+}
+
+TEST_CASE("compare rmsnorm gated with mps in half precision in-place")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batch_size = 1;
+	const int sequence_length = 4;
+	const int channels = 513;
+	const int rows = batch_size * sequence_length;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hgate16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hscale16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const hy16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, sequence_length, channels), 0);
+	ccv_nnc_tensor_t* const expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, batch_size, sequence_length, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 25);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+	{
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		hgate->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 4;
+	}
+	for (i = 0; i < channels; i++)
+		hscale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hgate, hscale), TENSOR_LIST(ha16, hgate16, hscale16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hgate16, hscale16), TENSOR_LIST(ha, hgate, hscale), 0);
+	for (i = 0; i < rows; i++)
+	{
+		float variance = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float v = ha->data.f32[i * channels + j];
+			variance += v * v;
+		}
+		const float inv_std = 1.0f / sqrtf(variance / channels + 1e-6f);
+		for (j = 0; j < channels; j++)
+		{
+			const float z = hgate->data.f32[i * channels + j];
+			const float ez = expf(-fabsf(z));
+			const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
+			expected->data.f32[i * channels + j] = ha->data.f32[i * channels + j] * inv_std * hscale->data.f32[j] * z * sigmoid;
+		}
+	}
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(expected16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected16), TENSOR_LIST(expected), 0);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_GATED_FORWARD(1e-6, 1, 2);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hgate16, hscale16), TENSOR_LIST(a, gate, scale), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate, scale), TENSOR_LIST(a), 0), "half rmsnorm gated mfa should run in-place on first input");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-2, "half rmsnorm gated in-place result from mfa should match fp32 reference rounded to half");
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hgate16, hscale16), TENSOR_LIST(a, gate, scale), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate, scale), TENSOR_LIST(a), 0), "half rmsnorm gated graph fallback should run in-place on first input");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-2, "half rmsnorm gated in-place result from graph fallback should match fp32 reference rounded to half");
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(scale);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(hscale);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hgate16);
+	ccv_nnc_tensor_free(hscale16);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hy16);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(expected16);
+}
+
 TEST_CASE("compare add with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));

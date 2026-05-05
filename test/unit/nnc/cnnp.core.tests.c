@@ -2372,4 +2372,70 @@ TEST_CASE("train a simple math 2 * x + 1 + 1 = 10, x = 4, move parameter out and
 	ccfree(names[0]);
 }
 
+TEST_CASE("evaluate cnnp swish mul")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t gate = ccv_cnnp_input();
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_swish_mul(1.7, 0.25, "swish_mul"), MODEL_IO_LIST(x, gate));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x, gate), MODEL_IO_LIST(y), 0, "swish_mul");
+	const ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 3, 11);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(params, params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const gate_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, params, 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 38);
+	int i;
+	for (i = 0; i < 33; i++)
+	{
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		gate_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 4;
+	}
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x_tensor, gate_tensor), TENSOR_LIST(y_tensor), 0, 0);
+	ccv_nnc_cmd_exec(CMD_SWISH_MUL_FORWARD(1.7, 0.25), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, gate_tensor), TENSOR_LIST(expected), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, expected->data.f32, 33, 1e-6, "cnnp swish mul should match fused op");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(gate_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(expected);
+	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("evaluate cnnp rmsnorm gated")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t gate = ccv_cnnp_input();
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_rmsnorm_gated(1e-6, DIM_ALLOC(1), 1, 1, 1, "rmsnorm_gated"), MODEL_IO_LIST(x, gate));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x, gate), MODEL_IO_LIST(y), 1, "rmsnorm_gated");
+	const ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 4, 17);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(params, params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const gate_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 17), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 39);
+	int i;
+	for (i = 0; i < 68; i++)
+	{
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+		gate_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 4;
+	}
+	for (i = 0; i < 17; i++)
+		scale->data.f32[i] = 1;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x_tensor, gate_tensor), TENSOR_LIST(y_tensor), 0, 0);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_GATED_FORWARD(1e-6, 1, 1);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, gate_tensor, scale), TENSOR_LIST(expected), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, expected->data.f32, 68, 1e-6, "cnnp rmsnorm gated should match fused op");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(gate_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(scale);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

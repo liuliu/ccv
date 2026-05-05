@@ -175,6 +175,12 @@ typedef struct {
 			int elementwise_affine; /**< [rmsnorm.elementwise_affine] Whether it supports scale. */
 		} rmsnorm;
 		struct {
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm_gated.axis[]] The axis selected to compute mean / variance. */
+			int count; /**< [rmsnorm_gated.count] The number of axis selected. */
+			float epsilon; /**< [rmsnorm_gated.epsilon] The epsilon for RMS normalization before gated swish multiply. */
+			int elementwise_affine; /**< [rmsnorm_gated.elementwise_affine] Whether it supports scale. */
+		} rmsnorm_gated;
+		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [sgd.rate] The learning rate. */
 			float scale; /**< [sgd.scale] The scale to be applied to the gradient before doing any minimization. */
@@ -4506,6 +4512,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_softplus(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish(const float beta, const char* const name);
 /**
+ * A swish multiply activation layer model.
+ * Computes y = x * (scale * gate * sigmoid(beta * gate)).
+ * @param beta The beta coefficient in swish gate: gate * sigmoid(beta * gate).
+ * @param scale The scale coefficient applied to the swish gate.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with two inputs, and generate output that is the swish-gated product of the inputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swish_mul(const float beta, const float scale, const char* const name);
+/**
  * A GELU activation layer model.
  * @param tanh Whether enable fast approximate GELU.
  * @param name The unique name of the model.
@@ -4622,6 +4637,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, con
  * @return A rmsnorm model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name);
+/**
+ * A rmsnorm gated model.
+ * Computes RMSNorm(x) * swish(gate), optionally with an elementwise scale.
+ * @param epsilon The epsilon in rmsnorm parameter.
+ * @param axis The axis are the feature axis to compute norm.
+ * @param axis_count How many axis we count as feature.
+ * @param elementwise_affine Whether it contains scale.
+ * @param is_trainable Whether the parameters of this model can be trained.
+ * @param name The unique name of the model.
+ * @return A rmsnorm gated model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name);
 /**
  * Add two input tensors together. Different from sum because this support broadcasting.
  * @param p The weight for the first input.

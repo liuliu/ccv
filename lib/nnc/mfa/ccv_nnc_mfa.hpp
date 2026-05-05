@@ -5,6 +5,7 @@
 #include "ccv_nnc_mfa_defines.hpp"
 #include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_normalization.hpp"
+#include "ccv_nnc_mfa_rmsnorm_gated.hpp"
 #include "ccv_nnc_mfa_depalettize.hpp"
 #include "ccv_nnc_mfa_dequantize_8i_rowwise.hpp"
 #include "ccv_nnc_mfa_adam.hpp"
