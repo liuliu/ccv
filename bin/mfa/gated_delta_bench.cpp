@@ -137,6 +137,7 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, bool log_dec
   descriptor.keyDim = bench.Dk;
   descriptor.valueDim = bench.Dv;
   descriptor.inputMemoryPrecision = GEMMOperandPrecision::FP32;
+  descriptor.betaMemoryPrecision = GEMMOperandPrecision::FP32;
   descriptor.logDecay = log_decay_input;
   return descriptor;
 }

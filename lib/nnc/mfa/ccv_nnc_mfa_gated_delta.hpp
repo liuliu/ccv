@@ -9,6 +9,7 @@ typedef struct {
   uint32_t key_dim;
   uint32_t value_dim;
   uint32_t data_type;
+  uint32_t beta_data_type;
   uint8_t log_decay;
 } ccv_nnc_mfa_gated_delta_params_t;
 

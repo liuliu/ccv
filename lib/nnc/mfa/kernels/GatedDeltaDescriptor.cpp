@@ -12,6 +12,7 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   keyDim == rhs.keyDim &&
   valueDim == rhs.valueDim &&
   inputMemoryPrecision == rhs.inputMemoryPrecision &&
+  betaMemoryPrecision == rhs.betaMemoryPrecision &&
   logDecay == rhs.logDecay;
 }
 
@@ -22,6 +23,7 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   combine_64(seed, pack_64(simd::uint2 { hash.keyHeadCount, hash.valueHeadCount }));
   combine_64(seed, pack_64(simd::uint2 { hash.keyDim, hash.valueDim }));
   combine_64(seed, hash.inputMemoryPrecision.value);
+  combine_64(seed, hash.betaMemoryPrecision.value);
   combine_64(seed, hash.logDecay ? 1 : 0);
   return seed;
 }
@@ -42,6 +44,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
   GatedDeltaKernelDescriptor kernelDesc;
   kernelDesc.stateElementsPerLane = (uint8_t)((keyDim + 31) / 32);
   kernelDesc.inputMemoryPrecision = inputMemoryPrecision;
+  kernelDesc.betaMemoryPrecision = betaMemoryPrecision;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {

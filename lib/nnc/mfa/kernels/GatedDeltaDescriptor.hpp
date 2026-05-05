@@ -10,13 +10,14 @@
 struct GatedDeltaKernelDescriptor {
   uint8_t stateElementsPerLane;
   GEMMOperandPrecision inputMemoryPrecision;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && inputMemoryPrecision == rhs.inputMemoryPrecision; }
+  GEMMOperandPrecision betaMemoryPrecision;
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8); }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16); }
 };
 
 struct GatedDeltaKernel;
@@ -35,6 +36,8 @@ struct GatedDeltaDescriptor {
   uint32_t valueDim;
 
   GEMMOperandPrecision inputMemoryPrecision;
+
+  GEMMOperandPrecision betaMemoryPrecision;
 
   bool logDecay;
 

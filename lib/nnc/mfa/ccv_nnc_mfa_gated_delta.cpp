@@ -27,7 +27,9 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.keyDim = params.key_dim;
   descriptor.valueDim = params.value_dim;
   CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || params.data_type == MTL::DataTypeHalf || params.data_type == MTL::DataTypeBFloat);
+  CCV_NNC_MFA_PRECONDITION(params.beta_data_type == MTL::DataTypeFloat || params.beta_data_type == MTL::DataTypeHalf || params.beta_data_type == MTL::DataTypeBFloat);
   descriptor.inputMemoryPrecision = params.data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
+  descriptor.betaMemoryPrecision = params.beta_data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.beta_data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.logDecay = params.log_decay != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();

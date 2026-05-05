@@ -4,6 +4,7 @@
 GatedDeltaKernel::GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device) {
   stateElementsPerLane = descriptor.stateElementsPerLane;
   inputMemoryPrecision = descriptor.inputMemoryPrecision;
+  betaMemoryPrecision = descriptor.betaMemoryPrecision;
 
   source = createSource();
 
@@ -28,6 +29,7 @@ std::string GatedDeltaKernel::createSource() const noexcept {
 using namespace metal;
 
 typedef )" + inputMemoryPrecision.name() + R"( input_t;
+typedef )" + betaMemoryPrecision.name() + R"( beta_t;
 
 constant uint B [[function_constant(0)]];
 constant uint T [[function_constant(1)]];
@@ -46,7 +48,7 @@ kernel void gated_delta(
   device const input_t* k [[buffer(1)]],
   device const input_t* v [[buffer(2)]],
   device const float* log_decay [[buffer(3)]],
-  device const float* beta [[buffer(4)]],
+  device const beta_t* beta [[buffer(4)]],
   device const float* state_in [[buffer(5)]],
   device input_t* y [[buffer(6)]],
   device float* state_out [[buffer(7)]],
@@ -76,7 +78,7 @@ kernel void gated_delta(
   device const input_t* k_ptr = k + (b * T * Hk + hk) * Dk;
   device const input_t* v_ptr = v + (b * T * Hv + hv) * Dv + dv;
   device const float* decay_ptr = log_decay + (b * T * Hv + hv);
-  device const float* beta_ptr = beta + (b * T * Hv + hv);
+  device const beta_t* beta_ptr = beta + (b * T * Hv + hv);
   device input_t* y_ptr = y + (b * T * Hv + hv) * Dv + dv;
 
   for (uint t = 0; t < T; t++) {
@@ -91,7 +93,7 @@ kernel void gated_delta(
     }
     memory = simd_sum(memory);
 
-    const float delta = (static_cast<float>(v_ptr[0]) - memory) * beta_ptr[0];
+    const float delta = (static_cast<float>(v_ptr[0]) - memory) * static_cast<float>(beta_ptr[0]);
     float out = 0.0f;
     for (uint i = 0; i < state_elements_per_lane; i++) {
       const uint dk = state_elements_per_lane * lane_id + i;

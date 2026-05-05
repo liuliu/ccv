@@ -77,7 +77,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		const int input_datatype = q->info.datatype;
 		if ((input_datatype != CCV_32F && input_datatype != CCV_16F && input_datatype != CCV_16BF) ||
 			k->info.datatype != input_datatype || v->info.datatype != input_datatype ||
-			log_decay->info.datatype != CCV_32F || beta->info.datatype != CCV_32F ||
+			log_decay->info.datatype != CCV_32F || (beta->info.datatype != CCV_32F && beta->info.datatype != input_datatype) ||
 			state_in->info.datatype != CCV_32F || y->info.datatype != input_datatype || state_out->info.datatype != CCV_32F)
 			return CCV_NNC_EXEC_INVALID;
 		if (!CCV_IS_TENSOR_CONTIGUOUS(q) || !CCV_IS_TENSOR_CONTIGUOUS(k) || !CCV_IS_TENSOR_CONTIGUOUS(v) ||
@@ -92,6 +92,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			.key_dim = (uint32_t)Dk,
 			.value_dim = (uint32_t)Dv,
 			.data_type = input_datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (input_datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
+			.beta_data_type = beta->info.datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (beta->info.datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
 			.log_decay = cmd.info.gated_delta.log_decay != 0,
 		};
 		ccv_nnc_mfa_prepare_gated_delta(context, params);

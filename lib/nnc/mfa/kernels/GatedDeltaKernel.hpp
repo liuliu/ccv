@@ -18,6 +18,8 @@ struct GatedDeltaKernel {
 
   GEMMOperandPrecision inputMemoryPrecision;
 
+  GEMMOperandPrecision betaMemoryPrecision;
+
   GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
