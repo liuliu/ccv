@@ -25,11 +25,16 @@ COMMON_OBJS = \
 
 NA_GEMM_OBJS = \
 	NAInt8MatMulDescriptor.local.o \
+	NAInt8MatMulSmallMDescriptor.local.o \
 	NAMatMulDescriptor.local.o \
 	NAMatMulKernelDescriptor.local.o \
 	NAMatMulKernel.local.o \
 	NAInt8MatMulKernelDescriptor.local.o \
 	NAInt8MatMulKernel.local.o \
+	NAInt8MatMulSmallMKernelDescriptor.local.o \
+	NAInt8MatMulSmallMKernel.local.o
+
+ANE_ROWWISE_OBJS = \
 	ANERowwiseTransformDescriptor.local.o \
 	ANERowwiseTransformKernelDescriptor.local.o \
 	ANERowwiseTransformKernel.local.o \
@@ -73,7 +78,7 @@ GATED_DELTA_OBJS = \
 all: $(TARGETS)
 
 clean:
-	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o gemv_thin_tensorop_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o gated_delta_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(NA_GEMM_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(GATED_DELTA_OBJS) $(TARGETS) dump_na_source
+	rm -f dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o gemv_thin_tensorop_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o gated_delta_bench.o na_int8_matmul_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(NA_GEMM_OBJS) $(ANE_ROWWISE_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(GATED_DELTA_OBJS) $(TARGETS) dump_na_source
 
 gemm_scaffold: gemm_scaffold.o $(COMMON_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -109,7 +114,7 @@ ane_int8_conv_matmul_harness: ane_int8_conv_matmul_harness.o
 	$(CC) -o $@ $^ $(ANE_LDFLAGS)
 ane_int8_rowwise_conv_harness: ane_int8_rowwise_conv_harness.o
 	$(CC) -o $@ $^ $(ANE_LDFLAGS)
-ane_na_int8_matmul_harness: ane_na_int8_matmul_harness.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
+ane_na_int8_matmul_harness: ane_na_int8_matmul_harness.o $(COMMON_OBJS) $(NA_GEMM_OBJS) $(ANE_ROWWISE_OBJS)
 	$(CC) -o $@ $^ $(ANE_ROWWISE_LDFLAGS)
 
 dump_na_source: dump_na_source.o $(COMMON_OBJS) NAMatMulKernelDescriptor.local.o NAMatMulKernel.local.o
@@ -257,6 +262,9 @@ NAMatMulDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulDescriptor.cpp
 NAInt8MatMulDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulDescriptor.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
+NAInt8MatMulSmallMDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulSmallMDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
 NAMatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAMatMulKernelDescriptor.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
@@ -309,6 +317,12 @@ NAInt8MatMulKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulKern
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 NAInt8MatMulKernel.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAInt8MatMulSmallMKernelDescriptor.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulSmallMKernelDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+NAInt8MatMulSmallMKernel.local.o: ../../lib/nnc/mfa/kernels/NAInt8MatMulSmallMKernel.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 ANERowwiseTransformDescriptor.local.o: ../../lib/nnc/mfa/kernels/ANERowwiseTransformDescriptor.cpp

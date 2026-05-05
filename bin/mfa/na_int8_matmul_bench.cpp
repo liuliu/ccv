@@ -18,6 +18,9 @@
 #include "nnc/mfa/kernels/NAMatMulKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernel.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/NAInt8MatMulSmallMDescriptor.hpp"
+#include "nnc/mfa/kernels/NAInt8MatMulSmallMKernel.hpp"
+#include "nnc/mfa/kernels/NAInt8MatMulSmallMKernelDescriptor.hpp"
 
 namespace {
 
@@ -82,6 +85,13 @@ struct DynamicPipeline {
   std::unique_ptr<NAInt8MatMulKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   bool load_m = false;
+};
+
+struct SmallMPipeline {
+  NAInt8MatMulSmallMDescriptor descriptor;
+  std::unique_ptr<NAInt8MatMulSmallMKernel> kernel;
+  NS::SharedPtr<MTL::ComputePipelineState> pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> reduce_pipeline;
 };
 
 struct RawPipeline {
@@ -287,6 +297,54 @@ DynamicPipeline create_dynamic_pipeline(
   descriptor->setComputeFunction(function.get());
   bundle.pipeline = NS::TransferPtr(device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
+  return bundle;
+}
+
+SmallMPipeline create_smallm_pipeline(
+    MTL::Device* device,
+    const BenchmarkCase& bench)
+{
+  SmallMPipeline bundle;
+  bundle.descriptor.batchDimension = 1;
+  bundle.descriptor.ioPrecision = GEMMOperandPrecision::FP16;
+  bundle.descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
+  bundle.descriptor.useBias = false;
+
+  const NAInt8MatMulSmallMKernelDescriptor kernel_descriptor(
+      bundle.descriptor.blockDimensions(),
+      bundle.descriptor.pack(),
+      bundle.descriptor.executionSIMDGroups(),
+      bundle.descriptor.ioPrecision,
+      bundle.descriptor.useBias);
+  bundle.kernel = std::make_unique<NAInt8MatMulSmallMKernel>(kernel_descriptor, device);
+
+  auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  const uint32_t M = bench.M;
+  const uint32_t N = bench.N;
+  const uint32_t K = bench.K;
+  const uint32_t kpack = K / bundle.descriptor.pack();
+  const uint32_t splitK = bundle.descriptor.splitK();
+  const uint32_t splitKPack = kpack / splitK;
+  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
+  constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
+  constants->setConstantValue(&kpack, MTL::DataTypeUInt, NS::UInteger(3));
+  constants->setConstantValue(&splitK, MTL::DataTypeUInt, NS::UInteger(4));
+  constants->setConstantValue(&splitKPack, MTL::DataTypeUInt, NS::UInteger(5));
+
+  auto create_pipeline = [&](const char* name) -> NS::SharedPtr<MTL::ComputePipelineState> {
+    NS::Error* error = nil;
+    auto function_name = NS::String::string(name, NS::UTF8StringEncoding);
+    auto function = NS::TransferPtr(bundle.kernel->library->newFunction(function_name, constants.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    auto descriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+    descriptor->setComputeFunction(function.get());
+    auto pipeline = NS::TransferPtr(device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    return pipeline;
+  };
+  bundle.pipeline = create_pipeline("int8_matmul_small_m_block_view");
+  bundle.reduce_pipeline = create_pipeline("reduce_diagonal");
   return bundle;
 }
 
@@ -942,6 +1000,47 @@ double run_dynamic_once(
   return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
 }
 
+double run_smallm_once(
+    MTL::CommandQueue* command_queue,
+    const BenchmarkCase& bench,
+    const SmallMPipeline& bundle,
+    MTL::Buffer* buffer_a_q,
+    MTL::Buffer* buffer_b_q,
+    MTL::Buffer* buffer_c,
+    MTL::Buffer* buffer_accum,
+    MTL::Buffer* buffer_a_scale,
+    MTL::Buffer* buffer_b_scale)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(bundle.pipeline.get());
+    encoder->setBuffer(buffer_b_q, 0, 0);
+    encoder->setBuffer(buffer_a_q, 0, 1);
+    encoder->setBuffer(buffer_accum, bundle.descriptor.scratchOffsets().partials, 2);
+    encoder->dispatchThreadgroups(
+        bundle.kernel->threadgroupsPerGrid(bundle.descriptor),
+        MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
+    encoder->endEncoding();
+  }
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(bundle.reduce_pipeline.get());
+    encoder->setBuffer(buffer_accum, bundle.descriptor.scratchOffsets().partials, 0);
+    encoder->setBuffer(buffer_c, 0, 1);
+    encoder->setBuffer(buffer_a_scale, 0, 2);
+    encoder->setBuffer(buffer_b_scale, 0, 3);
+    const uint64_t total = (uint64_t)bench.M * bench.N;
+    encoder->dispatchThreadgroups(
+        MTL::Size((int64_t)((total + 255) / 256), 1, 1),
+        MTL::Size(256, 1, 1));
+    encoder->endEncoding();
+  }
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
 double run_raw_once(
     MTL::CommandQueue* command_queue,
     const BenchmarkCase& bench,
@@ -1004,6 +1103,60 @@ double run_quantize_and_dynamic_once(
     encoder->dispatchThreadgroups(
         dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
         MTL::Size(dynamic.kernel->threadgroupSize(dynamic.pipeline.get()), 1, 1));
+    encoder->endEncoding();
+  }
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
+}
+
+double run_quantize_and_smallm_once(
+    MTL::CommandQueue* command_queue,
+    const BenchmarkCase& bench,
+    const QuantizePipeline& quantize,
+    const SmallMPipeline& smallm,
+    MTL::Buffer* buffer_a,
+    MTL::Buffer* buffer_a_q,
+    MTL::Buffer* buffer_a_scale,
+    MTL::Buffer* buffer_b_q,
+    MTL::Buffer* buffer_b_scale,
+    MTL::Buffer* buffer_c,
+    MTL::Buffer* buffer_accum)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(quantize.pipeline.get());
+    encoder->setBuffer(buffer_a, 0, 0);
+    encoder->setBuffer(buffer_a_q, 0, 1);
+    encoder->setBuffer(buffer_a_scale, 0, 2);
+    encoder->dispatchThreadgroups(
+        MTL::Size(bench.M, 1, 1),
+        MTL::Size(quantize.threadgroup_size, 1, 1));
+    encoder->endEncoding();
+  }
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(smallm.pipeline.get());
+    encoder->setBuffer(buffer_b_q, 0, 0);
+    encoder->setBuffer(buffer_a_q, 0, 1);
+    encoder->setBuffer(buffer_accum, smallm.descriptor.scratchOffsets().partials, 2);
+    encoder->dispatchThreadgroups(
+        smallm.kernel->threadgroupsPerGrid(smallm.descriptor),
+        MTL::Size(smallm.kernel->threadgroupSize(smallm.pipeline.get()), 1, 1));
+    encoder->endEncoding();
+  }
+  {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encoder->setComputePipelineState(smallm.reduce_pipeline.get());
+    encoder->setBuffer(buffer_accum, smallm.descriptor.scratchOffsets().partials, 0);
+    encoder->setBuffer(buffer_c, 0, 1);
+    encoder->setBuffer(buffer_a_scale, 0, 2);
+    encoder->setBuffer(buffer_b_scale, 0, 3);
+    const uint64_t total = (uint64_t)bench.M * bench.N;
+    encoder->dispatchThreadgroups(
+        MTL::Size((int64_t)((total + 255) / 256), 1, 1),
+        MTL::Size(256, 1, 1));
     encoder->endEncoding();
   }
   command_buffer->commit();
@@ -1314,6 +1467,13 @@ int main(int argc, char** argv)
   const size_t b_scale_bytes = b_quantized_reference.scales.size() * sizeof(half_float);
   const size_t c_half_bytes = (size_t)bench.M * bench.N * sizeof(half_float);
   const size_t c_dynamic_half_bytes = (size_t)bench.M * bench.N * sizeof(half_float);
+  NAInt8MatMulSmallMDescriptor smallm_descriptor;
+  smallm_descriptor.batchDimension = 1;
+  smallm_descriptor.ioPrecision = GEMMOperandPrecision::FP16;
+  smallm_descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
+  smallm_descriptor.useBias = false;
+  const bool benchmark_smallm = (bench.K % smallm_descriptor.pack()) == 0 && bench.K < 65536;
+  const size_t c_smallm_i32_bytes = benchmark_smallm ? smallm_descriptor.scratchOffsets().total : 0;
   const size_t c_raw_i32_bytes = (size_t)bench.M * bench.N * sizeof(int32_t);
   const size_t c_splitk_i32_bytes = (size_t)bench.M * bench.N * variant.split_k * sizeof(int32_t);
   const bool benchmark_raw = !variant.load_m && c_raw_i32_bytes <= (size_t(512) << 20);
@@ -1333,6 +1493,9 @@ int main(int argc, char** argv)
   auto a_int8_stage = NS::TransferPtr(device->newBuffer(a_int8_bytes, kSharedResourceOptions));
   auto a_scale_stage = NS::TransferPtr(device->newBuffer(a_scale_bytes, kSharedResourceOptions));
   auto c_dynamic_half_stage = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_smallm_half_stage;
+  if (benchmark_smallm)
+    c_smallm_half_stage = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kSharedResourceOptions));
   NS::SharedPtr<MTL::Buffer> c_raw_i32_stage;
   if (benchmark_raw)
     c_raw_i32_stage = NS::TransferPtr(device->newBuffer(c_raw_i32_bytes, kSharedResourceOptions));
@@ -1352,6 +1515,12 @@ int main(int argc, char** argv)
   auto m_buffer = NS::TransferPtr(device->newBuffer(&runtime_m, sizeof(uint32_t), kSharedResourceOptions));
   auto c_half_buffer = NS::TransferPtr(device->newBuffer(c_half_bytes, kPrivateResourceOptions));
   auto c_dynamic_half_buffer = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> c_smallm_half_buffer;
+  NS::SharedPtr<MTL::Buffer> c_smallm_i32_buffer;
+  if (benchmark_smallm) {
+    c_smallm_half_buffer = NS::TransferPtr(device->newBuffer(c_dynamic_half_bytes, kPrivateResourceOptions));
+    c_smallm_i32_buffer = NS::TransferPtr(device->newBuffer(c_smallm_i32_bytes, kPrivateResourceOptions));
+  }
   NS::SharedPtr<MTL::Buffer> c_raw_i32_buffer;
   if (benchmark_raw)
     c_raw_i32_buffer = NS::TransferPtr(device->newBuffer(c_raw_i32_bytes, kPrivateResourceOptions));
@@ -1370,6 +1539,9 @@ int main(int argc, char** argv)
   auto baseline = create_baseline_pipeline(device.get(), bench, baseline_load_m);
   auto quantize = create_quantize_pipeline(device.get(), bench, variant);
   auto dynamic = create_dynamic_pipeline(device.get(), bench, variant);
+  SmallMPipeline smallm;
+  if (benchmark_smallm)
+    smallm = create_smallm_pipeline(device.get(), bench);
   RawPipeline raw;
   if (benchmark_raw)
     raw = create_raw_pipeline(device.get(), bench, variant);
@@ -1394,6 +1566,8 @@ int main(int argc, char** argv)
             << " baselineLoadM=" << (baseline_load_m ? 1 : 0)
             << " rawInt32=" << (benchmark_raw ? 1 : 0)
             << " splitK=" << variant.split_k
+            << " smallM=" << (benchmark_smallm ? 1 : 0)
+            << " smallMSplitK=" << (benchmark_smallm ? smallm_descriptor.splitK() : 0)
             << '\n';
 
   const double quantize_validation_seconds =
@@ -1465,6 +1639,49 @@ int main(int argc, char** argv)
       false,
       false);
   print_validation("float-reference", accuracy_validation);
+
+  ValidationStats smallm_validation;
+  if (benchmark_smallm) {
+    const double smallm_validation_seconds =
+        run_smallm_once(
+            command_queue.get(),
+            bench,
+            smallm,
+            a_int8_buffer.get(),
+            b_int8_buffer.get(),
+            c_smallm_half_buffer.get(),
+            c_smallm_i32_buffer.get(),
+            a_scale_buffer.get(),
+            b_scale_buffer.get());
+    if (!(smallm_validation_seconds > 0)) {
+      std::cerr << "small-M int8 matmul dispatch failed\n";
+      pool->drain();
+      return 1;
+    }
+    download_buffer(command_queue.get(), c_smallm_half_buffer.get(), c_smallm_half_stage.get(), c_dynamic_half_bytes);
+    std::vector<float> c_smallm_output((size_t)bench.M * bench.N);
+    {
+      const auto* c_half_output = (const half_float*)c_smallm_half_stage->contents();
+      std::transform(c_half_output, c_half_output + c_smallm_output.size(), c_smallm_output.begin(), [](half_float value) {
+        return (float)value;
+      });
+    }
+    smallm_validation = validate_output(
+        bench,
+        a_float_values,
+        b_float_values,
+        a_quantized_reference,
+        b_quantized_reference,
+        c_smallm_output.data(),
+        true,
+        true);
+    print_validation("smallm-validation", smallm_validation);
+    if (!smallm_validation.passed) {
+      std::cerr << "small-M int8 matmul exact validation failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
 
   ValidationStats splitk_validation;
   if (benchmark_splitk) {
@@ -1578,6 +1795,26 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  Stats smallm_stats;
+  if (benchmark_smallm) {
+    if (!benchmark(config, [&]() {
+          return run_smallm_once(
+              command_queue.get(),
+              bench,
+              smallm,
+              a_int8_buffer.get(),
+              b_int8_buffer.get(),
+              c_smallm_half_buffer.get(),
+              c_smallm_i32_buffer.get(),
+              a_scale_buffer.get(),
+              b_scale_buffer.get());
+        }, &smallm_stats)) {
+      std::cerr << "small-M int8 benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
   Stats raw_stats;
   if (benchmark_raw) {
     if (!benchmark(config, [&]() {
@@ -1638,6 +1875,28 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  Stats combined_smallm_stats;
+  if (benchmark_smallm) {
+    if (!benchmark(config, [&]() {
+          return run_quantize_and_smallm_once(
+              command_queue.get(),
+              bench,
+              quantize,
+              smallm,
+              a_half_buffer.get(),
+              a_int8_buffer.get(),
+              a_scale_buffer.get(),
+              b_int8_buffer.get(),
+              b_scale_buffer.get(),
+              c_smallm_half_buffer.get(),
+              c_smallm_i32_buffer.get());
+        }, &combined_smallm_stats)) {
+      std::cerr << "combined small-M benchmark failed\n";
+      pool->drain();
+      return 1;
+    }
+  }
+
   print_stats("baseline-fp16", bench, baseline_stats);
   print_stats("quantize-activation", bench, quantize_stats);
   if (benchmark_raw)
@@ -1645,11 +1904,17 @@ int main(int argc, char** argv)
   else
     std::cout << "int8-int8-raw-int32 skipped=1 reason=" << (variant.load_m ? "load_m" : "buffer_too_large") << '\n';
   print_stats("int8-int8-inline-dequant", bench, dynamic_stats);
+  if (benchmark_smallm)
+    print_stats("int8-int8-smallm-inline-dequant", bench, smallm_stats);
+  else
+    std::cout << "int8-int8-smallm-inline-dequant skipped=1 reason=unsupported_shape\n";
   if (benchmark_splitk)
     print_stats("int8-int8-splitk-inline-dequant", bench, splitk_stats);
   else if (variant.split_k > 1)
     std::cout << "int8-int8-splitk-inline-dequant skipped=1 reason=" << (variant.load_m ? "load_m" : "buffer_too_large") << '\n';
   print_stats("quantize-plus-int8", bench, combined_stats);
+  if (benchmark_smallm)
+    print_stats("quantize-plus-smallm-int8", bench, combined_smallm_stats);
   std::cout << "speedup";
   if (benchmark_raw)
     std::cout << " raw_kernel_avg=" << baseline_stats.average_seconds / raw_stats.average_seconds
@@ -1658,14 +1923,28 @@ int main(int argc, char** argv)
   std::cout << " kernel_avg=" << baseline_stats.average_seconds / dynamic_stats.average_seconds
             << " kernel_median=" << baseline_stats.median_seconds / dynamic_stats.median_seconds
             << " kernel_best3=" << baseline_stats.best3_average_seconds / dynamic_stats.best3_average_seconds;
+  if (benchmark_smallm)
+    std::cout << " smallm_kernel_vs_baseline_avg=" << baseline_stats.average_seconds / smallm_stats.average_seconds
+              << " smallm_kernel_vs_baseline_median=" << baseline_stats.median_seconds / smallm_stats.median_seconds
+              << " smallm_kernel_vs_baseline_best3=" << baseline_stats.best3_average_seconds / smallm_stats.best3_average_seconds
+              << " smallm_kernel_vs_int8_avg=" << dynamic_stats.average_seconds / smallm_stats.average_seconds
+              << " smallm_kernel_vs_int8_median=" << dynamic_stats.median_seconds / smallm_stats.median_seconds
+              << " smallm_kernel_vs_int8_best3=" << dynamic_stats.best3_average_seconds / smallm_stats.best3_average_seconds;
   if (benchmark_splitk)
     std::cout << " splitk_kernel_avg=" << baseline_stats.average_seconds / splitk_stats.average_seconds
               << " splitk_kernel_median=" << baseline_stats.median_seconds / splitk_stats.median_seconds
               << " splitk_kernel_best3=" << baseline_stats.best3_average_seconds / splitk_stats.best3_average_seconds;
   std::cout << " end_to_end_avg=" << baseline_stats.average_seconds / combined_stats.average_seconds
             << " end_to_end_median=" << baseline_stats.median_seconds / combined_stats.median_seconds
-            << " end_to_end_best3=" << baseline_stats.best3_average_seconds / combined_stats.best3_average_seconds
-            << '\n';
+            << " end_to_end_best3=" << baseline_stats.best3_average_seconds / combined_stats.best3_average_seconds;
+  if (benchmark_smallm)
+    std::cout << " smallm_end_to_end_vs_baseline_avg=" << baseline_stats.average_seconds / combined_smallm_stats.average_seconds
+              << " smallm_end_to_end_vs_baseline_median=" << baseline_stats.median_seconds / combined_smallm_stats.median_seconds
+              << " smallm_end_to_end_vs_baseline_best3=" << baseline_stats.best3_average_seconds / combined_smallm_stats.best3_average_seconds
+              << " smallm_end_to_end_vs_int8_avg=" << combined_stats.average_seconds / combined_smallm_stats.average_seconds
+              << " smallm_end_to_end_vs_int8_median=" << combined_stats.median_seconds / combined_smallm_stats.median_seconds
+              << " smallm_end_to_end_vs_int8_best3=" << combined_stats.best3_average_seconds / combined_smallm_stats.best3_average_seconds;
+  std::cout << '\n';
   std::cout.flush();
   std::_Exit(0);
 }

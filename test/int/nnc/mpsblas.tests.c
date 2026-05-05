@@ -1558,6 +1558,31 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA aligned M")
 	REQUIRE(max_rel < 5e-3, "quantized NAInt8MatMul with bias should match aligned-M row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
+TEST_CASE("mps forward gemm with row-wise 8i weight NA small M")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	double max_abs16f = 0;
+	double max_rel16f = 0;
+	const int status16f = _mps_forward_scaled_gemm_validate_shape(CCV_16F, 0, 16, 384, 1024, &max_abs16f, &max_rel16f);
+	double max_abs16f_bias = 0;
+	double max_rel16f_bias = 0;
+	const int status16f_bias = _mps_forward_scaled_gemm_validate_shape(CCV_16F, 1, 6, 384, 1536, &max_abs16f_bias, &max_rel16f_bias);
+	double max_abs16bf = 0;
+	double max_rel16bf = 0;
+	const int status16bf = _mps_forward_scaled_gemm_validate_shape(CCV_16BF, 0, 8, 384, 1024, &max_abs16bf, &max_rel16bf);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	}
+	REQUIRE_EQ(status16f, 0, "small-M scaled GEMM validation should run");
+	REQUIRE(max_rel16f < 2e-3, "small-M NAInt8MatMul should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs16f, max_rel16f);
+	REQUIRE_EQ(status16f_bias, 0, "small-M scaled GEMM validation with bias should run");
+	REQUIRE(max_rel16f_bias < 2e-3, "small-M NAInt8MatMul with bias should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs16f_bias, max_rel16f_bias);
+	REQUIRE_EQ(status16bf, 0, "small-M scaled GEMM bf16 validation should run");
+	REQUIRE(max_rel16bf < 8e-3, "small-M NAInt8MatMul should match row-wise quantized bf16 reference, max_abs=%g max_rel=%g", max_abs16bf, max_rel16bf);
+}
+
 TEST_CASE("mps forward gemm with row-wise 8i weight ANE stream ordering")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
