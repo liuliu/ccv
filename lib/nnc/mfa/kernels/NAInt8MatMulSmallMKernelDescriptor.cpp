@@ -7,7 +7,8 @@ bool NAInt8MatMulSmallMKernelDescriptor::operator==(const NAInt8MatMulSmallMKern
     pack == rhs.pack &&
     executionSIMDGroups == rhs.executionSIMDGroups &&
     ioPrecision == rhs.ioPrecision &&
-    useBias == rhs.useBias;
+    useBias == rhs.useBias &&
+    loadM == rhs.loadM;
 }
 
 std::size_t std::hash<NAInt8MatMulSmallMKernelDescriptor>::operator()(const NAInt8MatMulSmallMKernelDescriptor& hash) const noexcept {
@@ -19,6 +20,7 @@ std::size_t std::hash<NAInt8MatMulSmallMKernelDescriptor>::operator()(const NAIn
       hash.executionSIMDGroups,
       hash.ioPrecision.value,
       uint16_t(hash.useBias) }));
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -27,10 +29,12 @@ NAInt8MatMulSmallMKernelDescriptor::NAInt8MatMulSmallMKernelDescriptor(
     uint16_t pack,
     uint16_t executionSIMDGroups,
     GEMMOperandPrecision ioPrecision,
-    bool useBias) noexcept {
+    bool useBias,
+    bool loadM) noexcept {
   this->blockDimensions = blockDimensions;
   this->pack = pack;
   this->executionSIMDGroups = executionSIMDGroups;
   this->ioPrecision = ioPrecision;
   this->useBias = useBias;
+  this->loadM = loadM;
 }

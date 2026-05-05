@@ -134,6 +134,9 @@ static void _ccv_nnc_mfa_encode_na_matmul_small_m(
     encoder->setBuffer(tensors[1], tensor_offsets[1], 0);
     encoder->setBuffer(tensors[0], tensor_offsets[0], 1);
     encoder->setBuffer(scratch, offsets.partials, 2);
+    if (desc.loadM) {
+      encoder->setBytes(&params.M, sizeof(params.M), 3);
+    }
     encoder->dispatchThreadgroups(
       kernel->threadgroupsPerGrid(desc),
       MTL::Size(kernel->threadgroupSize(pipelineValue->pipeline.get()), 1, 1));
@@ -151,6 +154,9 @@ static void _ccv_nnc_mfa_encode_na_matmul_small_m(
     encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
     if (params.fused_bias) {
       encoder->setBuffer(tensors[3], tensor_offsets[3], 2);
+    }
+    if (desc.loadM) {
+      encoder->setBytes(&params.M, sizeof(params.M), params.fused_bias ? 3 : 2);
     }
     dispatch_linear(encoder, reduce_threads);
     command_batch->finishCommand(encoder);

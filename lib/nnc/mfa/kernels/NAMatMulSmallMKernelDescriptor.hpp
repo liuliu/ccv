@@ -12,6 +12,7 @@ struct NAMatMulSmallMKernelDescriptor {
   uint16_t pack;
   uint16_t executionSIMDGroups;
   bool useBias;
+  bool loadM;
 
   NAMatMulSmallMKernelDescriptor() = delete;
   NAMatMulSmallMKernelDescriptor(
@@ -19,7 +20,8 @@ struct NAMatMulSmallMKernelDescriptor {
       GEMMOperandPrecisions memoryPrecisions,
       uint16_t pack,
       uint16_t executionSIMDGroups,
-      bool useBias) noexcept;
+      bool useBias,
+      bool loadM) noexcept;
 
   bool operator==(const NAMatMulSmallMKernelDescriptor& rhs) const;
 };

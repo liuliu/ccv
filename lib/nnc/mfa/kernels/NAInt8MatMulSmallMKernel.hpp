@@ -13,6 +13,7 @@ struct NAInt8MatMulSmallMKernel {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool loadM;
   std::string source;
   NS::SharedPtr<MTL::Library> library;
 

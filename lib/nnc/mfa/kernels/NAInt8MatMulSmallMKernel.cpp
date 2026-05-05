@@ -15,6 +15,7 @@ NAInt8MatMulSmallMKernel::NAInt8MatMulSmallMKernel(NAInt8MatMulSmallMKernelDescr
   executionSIMDGroups = descriptor.executionSIMDGroups;
   ioPrecision = descriptor.ioPrecision;
   useBias = descriptor.useBias;
+  loadM = descriptor.loadM;
 
   source = createSource();
 
@@ -57,21 +58,40 @@ std::string NAInt8MatMulSmallMKernel::createSource() const noexcept
 using namespace metal;
 using namespace mpp::tensor_ops;
 
-constant uint M [[function_constant(0)]];
-constant uint N [[function_constant(1)]];
+\)";
+  if (!loadM) {
+    source += R"(constant uint M [[function_constant(0)]];
+\)";
+  }
+  source += R"(constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 constant uint KPACK [[function_constant(3)]];
 constant uint SPLIT_K [[function_constant(4)]];
 constant uint SPLIT_KPACK [[function_constant(5)]];
 constant uint RHS_PACKED_ROWS = N * {{PACK}};
-constant uint LHS_PACKED_COLS = M * {{PACK}};
-
+\)";
+  if (!loadM) {
+    source += R"(constant uint LHS_PACKED_COLS = M * {{PACK}};
+\)";
+  }
+  source += R"(
 kernel void int8_matmul_small_m_block_view(device int8_t* A_buf [[buffer(0)]],
                                            device int8_t* B_buf [[buffer(1)]],
                                            device int32_t* C_buf [[buffer(2)]],
-                                           uint3 tgid [[threadgroup_position_in_grid]])
+\)";
+  if (loadM) {
+    source += R"(                                           const device uint* loadM_buf [[buffer(3)]],
+\)";
+  }
+  source += R"(                                           uint3 tgid [[threadgroup_position_in_grid]])
 {
-  const uint row_block = tgid.y * {{BLOCK_M}};
+\)";
+  if (loadM) {
+    source += R"(  const uniform<uint> M = make_uniform(loadM_buf[0]);
+  const uniform<uint> LHS_PACKED_COLS = M * {{PACK}};
+\)";
+  }
+  source += R"(  const uint row_block = tgid.y * {{BLOCK_M}};
   const uint col_block = tgid.x * {{BLOCK_N}};
   const uint split_id = tgid.z % SPLIT_K;
   if (row_block >= RHS_PACKED_ROWS || col_block >= LHS_PACKED_COLS || split_id >= SPLIT_K) {
@@ -188,17 +208,29 @@ kernel void reduce_diagonal(device const int32_t* src [[buffer(0)]],
                             device const {{IO_TYPE}}* bias [[buffer(4)]],
 )";
   }
+  if (loadM) {
+    source += useBias ? R"(
+                            const device uint* loadM_buf [[buffer(5)]],
+)" : R"(                            const device uint* loadM_buf [[buffer(4)]],
+)";
+  }
   source += R"(
                             uint gid [[thread_position_in_grid]])
 {
-  const uint total = M * N;
+\)";
+  if (loadM) {
+    source += R"(  const uniform<uint> M = make_uniform(loadM_buf[0]);
+\)";
+  }
+  source += R"(  const uint total = M * N;
   if (gid >= total) {
     return;
   }
   const uint m = gid / N;
   const uint n = gid - m * N;
   int32_t sum = 0;
-  #pragma clang loop unroll(full)
+\)";
+  source += R"(  #pragma clang loop unroll(full)
   for (uint split_id = 0; split_id < SPLIT_K; ++split_id) {
     for (uint p = 0; p < {{PACK}}; ++p) {
       sum += src[(split_id * M * {{PACK}} + m * {{PACK}} + p) * N + n];

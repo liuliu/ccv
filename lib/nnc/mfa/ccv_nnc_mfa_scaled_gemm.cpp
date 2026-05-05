@@ -183,6 +183,9 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
       encoder->setBuffer(tensors[1], tensor_offsets[1], 0);
       encoder->setBuffer(scratch, 0, 1);
       encoder->setBuffer(scratch, partials_offset, 2);
+      if (smallDesc.loadM) {
+        encoder->setBytes(&params.M, sizeof(params.M), 3);
+      }
       encoder->dispatchThreadgroups(
           smallKernel->threadgroupsPerGrid(smallDesc),
           MTL::Size(smallKernel->threadgroupSize(smallPipelineValue->pipeline.get()), 1, 1));
@@ -203,6 +206,9 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
       encoder->setBuffer(tensors[1], tensor_offsets[1] + b_scale_offset, 3);
       if (params.fused_bias) {
         encoder->setBuffer(tensors[3], tensor_offsets[3], 4);
+      }
+      if (smallDesc.loadM) {
+        encoder->setBytes(&params.M, sizeof(params.M), params.fused_bias ? 5 : 4);
       }
       encoder->dispatchThreadgroups(
           MTL::Size((int64_t)(((uint64_t)params.M * params.N + 255) / 256), 1, 1),

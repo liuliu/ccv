@@ -26,6 +26,7 @@ struct NAInt8MatMulSmallMDescriptor {
   simd::uint3 matrixDimensions;
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
   bool useBias = false;
+  bool loadM = false;
 
   bool operator==(const NAInt8MatMulSmallMDescriptor& rhs) const;
 

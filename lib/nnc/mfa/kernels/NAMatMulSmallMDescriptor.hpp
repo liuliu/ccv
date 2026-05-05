@@ -26,6 +26,7 @@ struct NAMatMulSmallMDescriptor {
   simd::uint3 matrixDimensions;
   GEMMOperandPrecisions memoryPrecisions;
   bool useBias;
+  bool loadM = false;
 
   bool operator==(const NAMatMulSmallMDescriptor& rhs) const;
 

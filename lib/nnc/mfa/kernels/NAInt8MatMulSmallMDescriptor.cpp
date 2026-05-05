@@ -17,11 +17,18 @@ static size_t align_up(const size_t value, const size_t alignment) noexcept
 }
 
 bool NAInt8MatMulSmallMDescriptor::operator==(const NAInt8MatMulSmallMDescriptor& rhs) const {
+  auto lhsMatrixDimensions = matrixDimensions;
+  auto rhsMatrixDimensions = rhs.matrixDimensions;
+  if (loadM) {
+    lhsMatrixDimensions[0] = 0;
+    rhsMatrixDimensions[0] = 0;
+  }
   return
     batchDimension == rhs.batchDimension &&
-    simd_all(matrixDimensions == rhs.matrixDimensions) &&
+    simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
     ioPrecision == rhs.ioPrecision &&
-    useBias == rhs.useBias;
+    useBias == rhs.useBias &&
+    loadM == rhs.loadM;
 }
 
 uint16_t NAInt8MatMulSmallMDescriptor::pack() const noexcept
@@ -41,6 +48,9 @@ uint16_t NAInt8MatMulSmallMDescriptor::executionSIMDGroups() const noexcept
 
 uint16_t NAInt8MatMulSmallMDescriptor::splitK() const noexcept
 {
+  if (loadM) {
+    return 1;
+  }
   if (matrixDimensions[2] < 16384) {
     return 1;
   }
@@ -79,10 +89,11 @@ std::size_t std::hash<NAInt8MatMulSmallMDescriptor>::operator()(const NAInt8MatM
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, hash.batchDimension);
-  combine_64(seed, pack_64(simd::uint2 { hash.matrixDimensions[0], hash.matrixDimensions[1] }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.matrixDimensions[0], hash.matrixDimensions[1] }));
   combine_32(seed, hash.matrixDimensions[2]);
   combine_32(seed, (uint32_t)hash.ioPrecision.value);
   combine_32(seed, hash.useBias ? 1 : 0);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -109,13 +120,15 @@ std::pair<NAInt8MatMulSmallMKernelDescriptor, PipelineValue<NAInt8MatMulSmallMKe
   auto createConstants =
   [=]() -> NS::SharedPtr<MTL::FunctionConstantValues> {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-    const uint32_t M = matrixDimensions[0];
     const uint32_t N = matrixDimensions[1];
     const uint32_t K = matrixDimensions[2];
     const uint32_t kpack = K / pack();
     const uint32_t splitKValue = splitK();
     const uint32_t splitKPack = kpack / splitKValue;
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      const uint32_t M = matrixDimensions[0];
+      constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    }
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&kpack, MTL::DataTypeUInt, NS::UInteger(3));
@@ -152,7 +165,7 @@ std::pair<NAInt8MatMulSmallMKernelDescriptor, PipelineValue<NAInt8MatMulSmallMKe
   };
 
   auto kernelDesc = NAInt8MatMulSmallMKernelDescriptor(
-      blockDimensions(), pack(), executionSIMDGroups(), ioPrecision, useBias);
+      blockDimensions(), pack(), executionSIMDGroups(), ioPrecision, useBias, loadM);
   NAInt8MatMulSmallMKernel* kernel = createKernel(kernelDesc);
   auto constants = createConstants();
   PipelineValue<NAInt8MatMulSmallMKernel>* output = new PipelineValue<NAInt8MatMulSmallMKernel> {

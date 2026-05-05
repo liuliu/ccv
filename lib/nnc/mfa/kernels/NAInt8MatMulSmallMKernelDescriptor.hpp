@@ -12,6 +12,7 @@ struct NAInt8MatMulSmallMKernelDescriptor {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool loadM;
 
   NAInt8MatMulSmallMKernelDescriptor() = delete;
   NAInt8MatMulSmallMKernelDescriptor(
@@ -19,7 +20,8 @@ struct NAInt8MatMulSmallMKernelDescriptor {
       uint16_t pack,
       uint16_t executionSIMDGroups,
       GEMMOperandPrecision ioPrecision,
-      bool useBias) noexcept;
+      bool useBias,
+      bool loadM) noexcept;
 
   bool operator==(const NAInt8MatMulSmallMKernelDescriptor& rhs) const;
 };

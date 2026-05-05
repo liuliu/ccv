@@ -302,20 +302,23 @@ DynamicPipeline create_dynamic_pipeline(
 
 SmallMPipeline create_smallm_pipeline(
     MTL::Device* device,
-    const BenchmarkCase& bench)
+    const BenchmarkCase& bench,
+    bool load_m)
 {
   SmallMPipeline bundle;
   bundle.descriptor.batchDimension = 1;
   bundle.descriptor.ioPrecision = GEMMOperandPrecision::FP16;
   bundle.descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
   bundle.descriptor.useBias = false;
+  bundle.descriptor.loadM = load_m;
 
   const NAInt8MatMulSmallMKernelDescriptor kernel_descriptor(
       bundle.descriptor.blockDimensions(),
       bundle.descriptor.pack(),
       bundle.descriptor.executionSIMDGroups(),
       bundle.descriptor.ioPrecision,
-      bundle.descriptor.useBias);
+      bundle.descriptor.useBias,
+      bundle.descriptor.loadM);
   bundle.kernel = std::make_unique<NAInt8MatMulSmallMKernel>(kernel_descriptor, device);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
@@ -325,7 +328,9 @@ SmallMPipeline create_smallm_pipeline(
   const uint32_t kpack = K / bundle.descriptor.pack();
   const uint32_t splitK = bundle.descriptor.splitK();
   const uint32_t splitKPack = kpack / splitK;
-  constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  if (!bundle.descriptor.loadM) {
+    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  }
   constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
   constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
   constants->setConstantValue(&kpack, MTL::DataTypeUInt, NS::UInteger(3));
@@ -1018,6 +1023,9 @@ double run_smallm_once(
     encoder->setBuffer(buffer_b_q, 0, 0);
     encoder->setBuffer(buffer_a_q, 0, 1);
     encoder->setBuffer(buffer_accum, bundle.descriptor.scratchOffsets().partials, 2);
+    if (bundle.descriptor.loadM) {
+      encoder->setBytes(&bench.M, sizeof(bench.M), 3);
+    }
     encoder->dispatchThreadgroups(
         bundle.kernel->threadgroupsPerGrid(bundle.descriptor),
         MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
@@ -1030,6 +1038,9 @@ double run_smallm_once(
     encoder->setBuffer(buffer_c, 0, 1);
     encoder->setBuffer(buffer_a_scale, 0, 2);
     encoder->setBuffer(buffer_b_scale, 0, 3);
+    if (bundle.descriptor.loadM) {
+      encoder->setBytes(&bench.M, sizeof(bench.M), 4);
+    }
     const uint64_t total = (uint64_t)bench.M * bench.N;
     encoder->dispatchThreadgroups(
         MTL::Size((int64_t)((total + 255) / 256), 1, 1),
@@ -1141,6 +1152,9 @@ double run_quantize_and_smallm_once(
     encoder->setBuffer(buffer_b_q, 0, 0);
     encoder->setBuffer(buffer_a_q, 0, 1);
     encoder->setBuffer(buffer_accum, smallm.descriptor.scratchOffsets().partials, 2);
+    if (smallm.descriptor.loadM) {
+      encoder->setBytes(&bench.M, sizeof(bench.M), 3);
+    }
     encoder->dispatchThreadgroups(
         smallm.kernel->threadgroupsPerGrid(smallm.descriptor),
         MTL::Size(smallm.kernel->threadgroupSize(smallm.pipeline.get()), 1, 1));
@@ -1153,6 +1167,9 @@ double run_quantize_and_smallm_once(
     encoder->setBuffer(buffer_c, 0, 1);
     encoder->setBuffer(buffer_a_scale, 0, 2);
     encoder->setBuffer(buffer_b_scale, 0, 3);
+    if (smallm.descriptor.loadM) {
+      encoder->setBytes(&bench.M, sizeof(bench.M), 4);
+    }
     const uint64_t total = (uint64_t)bench.M * bench.N;
     encoder->dispatchThreadgroups(
         MTL::Size((int64_t)((total + 255) / 256), 1, 1),
@@ -1407,6 +1424,7 @@ int main(int argc, char** argv)
   BenchmarkConfig config;
   VariantConfig variant;
   bool baseline_load_m = false;
+  bool smallm_load_m = false;
   if (argc >= 4) {
     bench.M = (uint32_t)std::strtoul(argv[1], nullptr, 10);
     bench.N = (uint32_t)std::strtoul(argv[2], nullptr, 10);
@@ -1437,6 +1455,8 @@ int main(int argc, char** argv)
     variant.load_m = std::strtoul(argv[14], nullptr, 10) != 0;
   if (argc >= 16)
     baseline_load_m = std::strtoul(argv[15], nullptr, 10) != 0;
+  if (argc >= 17)
+    smallm_load_m = std::strtoul(argv[16], nullptr, 10) != 0;
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -1472,6 +1492,7 @@ int main(int argc, char** argv)
   smallm_descriptor.ioPrecision = GEMMOperandPrecision::FP16;
   smallm_descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
   smallm_descriptor.useBias = false;
+  smallm_descriptor.loadM = smallm_load_m;
   const bool benchmark_smallm = (bench.K % smallm_descriptor.pack()) == 0 && bench.K < 65536;
   const size_t c_smallm_i32_bytes = benchmark_smallm ? smallm_descriptor.scratchOffsets().total : 0;
   const size_t c_raw_i32_bytes = (size_t)bench.M * bench.N * sizeof(int32_t);
@@ -1541,7 +1562,7 @@ int main(int argc, char** argv)
   auto dynamic = create_dynamic_pipeline(device.get(), bench, variant);
   SmallMPipeline smallm;
   if (benchmark_smallm)
-    smallm = create_smallm_pipeline(device.get(), bench);
+    smallm = create_smallm_pipeline(device.get(), bench, smallm_load_m);
   RawPipeline raw;
   if (benchmark_raw)
     raw = create_raw_pipeline(device.get(), bench, variant);
@@ -1564,6 +1585,7 @@ int main(int argc, char** argv)
             << " groupN=" << groupN(bench, variant)
             << " loadM=" << (variant.load_m ? 1 : 0)
             << " baselineLoadM=" << (baseline_load_m ? 1 : 0)
+            << " smallMLoadM=" << (smallm_load_m ? 1 : 0)
             << " rawInt32=" << (benchmark_raw ? 1 : 0)
             << " splitK=" << variant.split_k
             << " smallM=" << (benchmark_smallm ? 1 : 0)
