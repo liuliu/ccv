@@ -333,10 +333,17 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       };
       const uint32_t qTiles = (hash.R + kernel->blockDimensions[0] - 1) / kernel->blockDimensions[0];
       const uint32_t kTiles = (hash.C + kernel->blockDimensions[1] - 1) / kernel->blockDimensions[1];
+      const bool useSplitKV = kernel->splitKV > 1;
       size_t scratchSize = 0;
       const size_t blockMaskBytes =
           hash.masked ? (size_t)batch_sizes[1] * qTiles * kTiles * sizeof(uint8_t) : 0;
       const size_t blockMaskOffset = hash.masked ? reserve(&scratchSize, blockMaskBytes) : 0;
+      const size_t splitKVPartialOBytes =
+          useSplitKV ? (size_t)attentionDesc.batchDimension * hash.Hq * kernel->splitKV * hash.R * hash.D * sizeof(float) : 0;
+      const size_t splitKVPartialLBytes =
+          useSplitKV ? (size_t)attentionDesc.batchDimension * hash.Hq * kernel->splitKV * hash.R * sizeof(float) : 0;
+      const size_t splitKVPartialOOffset = useSplitKV ? reserve(&scratchSize, splitKVPartialOBytes) : 0;
+      const size_t splitKVPartialLOffset = useSplitKV ? reserve(&scratchSize, splitKVPartialLBytes) : 0;
       const size_t lBytes = sizeof(float) * hash.R * hash.Hq * attentionDesc.batchDimension;
       const size_t lOffset = !tensors[5] ? reserve(&scratchSize, lBytes) : 0;
       auto scratch = scratchSize > 0 ? context->request_scratch(scratchSize) : NULL;
@@ -352,6 +359,50 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
             MTL::Size(qTiles, kTiles, batch_sizes[1]),
             MTL::Size(NAAttentionKernel::blockMaskThreads, 1, 1));
         command_batch->finishCommand(encoder);
+      }
+      if (useSplitKV) {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(pipeline.get());
+        encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(pipeline.get(), attentionDesc), 0);
+        encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+        encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        encoder->setBuffer(tensors[0], tensor_offsets[0], AttentionOperand(AttentionOperand::Q).bufferIndex());
+        encoder->setBuffer(tensors[1], tensor_offsets[1], AttentionOperand(AttentionOperand::K).bufferIndex());
+        encoder->setBuffer(tensors[2], tensor_offsets[2], AttentionOperand(AttentionOperand::V).bufferIndex());
+        encoder->setBuffer(scratch, splitKVPartialOOffset, 5);
+        encoder->setBuffer(scratch, splitKVPartialLOffset, 6);
+        encoder->dispatchThreadgroups(
+            kernel->threadgroupsPerGrid(attentionDesc),
+            MTL::Size(kernel->threadgroupSize(pipeline.get(), attentionDesc), 1, 1));
+        command_batch->finishCommand(encoder);
+
+        auto combineEncoder = command_batch->startCommand();
+        combineEncoder->setComputePipelineState(blockMaskPipeline.get());
+        combineEncoder->useResource(scratch, MTL::ResourceUsageRead);
+        combineEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+        if (tensors[5]) {
+          combineEncoder->useResource(tensors[5], MTL::ResourceUsageWrite);
+        } else {
+          combineEncoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        }
+        combineEncoder->setBuffer(tensors[3], tensor_offsets[3], AttentionOperand(AttentionOperand::O).bufferIndex());
+        if (tensors[5]) {
+          combineEncoder->setBuffer(tensors[5], tensor_offsets[5], AttentionOperand(AttentionOperand::L).bufferIndex());
+        } else {
+          combineEncoder->setBuffer(scratch, lOffset, AttentionOperand(AttentionOperand::L).bufferIndex());
+        }
+        combineEncoder->setBuffer(scratch, splitKVPartialOOffset, 5);
+        combineEncoder->setBuffer(scratch, splitKVPartialLOffset, 6);
+        const size_t combineThreadgroups =
+            ((size_t)attentionDesc.batchDimension * hash.Hq * hash.R * hash.D + NAAttentionKernel::splitKVCombineThreads - 1) /
+            NAAttentionKernel::splitKVCombineThreads;
+        combineEncoder->dispatchThreadgroups(
+            MTL::Size(combineThreadgroups, 1, 1),
+            MTL::Size(NAAttentionKernel::splitKVCombineThreads, 1, 1));
+        command_batch->finishCommand(combineEncoder);
+        return;
       }
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());

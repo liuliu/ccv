@@ -37,6 +37,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
+  splitKV = descriptor.splitKV;
 
   source = createSource();
 
@@ -88,6 +89,10 @@ MTL::Size NAAttentionKernel::threadgroupsPerGrid(const NAAttentionDescriptor &de
   };
   switch (type.value) {
   case AttentionKernelType::forward: {
+    if (splitKV > 1) {
+      const uint32_t row_groups = (uint32_t)ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0]);
+      return MTL::Size(Hq * ceilDivide(splitKV, executionSIMDGroups), row_groups, descriptor.batchDimension);
+    }
     const uint32_t row_groups = (uint32_t)ceilDivide(descriptor.matrixDimensions[0], blockDimensions[0] * executionSIMDGroups);
     const uint32_t morton_bits = ceil_log2_u32_host(row_groups) + ceil_log2_u32_host(Hq);
     return MTL::Size(uint64_t(1) << morton_bits, 1, descriptor.batchDimension);
@@ -172,7 +177,62 @@ unsigned short NAAttentionKernel::blockSequenceLength(AttentionOperand operand) 
 
 // MARK: - NAAttentionKernel+Source
 
+std::string NAAttentionKernel::createSplitKVSource() const noexcept {
+  CodeWriter source;
+
+  source += R"(
+#include <metal_stdlib>
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>
+
+using namespace metal;
+using namespace mpp::tensor_ops;
+
+)";
+
+  createConstants(source);
+  source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
+  source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
+  source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+  source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
+  source += R"(
+kernel void attention(
+  device {{MEMORY_NAME_Q}}* Q_buf [[buffer(0)]],
+  device {{MEMORY_NAME_K}}* K_buf [[buffer(1)]],
+  device {{MEMORY_NAME_V}}* V_buf [[buffer(2)]],
+  device float* PartialO_buf [[buffer(5)]],
+  device float* PartialL_buf [[buffer(6)]],
+  threadgroup uchar *threadgroup_block [[threadgroup(0)]],
+  ushort lane_id [[thread_index_in_simdgroup]],
+  ushort sgid [[simdgroup_index_in_threadgroup]],
+  uint3 tgid [[threadgroup_position_in_grid]]
+) {
+  const uint split_group = tgid.x / Hq;
+  const uint head = tgid.x - split_group * Hq;
+  const uint row_group = tgid.y;
+  const uint split_id = split_group * {{EXECUTION_SIMD_GROUPS}} + sgid;
+  if (split_id >= SplitKV_splits) {
+    return;
+  }
+  tgid = uint3(row_group, head, tgid.z);
+  Q_buf += tgid.z * Q_batch_stride;
+  K_buf += tgid.z * K_batch_stride;
+  V_buf += tgid.z * V_batch_stride;
+)";
+  loopForwardSplitKV(source);
+  source += R"(
+}
+
+)";
+  source += createSplitKVCombine();
+  return source.ToString();
+}
+
 std::string NAAttentionKernel::createSource() const noexcept {
+  if (type.value == AttentionKernelType::forward && splitKV > 1) {
+    return createSplitKVSource();
+  }
   CodeWriter source;
   const bool lowPrecisionInputs =
       memoryPrecisions[AttentionOperand::Q].value() != GEMMOperandPrecision::FP32;
@@ -453,6 +513,14 @@ constant uint KV_C_remainder = C % {{BLOCK_DIMENSIONS_PARALLELIZATION}};
 constant uint K_Hq = {{HEAD_DIMENSION}} * Hq;
 constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
 )";
+  if (type.value == AttentionKernelType::forward && splitKV > 1) {
+    source += R"(
+constant uint SplitKV_splits [[function_constant(19)]];
+constant uint Batch_dimension [[function_constant(20)]];
+constant uint SplitKV_c_blocks = C / {{BLOCK_DIMENSIONS_TRAVERSAL}};
+constant uint SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits - 1) / SplitKV_splits;
+)";
+  }
   for (const auto& operand : operands) {
     source.SetValue("OPERAND_NAME", operand.name());
     source.SetValue("OPERAND_BUFFER_INDEX", std::to_string(operand.bufferIndex() + 2));
@@ -687,6 +755,304 @@ static std::string dotProductScale(float rsqrtD, bool derivative) {
   } else {
     return high_precision_to_string(rsqrtD);
   }
+}
+
+void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
+  source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+  source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
+  source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
+  source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
+  source.SetValue("MEMORY_NAME_L", memoryName(AttentionOperand::L));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source.SetValue("HEAD_DIMENSION_REMAINDER", std::to_string(headDimension % blockDimensions[2]));
+  if (blockDimensions[1] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[1]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if (blockDimensions[2] % 32 == 0) {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
+  } else {
+    source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if ((headDimension % blockDimensions[2]) % 32 == 0) {
+    source.SetValue("HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V", std::to_string(headDimension % blockDimensions[2]));
+  } else {
+    source.SetValue("HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
+  }
+  if (Hq != Hk) {
+    source.SetValue("H_HK_RATIO", "/ " + std::to_string(Hq / Hk));
+  } else {
+    source.SetValue("H_HK_RATIO", "");
+  }
+  source.SetValue("DOT_SCALE", dotProductScale(scale, false));
+  const unsigned short kBlocks = (std::max(headDimension, blockDimensions[2]) + blockDimensions[2] - 1) / blockDimensions[2];
+  source += R"(
+  const uint c_block_begin = split_id * SplitKV_blocks_per_split;
+  const uint c_block_end = min(SplitKV_c_blocks, c_block_begin + SplitKV_blocks_per_split);
+  const uint c_begin = c_block_begin * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint c_end = c_block_end * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint row_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  device float* PartialO = PartialO_buf + (((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R) * {{HEAD_DIMENSION}};
+  device float* PartialL = PartialL_buf + ((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R;
+  if (c_block_begin >= c_block_end) {
+    for (uint row_idx = lane_id; row_idx < {{BLOCK_DIMENSIONS_PARALLELIZATION}}; row_idx += 32) {
+      const uint row = row_start + row_idx;
+      if (row >= R) {
+        continue;
+      }
+      PartialL[row] = -numeric_limits<float>::infinity();
+    }
+    for (uint idx = lane_id; idx < {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{HEAD_DIMENSION}}; idx += 32) {
+      const uint row = row_start + idx / {{HEAD_DIMENSION}};
+      if (row >= R) {
+        continue;
+      }
+      PartialO[row * {{HEAD_DIMENSION}} + idx % {{HEAD_DIMENSION}}] = 0;
+    }
+    return;
+  }
+  auto Q = tensor<device {{MEMORY_NAME_Q}},  dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, R));
+  auto K = tensor<device {{MEMORY_NAME_K}},  dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, C));
+  auto V = tensor<device {{MEMORY_NAME_V}},  dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, C));
+  threadgroup {{MEMORY_NAME_O}} *P_buf = (threadgroup {{MEMORY_NAME_O}}*)threadgroup_block + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{BLOCK_DIMENSIONS_TRAVERSAL}} * sgid;
+  auto P = tensor<threadgroup {{MEMORY_NAME_O}}, dextents<int32_t, 2>, tensor_inline>(P_buf, extents<int32_t, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
+  constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc, execution_simdgroups<1>> matmul_qk_op;
+)";
+  if (headDimension % blockDimensions[2] > 0) {
+    source += R"(
+  constexpr auto qk_desc_remainder = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{HEAD_DIMENSION_REMAINDER_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc_remainder, execution_simdgroups<1>> matmul_qk_op_remainder;
+)";
+  }
+  source += R"(
+  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, row_start);
+  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c_begin);
+  auto cS_0 = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = -numeric_limits<float>::infinity();
+      cL[k] = numeric_limits<float>::denorm_min();
+    }
+  }
+  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c_begin);
+  constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();\n";
+  }
+  source += R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
+  }
+  source += R"(
+    }
+  }
+  for (uint c = c_begin; c < c_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        cS_0[k] = 0;
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
+      auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, row_start);
+      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
+      matmul_qk_op.run(mQ, mK_0, cS_0);
+    }
+)";
+  if (headDimension % blockDimensions[2] > 0) {
+    source.SetValue("HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER", std::to_string(headDimension - (headDimension % blockDimensions[2])));
+    source += R"(
+    {
+      auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, row_start);
+      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
+      matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
+    }
+)";
+  }
+  if (isCausal) {
+    source += R"(
+    const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > int(C) - int(R);
+    if (causal_mask_0) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto idx = cS_0.get_multidimensional_index(k);
+          const int causal_column_limit = int(row_start + idx[1]) + int(C) - int(R);
+          if (int(c) + idx[0] > causal_column_limit) {
+            cS_0[k] = -numeric_limits<float>::infinity();
+          }
+        }
+      }
+    }
+)";
+  }
+  source += R"(
+    auto cM_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cM_0_new, reduction_operation::max, -numeric_limits<float>::infinity());
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+      if (cM.is_valid_element(k)) {
+        correction[k] = 1;
+        const float M_new = cM_0_new[k] * {{DOT_SCALE}};
+        if (M_new > cM[k]) {
+          correction[k] = fast::exp2(cM[k] - M_new);
+          cM[k] = M_new;
+        }
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+      }
+    }
+    auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+    reduce_rows(cS_0, cL_0_new, reduction_operation::sum, (float)0);
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cL.get_capacity(); ++k) {
+      if (cL.is_valid_element(k)) {
+        cL[k] = cL[k] * correction[k] + cL_0_new[k];
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = correction.map_iterator(it);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+  }
+  source += R"(
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        P_buf[idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+      }
+    }
+    simdgroup_barrier(mem_flags::mem_threadgroup);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source += R"(
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+    matmul_pv_op.run(P, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+  }
+  source += R"(
+  }
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+      auto idx = cO_0.get_multidimensional_index(k);
+      const uint row = row_start + idx[1];
+      if (row < R) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = cL.map_iterator(it);
+        const uint partial_row_offset = row * {{HEAD_DIMENSION}};
+        const float L_reciprocal = fast::divide(1, *dst_it);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
+      source += R"(
+        PartialO[partial_row_offset + idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] = cO_{{LOOP_INDEX}}[k] * L_reciprocal;
+)";
+    } else {
+      source += R"(
+        if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
+          PartialO[partial_row_offset + idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] = cO_{{LOOP_INDEX}}[k] * L_reciprocal;
+        }
+)";
+    }
+  }
+  source += R"(
+      }
+    }
+  }
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      auto idx = cM.get_multidimensional_index(k);
+      const uint row = row_start + idx[0];
+      if (row < R) {
+        PartialL[row] = cM[k] + fast::log2(cL[k]);
+      }
+    }
+  }
+)";
+}
+
+std::string NAAttentionKernel::createSplitKVCombine() const noexcept {
+  CodeWriter source;
+  source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
+  source.SetValue("MEMORY_NAME_L", memoryName(AttentionOperand::L));
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source += R"(
+kernel void attention_splitkv_combine(
+  device {{MEMORY_NAME_O}}* O_buf [[buffer(3)]],
+  device {{MEMORY_NAME_L}}* L_buf [[buffer(4)]],
+  device const float* PartialO_buf [[buffer(5)]],
+  device const float* PartialL_buf [[buffer(6)]],
+  uint gid [[thread_position_in_grid]]
+) {
+  const uint total = Batch_dimension * Hq * R * {{HEAD_DIMENSION}};
+  if (gid >= total) {
+    return;
+  }
+  const uint d = gid % {{HEAD_DIMENSION}};
+  const uint row_head_linear = gid / {{HEAD_DIMENSION}};
+  const uint row = row_head_linear % R;
+  const uint head_linear = row_head_linear / R;
+  const uint head = head_linear % Hq;
+  const uint batch = head_linear / Hq;
+  const uint split_base = (batch * Hq + head) * SplitKV_splits;
+  float lse_max = -numeric_limits<float>::infinity();
+  for (uint split = 0; split < SplitKV_splits; ++split) {
+    lse_max = max(lse_max, PartialL_buf[(split_base + split) * R + row]);
+  }
+  float lse_sum = 0;
+  for (uint split = 0; split < SplitKV_splits; ++split) {
+    lse_sum += fast::exp2(PartialL_buf[(split_base + split) * R + row] - lse_max);
+  }
+  const float lse = lse_max + fast::log2(lse_sum);
+  float output = 0;
+  for (uint split = 0; split < SplitKV_splits; ++split) {
+    const uint partial_idx = (split_base + split) * R + row;
+    const float weight = fast::exp2(PartialL_buf[partial_idx] - lse);
+    output += weight * PartialO_buf[partial_idx * {{HEAD_DIMENSION}} + d];
+  }
+  O_buf += batch * O_batch_stride;
+  O_buf[(row * Hq + head) * {{HEAD_DIMENSION}} + d] = ({{MEMORY_NAME_O}})output;
+  if (d == 0) {
+    L_buf[(batch * Hq + head) * R + row] = ({{MEMORY_NAME_L}})lse;
+  }
+}
+)";
+  return source.ToString();
 }
 
 std::string NAAttentionKernel::createComputeD() const noexcept {

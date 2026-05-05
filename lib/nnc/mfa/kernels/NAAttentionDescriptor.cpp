@@ -103,8 +103,31 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
     return false;
   };
   auto blockDimensions = createBlockDimensions();
+  const uint16_t executionSIMDGroups = createExecutionSIMDGroups();
   bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
-  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, createExecutionSIMDGroups(), checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen);
+  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups));
+}
+
+uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept {
+  if (type.value != AttentionKernelType::forward ||
+      matrixDimensions[0] == 0 ||
+      matrixDimensions[0] > blockDimensions[0] * 4 ||
+      masked ||
+      isVarlen ||
+      (matrixDimensions[1] % blockDimensions[1]) != 0) {
+    return 1;
+  }
+  const uint32_t minSequenceLength = matrixDimensions[0] == 1 ? 2048 : 4096;
+  if (matrixDimensions[1] < minSequenceLength) {
+    return 1;
+  }
+  const uint32_t cBlocks = matrixDimensions[1] / blockDimensions[1];
+  const uint32_t rowGroups = (matrixDimensions[0] + blockDimensions[0] - 1) / blockDimensions[0];
+  const uint32_t activeTiles = batchDimension * Hq * rowGroups;
+  if (activeTiles > 128) {
+    return 1;
+  }
+  return (uint16_t)std::min<uint32_t>(executionSIMDGroups, cBlocks);
 }
 
 std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAttentionDescriptor::findKernel(MTL::Device *const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept {
@@ -141,6 +164,12 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
       constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(15));
       constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(16));
     }
+    if (type.value == AttentionKernelType::forward && kernelDesc.splitKV > 1) {
+      const uint32_t splitKV = kernelDesc.splitKV;
+      const uint32_t batchDimension = this->batchDimension;
+      constants->setConstantValue(&splitKV, MTL::DataTypeUInt, NS::UInteger(19));
+      constants->setConstantValue(&batchDimension, MTL::DataTypeUInt, NS::UInteger(20));
+    }
 
     NS::String* swiftName = NS::String::string(name, NS::UTF8StringEncoding);
     NS::Error* error = nil;
@@ -171,7 +200,9 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
   NAAttentionKernel* kernel = createKernel(kernelDesc);
   auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc, "attention"));
   NS::SharedPtr<MTL::ComputePipelineState> second;
-  if (type.value == AttentionKernelType::forward && masked) {
+  if (type.value == AttentionKernelType::forward && kernelDesc.splitKV > 1) {
+    second = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc, "attention_splitkv_combine"));
+  } else if (type.value == AttentionKernelType::forward && masked) {
     second = NS::TransferPtr(createPipeline(kernel->library.get(), kernelDesc, "generate_attention_block_mask"));
   }
   if (type.value == AttentionKernelType::backwardQuery) {

@@ -10,6 +10,7 @@ class CodeWriter;
 struct NAAttentionKernel {
   static constexpr uint16_t computeDThreads = 32;
   static constexpr uint16_t blockMaskThreads = 256;
+  static constexpr uint16_t splitKVCombineThreads = 256;
 
   NS::SharedPtr<MTL::Library> library;
   
@@ -31,6 +32,8 @@ struct NAAttentionKernel {
   unsigned short Hk;
 
   uint16_t executionSIMDGroups;
+
+  uint16_t splitKV;
 
   bool bypassThreadgroupMemory;
 
@@ -62,6 +65,9 @@ private:
   std::string createSource() const noexcept;
   void createConstants(CodeWriter &source) const noexcept;
   void loopForward(CodeWriter &source) const noexcept;
+  void loopForwardSplitKV(CodeWriter &source) const noexcept;
+  std::string createSplitKVCombine() const noexcept;
+  std::string createSplitKVSource() const noexcept;
   void loopForwardSingleCausal(CodeWriter &source) const noexcept;
   void loopBackwardQuery(CodeWriter &source) const noexcept;
   void loopBackwardKeyValue(CodeWriter &source) const noexcept;

@@ -57,6 +57,7 @@ struct NAAttentionDescriptor {
 private:
   NAAttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;
   AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions() const noexcept;
+  uint16_t splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept;
 };
 
 template<>
