@@ -294,6 +294,42 @@ TEST_CASE("argmax with bfloat")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("argmax with bfloat over large axis")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ARGMAX_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int length = 2048;
+	const int winner = 1500;
+	ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, length), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, 1, length), 0);
+	ccv_nnc_tensor_t* const hrounded = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, length), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1, 1), 0);
+	int i;
+	for (i = 0; i < length; i++)
+		ha32->data.f32[i] = -2;
+	ha32->data.f32[0] = 9.875;
+	ha32->data.f32[599] = 19.25;
+	ha32->data.f32[1044] = 19.5;
+	ha32->data.f32[winner] = 19.625;
+	ccv_float_to_bfloat(ha32->data.f32, (uint16_t*)ha->data.f16, length);
+	ccv_bfloat_to_float((uint16_t*)ha->data.f16, hrounded->data.f32, length);
+	ccv_nnc_cmd_exec(CMD_ARGMAX_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(hrounded), TENSOR_LIST(hb), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, 1, length), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 1, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_ARGMAX_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "result should be equal");
+	REQUIRE_EQ(winner, bt->data.i32[0], "large-axis argmax should find winner");
+	ccv_nnc_tensor_free(ha32);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hrounded);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(bt);
+}
+
 TEST_CASE("reduce norm2 forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_NORM2_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_NORM2_FORWARD, CCV_NNC_BACKEND_MPS));

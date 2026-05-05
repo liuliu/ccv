@@ -45,6 +45,11 @@ static int _ccv_nnc_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 				[inputTensors addObject:mps_input_a];
 				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(&atv, atv.info.dim, atv.stride);
 				[inputShapedTypes addObject:mps_a_shape];
+				// On macOS 26.4.1 (25E253), MPSGraph's native BF16
+				// reductionArgMaximumWithTensor can return an incorrect index for
+				// larger reduction axes. Upcast BF16 to FP32 before argmax.
+				if (atv.info.datatype == CCV_16BF)
+					mps_a = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
 				MPSGraphTensor* mps_b = [graph reductionArgMaximumWithTensor:mps_a axis:axis name:nil];
 				[resultTensors addObject:mps_b];
 			});
