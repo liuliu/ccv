@@ -1,4 +1,3 @@
-#include "ccv.h"
 #include "ccv_nnc_mfa.hpp"
 #include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
 #include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
@@ -953,6 +952,7 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
     return 0;
   }
 
+  ccv_nnc_stream_context_commit(stream_context);
   const int prep_ok = ccv_nnc_mfa_ane_rowwise_fast_fence_cpu_wait(
       cache,
       kHybridPrepFenceIndex,

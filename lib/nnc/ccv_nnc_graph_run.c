@@ -824,6 +824,8 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		if (__atomic_load_n(&CO_P(graph)->run_state, __ATOMIC_ACQUIRE) == CCV_NNC_GRAPH_STATE_CANCEL)
 		{
 			// The most important thing is to reset main and then return, we don't need to wait for any streaming event.
+			if (CO_P(exec_idx) == -1)
+				ccv_nnc_stream_context_commit(CO_P(stream_context));
 			if (CO_P(exec_idx) == -1 && CO_P(stream_context)->main == co_self())
 				CO_P(stream_context)->main = 0;
 			co_return();
@@ -838,6 +840,8 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		if (__atomic_load_n(&CO_P(graph)->run_state, __ATOMIC_ACQUIRE) == CCV_NNC_GRAPH_STATE_CANCEL)
 		{
 			// The most important thing is to reset main and then return, we don't need to wait for any streaming event.
+			if (CO_P(exec_idx) == -1)
+				ccv_nnc_stream_context_commit(CO_P(stream_context));
 			if (CO_P(exec_idx) == -1 && CO_P(stream_context)->main == co_self())
 				CO_P(stream_context)->main = 0;
 			co_return();
@@ -862,6 +866,8 @@ co_task(_ccv_nnc_graph_topsorted_run_coro, (ccv_nnc_graph_t* const graph, const 
 		ccv_nnc_stream_context_emit_signal(CO_P(graph)->streams[CO_V(stream_0)], CO_P(schedule)->end);
 		ccv_nnc_stream_context_wait_signal(CO_P(stream_context), CO_P(schedule)->end);
 	}
+	if (CO_P(exec_idx) == -1)
+		ccv_nnc_stream_context_commit(CO_P(stream_context));
 	// Reset main to 0 if it is current me.
 	if (CO_P(exec_idx) == -1 && CO_P(stream_context)->main == co_self())
 		CO_P(stream_context)->main = 0;

@@ -69,6 +69,7 @@ void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const strea
 
 void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context)
 {
+	ccv_nnc_stream_context_commit(stream_context);
 #if defined(HAVE_CUDA) || defined(HAVE_MPS)
 	ccv_nnc_stream_compat_drain(stream_context);
 #else
@@ -81,6 +82,14 @@ void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream_context
 		stream_cpu->workspace = 0;
 		stream_cpu->workspace_size = 0;
 	}
+#endif
+}
+
+void ccv_nnc_stream_context_commit(ccv_nnc_stream_context_t* const stream_context)
+{
+#if defined(HAVE_CUDA) || defined(HAVE_MPS)
+	if (!stream_context || CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
+		ccv_nnc_stream_compat_commit(stream_context);
 #endif
 }
 
@@ -210,6 +219,7 @@ void ccv_nnc_stream_context_remove_destructor_hook(ccv_nnc_stream_context_t* con
 
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 {
+	ccv_nnc_stream_context_commit(stream_context);
 	if (stream_context->destructor_hooks)
 	{
 		int i;

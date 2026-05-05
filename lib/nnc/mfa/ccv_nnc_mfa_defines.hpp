@@ -42,8 +42,10 @@ public:
   
   uint16_t batchedCommandCount = 0;
   uint8_t commandActive = 0;
+  bool commitOnDestruct = true;
   
   CommandBatch(MTL::CommandQueue* commandQueue);
+  CommandBatch(MTL::CommandBuffer* commandBuffer, bool commitOnDestruct);
   ~CommandBatch();
   
   MTL::ComputeCommandEncoder* startCommand();

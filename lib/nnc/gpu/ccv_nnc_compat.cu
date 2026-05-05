@@ -613,6 +613,11 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 	}
 }
 
+void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context)
+{
+	// CUDA backend ops submit work eagerly to the underlying cudaStream_t.
+}
+
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;

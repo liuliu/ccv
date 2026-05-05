@@ -46,6 +46,7 @@ int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* c
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(void*) ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem);
 void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_init_stream_signal(ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);

@@ -1071,6 +1071,11 @@ CCV_WARN_UNUSED(void*) ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_conte
  */
 void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream);
 /**
+ * Commit any pending work encoded on the stream context without waiting for it.
+ * @param stream The stream context to commit.
+ */
+void ccv_nnc_stream_context_commit(ccv_nnc_stream_context_t* const stream);
+/**
  * The callback prototype on the stream context.
  */
 typedef void(*ccv_nnc_callback_f)(void* const callback_context);

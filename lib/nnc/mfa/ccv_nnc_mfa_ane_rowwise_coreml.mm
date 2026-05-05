@@ -26,6 +26,8 @@
 extern "C" {
 mtl_command_batch_t* ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch);
+void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, id command_buffer);
+void ccv_nnc_stream_context_commit(ccv_nnc_stream_context_t* const stream_context);
 id ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(
     ccv_nnc_stream_context_t* const stream_context,
     mtl_command_batch_t* command_batch);
@@ -1320,12 +1322,14 @@ static mtl_command_buffer_t* ccv_nnc_mfa_ane_rowwise_finish_command_batch_for_wa
         ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(stream_context, command_batch);
     id<MTLCommandBuffer> const command_buffer =
         [((id<MTLCommandBuffer> (*)(id, SEL))objc_msgSend)(mps_command_buffer, @selector(commandBuffer)) retain];
-    [mps_command_buffer commit];
+    ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, mps_command_buffer);
+    ccv_nnc_stream_context_commit(stream_context);
     set_error(error_out, error_out_size, "");
     return (mtl_command_buffer_t*)(void*)command_buffer;
   }
   id<MTLCommandBuffer> const command_buffer = [bridge_command_buffer(command_batch->commandBuffer) retain];
   ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+  ccv_nnc_stream_context_commit(stream_context);
   set_error(error_out, error_out_size, "");
   return (mtl_command_buffer_t*)(void*)command_buffer;
 }

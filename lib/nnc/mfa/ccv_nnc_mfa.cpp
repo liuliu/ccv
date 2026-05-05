@@ -105,6 +105,10 @@ MTL::CommandBatch* ccv_nnc_start_command_batch(MTL::CommandQueue* command_queue)
   return new MTL::CommandBatch(command_queue);
 }
 
+MTL::CommandBatch* ccv_nnc_start_command_batch_from_command_buffer(MTL::CommandBuffer* command_buffer, int commit_on_finish) {
+  return new MTL::CommandBatch(command_buffer, commit_on_finish != 0);
+}
+
 void ccv_nnc_finish_command_batch(MTL::CommandBatch* command_batch) {
   delete command_batch;
 }
@@ -167,6 +171,12 @@ MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {
   commandEncoder = commandBuffer->computeCommandEncoder();
 }
 
+MTL::CommandBatch::CommandBatch(MTL::CommandBuffer* commandBuffer, bool commitOnDestruct) {
+  this->commandBuffer = commandBuffer;
+  this->commandEncoder = commandBuffer->computeCommandEncoder();
+  this->commitOnDestruct = commitOnDestruct;
+}
+
 MTL::ComputeCommandEncoder* MTL::CommandBatch::startCommand() {
   CCV_NNC_MFA_PRECONDITION(commandActive == 0)
   commandActive = 1;
@@ -184,7 +194,7 @@ MTL::CommandBatch::~CommandBatch() {
   if (commandEncoder) {
     commandEncoder->endEncoding();
   }
-  if (commandBuffer) {
+  if (commandBuffer && commitOnDestruct) {
     commandBuffer->commit();
   }
 }

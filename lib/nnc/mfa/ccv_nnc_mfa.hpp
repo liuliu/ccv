@@ -1,7 +1,14 @@
 #ifndef GUARD_ccv_nnc_mfa_hpp
 #define GUARD_ccv_nnc_mfa_hpp
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "ccv.h"
 #include "nnc/ccv_nnc.h"
+#ifdef __cplusplus
+}
+#endif
 #include "ccv_nnc_mfa_defines.hpp"
 #include "ccv_nnc_mfa_attention.hpp"
 #include "ccv_nnc_mfa_normalization.hpp"
@@ -74,6 +81,7 @@ uint16_t ccv_nnc_mfa_context_log_level(ccv_nnc_mfa_context_t* context);
 void ccv_nnc_mfa_log_message(const char* message);
 
 mtl_command_batch_t* ccv_nnc_start_command_batch(mtl_command_queue_t* command_queue);
+mtl_command_batch_t* ccv_nnc_start_command_batch_from_command_buffer(mtl_command_buffer_t* command_buffer, int commit_on_finish);
 void ccv_nnc_finish_command_batch(mtl_command_batch_t* command_batch);
 mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size);
 void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* context, const char** paths_to_read, const int paths_to_read_size, const char* path_to_write);
