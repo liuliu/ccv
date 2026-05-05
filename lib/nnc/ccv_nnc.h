@@ -275,6 +275,10 @@ typedef struct {
 			float beta; /**< [swish.beta] The beta parameter in swish: x * sigmoid(beta * x). */
 		} swish;
 		struct {
+			float beta; /**< [swish_mul.beta] The beta parameter in swish: x * sigmoid(beta * x). */
+			float scale; /**< [swish_mul.scale] The scale applied to value * swish(gate). */
+		} swish_mul;
+		struct {
 			float exponent; /**< [pow.exponent] The exponent in y = x ^ exponent. */
 		} pow;
 		struct {
