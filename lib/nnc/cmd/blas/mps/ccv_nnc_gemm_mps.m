@@ -282,7 +282,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_mfa_gemv = !is_batched && ((a_rows == 1 && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
-		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
+		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
 			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
 			(a_datatype == CCV_16F || a_datatype == CCV_16BF) &&
@@ -504,13 +504,15 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				w_data = scratch;
 				w_dataof = a_data_size + scratch_offset;
 			}
-			// Let the MFA GEMM selector choose NAMatMulSmallM for the low-K row-vector NAX window.
+			// Let the MFA GEMM selector choose NAMatMulSmallM for the low-K row-vector NAX window
+			// only when the caller explicitly requests the 16F downcast path.
 			const int use_mfa_gemm_for_vector =
 				a_rows == 1 &&
 				!is_transpose_a &&
 				is_transpose_w &&
 				(w_rows % 8) == 0 &&
 				w_rows < 5120 &&
+				is_downcast &&
 				(mtl_data_type == 16 || mtl_data_type == 121) &&
 				!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM) &&
 				params.use_neural_accelerators;
