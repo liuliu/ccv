@@ -180,9 +180,9 @@ REGISTER_COMMAND(CCV_NNC_LAYER_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_LAYER_NORM_FORWARD)
-#define CMD_LAYER_NORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.scale=1,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_LAYER_NORM_BACKWARD)
-#define CMD_LAYER_NORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_LAYER_NORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_LAYER_NORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.lnorm={.epsilon=_epsilon,.scale=1,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 
 static int _ccv_nnc_group_norm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -368,6 +368,6 @@ REGISTER_COMMAND(CCV_NNC_RMSNORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registr
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_FORWARD)
-#define CMD_RMSNORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_RMSNORM_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.scale=1,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_BACKWARD)
-#define CMD_RMSNORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+#define CMD_RMSNORM_BACKWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm={.epsilon=_epsilon,.scale=1,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)

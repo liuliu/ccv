@@ -217,7 +217,7 @@ TEST_CASE("cnnp replicated layer norm matches CPU reference")
 		ccv_cnnp_model_io_t chunk_i = ccv_cnnp_model_apply(ccv_cnnp_extract(i, 0), &chunks, 1);
 		sent[i] = ccv_cnnp_model_apply(ccv_cnnp_send(i, 0), &chunk_i, 1);
 	}
-	ccv_cnnp_model_t* const layer_norm = ccv_cnnp_layer_norm(epsilon, axis, 1, 1, 1, "layer_norm");
+	ccv_cnnp_model_t* const layer_norm = ccv_cnnp_layer_norm(epsilon, axis, 1, 1, 1, 1, "layer_norm");
 	ccv_cnnp_model_io_t normalized = ccv_cnnp_model_apply(ccv_cnnp_replicated(layer_norm, rank_count, 1, "replicated_layer_norm"), sent, rank_count);
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(normalized), 0, "replicated_layer_norm");
 	ccv_nnc_tensor_param_t input_params = GPU_TENSOR_NHWC(000, 32F, rank_count * rows_per_rank, cols);

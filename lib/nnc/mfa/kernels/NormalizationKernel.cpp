@@ -23,6 +23,7 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
   channelGroups = descriptor.channelGroups;
   sequenceCount = descriptor.sequenceCount;
   epsilon = descriptor.epsilon;
+  scale = descriptor.scale;
   elementwiseAffine = descriptor.elementwiseAffine;
   scaleTranslationBatched = descriptor.scaleTranslationBatched;
   normalizationType = descriptor.normalizationType;
@@ -140,9 +141,9 @@ kernel void normalization(
 
 #if ELEMENTWISE_AFFINE
     accumulator scale = accumulator(channel_scales[i]);
-    destination[i] = real(scale * deviation);
+    destination[i] = real(FINAL_SCALE(scale * deviation));
 #else
-    destination[i] = real(deviation);
+    destination[i] = real(FINAL_SCALE(deviation));
 #endif
   }
   if (padding_size > 0 && lid < padding_size) {
@@ -151,9 +152,9 @@ kernel void normalization(
 
 #if ELEMENTWISE_AFFINE
     accumulator scale = accumulator(channel_scales[bulk_size]);
-    destination[bulk_size] = real(scale * deviation);
+    destination[bulk_size] = real(FINAL_SCALE(scale * deviation));
 #else
-    destination[bulk_size] = real(deviation);
+    destination[bulk_size] = real(FINAL_SCALE(deviation));
 #endif
   }
 }
@@ -275,9 +276,9 @@ kernel void normalization(
 #if ELEMENTWISE_AFFINE
     accumulator scale = accumulator(channel_scales[i]);
     accumulator translation = accumulator(channel_translations[i]);
-    destination[i] = real(scale * deviation + translation);
+    destination[i] = real(FINAL_SCALE(scale * deviation + translation));
 #else
-    destination[i] = real(deviation);
+    destination[i] = real(FINAL_SCALE(deviation));
 #endif
   }
   if (padding_size > 0 && lid < padding_size) {
@@ -287,9 +288,9 @@ kernel void normalization(
 #if ELEMENTWISE_AFFINE
     accumulator scale = accumulator(channel_scales[bulk_size]);
     accumulator translation = accumulator(channel_translations[bulk_size]);
-    destination[bulk_size] = real(scale * deviation + translation);
+    destination[bulk_size] = real(FINAL_SCALE(scale * deviation + translation));
 #else
-    destination[bulk_size] = real(deviation);
+    destination[bulk_size] = real(FINAL_SCALE(deviation));
 #endif
   }
 }
@@ -324,6 +325,17 @@ kernel void normalization(
   defines += "constant float epsilon = ";
   defines += high_precision_to_string(epsilon) + ";";
   defines += "\n";
+
+  if (scale != 1) {
+    defines += "constant float final_scale = ";
+    defines += high_precision_to_string(scale) + ";";
+    defines += "\n";
+    defines += "#define FINAL_SCALE(value) (final_scale * (value))";
+    defines += "\n";
+  } else {
+    defines += "#define FINAL_SCALE(value) (value)";
+    defines += "\n";
+  }
 
   defines += "constant ushort sample_count = ";
   defines += std::to_string(channelCount) + ";";

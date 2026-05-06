@@ -12,6 +12,7 @@ struct NormalizationKernelDescriptor {
   uint32_t channelGroups;
   uint32_t sequenceCount;
   float epsilon;
+  float scale;
   uint8_t elementwiseAffine;
   uint8_t scaleTranslationBatched;
   uint8_t normalizationType;
@@ -36,6 +37,7 @@ struct NormalizationDescriptor {
   uint32_t channelGroups;
   uint32_t sequenceCount;
   float epsilon;
+  float scale;
   uint8_t elementwiseAffine;
   uint8_t scaleTranslationBatched;
   uint8_t normalizationType;

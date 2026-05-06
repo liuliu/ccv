@@ -22,6 +22,8 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 3 || input_size == 1);
 	assert(output_size == 3);
+	if (cmd.info.lnorm.scale != 1)
+		return CCV_NNC_EXEC_INVALID;
 	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
 #ifdef HAVE_CUDA_SM80
 	ccv_nnc_flash_norm_info_t flash_norm = {};
@@ -216,6 +218,8 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 9 || input_size == 7);
 	assert(output_size >= 1);
+	if (cmd.info.lnorm.scale != 1)
+		return CCV_NNC_EXEC_INVALID;
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[3]);

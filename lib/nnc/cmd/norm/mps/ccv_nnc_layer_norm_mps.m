@@ -11,6 +11,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(output_size == 3);
 	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
+	const float output_scale = cmd.info.lnorm.scale;
 	ccv_nnc_tensor_view_t scalet;
 	if (input_size >= 2)
 		scalet = ccv_nnc_get_tensor_view(inputs[1]);
@@ -153,6 +154,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				.channel_groups = (uint32_t)channel_groups,
 				.sequence_count = (uint32_t)sequence_count,
 				.epsilon = cmd.info.lnorm.epsilon,
+				.scale = output_scale,
 				.elementwise_affine = (uint8_t)elementwise_affine,
 				.scale_translation_batched = scale_translation_batched,
 				.normalization_type = 0,
@@ -243,6 +245,11 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 					MPSGraphTensor* mps_bias_f32 = biast.info.datatype == CCV_32F ? mps_bias : [graph castTensor:mps_bias toType:MPSDataTypeFloat32 name:@"mps_bias_float"];
 					mps_b = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_scale_f32 name:nil] secondaryTensor:mps_bias_f32 name:nil];
 				}
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_b = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				mps_b = bt.info.datatype == CCV_32F ? mps_b : [graph castTensor:mps_b toType:ccv_nnc_mps_datatype(bt.info.datatype) name:@"b"];
 				MPSGraphTensor* mps_saved_mean = saved_meant.info.datatype == CCV_32F ? mps_saved_mean_f32 : [graph castTensor:mps_saved_mean_f32 toType:ccv_nnc_mps_datatype(saved_meant.info.datatype) name:@"mean"];
 				MPSGraphTensor* mps_saved_inv_std = saved_inv_stdt.info.datatype == CCV_32F ? mps_saved_inv_std_f32 : [graph castTensor:mps_saved_inv_std_f32 toType:ccv_nnc_mps_datatype(saved_inv_stdt.info.datatype) name:@"inv_std"];
@@ -276,6 +283,7 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[3];
 	const int elementwise_affine = cmd.info.lnorm.elementwise_affine;
+	const float output_scale = cmd.info.lnorm.scale;
 	ccv_nnc_tensor_view_t* const scale = elementwise_affine ? (ccv_nnc_tensor_view_t*)inputs[4] : 0;
 	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 7 : 5];
 	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 8 : 6];
@@ -360,6 +368,11 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:x_minus_mean secondaryTensor:mps_saved_inv_std name:nil];
 
 				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				if (elementwise_affine)
 				{
 					mps_scale = scale->info.datatype == CCV_32F ? mps_scale : [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
@@ -457,6 +470,11 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				mps_saved_mean = saved_mean->info.datatype == CCV_32F ? mps_saved_mean : [graph castTensor:mps_saved_mean toType:MPSDataTypeFloat32 name:@"mps_saved_mean_float"];
 				mps_saved_inv_std = saved_inv_std->info.datatype == CCV_32F ? mps_saved_inv_std : [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
 				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				MPSGraphTensor* x_minus_mean = [graph subtractionWithPrimaryTensor:mps_a secondaryTensor:mps_saved_mean name:nil];
 
 				// ahp[x] = (ap1[x] - meanp2[0]) * inv_stdp2[0];
@@ -498,6 +516,11 @@ static int _ccv_nnc_layer_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				MPSGraphTensor* mps_dbias = nil;
 
 				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				
 				NSMutableArray<NSNumber*>* dbias_axes = [NSMutableArray new];
 				for (int i = 0; i < a_nd; i++) {

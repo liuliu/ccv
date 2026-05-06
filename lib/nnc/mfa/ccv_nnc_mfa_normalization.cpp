@@ -104,6 +104,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     .channelGroups = params.channel_groups,
     .sequenceCount = params.sequence_count,
     .epsilon = params.epsilon,
+    .scale = params.scale,
     .elementwiseAffine = params.elementwise_affine,
     .scaleTranslationBatched = params.scale_translation_batched,
     .normalizationType = params.normalization_type,

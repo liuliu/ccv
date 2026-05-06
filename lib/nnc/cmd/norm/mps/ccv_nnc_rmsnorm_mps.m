@@ -11,6 +11,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(output_size == 2);
 	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	const int elementwise_affine = cmd.info.rmsnorm.elementwise_affine;
+	const float output_scale = cmd.info.rmsnorm.scale;
 	ccv_nnc_tensor_view_t scalet;
 	if (input_size >= 2)
 		scalet = ccv_nnc_get_tensor_view(inputs[1]);
@@ -137,6 +138,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				.channel_groups = (uint32_t)channel_groups,
 				.sequence_count = (uint32_t)sequence_count,
 				.epsilon = cmd.info.rmsnorm.epsilon,
+				.scale = output_scale,
 				.elementwise_affine = (uint8_t)elementwise_affine,
 				.scale_translation_batched = scale_translation_batched,
 				.normalization_type = 2,
@@ -216,6 +218,11 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 					MPSGraphTensor* mps_scale_f32 = scalet.info.datatype == CCV_32F ? mps_scale : [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
 					mps_b = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_scale_f32 name:nil];
 				}
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_b = [graph multiplicationWithPrimaryTensor:mps_b secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				mps_b = bt.info.datatype == CCV_32F ? mps_b : [graph castTensor:mps_b toType:ccv_nnc_mps_datatype(bt.info.datatype) name:@"b"];
 				[resultTensors addObject:mps_b];
 				[resultTensors addObject:mps_saved_inv_std];
@@ -244,6 +251,7 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[2];
 	const int elementwise_affine = cmd.info.rmsnorm.elementwise_affine;
+	const float output_scale = cmd.info.rmsnorm.scale;
 	ccv_nnc_tensor_view_t* const scale = elementwise_affine ? (ccv_nnc_tensor_view_t*)inputs[3] : 0;
 	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[elementwise_affine ? 5 : 4];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
@@ -315,6 +323,11 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_saved_inv_std name:nil];
 
 				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				if (elementwise_affine)
 				{
 					mps_scale = scale->info.datatype == CCV_32F ? mps_scale : [graph castTensor:mps_scale toType:MPSDataTypeFloat32 name:@"mps_scale_float"];
@@ -396,6 +409,11 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				mps_a = a->info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
 				mps_saved_inv_std = saved_inv_std->info.datatype == CCV_32F ? mps_saved_inv_std : [graph castTensor:mps_saved_inv_std toType:MPSDataTypeFloat32 name:@"mps_saved_inv_std_float"];
 				mps_g = g->info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+				if (output_scale != 1)
+				{
+					MPSGraphTensor* mps_output_scale_f32 = [graph constantWithScalar:output_scale dataType:MPSDataTypeFloat32];
+					mps_g = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_output_scale_f32 name:nil];
+				}
 				MPSGraphTensor* ah = [graph multiplicationWithPrimaryTensor:mps_a secondaryTensor:mps_saved_inv_std name:nil];
 
 				NSMutableArray<NSNumber*>* dscale_axes = [NSMutableArray new];
