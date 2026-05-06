@@ -19,7 +19,8 @@ uint32_t GemvDescriptor::rowsPerThreadgroup(MTL::Device* const device) noexcept 
   if (deviceName && (strstr(deviceName, "M1") != 0 ||
       strstr(deviceName, "M2") != 0 ||
       strstr(deviceName, "M3") != 0 ||
-      strstr(deviceName, "M4") != 0)) {
+      strstr(deviceName, "M4") != 0 ||
+      strstr(deviceName, "M5") != 0)) {
     if (strstr(deviceName, "Max") != 0 ||
         strstr(deviceName, "Ultra") != 0) {
       rows = 8;
