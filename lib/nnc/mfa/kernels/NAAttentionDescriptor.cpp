@@ -113,15 +113,14 @@ uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t 
       matrixDimensions[0] == 0 ||
       matrixDimensions[0] > blockDimensions[0] * 4 ||
       masked ||
-      isVarlen ||
-      (matrixDimensions[1] % blockDimensions[1]) != 0) {
+      isVarlen) {
     return 1;
   }
   const uint32_t minSequenceLength = matrixDimensions[0] == 1 ? 2048 : 4096;
   if (matrixDimensions[1] < minSequenceLength) {
     return 1;
   }
-  const uint32_t cBlocks = matrixDimensions[1] / blockDimensions[1];
+  const uint32_t cBlocks = (matrixDimensions[1] + blockDimensions[1] - 1) / blockDimensions[1];
   const uint32_t rowGroups = (matrixDimensions[0] + blockDimensions[0] - 1) / blockDimensions[0];
   const uint32_t activeTiles = batchDimension * Hq * rowGroups;
   if (activeTiles > 128) {

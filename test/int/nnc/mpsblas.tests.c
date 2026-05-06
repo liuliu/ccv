@@ -4490,10 +4490,13 @@ TEST_CASE("scaled dot product attention with NA mps splitKV decode")
 		int D;
 	} cases[] = {
 		{ 1, 2112, 8, 8, 256 },
+		{ 1, 2113, 8, 8, 256 },
 		{ 2, 4096, 8, 8, 128 },
 		{ 7, 4096, 8, 8, 128 },
+		{ 7, 4097, 8, 8, 128 },
 		{ 16, 4096, 8, 8, 128 },
 		{ 16, 4096, 32, 8, 128 },
+		{ 16, 4097, 32, 8, 128 },
 		{ 32, 4096, 4, 4, 128 },
 	};
 	for (int case_idx = 0; case_idx < sizeof(cases) / sizeof(cases[0]); ++case_idx)

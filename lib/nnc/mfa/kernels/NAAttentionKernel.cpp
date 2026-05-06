@@ -517,7 +517,9 @@ constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
     source += R"(
 constant uint SplitKV_splits [[function_constant(19)]];
 constant uint Batch_dimension [[function_constant(20)]];
-constant uint SplitKV_c_blocks = C / {{BLOCK_DIMENSIONS_TRAVERSAL}};
+constant uint SplitKV_c_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
+constant bool SplitKV_has_c_remainder = SplitKV_c_remainder > 0;
+constant uint SplitKV_c_blocks = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits - 1) / SplitKV_splits;
 )";
   }
@@ -791,7 +793,7 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   const uint c_block_begin = split_id * SplitKV_blocks_per_split;
   const uint c_block_end = min(SplitKV_c_blocks, c_block_begin + SplitKV_blocks_per_split);
   const uint c_begin = c_block_begin * {{BLOCK_DIMENSIONS_TRAVERSAL}};
-  const uint c_end = c_block_end * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+  const uint c_end = min(C, c_block_end * {{BLOCK_DIMENSIONS_TRAVERSAL}});
   const uint row_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   device float* PartialO = PartialO_buf + (((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R) * {{HEAD_DIMENSION}};
   device float* PartialL = PartialL_buf + ((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R;
@@ -828,7 +830,7 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   }
   source += R"(
   auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}}, row_start);
-  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c_begin);
+  auto mK = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
   auto cS_0 = matmul_qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -840,7 +842,7 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
       cL[k] = numeric_limits<float>::denorm_min();
     }
   }
-  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, c_begin);
+  auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
   constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
 )";
@@ -861,10 +863,13 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
     }
   }
   for (uint c = c_begin; c < c_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+    const bool c_tail = SplitKV_has_c_remainder && c + {{BLOCK_DIMENSIONS_TRAVERSAL}} > C;
+    const uint c_remainder = c_tail ? SplitKV_c_remainder : {{BLOCK_DIMENSIONS_TRAVERSAL}};
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
-        cS_0[k] = 0;
+        auto idx = cS_0.get_multidimensional_index(k);
+        cS_0[k] = (c_tail && idx[0] >= (int)c_remainder) ? -numeric_limits<float>::infinity() : 0;
       }
     }
     #pragma clang loop unroll(full)
@@ -918,9 +923,14 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
-        auto it = cS_0.get_iterator(k);
-        auto dst_it = cM.map_iterator(it);
-        cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+        auto idx = cS_0.get_multidimensional_index(k);
+        if (c_tail && idx[0] >= (int)c_remainder) {
+          cS_0[k] = 0;
+        } else {
+          auto it = cS_0.get_iterator(k);
+          auto dst_it = cM.map_iterator(it);
+          cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+        }
       }
     }
     auto cL_0_new = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -944,24 +954,52 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   source += R"(
       }
     }
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
-      if (cS_0.is_valid_element(k)) {
-        auto idx = cS_0.get_multidimensional_index(k);
-        P_buf[idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+    if (c_tail) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto idx = cS_0.get_multidimensional_index(k);
+          if (idx[0] >= (int)c_remainder) {
+            P_buf[idx[0] - c_remainder + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = 0;
+          } else {
+            P_buf[{{BLOCK_DIMENSIONS_TRAVERSAL}} - c_remainder + idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+          }
+        }
       }
-    }
-    simdgroup_barrier(mem_flags::mem_threadgroup);
+      simdgroup_barrier(mem_flags::mem_threadgroup);
+      auto mP = P.slice<dynamic_extent, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>({{BLOCK_DIMENSIONS_TRAVERSAL}} - c_remainder, 0);
+      constexpr auto pv_desc_tail = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, dynamic_length_v<int>, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+      matmul2d<pv_desc_tail, execution_simdgroups<1>> matmul_pv_tail_op;
 )";
   for (unsigned short i = 0; i < kBlocks; i++) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
     source += R"(
-    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
-    matmul_pv_op.run(P, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+      auto mV_0_tail_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+      matmul_pv_tail_op.run(mP, mV_0_tail_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
   }
   source += R"(
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+        if (cS_0.is_valid_element(k)) {
+          auto idx = cS_0.get_multidimensional_index(k);
+          P_buf[idx[0] + idx[1] * {{BLOCK_DIMENSIONS_TRAVERSAL}}] = ({{MEMORY_NAME_O}})cS_0[k];
+        }
+      }
+      simdgroup_barrier(mem_flags::mem_threadgroup);
+)";
+  for (unsigned short i = 0; i < kBlocks; i++) {
+    source.SetValue("LOOP_INDEX", std::to_string(i));
+    source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source += R"(
+      auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
+      matmul_pv_op.run(P, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
+)";
+  }
+  source += R"(
+    }
   }
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
