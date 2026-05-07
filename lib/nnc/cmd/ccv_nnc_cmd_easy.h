@@ -340,6 +340,8 @@
 #define CMD_SWISH_BACKWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)
 // CCV_NNC_SWISH_MUL_FORWARD
 #define CMD_SWISH_MUL_FORWARD(_beta, _scale) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale}}), 0)
+// CCV_NNC_SWISH_MUL_BACKWARD
+#define CMD_SWISH_MUL_BACKWARD(_beta, _scale) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale}}), 0)
 // CCV_NNC_TANH_FORWARD
 #define CMD_TANH_FORWARD() ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_TANH_BACKWARD

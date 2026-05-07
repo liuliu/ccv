@@ -44,6 +44,62 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static int _ccv_nnc_swish_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size == 3);
+	assert(output_size >= 1);
+	const ccv_nnc_tensor_t* const g = inputs[0]; // gradient
+	const ccv_nnc_tensor_t* const a = inputs[1]; // value
+	const ccv_nnc_tensor_t* const b = inputs[2]; // gate
+	ccv_nnc_tensor_t* const da = outputs[0];
+	ccv_nnc_tensor_t* const db = output_size > 1 ? outputs[1] : 0;
+	assert(g);
+	assert(b);
+	assert(da || db);
+	assert(CCV_IS_TENSOR_CONTIGUOUS(g));
+	assert(!a || CCV_IS_TENSOR_CONTIGUOUS(a));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+	assert(!da || CCV_IS_TENSOR_CONTIGUOUS(da));
+	assert(!db || CCV_IS_TENSOR_CONTIGUOUS(db));
+	assert(g->info.datatype == CCV_32F);
+	assert(!a || a->info.datatype == CCV_32F);
+	assert(b->info.datatype == CCV_32F);
+	assert(!da || da->info.datatype == CCV_32F);
+	assert(!db || db->info.datatype == CCV_32F);
+	if (db)
+		assert(a);
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
+	{
+		assert(b->info.dim[i] == g->info.dim[i]);
+		if (a)
+			assert(a->info.dim[i] == g->info.dim[i]);
+		if (da)
+			assert(da->info.dim[i] == g->info.dim[i]);
+		if (db)
+			assert(db->info.dim[i] == g->info.dim[i]);
+	}
+	const int count = ccv_nnc_tensor_count(g->info);
+	const float beta = cmd.info.swish_mul.beta;
+	const float scale = cmd.info.swish_mul.scale;
+	const float* const gp = g->data.f32;
+	const float* const ap = a ? a->data.f32 : 0;
+	const float* const bp = b->data.f32;
+	float* const dap = da ? da->data.f32 : 0;
+	float* const dbp = db ? db->data.f32 : 0;
+	for (i = 0; i < count; i++)
+	{
+		const float x = bp[i];
+		const float sigmoid = 1.f / (1.f + expf(-beta * x));
+		const float scale_g = scale * gp[i];
+		if (dap)
+			dap[i] = scale_g * x * sigmoid;
+		if (dbp)
+			dbp[i] = scale_g * ap[i] * (sigmoid + beta * x * sigmoid * (1.f - sigmoid));
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 REGISTER_COMMAND_BACKEND(CCV_NNC_SWISH_MUL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
@@ -51,4 +107,13 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SWISH_MUL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_swish_mul_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_SWISH_MUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_swish_mul_back;
 }

@@ -14,15 +14,25 @@ struct SwishMulKernel {
 
   MTL::Size threadgroupSize;
 
+  uint8_t gradient;
+
+  uint8_t outputMask;
+
   uint8_t value;
 
   float beta;
 
   float scale;
 
+  GEMMOperandPrecision gPrecision;
+
   GEMMOperandPrecision aPrecision;
 
   GEMMOperandPrecision bPrecision;
+
+  GEMMOperandPrecision daPrecision;
+
+  GEMMOperandPrecision dbPrecision;
 
   SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device* const device);
 

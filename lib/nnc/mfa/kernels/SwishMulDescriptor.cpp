@@ -5,19 +5,27 @@
 
 bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
   return
+  gradient == rhs.gradient &&
+  outputMask == rhs.outputMask &&
   value == rhs.value &&
   beta == rhs.beta &&
   scale == rhs.scale &&
+  gPrecision == rhs.gPrecision &&
   aPrecision == rhs.aPrecision &&
   bPrecision == rhs.bPrecision &&
+  daPrecision == rhs.daPrecision &&
+  dbPrecision == rhs.dbPrecision &&
   length == rhs.length;
 }
 
 std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.aPrecision.value, (unsigned int)hash.bPrecision.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.value, (unsigned int)hash.length }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gradient, (unsigned int)hash.outputMask }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gPrecision.value, (unsigned int)hash.aPrecision.value }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
+  combine_64(seed, (uint64_t)hash.length);
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
   return seed;
 }
@@ -36,11 +44,16 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   };
 
   SwishMulKernelDescriptor kernelDesc;
+  kernelDesc.gradient = gradient;
+  kernelDesc.outputMask = outputMask;
   kernelDesc.value = value;
   kernelDesc.beta = beta;
   kernelDesc.scale = scale;
+  kernelDesc.gPrecision = gPrecision;
   kernelDesc.aPrecision = aPrecision;
   kernelDesc.bPrecision = bPrecision;
+  kernelDesc.daPrecision = daPrecision;
+  kernelDesc.dbPrecision = dbPrecision;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {

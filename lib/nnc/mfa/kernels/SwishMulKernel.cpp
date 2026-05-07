@@ -3,15 +3,25 @@
 
 SwishMulKernel::SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device* const device) {
 
+  gradient = descriptor.gradient;
+
+  outputMask = descriptor.outputMask;
+
   value = descriptor.value;
 
   beta = descriptor.beta;
 
   scale = descriptor.scale;
 
+  gPrecision = descriptor.gPrecision;
+
   aPrecision = descriptor.aPrecision;
 
   bPrecision = descriptor.bPrecision;
+
+  daPrecision = descriptor.daPrecision;
+
+  dbPrecision = descriptor.dbPrecision;
 
   source = createSource();
 
@@ -35,25 +45,127 @@ std::string SwishMulKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   const bool beta_is_one = (beta == 1);
   const bool scale_is_one = (scale == 1);
+  const bool value_gradient = gradient && ((outputMask & 1) != 0);
+  const bool gate_gradient = gradient && ((outputMask & 2) != 0);
+  const bool vectorized = (value == 0 || value == 1);
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
-
-inline float stable_sigmoid(float z)
-{
-  const float tail = 1.0f / (1.0f + exp(abs(z)));
-  const float positive = step(0.0f, z);
-  return tail + positive * (1.0f - 2.0f * tail);
-}
-
+  )";
+  if (!gradient || value_gradient) {
+    if (vectorized)
+      shader += R"(
 inline float4 stable_sigmoid(float4 z)
 {
   const float4 tail = 1.0f / (1.0f + exp(abs(z)));
   const float4 positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
-  )";
-  if (value == 0 || value == 1) {
+      )";
+    else
+      shader += R"(
+inline float stable_sigmoid(float z)
+{
+  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float positive = step(0.0f, z);
+  return tail + positive * (1.0f - 2.0f * tail);
+}
+      )";
+  }
+  if (gate_gradient) {
+    if (vectorized)
+      shader += R"(
+inline float4 stable_swish_gradient(float4 z)
+{
+  const float4 t = exp(-abs(z));
+  const float4 tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float4 sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
+  const float4 slope = tail * ((float4)(1.0f) - tail);
+  const float4 correction = select((float4)(0.0f), z * slope, isfinite(z));
+  return sigmoid + correction;
+}
+      )";
+    else
+      shader += R"(
+inline float stable_swish_gradient(float z)
+{
+  const float t = exp(-abs(z));
+  const float tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
+  const float slope = tail * (1.0f - tail);
+  const float correction = isfinite(z) ? (z * slope) : 0.0f;
+  return sigmoid + correction;
+}
+      )";
+  }
+  if (gradient) {
+    shader += "kernel void swish_mul(\n";
+    if (vectorized)
+      shader += "  device realG4 *g [[buffer(0)]],\n";
+    else
+      shader += "  device realG *g [[buffer(0)]],\n";
+    if (value_gradient && gate_gradient)
+    {
+      if (vectorized)
+        shader += "  device realA4 *a [[buffer(1)]],\n  device realB4 *b [[buffer(2)]],\n  device realDA4 *dvalue [[buffer(3)]],\n  device realDB4 *dgate [[buffer(4)]],\n";
+      else
+        shader += "  device realA *a [[buffer(1)]],\n  device realB *b [[buffer(2)]],\n  device realDA *dvalue [[buffer(3)]],\n  device realDB *dgate [[buffer(4)]],\n";
+    } else if (value_gradient) {
+      if (vectorized)
+        shader += "  device realB4 *b [[buffer(1)]],\n  device realDA4 *dvalue [[buffer(2)]],\n";
+      else
+        shader += "  device realB *b [[buffer(1)]],\n  device realDA *dvalue [[buffer(2)]],\n";
+    } else {
+      if (vectorized)
+        shader += "  device realA4 *a [[buffer(1)]],\n  device realB4 *b [[buffer(2)]],\n  device realDB4 *dgate [[buffer(3)]],\n";
+      else
+        shader += "  device realA *a [[buffer(1)]],\n  device realB *b [[buffer(2)]],\n  device realDB *dgate [[buffer(3)]],\n";
+    }
+    shader += R"(
+  uint3 tpig [[thread_position_in_grid]]
+) {
+  const uint idx = tpig.x;
+)";
+    if (value == 1 || value == 2)
+      shader += "  if (idx >= count)\n    return;\n";
+    if (vectorized)
+    {
+      shader += R"(
+  const float4 gv = (float4)(g[idx]);
+  const float4 bv = (float4)(b[idx]);
+)";
+      if (beta_is_one)
+        shader += "  const float4 z = bv;\n";
+      else
+        shader += "  const float4 z = beta * bv;\n";
+      shader += "  float4 scaled_g = gv;\n";
+      if (!scale_is_one)
+        shader += "  scaled_g *= scale;\n";
+      if (value_gradient)
+        shader += "  dvalue[idx] = (realDA4)(scaled_g * bv * stable_sigmoid(z));\n";
+      if (gate_gradient)
+        shader += "  const float4 av = (float4)(a[idx]);\n  dgate[idx] = (realDB4)(scaled_g * av * stable_swish_gradient(z));\n";
+    } else {
+      shader += R"(
+  const float gv = (float)(g[idx]);
+  const float bv = (float)(b[idx]);
+)";
+      if (beta_is_one)
+        shader += "  const float z = bv;\n";
+      else
+        shader += "  const float z = beta * bv;\n";
+      shader += "  float scaled_g = gv;\n";
+      if (!scale_is_one)
+        shader += "  scaled_g *= scale;\n";
+      if (value_gradient)
+        shader += "  dvalue[idx] = (realDA)(scaled_g * bv * stable_sigmoid(z));\n";
+      if (gate_gradient)
+        shader += "  const float av = (float)(a[idx]);\n  dgate[idx] = (realDB)(scaled_g * av * stable_swish_gradient(z));\n";
+    }
+    shader += R"(
+}
+    )";
+  } else if (value == 0 || value == 1) {
     shader += R"(
 kernel void swish_mul(
   device realA4 *a [[buffer(0)]],
@@ -112,40 +224,48 @@ kernel void swish_mul(
 std::string SwishMulKernel::createConstants() const noexcept {
 
   std::string defines = "";
-  if (value == 0 || value == 1) {
-    if (aPrecision == GEMMOperandPrecision::FP32) {
-      defines += "typedef float4 realA4;";
-    } else if (aPrecision == GEMMOperandPrecision::BF16) {
-      defines += "typedef bfloat4 realA4;";
+  auto define_type = [&](const char* name, const GEMMOperandPrecision precision, const bool vectorized) {
+    defines += "typedef ";
+    if (precision == GEMMOperandPrecision::FP32) {
+      defines += vectorized ? "float4 " : "float ";
+    } else if (precision == GEMMOperandPrecision::BF16) {
+      defines += vectorized ? "bfloat4 " : "bfloat ";
     } else {
-      defines += "typedef half4 realA4;";
+      defines += vectorized ? "half4 " : "half ";
     }
+    defines += name;
+    defines += ";";
     defines += "\n";
-    if (bPrecision == GEMMOperandPrecision::FP32) {
-      defines += "typedef float4 realB4;";
-    } else if (bPrecision == GEMMOperandPrecision::BF16) {
-      defines += "typedef bfloat4 realB4;";
+  };
+  const bool vectorized = (value == 0 || value == 1);
+  const bool value_gradient = gradient && ((outputMask & 1) != 0);
+  const bool gate_gradient = gradient && ((outputMask & 2) != 0);
+  if (gradient) {
+    if (vectorized) {
+      define_type("realG4", gPrecision, true);
+      if (gate_gradient)
+        define_type("realA4", aPrecision, true);
+      define_type("realB4", bPrecision, true);
+      if (value_gradient)
+        define_type("realDA4", daPrecision, true);
+      if (gate_gradient)
+        define_type("realDB4", dbPrecision, true);
     } else {
-      defines += "typedef half4 realB4;";
+      define_type("realG", gPrecision, false);
+      if (gate_gradient)
+        define_type("realA", aPrecision, false);
+      define_type("realB", bPrecision, false);
+      if (value_gradient)
+        define_type("realDA", daPrecision, false);
+      if (gate_gradient)
+        define_type("realDB", dbPrecision, false);
     }
-    defines += "\n";
+  } else if (vectorized) {
+    define_type("realA4", aPrecision, true);
+    define_type("realB4", bPrecision, true);
   } else {
-    if (aPrecision == GEMMOperandPrecision::FP32) {
-      defines += "typedef float realA;";
-    } else if (aPrecision == GEMMOperandPrecision::BF16) {
-      defines += "typedef bfloat realA;";
-    } else {
-      defines += "typedef half realA;";
-    }
-    defines += "\n";
-    if (bPrecision == GEMMOperandPrecision::FP32) {
-      defines += "typedef float realB;";
-    } else if (bPrecision == GEMMOperandPrecision::BF16) {
-      defines += "typedef bfloat realB;";
-    } else {
-      defines += "typedef half realB;";
-    }
-    defines += "\n";
+    define_type("realA", aPrecision, false);
+    define_type("realB", bPrecision, false);
   }
   if (value != 0) {
     defines += "constant uint count [[function_constant(0)]];";
