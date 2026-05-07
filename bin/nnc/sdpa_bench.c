@@ -35,7 +35,7 @@ static double benchmark_sdpa(ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const q_tensor
 	return (get_current_time() - elapsed_time) / (double)iterations;
 }
 
-static void benchmark_sdpa_nomask_case(const char* const backend, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal)
+static void benchmark_sdpa_nomask_case(const char* const backend, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int warmup, const int iterations)
 {
 	const float scale = 1.0 / sqrt((float)D);
 	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
@@ -58,7 +58,7 @@ static void benchmark_sdpa_nomask_case(const char* const backend, const int B, c
 	ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, Hq, D), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
 	const ccv_nnc_cmd_t attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
-	const double seconds = benchmark_sdpa(attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_o_tensor, 5, 40);
+	const double seconds = benchmark_sdpa(attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_o_tensor, warmup, iterations);
 	printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", backend, is_causal ? "causal" : "plain", B, R, C, Hq, Hk, D, seconds, 1.0);
 	ccv_nnc_tensor_free(gpu_o_tensor);
 	ccv_nnc_tensor_free(q_tensor);
@@ -81,6 +81,18 @@ int main(int argc, char** argv)
 	int small_r_causal_grid = 0;
 	int small_r_Hq = 32;
 	int small_r_Hk = 32;
+	int c_sweep = 0;
+	int c_sweep_from = 128;
+	int c_sweep_to = 8192;
+	int c_sweep_step = 128;
+	int c_sweep_B = 1;
+	int c_sweep_R = 1;
+	int c_sweep_Hq = 40;
+	int c_sweep_Hk = 4;
+	int c_sweep_D = 256;
+	int c_sweep_causal = 1;
+	int nomask_warmup = 5;
+	int nomask_iterations = 40;
 	int custom_case = 0;
 	int custom_B = 1;
 	int custom_R = 1;
@@ -105,6 +117,30 @@ int main(int argc, char** argv)
 			small_r_Hq = atoi(argv[i] + 13);
 		else if (strncmp(argv[i], "--small-r-hk=", 13) == 0)
 			small_r_Hk = atoi(argv[i] + 13);
+		else if (strcmp(argv[i], "--c-sweep") == 0)
+			c_sweep = 1;
+		else if (strcmp(argv[i], "--c-sweep-plain") == 0)
+			c_sweep_causal = 0;
+		else if (strncmp(argv[i], "--c-from=", 9) == 0)
+			c_sweep_from = atoi(argv[i] + 9);
+		else if (strncmp(argv[i], "--c-to=", 7) == 0)
+			c_sweep_to = atoi(argv[i] + 7);
+		else if (strncmp(argv[i], "--c-step=", 9) == 0)
+			c_sweep_step = atoi(argv[i] + 9);
+		else if (strncmp(argv[i], "--sweep-b=", 10) == 0)
+			c_sweep_B = atoi(argv[i] + 10);
+		else if (strncmp(argv[i], "--sweep-r=", 10) == 0)
+			c_sweep_R = atoi(argv[i] + 10);
+		else if (strncmp(argv[i], "--sweep-hq=", 11) == 0)
+			c_sweep_Hq = atoi(argv[i] + 11);
+		else if (strncmp(argv[i], "--sweep-hk=", 11) == 0)
+			c_sweep_Hk = atoi(argv[i] + 11);
+		else if (strncmp(argv[i], "--sweep-d=", 10) == 0)
+			c_sweep_D = atoi(argv[i] + 10);
+		else if (strncmp(argv[i], "--warmup=", 9) == 0)
+			nomask_warmup = atoi(argv[i] + 9);
+		else if (strncmp(argv[i], "--iterations=", 13) == 0)
+			nomask_iterations = atoi(argv[i] + 13);
 		else if (strncmp(argv[i], "--trials=", 9) == 0)
 			trial_limit = atoi(argv[i] + 9);
 		else if (strcmp(argv[i], "--case") == 0 && i + 6 < argc)
@@ -121,6 +157,17 @@ int main(int argc, char** argv)
 	const uint64_t old_flags = ccv_nnc_flags();
 	if (force_generic)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (c_sweep)
+	{
+		printf("backend,mode,B,R,C,Hq,Hk,D,seconds_per_iter,relative_to_plain\n");
+		if (c_sweep_step <= 0)
+			c_sweep_step = 128;
+		for (int C = c_sweep_from; C <= c_sweep_to; C += c_sweep_step)
+			benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", c_sweep_B, c_sweep_R, C, c_sweep_Hq, c_sweep_Hk, c_sweep_D, c_sweep_causal, nomask_warmup, nomask_iterations);
+		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		return 0;
+	}
 	if (small_r_grid || small_r_causal_grid)
 	{
 		printf("backend,mode,B,R,C,Hq,Hk,D,seconds_per_iter,relative_to_plain\n");
@@ -130,7 +177,7 @@ int main(int argc, char** argv)
 		for (int d_idx = 0; d_idx < (int)(sizeof(D_values) / sizeof(D_values[0])); ++d_idx)
 			for (int c_idx = 0; c_idx < (int)(sizeof(C_values) / sizeof(C_values[0])); ++c_idx)
 				for (int r_idx = 0; r_idx < (int)(sizeof(R_values) / sizeof(R_values[0])); ++r_idx)
-					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], small_r_causal_grid);
+					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], small_r_causal_grid, nomask_warmup, nomask_iterations);
 		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		return 0;

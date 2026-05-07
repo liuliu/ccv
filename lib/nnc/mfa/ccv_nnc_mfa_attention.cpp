@@ -9,6 +9,8 @@ using namespace ccv::nnc;
 #include "kernels/AttentionKernel.hpp"
 #include "kernels/AttentionKernelDescriptor.hpp"
 #include "kernels/AttentionDescriptor.hpp"
+#include "kernels/AttentionR1Descriptor.hpp"
+#include "kernels/AttentionR1Kernel.hpp"
 #include "kernels/NAAttentionKernel.hpp"
 #include "kernels/NAAttentionKernelDescriptor.hpp"
 #include "kernels/NAAttentionDescriptor.hpp"
@@ -85,6 +87,94 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           CCV_NNC_MFA_PRECONDITION(batch_sizes[operand] == 1);
         }
       }
+    }
+    GEMMOperandPrecision attentionR1Precision = GEMMOperandPrecision::FP16;
+    bool attentionR1DataType = true;
+    switch (params.data_type) {
+    case MTL::DataTypeHalf:
+      attentionR1Precision = GEMMOperandPrecision::FP16;
+      break;
+    case MTL::DataTypeBFloat:
+      attentionR1Precision = GEMMOperandPrecision::BF16;
+      break;
+    default:
+      attentionR1DataType = false;
+      break;
+    }
+    const bool useAttentionR1 =
+        params.type == 0 &&
+        !params.use_quantized_attention &&
+        !hash.masked &&
+        !hash.is_varlen &&
+        attentionR1DataType &&
+        hash.R == 1 &&
+        hash.C > 0 &&
+        (hash.D == 128 || hash.D == 256) &&
+        hash.Hk > 0 &&
+        (hash.Hq % hash.Hk) == 0;
+    if (useAttentionR1) {
+      AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
+          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true);
+      auto pool = NS::AutoreleasePool::alloc()->init();
+      auto &shaderCache = context->kernel_cache;
+      DeviceProperties dprops = DeviceProperties();
+      auto pipelineValue = shaderCache.findKernel<AttentionR1Kernel, AttentionR1Descriptor, AttentionR1KernelDescriptor>(attentionDesc, context->device.get(), dprops);
+      pool->drain();
+      auto kernel = pipelineValue->kernel;
+      auto pipeline = pipelineValue->pipeline;
+      const uint32_t threadgroupSize = kernel->threadgroupSize(attentionDesc);
+      CCV_NNC_MFA_PRECONDITION(threadgroupSize <= pipeline->maxTotalThreadsPerThreadgroup());
+      if (attentionDesc.mode == AttentionR1Descriptor::Mode::direct) {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(pipeline.get());
+        encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(attentionDesc), 0);
+        encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+        encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+        encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
+        encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
+        encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+        encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+        encoder->dispatchThreadgroups(
+            MTL::Size(hash.Hq, batch_sizes[0], 1),
+            MTL::Size(threadgroupSize, 1, 1));
+        command_batch->finishCommand(encoder);
+        return;
+      }
+
+      const size_t partialBytes =
+          (size_t)batch_sizes[0] * hash.Hq * attentionDesc.workgroups * (hash.D + 2) * sizeof(float);
+      auto scratch = context->request_scratch(partialBytes);
+      auto encoder = command_batch->startCommand();
+      encoder->setComputePipelineState(pipeline.get());
+      encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(attentionDesc), 0);
+      encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+      encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+      encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+      encoder->useResource(scratch, MTL::ResourceUsageWrite);
+      encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+      encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
+      encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
+      encoder->setBuffer(scratch, 0, 3);
+      encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+      encoder->dispatchThreadgroups(
+          MTL::Size(hash.Hq, batch_sizes[0], attentionDesc.workgroups),
+          MTL::Size(threadgroupSize, 1, 1));
+      command_batch->finishCommand(encoder);
+
+      auto reduceEncoder = command_batch->startCommand();
+      reduceEncoder->setComputePipelineState(pipelineValue->second.get());
+      reduceEncoder->useResource(scratch, MTL::ResourceUsageRead);
+      reduceEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+      reduceEncoder->setBuffer(scratch, 0, 0);
+      reduceEncoder->setBuffer(tensors[3], tensor_offsets[3], 1);
+      reduceEncoder->dispatchThreadgroups(
+          MTL::Size(hash.Hq, batch_sizes[0], 1),
+          MTL::Size(32, 1, 1));
+      command_batch->finishCommand(reduceEncoder);
+      return;
     }
     if (params.type == 0 && params.use_neural_accelerators && params.use_quantized_attention) {
       NAInt8AttentionDescriptor attentionDesc;
