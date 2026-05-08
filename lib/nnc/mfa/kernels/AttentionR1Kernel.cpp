@@ -13,8 +13,14 @@ AttentionR1Kernel::AttentionR1Kernel(AttentionR1KernelDescriptor descriptor, MTL
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
+static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
+  return (value + alignment - 1) / alignment * alignment;
+}
+
 uint32_t AttentionR1Kernel::threadgroupMemoryAllocation(const AttentionR1Descriptor& descriptor) const noexcept {
-  return (descriptor.D + descriptor.simdgroups * descriptor.D + descriptor.simdgroups * 2) * sizeof(float);
+  const uint32_t queryBytes = alignUp(descriptor.D * (uint32_t)descriptor.memoryPrecision.size(), sizeof(float));
+  const uint32_t partialBytes = descriptor.simdgroups * (descriptor.D + 2) * sizeof(float);
+  return alignUp(queryBytes + partialBytes, 16);
 }
 
 uint32_t AttentionR1Kernel::threadgroupSize(const AttentionR1Descriptor& descriptor) const noexcept {
@@ -39,7 +45,7 @@ kernel void attention_r1_direct(
 )";
   }
   source += R"(
-    threadgroup float* scratch [[threadgroup(0)]],
+    threadgroup uchar* scratch [[threadgroup(0)]],
     uint2 tgid [[threadgroup_position_in_grid]],
     ushort lane_id [[thread_index_in_simdgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]])
@@ -54,15 +60,16 @@ kernel void attention_r1_direct(
 )";
   }
   source += R"(
-  threadgroup float* q_shared = scratch;
-  threadgroup float* partial_o = q_shared + D_LEN;
+  const uint q_shared_bytes = ((D_LEN * (uint)sizeof(real) + 3) / 4) * 4;
+  threadgroup real* q_shared = (threadgroup real*)scratch;
+  threadgroup float* partial_o = (threadgroup float*)(scratch + q_shared_bytes);
   threadgroup float* partial_s = partial_o + NSG * D_LEN;
   threadgroup float* partial_m = partial_s + NSG;
 
   if (sgid == 0) {
     device const real* q_row = Q + (batch * Hq + hq) * D_LEN;
     for (uint d = lane_id; d < D_LEN; d += 32) {
-      q_shared[d] = (float)q_row[d];
+      q_shared[d] = q_row[d];
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -78,7 +85,7 @@ kernel void attention_r1_direct(
     float dot_acc = 0;
     device const real* k_row = K + ((batch * C_LEN + c) * Hk + hk) * D_LEN;
     for (uint d = lane_id; d < D_LEN; d += 32) {
-      dot_acc += q_shared[d] * (float)k_row[d];
+      dot_acc += (float)q_shared[d] * (float)k_row[d];
     }
     const float score = simd_sum(dot_acc) * scale_log2e;
     const float new_m = max(row_m, score);
@@ -139,7 +146,7 @@ kernel void attention_r1_split_partials(
 )";
   }
   source += R"(
-    threadgroup float* scratch [[threadgroup(0)]],
+    threadgroup uchar* scratch [[threadgroup(0)]],
     uint3 tgid [[threadgroup_position_in_grid]],
     ushort lane_id [[thread_index_in_simdgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]])
@@ -155,15 +162,16 @@ kernel void attention_r1_split_partials(
 )";
   }
   source += R"(
-  threadgroup float* q_shared = scratch;
-  threadgroup float* partial_o = q_shared + D_LEN;
+  const uint q_shared_bytes = ((D_LEN * (uint)sizeof(real) + 3) / 4) * 4;
+  threadgroup real* q_shared = (threadgroup real*)scratch;
+  threadgroup float* partial_o = (threadgroup float*)(scratch + q_shared_bytes);
   threadgroup float* partial_s = partial_o + NSG * D_LEN;
   threadgroup float* partial_m = partial_s + NSG;
 
   if (sgid == 0) {
     device const real* q_row = Q + (batch * Hq + hq) * D_LEN;
     for (uint d = lane_id; d < D_LEN; d += 32) {
-      q_shared[d] = (float)q_row[d];
+      q_shared[d] = q_row[d];
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -179,7 +187,7 @@ kernel void attention_r1_split_partials(
     float dot_acc = 0;
     device const real* k_row = K + ((batch * C_LEN + c) * Hk + hk) * D_LEN;
     for (uint d = lane_id; d < D_LEN; d += 32) {
-      dot_acc += q_shared[d] * (float)k_row[d];
+      dot_acc += (float)q_shared[d] * (float)k_row[d];
     }
     const float score = simd_sum(dot_acc) * scale_log2e;
     const float new_m = max(row_m, score);

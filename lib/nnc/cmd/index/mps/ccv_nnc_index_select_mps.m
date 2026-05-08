@@ -13,15 +13,72 @@
 #include <dispatch/dispatch.h>
 #endif
 
+static uint32_t _ccv_nnc_mps_index_select_mtl_data_type(const int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_16F:
+			return 16;
+		case CCV_16BF:
+			return 121;
+		case CCV_32F:
+			return 3;
+	}
+	assert(0);
+	return UINT32_MAX;
+}
+
 static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	assert(ccv_nnc_tensor_nd(a->info.dim) <= 2);
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	assert(a_nd <= 2);
 	const ccv_nnc_tensor_view_t* const indices = (const ccv_nnc_tensor_view_t*)inputs[1];
 	assert(ccv_nnc_tensor_nd(indices->info.dim) == 1);
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(ccv_nnc_tensor_nd(b->info.dim) <= 2);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	assert(b_nd <= 2);
+	if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+	{
+		assert((a->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE);
+		assert(a_nd == 2);
+		assert(b_nd == 2);
+		assert(indices->info.datatype == CCV_32S);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(a));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(indices));
+		assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+		const int a_datatype = (a->info.datatype & 0xff) << 12;
+		assert(a_datatype == CCV_16F || a_datatype == CCV_16BF || a_datatype == CCV_32F);
+		assert(b->info.datatype == a_datatype);
+		assert(b->info.dim[0] == indices->info.dim[0]);
+		assert(a->info.dim[1] == b->info.dim[1]);
+		const uint32_t mtl_data_type = _ccv_nnc_mps_index_select_mtl_data_type(a_datatype);
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		assert(ccv_nnc_mfa_context_supported(context));
+		const ccv_nnc_mfa_index_select_8i_rowwise_params_t params = {
+			.data_type = mtl_data_type,
+			.row_length = (uint64_t)a->info.dim[1],
+			.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
+			.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
+		};
+		ccv_nnc_mfa_prepare_index_select_8i_rowwise(context, params);
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		mtl_buffer_t* tensors[4] = {
+			(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)a),
+			(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)indices),
+			(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)b),
+			NULL,
+		};
+		size_t tensor_offsets[3] = {
+			(size_t)mpgetoffset((ccv_nnc_tensor_t*)a),
+			(size_t)mpgetoffset((ccv_nnc_tensor_t*)indices),
+			(size_t)mpgetoffset((ccv_nnc_tensor_t*)b),
+		};
+		ccv_nnc_mfa_encode_index_select_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
+		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
@@ -110,7 +167,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 REGISTER_COMMAND_BACKEND(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F | CCV_32S | CCV_16F | CCV_16BF;
+	registry->tensor_datatypes = CCV_32F | CCV_32S | CCV_16F | CCV_16BF | CCV_QX;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_index_select_forw;

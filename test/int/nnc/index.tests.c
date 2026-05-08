@@ -287,6 +287,139 @@ TEST_CASE("index select forward with half precision")
 	ccv_nnc_tensor_free(bt32);
 }
 
+TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 23;
+	const int cols = 33;
+	const int selected = 9;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		source->data.f32[i] = ((i * 19) % 67 - 33) / 48.0f;
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, rows, cols)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
+	int ip[] = {3, 5, 3, 22, 0, 11, 5, 18, 7};
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);
+	ccv_nnc_tensor_t* const dequantized = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, cols, dequantized->data.f32, rows * cols);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dequantized, indices), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, rows, cols)), 0);
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, indices), TENSOR_LIST(gq, gindices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, selected * cols, 1e-5, "MPS index select should dequantize only selected row-wise 8i rows");
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(dequantized);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+}
+
+TEST_CASE("mps index select row-wise 8i quantized tensor with half output")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 17;
+	const int cols = 32;
+	const int selected = 8;
+	float* const values = ccmalloc(sizeof(float) * rows * cols);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		values[i] = ((i * 23) % 59 - 29) / 40.0f;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, rows, cols)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
+	int ip[] = {1, 12, 1, 16, 3, 0, 12, 8};
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);
+	ccv_nnc_tensor_t* const dequantized = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, qsize, cols, dequantized->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dequantized, indices), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, rows, cols)), 0);
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, indices), TENSOR_LIST(gq, gindices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	float* const expected_f32 = ccmalloc(sizeof(float) * selected * cols);
+	float* const actual_f32 = ccmalloc(sizeof(float) * selected * cols);
+	ccv_half_precision_to_float((uint16_t*)expected->data.f16, expected_f32, selected * cols);
+	ccv_half_precision_to_float((uint16_t*)actual->data.f16, actual_f32, selected * cols);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 1e-3, "MPS index select should dequantize only selected half row-wise 8i rows");
+	ccfree(actual_f32);
+	ccfree(expected_f32);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(dequantized);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+	ccfree(values);
+}
+
+TEST_CASE("mps index select row-wise 8i quantized tensor with bfloat output")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 19;
+	const int cols = 36;
+	const int selected = 7;
+	float* const values = ccmalloc(sizeof(float) * rows * cols);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		values[i] = ((i * 29) % 71 - 35) / 44.0f;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
+	ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, rows, cols)), 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
+	int ip[] = {2, 18, 2, 6, 14, 0, 18};
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);
+	ccv_nnc_tensor_t* const dequantized = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
+	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16BF, CCV_TENSOR_CPU_MEMORY, qsize, cols, dequantized->data.f16, rows * cols);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, selected, cols), 0);
+	for (i = 0; i < selected; i++)
+		memcpy(expected->data.u8 + i * cols * sizeof(uint16_t), dequantized->data.u8 + ip[i] * cols * sizeof(uint16_t), cols * sizeof(uint16_t));
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16BF, rows, cols)), 0);
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16BF, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, indices), TENSOR_LIST(gq, gindices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	float* const expected_f32 = ccmalloc(sizeof(float) * selected * cols);
+	float* const actual_f32 = ccmalloc(sizeof(float) * selected * cols);
+	ccv_bfloat_to_float((uint16_t*)expected->data.f16, expected_f32, selected * cols);
+	ccv_bfloat_to_float((uint16_t*)actual->data.f16, actual_f32, selected * cols);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 2e-2, "MPS index select should dequantize only selected bfloat row-wise 8i rows");
+	ccfree(actual_f32);
+	ccfree(expected_f32);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(dequantized);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+	ccfree(values);
+}
+
 TEST_CASE("index select backward with half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_BACKWARD, CCV_NNC_BACKEND_GPU_REF));

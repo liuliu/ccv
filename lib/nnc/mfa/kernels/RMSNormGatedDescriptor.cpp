@@ -66,8 +66,9 @@ std::pair<RMSNormGatedKernelDescriptor, PipelineValue<RMSNormGatedKernel>*> RMSN
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     NS::String* swiftName = NS::String::string("rmsnorm_gated", NS::UTF8StringEncoding);
+    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     NS::Error* error = nil;
-    auto function = NS::TransferPtr(library->newFunction(swiftName, nil, &error));
+    auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
 
     auto pipeline = device->newComputePipelineState(function.get(), &error);

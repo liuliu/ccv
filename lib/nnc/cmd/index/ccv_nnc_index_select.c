@@ -22,6 +22,11 @@ static void _ccv_nnc_index_select_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd
 	assert(output_size == 1);
 	outputs[0] = inputs[0];
 	outputs[0].dim[0] = inputs[1].dim[0];
+	if (CCV_GET_DATA_TYPE(outputs[0].datatype) == CCV_QX)
+	{
+		outputs[0].datatype = (inputs[0].datatype & 0xff) << 12;
+		outputs[0].reserved = 0;
+	}
 }
 
 REGISTER_COMMAND(CCV_NNC_INDEX_SELECT_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

@@ -3,6 +3,31 @@
 #include "../ccv_nnc_mfa_error.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 
+static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
+  return (value + alignment - 1) / alignment * alignment;
+}
+
+static uint32_t directSIMDGroups(uint32_t D, GEMMOperandPrecision memoryPrecision) noexcept {
+  const uint32_t maxThreadgroupMemoryBytes = 32768;
+  const uint32_t queryBytes = alignUp(D * (uint32_t)memoryPrecision.size(), sizeof(float));
+  if (queryBytes >= maxThreadgroupMemoryBytes) {
+    return 1;
+  }
+  const uint32_t partialBytes = (D + 2) * sizeof(float);
+  uint32_t maxSIMDGroups = (maxThreadgroupMemoryBytes - queryBytes) / partialBytes;
+  if (maxSIMDGroups > 32) {
+    maxSIMDGroups = 32;
+  }
+  if (maxSIMDGroups > 1 && (maxSIMDGroups % 2) != 0) {
+    --maxSIMDGroups;
+  }
+  while (maxSIMDGroups > 2 &&
+      alignUp(queryBytes + maxSIMDGroups * partialBytes, 16) > maxThreadgroupMemoryBytes) {
+    maxSIMDGroups -= 2;
+  }
+  return maxSIMDGroups < 1 ? 1 : maxSIMDGroups;
+}
+
 bool AttentionR1Descriptor::operator==(const AttentionR1Descriptor& rhs) const {
   return
       memoryPrecision == rhs.memoryPrecision &&
@@ -37,7 +62,7 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
 
   if (C < 2048) {
     descriptor.mode = Mode::direct;
-    descriptor.simdgroups = 32;
+    descriptor.simdgroups = directSIMDGroups(D, memoryPrecision);
     descriptor.workgroups = 1;
   } else {
     descriptor.mode = Mode::splitReduce;

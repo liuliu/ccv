@@ -542,8 +542,12 @@ thread registers. The selector does not gate on whether LSE output is requested;
 the first implementation still writes only `O`.
 
 The descriptor picks direct no-scratch mode for `C < 2048` and split/reduce mode
-(`NSG=8,NWG=32`) for larger `C`. This selection is C-only; it does not depend on
-head ratio.
+(`NSG=8,NWG=32`) for larger `C`. Direct mode caps `NSG` to fit within Metal's
+32 KB threadgroup memory limit and Metal's 16-byte dynamic threadgroup-memory
+alignment requirement. The shared query row is stored in the input type, while
+the partial output and softmax statistics stay in fp32. Direct mode also keeps
+the SIMD-group count even, so fp16/bf16 `D=256` direct mode uses `NSG=30`. This
+selection is C-only; it does not depend on head ratio.
 
 Repeated `sdpa_bench` checks after hooking the production path:
 
