@@ -316,6 +316,22 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		const int use_scaled_gemv =
+			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
+			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
+			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
+			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
+			a_rows == 1 &&
+			!is_transpose_a &&
+			is_transpose_w &&
+			(w_rows % 4) == 0 &&
+			!is_batched &&
+			is_contiguous &&
+			is_same_dtype &&
+			is_supported_dtype &&
+			(!bias || bias_batch_size == 1) &&
+			ccv_nnc_mfa_context_supported(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && (is_mfa_gemv || !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
 
@@ -325,6 +341,37 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		size_t w_data_size = 0;
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
+
+		if (use_scaled_gemv)
+		{
+			ccv_nnc_mfa_scaled_gemv_params_t params = {
+				.data_type = mtl_data_type,
+				.ncols = (uint32_t)w_rows,
+				.nrows = (uint32_t)w_cols,
+				.fused_bias = bias ? 1 : 0,
+			};
+			ccv_nnc_mfa_prepare_scaled_gemv(context, params);
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias)
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias_buffer,
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				w->dataof,
+				a->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			ccv_nnc_mfa_encode_scaled_gemv(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 
 		if (use_ane_rowwise_gemm && use_scaled_gemm)
 		{

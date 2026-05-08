@@ -1661,6 +1661,40 @@ TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")
 	REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
+TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16F, 0, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV fp16 validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV fp16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_32F, 0, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV fp32 validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV fp32 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV bf16 validation should run");
+	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV bf16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward gemv with row-wise 8i weight and bias scaled gemv")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16F, 1, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV fp16 with bias validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV fp16 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_32F, 1, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV fp32 with bias validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV fp32 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV bf16 with bias validation should run");
+	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV bf16 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
 TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

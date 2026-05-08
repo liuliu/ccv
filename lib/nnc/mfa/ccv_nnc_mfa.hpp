@@ -20,6 +20,7 @@ extern "C" {
 #include "ccv_nnc_mfa_gelu.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_scaled_gemm.hpp"
+#include "ccv_nnc_mfa_scaled_gemv.hpp"
 #include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
 #include "ccv_nnc_mfa_segmented_scaled_gemm.hpp"
 #include "ccv_nnc_mfa_conv3d.hpp"
