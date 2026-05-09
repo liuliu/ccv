@@ -183,6 +183,7 @@ ScalarGemvPipeline create_scalar_pipeline(
 {
   GemvDescriptor descriptor;
   descriptor.fusedBias = 0;
+  descriptor.mrows = 1;
   descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
   descriptor.nrows = bench.M;
   descriptor.ncols = bench.K;

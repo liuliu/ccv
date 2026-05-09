@@ -9,15 +9,16 @@
 
 struct GemvKernelDescriptor {
   uint8_t fusedBias;
+  uint8_t mrows;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<GemvKernelDescriptor>
 {
   std::size_t operator()(const GemvKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.fusedBias | ((int)hash.memoryPrecision.value << 8));
+    return std::hash<int>()((int)hash.fusedBias | ((int)hash.mrows << 8) | ((int)hash.memoryPrecision.value << 16));
   }
 };
 
@@ -25,6 +26,8 @@ struct GemvKernel;
 
 struct GemvDescriptor {
   uint8_t fusedBias;
+
+  uint8_t mrows;
 
   GEMMOperandPrecision memoryPrecision;
 

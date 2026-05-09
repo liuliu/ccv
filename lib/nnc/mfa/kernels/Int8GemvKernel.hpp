@@ -12,6 +12,8 @@ struct Int8GemvKernel {
 
   uint8_t fusedBias;
 
+  uint8_t mrows;
+
   GEMMOperandPrecision memoryPrecision;
 
   Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device);

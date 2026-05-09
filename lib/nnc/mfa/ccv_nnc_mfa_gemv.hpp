@@ -3,6 +3,7 @@
 
 typedef struct {
   uint64_t data_type;
+  uint32_t mrows;
   uint32_t nrows;
   uint32_t ncols;
   uint8_t fused_bias;

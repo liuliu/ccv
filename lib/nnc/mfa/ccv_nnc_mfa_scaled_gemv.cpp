@@ -39,10 +39,12 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
+  CCV_NNC_MFA_PRECONDITION(params.mrows == 1 || params.mrows == 2);
   CCV_NNC_MFA_PRECONDITION((params.ncols % 4) == 0);
 
   Int8GemvDescriptor descriptor;
   descriptor.fusedBias = params.fused_bias ? 1 : 0;
+  descriptor.mrows = (uint8_t)params.mrows;
   descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.nrows = params.nrows;
   descriptor.ncols = params.ncols;

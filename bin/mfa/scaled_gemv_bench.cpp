@@ -63,6 +63,7 @@ struct Config {
   int timed_iterations = 20;
   int duplicated_dispatches = 5;
   int sleep_ms = 200;
+  uint32_t mrows = 1;
   bool fused_bias = true;
   std::string dtype = "fp16";
   std::vector<Shape> shapes;
@@ -202,12 +203,14 @@ Pipelines create_pipelines(
     ShaderCache& shader_cache,
     const Shape shape,
     const GEMMOperandPrecision precision,
+    const uint32_t mrows,
     const bool fused_bias)
 {
   DeviceProperties dprops{};
 
   GemvDescriptor gemv_desc;
   gemv_desc.fusedBias = fused_bias ? 1 : 0;
+  gemv_desc.mrows = (uint8_t)mrows;
   gemv_desc.memoryPrecision = precision;
   gemv_desc.nrows = shape.rows;
   gemv_desc.ncols = shape.cols;
@@ -223,6 +226,7 @@ Pipelines create_pipelines(
 
   Int8GemvDescriptor scaled_desc;
   scaled_desc.fusedBias = fused_bias ? 1 : 0;
+  scaled_desc.mrows = (uint8_t)mrows;
   scaled_desc.memoryPrecision = precision;
   scaled_desc.nrows = shape.rows;
   scaled_desc.ncols = shape.cols;
@@ -490,15 +494,15 @@ int run_shape(
 {
   const size_t element_bytes = sizeof(T);
   const size_t dense_bytes = (size_t)shape.rows * shape.cols * element_bytes;
-  const size_t output_bytes = (size_t)shape.rows * element_bytes;
-  const size_t vector_bytes = (size_t)shape.cols * element_bytes;
+  const size_t output_bytes = (size_t)config.mrows * shape.rows * element_bytes;
+  const size_t vector_bytes = (size_t)config.mrows * shape.cols * element_bytes;
   const size_t bias_bytes = (size_t)shape.rows * element_bytes;
   const size_t row_groups = ceil_div(shape.rows, GemvDescriptor::rowsPerThreadgroup(device));
 
   auto original_matrix = make_matrix<T>(shape.rows, shape.cols, 0.015625f, 2);
   std::vector<T> dense_matrix;
   auto quantized = quantize_rowwise(original_matrix, shape.rows, shape.cols, &dense_matrix);
-  auto vector = make_vector<T>(shape.cols, 0.03125f, 3);
+  auto vector = make_matrix<T>(config.mrows, shape.cols, 0.03125f, 3);
   auto bias = make_bias<T>(shape.rows);
 
   auto quantized_stage = NS::TransferPtr(device->newBuffer(quantized.data(), quantized.size(), kSharedResourceOptions));
@@ -533,7 +537,7 @@ int run_shape(
   upload_buffer(command_queue, bias_stage.get(), bias_buffer.get(), bias_bytes);
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  Pipelines pipelines = create_pipelines(device, shader_cache, shape, precision, config.fused_bias);
+  Pipelines pipelines = create_pipelines(device, shader_cache, shape, precision, config.mrows, config.fused_bias);
   pool->drain();
 
   MTL::Buffer* const active_bias = config.fused_bias ? bias_buffer.get() : nullptr;
@@ -545,9 +549,9 @@ int run_shape(
   download_buffer(command_queue, raw_output_buffer.get(), raw_output_stage.get(), output_bytes);
   download_buffer(command_queue, dequant_output_buffer.get(), dequant_output_stage.get(), output_bytes);
   download_buffer(command_queue, scaled_output_buffer.get(), scaled_output_stage.get(), output_bytes);
-  std::vector<T> raw_output(shape.rows);
-  std::vector<T> dequant_output(shape.rows);
-  std::vector<T> scaled_output(shape.rows);
+  std::vector<T> raw_output((size_t)config.mrows * shape.rows);
+  std::vector<T> dequant_output((size_t)config.mrows * shape.rows);
+  std::vector<T> scaled_output((size_t)config.mrows * shape.rows);
   std::memcpy(raw_output.data(), raw_output_stage->contents(), output_bytes);
   std::memcpy(dequant_output.data(), dequant_output_stage->contents(), output_bytes);
   std::memcpy(scaled_output.data(), scaled_output_stage->contents(), output_bytes);
@@ -573,7 +577,7 @@ int run_shape(
       }, &scaled_stats))
     return 1;
 
-  const double flops = 2.0 * (double)shape.rows * shape.cols;
+  const double flops = 2.0 * (double)config.mrows * shape.rows * shape.cols;
   const double bias_read_bytes = config.fused_bias ? (double)bias_bytes : 0.0;
   const double raw_bytes = (double)dense_bytes + (double)row_groups * vector_bytes + output_bytes + bias_read_bytes;
   const double qx_scale_bytes = (double)shape.rows * element_bytes;
@@ -582,7 +586,8 @@ int run_shape(
   const double dequant_bytes = (double)shape.rows * shape.cols + qx_scale_bytes +
       dense_bytes + raw_bytes;
 
-  std::cout << "shape rows=" << shape.rows << " cols=" << shape.cols
+  std::cout << "shape mrows=" << config.mrows
+            << " rows=" << shape.rows << " cols=" << shape.cols
             << " dtype=" << config.dtype
             << " bias=" << (config.fused_bias ? 1 : 0)
             << " dispatches=" << config.duplicated_dispatches
@@ -603,7 +608,7 @@ int run_shape(
 
 void print_usage(const char* const argv0)
 {
-  std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] [--bias 0|1] [--shape rows cols] "
+  std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] [--bias 0|1] [--mrows 1|2] [--shape rows cols] "
             << "[--runs 20] [--warmup 3] [--dispatches 5] [--sleep-ms 200]\n";
 }
 
@@ -620,6 +625,11 @@ bool parse_args(int argc, char** argv, Config* const config)
       if (!parse_int(argv[++i], &value))
         return false;
       config->fused_bias = value != 0;
+    } else if (arg == "--mrows" && i + 1 < argc) {
+      uint32_t value = 0;
+      if (!parse_uint32(argv[++i], &value))
+        return false;
+      config->mrows = value;
     } else if (arg == "--shape" && i + 2 < argc) {
       uint32_t rows = 0;
       uint32_t cols = 0;
@@ -642,7 +652,8 @@ bool parse_args(int argc, char** argv, Config* const config)
       return false;
     }
   }
-  if (config->timed_iterations <= 0 || config->warmup_iterations < 0 ||
+  if ((config->mrows != 1 && config->mrows != 2) ||
+      config->timed_iterations <= 0 || config->warmup_iterations < 0 ||
       config->duplicated_dispatches <= 0 || config->sleep_ms < 0)
     return false;
   if (config->shapes.empty()) {

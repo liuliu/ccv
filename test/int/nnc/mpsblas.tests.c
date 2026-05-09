@@ -1676,6 +1676,18 @@ TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV bf16 validation should run");
 	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV bf16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16F, 0, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 fp16 validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV M=2 fp16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_32F, 0, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 fp32 validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV M=2 fp32 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 bf16 validation should run");
+	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV M=2 bf16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemv with row-wise 8i weight and bias scaled gemv")
@@ -1693,6 +1705,18 @@ TEST_CASE("mps forward gemv with row-wise 8i weight and bias scaled gemv")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, 1, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV bf16 with bias validation should run");
 	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV bf16 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16F, 1, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 fp16 with bias validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV M=2 fp16 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_32F, 1, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 fp32 with bias validation should run");
+	REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "row-wise 8i GEMV M=2 fp32 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 1, 2, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=2 bf16 with bias validation should run");
+	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV M=2 bf16 with bias should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight and bias fallback dequantize")
@@ -2542,6 +2566,58 @@ TEST_CASE("mps forward gemv in half precision, variant 1")
 	ccv_nnc_tensor_free(hbias2);
 }
 
+TEST_CASE("mps forward gemv in half precision with M=2")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 64, 128), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 64), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 64), 0);
+
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128), 0);
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64; i++)
+		hbias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128), 0);
+	for (i = 0; i < 2 * 128; i++)
+		ha1->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 2 * 128; i++)
+		ha->data.f32[i] = ha1->data.f32[i];
+	ccv_nnc_tensor_t* ha2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 128), 0);
+	ccv_nnc_tensor_t* hw2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 64, 128), 0);
+	ccv_nnc_tensor_t* hbias2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha1, hw, hbias), TENSOR_LIST(ha2, hw2, hbias2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha2, hw2, hbias2), TENSOR_LIST(a, w, bias), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* tb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(tb), 0);
+	ccv_nnc_tensor_t* tb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tb), TENSOR_LIST(tb1), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb1->data.f32, hb->data.f32, 2 * 64, 1e-3, "GPU computed output should be the same as CPU computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(tb);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(ha1);
+	ccv_nnc_tensor_free(tb1);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha2);
+	ccv_nnc_tensor_free(hw2);
+	ccv_nnc_tensor_free(hbias2);
+}
+
 TEST_CASE("mps forward gemv in bfloat precision, variant 1")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -2989,6 +3065,50 @@ TEST_CASE("mps forward gemv in half precision no bias, variant 1")
 	ccv_nnc_tensor_t* tb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 64), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tb), TENSOR_LIST(tb1), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb1->data.f32, hb->data.f32, 64, 1e-3, "GPU computed output should be the same as CPU computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(tb);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(ha1);
+	ccv_nnc_tensor_free(tb1);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha2);
+	ccv_nnc_tensor_free(hw2);
+}
+
+TEST_CASE("mps forward gemv in half precision no bias with M=2")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 128), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 64, 128), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 64), 0);
+
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128), 0);
+	ccv_nnc_tensor_t* hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 128), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	int i;
+	for (i = 0; i < 64 * 128; i++)
+		hw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	ccv_nnc_tensor_t* ha1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 128), 0);
+	for (i = 0; i < 2 * 128; i++)
+		ha1->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 2 * 128; i++)
+		ha->data.f32[i] = ha1->data.f32[i];
+	ccv_nnc_tensor_t* ha2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 128), 0);
+	ccv_nnc_tensor_t* hw2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 64, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha1, hw), TENSOR_LIST(ha2, hw2), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha2, hw2), TENSOR_LIST(a, w), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* tb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(tb), 0);
+	ccv_nnc_tensor_t* tb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tb), TENSOR_LIST(tb1), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tb1->data.f32, hb->data.f32, 2 * 64, 1e-3, "GPU computed output should be the same as CPU computed ones");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);

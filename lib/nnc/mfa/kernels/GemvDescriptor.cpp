@@ -8,6 +8,7 @@
 bool GemvDescriptor::operator==(const GemvDescriptor& rhs) const {
   return
   fusedBias == rhs.fusedBias &&
+  mrows == rhs.mrows &&
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
   ncols == rhs.ncols;
@@ -34,7 +35,7 @@ uint32_t GemvDescriptor::rowsPerThreadgroup(MTL::Device* const device) noexcept 
 std::size_t std::hash<GemvDescriptor>::operator()(const GemvDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.nrows, (unsigned int)hash.ncols }));
   return seed;
 }
@@ -54,6 +55,7 @@ std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> GemvDescriptor::find
 
   GemvKernelDescriptor kernelDesc;
   kernelDesc.fusedBias = fusedBias;
+  kernelDesc.mrows = mrows;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =

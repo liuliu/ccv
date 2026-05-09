@@ -19,9 +19,11 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
+  CCV_NNC_MFA_PRECONDITION(params.mrows == 1 || params.mrows == 2);
 
   GemvDescriptor descriptor;
   descriptor.fusedBias = params.fused_bias ? 1 : 0;
+  descriptor.mrows = (uint8_t)params.mrows;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {
@@ -49,7 +51,7 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
 
   const uint32_t rowsPerThreadgroup = GemvDescriptor::rowsPerThreadgroup(context->device.get());
   MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, 1);
-  CCV_NNC_MFA_PRECONDITION(gridSize.depth > 0);
+  CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, MTL::Size(rowsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);
 }
