@@ -10,10 +10,6 @@ struct GemvKernel {
 
   std::string source;
 
-  unsigned short threadgroupMemoryAllocation;
-
-  MTL::Size threadgroupSize;
-
   uint8_t fusedBias;
 
   uint8_t mrows;
@@ -23,7 +19,6 @@ struct GemvKernel {
   GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
-  unsigned short createThreadgroupMemoryAllocation() const noexcept;
   std::string createSource() const noexcept;
   std::string createConstants() const noexcept;
 };

@@ -23,10 +23,6 @@ std::string Int8GemvKernel::createSource() const noexcept {
 #include <metal_stdlib>
 using namespace metal;
 
-inline float int8_gemv_dot(char4 q, float4 y) {
-  return dot(float4(q), y);
-}
-
 kernel void int8_gemv(
   device const char *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
@@ -71,29 +67,29 @@ kernel void int8_gemv(
     const float4 y1v1 = float4(y1[i + 1]);
     const char4 q0 = x0[i];
     const char4 q0b = x0[i + 1];
-    sum00 += int8_gemv_dot(q0, y0v0);
-    sum00 += int8_gemv_dot(q0b, y0v1);
-    sum10 += int8_gemv_dot(q0, y1v0);
-    sum10 += int8_gemv_dot(q0b, y1v1);
+    sum00 += dot(float4(q0), y0v0);
+    sum00 += dot(float4(q0b), y0v1);
+    sum10 += dot(float4(q0), y1v0);
+    sum10 += dot(float4(q0b), y1v1);
     if (active1) {
       const char4 q1 = x1[i];
       const char4 q1b = x1[i + 1];
-      sum01 += int8_gemv_dot(q1, y0v0);
-      sum01 += int8_gemv_dot(q1b, y0v1);
-      sum11 += int8_gemv_dot(q1, y1v0);
-      sum11 += int8_gemv_dot(q1b, y1v1);
+      sum01 += dot(float4(q1), y0v0);
+      sum01 += dot(float4(q1b), y0v1);
+      sum11 += dot(float4(q1), y1v0);
+      sum11 += dot(float4(q1b), y1v1);
     }
   }
   if (i < nvecs) {
     const float4 y0v = float4(y0[i]);
     const float4 y1v = float4(y1[i]);
     const char4 q0 = x0[i];
-    sum00 += int8_gemv_dot(q0, y0v);
-    sum10 += int8_gemv_dot(q0, y1v);
+    sum00 += dot(float4(q0), y0v);
+    sum10 += dot(float4(q0), y1v);
     if (active1) {
       const char4 q1 = x1[i];
-      sum01 += int8_gemv_dot(q1, y0v);
-      sum11 += int8_gemv_dot(q1, y1v);
+      sum01 += dot(float4(q1), y0v);
+      sum11 += dot(float4(q1), y1v);
     }
   }
 
@@ -160,10 +156,6 @@ kernel void int8_gemv(
 #include <metal_stdlib>
 using namespace metal;
 
-inline float int8_gemv_dot(char4 q, float4 y) {
-  return dot(float4(q), y);
-}
-
 kernel void int8_gemv(
   device const char *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
@@ -203,22 +195,22 @@ kernel void int8_gemv(
     const float4 yv1 = float4(y4[i + 1]);
     const char4 q0 = x0[i];
     const char4 q0b = x0[i + 1];
-    sum0 += int8_gemv_dot(q0, yv0);
-    sum0 += int8_gemv_dot(q0b, yv1);
+    sum0 += dot(float4(q0), yv0);
+    sum0 += dot(float4(q0b), yv1);
     if (active1) {
       const char4 q1 = x1[i];
       const char4 q1b = x1[i + 1];
-      sum1 += int8_gemv_dot(q1, yv0);
-      sum1 += int8_gemv_dot(q1b, yv1);
+      sum1 += dot(float4(q1), yv0);
+      sum1 += dot(float4(q1b), yv1);
     }
   }
   if (i < nvecs) {
     const float4 yv = float4(y4[i]);
     const char4 q0 = x0[i];
-    sum0 += int8_gemv_dot(q0, yv);
+    sum0 += dot(float4(q0), yv);
     if (active1) {
       const char4 q1 = x1[i];
-      sum1 += int8_gemv_dot(q1, yv);
+      sum1 += dot(float4(q1), yv);
     }
   }
 

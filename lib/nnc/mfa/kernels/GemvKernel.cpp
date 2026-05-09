@@ -8,19 +8,12 @@ GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const devic
 
   source = createSource();
 
-  threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
-  threadgroupSize = MTL::Size(32, 1, 1);
-
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
   }
-}
-
-unsigned short GemvKernel::createThreadgroupMemoryAllocation() const noexcept {
-  return 0;
 }
 
 std::string GemvKernel::createSource() const noexcept {
@@ -357,17 +350,11 @@ std::string GemvKernel::createConstants() const noexcept {
   if (memoryPrecision == GEMMOperandPrecision::FP32) {
     defines += std::string("typedef float real;");
     defines += "\n";
-    defines += std::string("typedef float4 real4;");
-    defines += "\n";
   } else if (memoryPrecision == GEMMOperandPrecision::BF16) {
     defines += std::string("typedef bfloat real;");
     defines += "\n";
-    defines += std::string("typedef bfloat4 real4;");
-    defines += "\n";
   } else {
     defines += std::string("typedef half real;");
-    defines += "\n";
-    defines += std::string("typedef half4 real4;");
     defines += "\n";
   }
   defines += "constant uint N [[function_constant(0)]];";

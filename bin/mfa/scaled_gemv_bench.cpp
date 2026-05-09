@@ -136,17 +136,6 @@ std::vector<T> make_matrix(const uint32_t rows, const uint32_t cols, const float
 }
 
 template <typename T>
-std::vector<T> make_vector(const uint32_t length, const float scale, const int phase)
-{
-  std::vector<T> values(length);
-  for (uint32_t i = 0; i < length; ++i) {
-    const int centered = (int)((i * 19 + phase * 31) % 127) - 63;
-    values[i] = (T)(centered * scale);
-  }
-  return values;
-}
-
-template <typename T>
 std::vector<T> make_bias(const uint32_t length)
 {
   std::vector<T> values(length);
