@@ -196,6 +196,68 @@ TEST_CASE("async run dynamic graph minimize on multiple devices")
 	ccv_nnc_tensor_free(hx1);
 }
 
+TEST_CASE("tensor variable wait for async mps gpu to cpu transfer")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_tensor_variable_t const x = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1024));
+	ccv_nnc_tensor_variable_t const y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1024));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(3), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, stream);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, stream);
+	ccv_nnc_tensor_variable_wait(graph, y);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_variable(graph, y, stream);
+	int i;
+	for (i = 0; i < 1024; i++)
+		REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[i], 3, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_stream_context_free(stream);
+}
+
+TEST_CASE("tensor variable wait for async mps gpu to external cpu transfer")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_tensor_variable_t const x = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1024));
+	ccv_nnc_tensor_variable_t const y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1024));
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1024), 0);
+	ccv_nnc_tensor_variable_set(graph, y, y_tensor);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(4), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, stream);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, stream);
+	ccv_nnc_tensor_variable_wait(graph, y);
+	int i;
+	for (i = 0; i < 1024; i++)
+		REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[i], 4, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_free(y_tensor);
+}
+
+TEST_CASE("tensor variable wait ignores stale mps transfer completion")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_dynamic_graph_set_no_grad(graph, 1);
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_tensor_variable_t const x = ccv_nnc_tensor_variable_new(graph, GPU_TENSOR_NHWC(000, 32F, 1024));
+	ccv_nnc_tensor_variable_t const y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1024));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, stream);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, stream);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(), TENSOR_VARIABLE_LIST(x), 0, stream);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y), 0, stream);
+	ccv_nnc_tensor_variable_wait(graph, y);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_variable(graph, y, stream);
+	int i;
+	for (i = 0; i < 1024; i++)
+		REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[i], 2, 1e-5, "should be equal");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_stream_context_free(stream);
+}
+
 TEST_CASE("dynamic graph memory reuse logic")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();

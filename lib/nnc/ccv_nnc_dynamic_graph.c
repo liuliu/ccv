@@ -4,6 +4,9 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_internal.h"
 #include "_ccv_nnc_dynamic_graph.h"
+#ifdef HAVE_MPS
+#include "mps/ccv_nnc_mps.h"
+#endif
 
 // MARK - Level-4 API
 
@@ -24,6 +27,15 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->stream_map = 0;
 	graph->ws = 0;
 	return graph;
+}
+
+static void _ccv_nnc_tensor_variable_wait_fast_fence(ccv_nnc_tensor_view_t* const tensor_view)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(tensor_view);
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY)
+		ccv_nnc_mps_tensor_fast_fence_wait(tensor);
+#endif
 }
 
 static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int zeroing)
@@ -368,6 +380,13 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 }
 
+void ccv_nnc_tensor_variable_wait(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+{
+	if (!tensor_variable || !tensor_variable->tensor_view)
+		return;
+	_ccv_nnc_tensor_variable_wait_fast_fence(tensor_variable->tensor_view);
+}
+
 static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_symbol_t symbol)
 {
 	if (symbol.d >= graph->binds->rnum)
@@ -492,6 +511,45 @@ static ccv_nnc_stream_context_t* _ccv_nnc_dynamic_graph_neighbor_context_discove
 	int type = discovery->stream_type;
 	CCV_STREAM_SET_DEVICE_ID(type, device_id);
 	return _ccv_nnc_dynamic_graph_get_stream(discovery->graph, type);
+}
+
+static int _ccv_nnc_dynamic_graph_mark_gpu_to_cpu_transfer(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_variable_t* const output_variables, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_tensor_t** const marked_tensors)
+{
+#ifdef HAVE_MPS
+	if (!stream_context || CCV_STREAM_GET_CONTEXT(stream_context->type) != CCV_STREAM_CONTEXT_GPU)
+		return 0;
+	if (cmd.cmd != CCV_NNC_DATA_TRANSFER_FORWARD && cmd.cmd != CCV_NNC_DATA_TRANSFER_BACKWARD)
+		return 0;
+	int marked_size = 0;
+	int i;
+	for (i = 0; i < ccv_min(input_size, output_size); i++)
+	{
+		ccv_nnc_tensor_variable_t const output_variable = output_variables[i];
+		ccv_nnc_tensor_view_t* const output_tensor_view = output_variable ? CCV_NNC_TENSOR_VIEW(output_variable->tensor_view) : 0;
+		if (!inputs[i] || !outputs[i] || !output_variable || output_variable->alias_index_ref ||
+			!output_tensor_view || CCV_IS_TENSOR_VIEW(output_tensor_view))
+			continue;
+		if (CCV_TENSOR_GET_MEMORY(inputs[i]->info.type) != CCV_TENSOR_GPU_MEMORY ||
+			CCV_TENSOR_GET_MEMORY(outputs[i]->info.type) != CCV_TENSOR_CPU_MEMORY)
+			continue;
+		if (ccv_nnc_tensor_data_size_without_padding(outputs[i]->info) == 0)
+			continue;
+		if (ccv_nnc_mps_tensor_fast_fence_mark_pending(outputs[i]))
+			marked_tensors[marked_size++] = outputs[i];
+	}
+	return marked_size;
+#else
+	return 0;
+#endif
+}
+
+static void _ccv_nnc_dynamic_graph_clear_fast_fence_marks(ccv_nnc_tensor_t* const* const marked_tensors, const int marked_size)
+{
+#ifdef HAVE_MPS
+	int i;
+	for (i = 0; i < marked_size; i++)
+		ccv_nnc_mps_tensor_fast_fence_clear(marked_tensors[i]);
+#endif
 }
 
 void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, const int parallel, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_graph_exec_symbol_t* const graph_execs)
@@ -642,7 +700,11 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 					ccv_nnc_print_tensor_shape(output_tensors[k]);
 				PRINT(CCV_CLI_INFO, "\n");
 			}
+			ccv_nnc_tensor_t* marked_tensors[ccv_max(1, per_output_size)];
+			const int marked_size = _ccv_nnc_dynamic_graph_mark_gpu_to_cpu_transfer(cmd, outputs + i * per_output_size, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0, marked_tensors);
 			const int status = ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors + i * per_input_size, per_input_size, output_tensors, per_output_size, stream_0);
+			if (status != 0)
+				_ccv_nnc_dynamic_graph_clear_fast_fence_marks(marked_tensors, marked_size);
 			if (status != 0)
 				PRINT(CCV_CLI_INFO, "Invalid Status: %d\n", status);
 			if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
@@ -677,7 +739,11 @@ void ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const 
 				ccv_nnc_print_tensor_info(input_tensors[i]);
 			PRINT(CCV_CLI_INFO, "\n");
 		}
-		ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, per_input_size, output_tensors, per_output_size, stream_context);
+		ccv_nnc_tensor_t* marked_tensors[ccv_max(1, per_output_size)];
+		const int marked_size = _ccv_nnc_dynamic_graph_mark_gpu_to_cpu_transfer(cmd, outputs, input_tensors, per_input_size, output_tensors, per_output_size, stream_context, marked_tensors);
+		const int status = ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, per_input_size, output_tensors, per_output_size, stream_context);
+		if (status != 0)
+			_ccv_nnc_dynamic_graph_clear_fast_fence_marks(marked_tensors, marked_size);
 		for (i = 0; i < per_output_size; i++)
 		{
 			PRINT(CCV_CLI_INFO, "|<- %d. %p (%p:%d)", i + 1, output_tensors[i], (output_tensors[i] ? output_tensors[i]->data.u8 : 0), (output_tensors[i] ? CCV_TENSOR_GET_DEVICE_ID(output_tensors[i]->info.type) : -1));

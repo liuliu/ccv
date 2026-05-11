@@ -33,6 +33,7 @@ extern "C" {
 #include "ccv_nnc_mfa_exp.hpp"
 #include "ccv_nnc_mfa_softplus.hpp"
 #include "ccv_nnc_mfa_add.hpp"
+#include "ccv_nnc_mfa_fast_fence.hpp"
 #include "ccv_nnc_mfa_rotate_half.hpp"
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 #include "ccv_nnc_mfa_gated_delta.hpp"

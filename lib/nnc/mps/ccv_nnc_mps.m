@@ -51,6 +51,126 @@ MPSGraphDevice* ccv_nnc_default_mps_device(void)
 	return device;
 }
 
+#define CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC (0x43315657ULL << 32)
+#define CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK (0xffffffffULL << 32)
+
+static inline uint32_t* _ccv_nnc_mps_tensor_fast_fence_token(ccv_nnc_tensor_t* const tensor)
+{
+	return (uint32_t*)&tensor->sig;
+}
+
+static int _ccv_nnc_mps_tensor_fast_fence_pending_value(const ccv_nnc_tensor_t* const tensor, uint32_t* const pending_ref)
+{
+	const uint64_t sig = __atomic_load_n(&tensor->sig, __ATOMIC_ACQUIRE);
+	if ((sig & CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK) != CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC)
+		return 0;
+	const uint32_t pending = (uint32_t)sig;
+	if ((pending & 1) == 0)
+		return 0;
+	if (pending_ref)
+		*pending_ref = pending;
+	return 1;
+}
+
+int ccv_nnc_mps_tensor_fast_fence_mark_pending(ccv_nnc_tensor_t* const tensor)
+{
+	if (!ccv_nnc_mfa_prepare_fast_fence(ccv_nnc_default_mfa_context()))
+		return 0;
+	const uint64_t sig = __atomic_load_n(&tensor->sig, __ATOMIC_ACQUIRE);
+	uint32_t pending;
+	if ((sig & CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK) != CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC)
+	{
+		if (sig != 0)
+			return 0;
+		pending = 1;
+		__atomic_store_n(&tensor->sig, CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC | pending, __ATOMIC_RELEASE);
+		return 1;
+	}
+	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
+	const uint32_t current = __atomic_load_n(token, __ATOMIC_ACQUIRE);
+	pending = (current >= 0xfffffffdU) ? 1 : current + ((current & 1) ? 2 : 1);
+	__atomic_store_n(token, pending, __ATOMIC_RELEASE);
+	return 1;
+}
+
+int ccv_nnc_mps_tensor_fast_fence_pending(const ccv_nnc_tensor_t* const tensor)
+{
+	return _ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, 0);
+}
+
+void ccv_nnc_mps_tensor_fast_fence_clear(ccv_nnc_tensor_t* const tensor)
+{
+	uint64_t sig = __atomic_load_n(&tensor->sig, __ATOMIC_ACQUIRE);
+	for (;;)
+	{
+		if ((sig & CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK) != CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC)
+			return;
+		const uint32_t pending = (uint32_t)sig;
+		if ((pending & 1) == 0)
+			return;
+		const uint64_t complete_sig = CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC | (uint32_t)(pending + 1);
+		if (__atomic_compare_exchange_n(&tensor->sig, &sig, complete_sig, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+			return;
+	}
+}
+
+void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor)
+{
+	if (!_ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, 0))
+		return;
+	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
+	while (__atomic_load_n(token, __ATOMIC_ACQUIRE) & 1) {}
+}
+
+int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer, ccv_nnc_tensor_t* const tensor, id<MTLBuffer> const buffer, unsigned char* const aligned_ptr, const size_t aligned_size, const off_t offset, const size_t size)
+{
+	uint32_t pending;
+	if (!_ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, &pending))
+		return 0;
+	const uint64_t word_offset_64 = (uint64_t)offset / sizeof(uint32_t);
+	const uint64_t word_count_64 = ((uint64_t)(offset & (sizeof(uint32_t) - 1)) + size + sizeof(uint32_t) - 1) / sizeof(uint32_t);
+	if (word_offset_64 > UINT32_MAX || word_count_64 > UINT32_MAX || word_count_64 == 0)
+		return 0;
+	const uintptr_t aligned_start = (uintptr_t)aligned_ptr;
+	const uintptr_t aligned_end = aligned_start + aligned_size;
+	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
+	const uintptr_t token_ptr = (uintptr_t)token;
+	id<MTLBuffer> token_buffer = buffer;
+	size_t token_offset = 0;
+	int release_token_buffer = 0;
+	if (token_ptr >= aligned_start && token_ptr + sizeof(uint32_t) <= aligned_end)
+		token_offset = token_ptr - aligned_start;
+	else {
+		unsigned char* const token_aligned_ptr = (unsigned char*)(token_ptr & -vm_page_size);
+		token_offset = token_ptr - (uintptr_t)token_aligned_ptr;
+		token_buffer = [ccv_nnc_default_device() newBufferWithBytesNoCopy:token_aligned_ptr length:vm_page_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
+		if (!token_buffer)
+			return 0;
+		release_token_buffer = 1;
+	}
+	MTLCommandBatch* const command_batch = ccv_nnc_start_command_batch_from_command_buffer((__bridge mtl_command_buffer_t*)command_buffer.commandBuffer, 0);
+	ccv_nnc_mfa_fast_fence_params_t params = {
+		.word_offset = (uint32_t)word_offset_64,
+		.word_count = (uint32_t)word_count_64,
+		.pending = pending,
+		.complete = pending + 1,
+	};
+	mtl_buffer_t* tensors[] = {
+		(__bridge mtl_buffer_t*)buffer,
+		(__bridge mtl_buffer_t*)token_buffer,
+		0
+	};
+	size_t tensor_offsets[] = {
+		0,
+		token_offset
+	};
+	const int encoded = ccv_nnc_mfa_encode_fast_fence(ccv_nnc_default_mfa_context(), params, command_batch, tensors, tensor_offsets);
+	ccv_nnc_finish_command_batch(command_batch);
+	if (release_token_buffer)
+		[token_buffer release];
+	return encoded;
+}
+
 static os_unfair_lock queue_lock; 
 #define CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK (32)
 #define CCV_NNC_MPS_DEFAULT_COMMAND_BUFFER_WATERMARK (8)

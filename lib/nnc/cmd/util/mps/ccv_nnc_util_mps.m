@@ -51,13 +51,24 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)b->data.u8 & -vm_page_size);
 			const off_t offset_b = (uintptr_t)b->data.u8 - (uintptr_t)aligned_ptr;
 			const size_t aligned_size = ((size + offset_b + vm_page_size - 1) & -vm_page_size);
+			const int needs_fast_fence = ccv_nnc_mps_tensor_fast_fence_pending(b);
 			@autoreleasepool {
 				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
-				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
+				MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+				id<MTLBlitCommandEncoder> encoder = [command_buffer.commandBuffer blitCommandEncoder];
 				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
 				[encoder endEncoding];
+				const int fast_fence_encoded = !needs_fast_fence || ccv_nnc_mps_encode_tensor_fast_fence(command_buffer, b, buffer_b, aligned_ptr, aligned_size, offset_b, size);
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+				if (needs_fast_fence)
+				{
+					if (fast_fence_encoded)
+						ccv_nnc_stream_context_commit(stream_context);
+					else {
+						ccv_nnc_stream_context_wait(stream_context);
+						ccv_nnc_mps_tensor_fast_fence_clear(b);
+					}
+				}
 				[buffer_b release];
 			}
 		} else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)

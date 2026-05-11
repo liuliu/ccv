@@ -37,6 +37,10 @@ void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
+int ccv_nnc_mps_tensor_fast_fence_mark_pending(ccv_nnc_tensor_t* const tensor);
+int ccv_nnc_mps_tensor_fast_fence_pending(const ccv_nnc_tensor_t* const tensor);
+void ccv_nnc_mps_tensor_fast_fence_clear(ccv_nnc_tensor_t* const tensor);
+void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor);
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
 
 #ifdef __OBJC__
@@ -75,6 +79,7 @@ CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buff
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
+int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer, ccv_nnc_tensor_t* const tensor, id<MTLBuffer> const buffer, unsigned char* const aligned_ptr, const size_t aligned_size, const off_t offset, const size_t size);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
 CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 CCV_WARN_UNUSED(MPSDataType) ccv_nnc_mps_datatype(const int datatype); // Get the datatype corresponding to MPS datatype.
