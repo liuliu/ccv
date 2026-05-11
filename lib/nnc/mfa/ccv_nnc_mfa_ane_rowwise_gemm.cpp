@@ -762,6 +762,19 @@ static bool run_partial_na_matmul_async(
 
 } // namespace
 
+size_t ccv_nnc_mfa_ane_rowwise_gemm_reserved_scratch_size(
+    ccv_nnc_mfa_ane_rowwise_gemm_params_t params)
+{
+  (void)params;
+  return 0;
+}
+
+size_t ccv_nnc_mfa_ane_na_rowwise_split_gemm_reserved_scratch_size(
+    ccv_nnc_mfa_ane_na_rowwise_gemm_params_t params)
+{
+  return activation_quant_layout(params).scratch_bytes;
+}
+
 int ccv_nnc_mfa_run_ane_rowwise_gemm(
     ccv_nnc_mfa_context_t* const context,
     ccv_nnc_mfa_ane_rowwise_gemm_params_t params,

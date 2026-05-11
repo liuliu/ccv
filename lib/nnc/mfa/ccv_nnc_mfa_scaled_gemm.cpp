@@ -97,7 +97,7 @@ size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_scaled_gemm_par
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   if (use_na_int8_matmul_small_m(params)) {
     const NAInt8MatMulSmallMDescriptor desc = make_na_int8_matmul_small_m_descriptor(params);
-    return align_up(a_layout.scratch_bytes, 256) + desc.scratchOffsets().total;
+    return align_up(align_up(a_layout.scratch_bytes, 256) + desc.scratchOffsets().total, 256);
   }
   return a_layout.scratch_bytes;
 }
