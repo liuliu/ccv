@@ -343,7 +343,8 @@ cc_library(
 		"nnc/cmd/ccv_nnc_backend.h",
 		"nnc/cmd/ccv_nnc_cmd.h",
 		"nnc/cmd/ccv_nnc_cmd_easy.h",
-		"nnc/co.h"
+		"nnc/co.h",
+		"nnc/ccv_nnc_8i_rowwise_packed_grids.inc"
 	],
 	includes = [
 		"."
@@ -502,7 +503,6 @@ cc_library(
 		"nnc/_ccv_cnnp_dataframe.h",
 		"nnc/_ccv_cnnp_model.h",
 		"nnc/ccv_nnc_palettize.c",
-		"nnc/ccv_nnc_8i_rowwise_packed_grids.inc",
 		"nnc/ccv_nnc_8i_rowwise.c",
 		"nnc/ccv_nnc_tensor.c",
 		"nnc/ccv_nnc_tensor_io.c",
