@@ -11,6 +11,39 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_param_t params, int* const finite, int* const size_matches)
+{
+	enum {
+		rows = 3,
+		cols = 19,
+	};
+	float values[rows * cols];
+	float imatrix[cols];
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		values[i] = (float)(((i * 37) % 101) - 50) / 32;
+	for (i = 0; i < cols; i++)
+		imatrix[i] = 0.25f + (float)(i % 7) * 0.125f;
+	const size_t data_size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, rows * cols, cols);
+	const size_t tensor_data_size = ccv_nnc_tensor_data_size_without_padding(params);
+	uint8_t* const compressed = (uint8_t*)ccmalloc(data_size);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, format, imatrix, compressed, data_size);
+	*size_matches = (data_size == output_size && data_size == tensor_data_size);
+	float dequantized[rows * cols];
+	ccv_nnc_dequantize_8i_rowwise_x(compressed, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, cols, format, dequantized, rows * cols);
+	double mse = 0;
+	*finite = 1;
+	for (i = 0; i < rows * cols; i++)
+	{
+		*finite = *finite && isfinite(dequantized[i]);
+		const double d = values[i] - dequantized[i];
+		mse += d * d;
+	}
+	mse /= (double)(rows * cols);
+	ccfree(compressed);
+	return mse;
+}
+
 TEST_CASE("allocate row-wise int8 tensor with source-precision scales")
 {
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 10, 20, 30)), 0);
@@ -61,6 +94,39 @@ TEST_CASE("quantize float to row-wise int8 with lower MSE than absmax scale")
 	}
 	REQUIRE(rowwise_sse < absmax_sse * 0.2, "least-squares row scale should reduce MSE");
 	ccv_nnc_tensor_free(tensor);
+}
+
+TEST_CASE("quantize float to row-wise-x int8 formats and dequantize on CPU")
+{
+	const ccv_nnc_tensor_param_t source_params = CPU_TENSOR_NHWC(32F, 3, 19);
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	const ccv_nnc_tensor_param_t params[] = {
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q4_K),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q3_K),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q2_K),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_IQ2_S),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_IQ2_XS),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_IQ3_S),
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS),
+	};
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		int finite = 0;
+		int size_matches = 0;
+		const double mse = _test_8i_rowwise_x_format(formats[i], params[i], &finite, &size_matches);
+		REQUIRE(size_matches, "output size should match");
+		REQUIRE(finite, "dequantized value should be finite");
+		REQUIRE(mse < 1, "reference quantization should stay in a reasonable error range");
+	}
 }
 
 TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")

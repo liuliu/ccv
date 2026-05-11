@@ -226,6 +226,57 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
+static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
+{
+	switch (format)
+	{
+		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
+		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
+		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
+		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
+			return 16;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+			return 8;
+		default:
+			assert(0);
+			return 0;
+	}
+}
+
+static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
+{
+	switch (format)
+	{
+		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
+			return 72;
+		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
+		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
+			return 56;
+		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
+			return 42;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+			return 21;
+		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+			return 28;
+		default:
+			assert(0);
+			return 0;
+	}
+}
+
+static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_tensor_param_t params, const int format)
+{
+	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
+	assert(ccv_nnc_8i_rowwise_x_group_size(format) > 0);
+	ccv_nnc_tensor_param_t new_params = params;
+	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
+	new_params.reserved = format;
+	return new_params;
+}
+
 static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tensor_param_t params)
 {
 	const ssize_t count = (ssize_t)ccv_nnc_tensor_count(params);
@@ -248,6 +299,18 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
 			const ssize_t scale_offset = (count + 127) & -128;
+			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+		} else if (qx_subtype == CCV_NNC_QX_8I_ROWWISE_X) {
+			const int nd = ccv_nnc_tensor_nd(params.dim);
+			const int row_length = params.dim[nd - 1];
+			assert(row_length > 0);
+			assert(count % row_length == 0);
+			const ssize_t row_count = count / row_length;
+			const ssize_t group_size = ccv_nnc_8i_rowwise_x_group_size(params.reserved);
+			const ssize_t groups_per_row = (row_length + group_size - 1) / group_size;
+			const ssize_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(params.reserved);
+			const ssize_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+			const ssize_t scale_offset = (payload_size + 127) & -128;
 			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
 		} else {
 			assert(0);

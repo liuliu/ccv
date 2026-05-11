@@ -975,7 +975,20 @@ void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int pa
 
 enum {
 	CCV_NNC_QX_8I_ROWWISE = 0x900,
+	CCV_NNC_QX_8I_ROWWISE_X = 0xa00,
 };
+
+/* Packed row-wise int8-compatible low-bit payload formats. */
+enum {
+	CCV_NNC_QX_8I_ROWWISE_Q4_K = 1,
+	CCV_NNC_QX_8I_ROWWISE_Q3_K,
+	CCV_NNC_QX_8I_ROWWISE_Q2_K,
+	CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+	CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+	CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+	CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+};
+
 /**
  * Quantize a given memory region of a given datatype / memory resides, into nbits palette.
  * @param input The input memory region, it can be CCV_64F, CCV_32F or CCV_16F.
@@ -1026,6 +1039,22 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
  * @param output_length How many elements in the output.
  */
 void ccv_nnc_dequantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length);
+
+/**
+ * Return the byte size for the row-wise-x int8-compatible formats.
+ * The row-wise split is based on the innermost dimension, thus @p row_length is required.
+ * These formats store packed low-bit groups plus one source-precision row scale per row.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const int datatype, const size_t input_length, const size_t row_length);
+/**
+ * Quantize a memory region into a row-wise-x int8-compatible format.
+ * @param imatrix Optional per-column importance weights of length @p row_length. Pass 0 for unweighted MSE.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, void* output, const size_t output_length);
+/**
+ * Dequantize a row-wise-x int8-compatible format back to @p datatype.
+ */
+void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length);
 
 /** @} */
 
