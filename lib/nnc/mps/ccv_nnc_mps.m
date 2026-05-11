@@ -174,8 +174,6 @@ int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer,
 static os_unfair_lock queue_lock; 
 #define CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK (32)
 #define CCV_NNC_MPS_DEFAULT_COMMAND_BUFFER_WATERMARK (8)
-static MPSCommandBuffer* current_mps_command_buffer;
-static int current_mps_command_buffer_command_count;
 static id<MTLCommandBuffer> old_last_command_buffers[CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK];
 static id<MTLCommandBuffer> last_command_buffer;
 
@@ -675,11 +673,24 @@ ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const
 }
 
 // Stream context
+typedef struct {
+	ccv_nnc_stream_context_t super;
+	// Left for implementation yet, the CPU support for stream context.
+	size_t workspace_size;
+	void* workspace;
+	MPSCommandBuffer* current_mps_command_buffer;
+	int current_mps_command_buffer_command_count;
+} ccv_nnc_stream_mps_t;
+
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
+	ccv_nnc_stream_mps_t* const stream_mps = (ccv_nnc_stream_mps_t*)ccrealloc(stream_context, sizeof(ccv_nnc_stream_mps_t));
+	const ccv_nnc_stream_context_t super = stream_mps->super;
+	memset(stream_mps, 0, sizeof(ccv_nnc_stream_mps_t));
+	stream_mps->super = super;
 	// Initialize the MFA context.
 	ccv_nnc_default_mfa_context();
-	return stream_context;
+	return (ccv_nnc_stream_context_t*)stream_mps;
 }
 
 static int command_buffers_watermark = CCV_NNC_MPS_DEFAULT_COMMAND_BUFFER_WATERMARK;
@@ -694,15 +705,15 @@ static int _ccv_nnc_mps_tracked_command_buffer_watermark(void)
 	return ccv_min(command_buffers_watermark, CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK);
 }
 
-static int _ccv_nnc_mps_current_command_buffer_needs_commit(void)
+static int _ccv_nnc_mps_current_command_buffer_needs_commit(const ccv_nnc_stream_mps_t* const stream_mps)
 {
 	const int encoders_per_command_buffer = _ccv_nnc_mps_encoders_per_command_buffer();
-	return current_mps_command_buffer_command_count >= encoders_per_command_buffer;
+	return stream_mps->current_mps_command_buffer_command_count >= encoders_per_command_buffer;
 }
 
-static void _ccv_nnc_mps_reset_current_command_buffer_accounting(void)
+static void _ccv_nnc_mps_reset_current_command_buffer_accounting(ccv_nnc_stream_mps_t* const stream_mps)
 {
-	current_mps_command_buffer_command_count = 0;
+	stream_mps->current_mps_command_buffer_command_count = 0;
 }
 
 static void _ccv_nnc_mps_release_tracked_command_buffer(id<MTLCommandBuffer> mtl_command_buffer, const int buffer_size)
@@ -751,33 +762,33 @@ static void _ccv_nnc_mps_track_submitted_command_buffer(id<MTLCommandBuffer> mtl
 	[old_last_command_buffer release];
 }
 
-static void _ccv_nnc_mps_account_current_command_buffer(id<MTLCommandBuffer> const mtl_command_buffer, const int command_count, const int may_commit)
+static void _ccv_nnc_mps_account_current_command_buffer(ccv_nnc_stream_context_t* const stream_context, id<MTLCommandBuffer> const mtl_command_buffer, const int command_count, const int may_commit)
 {
-	if (!mtl_command_buffer || command_count <= 0)
+	if (!stream_context || !mtl_command_buffer || command_count <= 0)
 		return;
 	int needs_commit = 0;
-	os_unfair_lock_lock(&queue_lock);
-	if (current_mps_command_buffer && current_mps_command_buffer.commandBuffer == mtl_command_buffer)
+	ccv_nnc_stream_mps_t* const stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	if (stream_mps->current_mps_command_buffer && stream_mps->current_mps_command_buffer.commandBuffer == mtl_command_buffer)
 	{
-		current_mps_command_buffer_command_count += command_count;
-		needs_commit = may_commit && _ccv_nnc_mps_current_command_buffer_needs_commit();
+		stream_mps->current_mps_command_buffer_command_count += command_count;
+		needs_commit = may_commit && _ccv_nnc_mps_current_command_buffer_needs_commit(stream_mps);
 	}
-	os_unfair_lock_unlock(&queue_lock);
 	if (needs_commit)
-		ccv_nnc_stream_compat_commit(0);
+		ccv_nnc_stream_compat_commit(stream_context);
 }
 
 void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context)
 {
+	if (!stream_context)
+		return;
 	MPSCommandBuffer* command_buffer = nil;
 	id<MTLCommandBuffer> mtl_command_buffer = nil;
-	os_unfair_lock_lock(&queue_lock);
-	command_buffer = current_mps_command_buffer;
-	current_mps_command_buffer = nil;
-	_ccv_nnc_mps_reset_current_command_buffer_accounting();
+	ccv_nnc_stream_mps_t* const stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	command_buffer = stream_mps->current_mps_command_buffer;
+	stream_mps->current_mps_command_buffer = nil;
+	_ccv_nnc_mps_reset_current_command_buffer_accounting(stream_mps);
 	if (command_buffer)
 		mtl_command_buffer = [command_buffer.commandBuffer retain];
-	os_unfair_lock_unlock(&queue_lock);
 	if (!command_buffer)
 		return;
 	const int buffer_size = _ccv_nnc_mps_tracked_command_buffer_watermark();
@@ -859,13 +870,6 @@ int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* c
 	return 0;
 }
 
-typedef struct {
-	ccv_nnc_stream_context_t super;
-	// Left for implementation yet, the CPU support for stream context.
-	size_t workspace_size;
-	void* workspace;
-} ccv_nnc_stream_mps_t;
-
 static __thread ccv_nnc_stream_mps_t ccv_nnc_per_thread_stream_mps = {
 	.super = {
 		.type = CCV_STREAM_CONTEXT_CPU,
@@ -940,31 +944,21 @@ MTLCommandBatch* ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_conte
 		MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		return ccv_nnc_start_command_batch_from_command_buffer((__bridge mtl_command_buffer_t*)command_buffer.commandBuffer, 0);
 	}
-	ccv_nnc_stream_compat_commit(0);
 	return ccv_nnc_start_command_batch((__bridge mtl_command_queue_t*)_ccv_nnc_default_queue());
 }
 
 MPSCommandBuffer* ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context)
 {
 	if (!stream_context)
-	{
-		ccv_nnc_stream_compat_commit(0);
 		return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
-	}
-	os_unfair_lock_lock(&queue_lock);
-	MPSCommandBuffer* command_buffer = [current_mps_command_buffer retain];
-	os_unfair_lock_unlock(&queue_lock);
+	ccv_nnc_stream_mps_t* const stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+	MPSCommandBuffer* command_buffer = [stream_mps->current_mps_command_buffer retain];
 	if (command_buffer)
 		return [command_buffer autorelease];
 	MPSCommandBuffer* const new_command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
-	os_unfair_lock_lock(&queue_lock);
-	if (!current_mps_command_buffer)
-	{
-		current_mps_command_buffer = [new_command_buffer retain];
-		_ccv_nnc_mps_reset_current_command_buffer_accounting();
-	}
-	command_buffer = [current_mps_command_buffer retain];
-	os_unfair_lock_unlock(&queue_lock);
+	stream_mps->current_mps_command_buffer = [new_command_buffer retain];
+	_ccv_nnc_mps_reset_current_command_buffer_accounting(stream_mps);
+	command_buffer = [stream_mps->current_mps_command_buffer retain];
 	return [command_buffer autorelease];
 }
 
@@ -992,9 +986,9 @@ void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* cons
 			id<MTLCommandBuffer> const command_buffer = (id<MTLCommandBuffer>)command_batch->command_buffer;
 			const int command_count = command_batch->batched_command_count;
 			ccv_nnc_finish_command_batch(command_batch);
-			_ccv_nnc_mps_account_current_command_buffer(command_buffer, command_count, 1);
+			_ccv_nnc_mps_account_current_command_buffer(stream_context, command_buffer, command_count, 1);
 		} else
-			_ccv_nnc_mps_account_current_command_buffer(mps_command_buffer.commandBuffer, 1, 1);
+			_ccv_nnc_mps_account_current_command_buffer(stream_context, mps_command_buffer.commandBuffer, 1, 1);
 		return;
 	}
 	id<MTLCommandBuffer> mtl_command_buffer = mps_command_buffer ? mps_command_buffer.commandBuffer : (id<MTLCommandBuffer>)command_batch->command_buffer;
@@ -1024,18 +1018,17 @@ MPSCommandBuffer* ccv_nnc_stream_context_finish_command_batch_encoding_and_retur
 	command_batch->command_buffer = 0;
 	ccv_nnc_finish_command_batch(command_batch);
 	if (stream_context)
-		_ccv_nnc_mps_account_current_command_buffer(command_buffer, command_count, 0);
+		_ccv_nnc_mps_account_current_command_buffer(stream_context, command_buffer, command_count, 0);
 	MPSCommandBuffer* const mps_command_buffer = [MPSCommandBuffer commandBufferWithCommandBuffer:command_buffer];
 	if (stream_context)
 	{
-		os_unfair_lock_lock(&queue_lock);
-		if (current_mps_command_buffer && current_mps_command_buffer.commandBuffer == command_buffer)
+		ccv_nnc_stream_mps_t* const stream_mps = (ccv_nnc_stream_mps_t*)stream_context;
+		if (stream_mps->current_mps_command_buffer && stream_mps->current_mps_command_buffer.commandBuffer == command_buffer)
 		{
 			[mps_command_buffer retain];
-			[current_mps_command_buffer release];
-			current_mps_command_buffer = mps_command_buffer;
+			[stream_mps->current_mps_command_buffer release];
+			stream_mps->current_mps_command_buffer = mps_command_buffer;
 		}
-		os_unfair_lock_unlock(&queue_lock);
 	}
 	return mps_command_buffer;
 }
