@@ -171,11 +171,14 @@ int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer,
 	return encoded;
 }
 
-static os_unfair_lock queue_lock; 
+static os_unfair_lock queue_lock;
+static os_unfair_lock buffer_lock;
 #define CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK (32)
 #define CCV_NNC_MPS_DEFAULT_COMMAND_BUFFER_WATERMARK (8)
 static MPSCommandBuffer* current_mps_command_buffer;
 static int current_mps_command_buffer_command_count;
+static __thread MPSCommandBuffer* checked_out_mps_command_buffer;
+static __thread int checked_out_mps_command_buffer_command_count;
 static id<MTLCommandBuffer> old_last_command_buffers[CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK];
 static id<MTLCommandBuffer> last_command_buffer;
 
@@ -694,15 +697,20 @@ static int _ccv_nnc_mps_tracked_command_buffer_watermark(void)
 	return ccv_min(command_buffers_watermark, CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK);
 }
 
-static int _ccv_nnc_mps_current_command_buffer_needs_commit(void)
+static int _ccv_nnc_mps_current_command_buffer_needs_commit(const int command_count)
 {
 	const int encoders_per_command_buffer = _ccv_nnc_mps_encoders_per_command_buffer();
-	return current_mps_command_buffer_command_count >= encoders_per_command_buffer;
+	return command_count >= encoders_per_command_buffer;
 }
 
 static void _ccv_nnc_mps_reset_current_command_buffer_accounting(void)
 {
 	current_mps_command_buffer_command_count = 0;
+}
+
+static void _ccv_nnc_mps_reset_checked_out_command_buffer_accounting(void)
+{
+	checked_out_mps_command_buffer_command_count = 0;
 }
 
 static void _ccv_nnc_mps_release_tracked_command_buffer(id<MTLCommandBuffer> mtl_command_buffer, const int buffer_size)
@@ -751,35 +759,11 @@ static void _ccv_nnc_mps_track_submitted_command_buffer(id<MTLCommandBuffer> mtl
 	[old_last_command_buffer release];
 }
 
-static void _ccv_nnc_mps_account_current_command_buffer(id<MTLCommandBuffer> const mtl_command_buffer, const int command_count, const int may_commit)
+static void _ccv_nnc_mps_commit_command_buffer(MPSCommandBuffer* const command_buffer)
 {
-	if (!mtl_command_buffer || command_count <= 0)
-		return;
-	int needs_commit = 0;
-	os_unfair_lock_lock(&queue_lock);
-	if (current_mps_command_buffer && current_mps_command_buffer.commandBuffer == mtl_command_buffer)
-	{
-		current_mps_command_buffer_command_count += command_count;
-		needs_commit = may_commit && _ccv_nnc_mps_current_command_buffer_needs_commit();
-	}
-	os_unfair_lock_unlock(&queue_lock);
-	if (needs_commit)
-		ccv_nnc_stream_compat_commit(0);
-}
-
-void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context)
-{
-	MPSCommandBuffer* command_buffer = nil;
-	id<MTLCommandBuffer> mtl_command_buffer = nil;
-	os_unfair_lock_lock(&queue_lock);
-	command_buffer = current_mps_command_buffer;
-	current_mps_command_buffer = nil;
-	_ccv_nnc_mps_reset_current_command_buffer_accounting();
-	if (command_buffer)
-		mtl_command_buffer = [command_buffer.commandBuffer retain];
-	os_unfair_lock_unlock(&queue_lock);
 	if (!command_buffer)
 		return;
+	id<MTLCommandBuffer> const mtl_command_buffer = [command_buffer.commandBuffer retain];
 	const int buffer_size = _ccv_nnc_mps_tracked_command_buffer_watermark();
 	[mtl_command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
 		_ccv_nnc_mps_release_tracked_command_buffer(buffer, buffer_size);
@@ -788,6 +772,43 @@ void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context
 	_ccv_nnc_mps_track_submitted_command_buffer(mtl_command_buffer, buffer_size);
 	[command_buffer release];
 	[mtl_command_buffer release];
+}
+
+static void _ccv_nnc_mps_account_current_command_buffer(id<MTLCommandBuffer> const mtl_command_buffer, const int command_count, const int may_commit)
+{
+	if (!mtl_command_buffer || !checked_out_mps_command_buffer || checked_out_mps_command_buffer.commandBuffer != mtl_command_buffer)
+		return;
+	if (command_count > 0)
+		checked_out_mps_command_buffer_command_count += command_count;
+	if (!may_commit)
+		return;
+	MPSCommandBuffer* command_buffer = nil;
+	const int needs_commit = _ccv_nnc_mps_current_command_buffer_needs_commit(checked_out_mps_command_buffer_command_count);
+	os_unfair_lock_lock(&buffer_lock);
+	if (!current_mps_command_buffer && !needs_commit)
+	{
+		current_mps_command_buffer = checked_out_mps_command_buffer;
+		current_mps_command_buffer_command_count = checked_out_mps_command_buffer_command_count;
+		checked_out_mps_command_buffer = nil;
+		_ccv_nnc_mps_reset_checked_out_command_buffer_accounting();
+	} else {
+		command_buffer = checked_out_mps_command_buffer;
+		checked_out_mps_command_buffer = nil;
+		_ccv_nnc_mps_reset_checked_out_command_buffer_accounting();
+	}
+	os_unfair_lock_unlock(&buffer_lock);
+	_ccv_nnc_mps_commit_command_buffer(command_buffer);
+}
+
+void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context)
+{
+	MPSCommandBuffer* command_buffer = nil;
+	os_unfair_lock_lock(&buffer_lock);
+	command_buffer = current_mps_command_buffer;
+	current_mps_command_buffer = nil;
+	_ccv_nnc_mps_reset_current_command_buffer_accounting();
+	os_unfair_lock_unlock(&buffer_lock);
+	_ccv_nnc_mps_commit_command_buffer(command_buffer);
 }
 
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
@@ -951,21 +972,21 @@ MPSCommandBuffer* ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream
 		ccv_nnc_stream_compat_commit(0);
 		return [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 	}
-	os_unfair_lock_lock(&queue_lock);
-	MPSCommandBuffer* command_buffer = [current_mps_command_buffer retain];
-	os_unfair_lock_unlock(&queue_lock);
-	if (command_buffer)
-		return [command_buffer autorelease];
-	MPSCommandBuffer* const new_command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
-	os_unfair_lock_lock(&queue_lock);
-	if (!current_mps_command_buffer)
+	if (checked_out_mps_command_buffer)
+		return [[checked_out_mps_command_buffer retain] autorelease];
+	os_unfair_lock_lock(&buffer_lock);
+	MPSCommandBuffer* command_buffer = current_mps_command_buffer;
+	current_mps_command_buffer = nil;
+	checked_out_mps_command_buffer_command_count = current_mps_command_buffer_command_count;
+	_ccv_nnc_mps_reset_current_command_buffer_accounting();
+	os_unfair_lock_unlock(&buffer_lock);
+	if (!command_buffer)
 	{
-		current_mps_command_buffer = [new_command_buffer retain];
-		_ccv_nnc_mps_reset_current_command_buffer_accounting();
+		command_buffer = [[MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()] retain];
+		_ccv_nnc_mps_reset_checked_out_command_buffer_accounting();
 	}
-	command_buffer = [current_mps_command_buffer retain];
-	os_unfair_lock_unlock(&queue_lock);
-	return [command_buffer autorelease];
+	checked_out_mps_command_buffer = command_buffer;
+	return [[command_buffer retain] autorelease];
 }
 
 int ccv_nnc_mps_queue_watermark(void)
@@ -1028,14 +1049,12 @@ MPSCommandBuffer* ccv_nnc_stream_context_finish_command_batch_encoding_and_retur
 	MPSCommandBuffer* const mps_command_buffer = [MPSCommandBuffer commandBufferWithCommandBuffer:command_buffer];
 	if (stream_context)
 	{
-		os_unfair_lock_lock(&queue_lock);
-		if (current_mps_command_buffer && current_mps_command_buffer.commandBuffer == command_buffer)
+		if (checked_out_mps_command_buffer && checked_out_mps_command_buffer.commandBuffer == command_buffer)
 		{
 			[mps_command_buffer retain];
-			[current_mps_command_buffer release];
-			current_mps_command_buffer = mps_command_buffer;
+			[checked_out_mps_command_buffer release];
+			checked_out_mps_command_buffer = mps_command_buffer;
 		}
-		os_unfair_lock_unlock(&queue_lock);
 	}
 	return mps_command_buffer;
 }
