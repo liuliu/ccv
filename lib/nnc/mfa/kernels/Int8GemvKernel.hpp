@@ -14,6 +14,8 @@ struct Int8GemvKernel {
 
   uint8_t mrows;
 
+  uint32_t format;
+
   GEMMOperandPrecision memoryPrecision;
 
   Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device);

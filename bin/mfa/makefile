@@ -51,7 +51,9 @@ INT8_GEMV_OBJS = \
 	Int8GemvDescriptor.local.o \
 	Int8GemvKernel.local.o \
 	Dequantize8iRowwiseDescriptor.local.o \
-	Dequantize8iRowwiseKernel.local.o
+	Dequantize8iRowwiseKernel.local.o \
+	Dequantize8iRowwiseXDescriptor.local.o \
+	Dequantize8iRowwiseXKernel.local.o
 
 NA_CONV_OBJS = \
 	NAConv3DDescriptor.local.o \
@@ -263,6 +265,12 @@ Dequantize8iRowwiseDescriptor.local.o: ../../lib/nnc/mfa/kernels/Dequantize8iRow
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 Dequantize8iRowwiseKernel.local.o: ../../lib/nnc/mfa/kernels/Dequantize8iRowwiseKernel.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+Dequantize8iRowwiseXDescriptor.local.o: ../../lib/nnc/mfa/kernels/Dequantize8iRowwiseXDescriptor.cpp
+	$(CC) $< -o $@ -c $(CFLAGS)
+
+Dequantize8iRowwiseXKernel.local.o: ../../lib/nnc/mfa/kernels/Dequantize8iRowwiseXKernel.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 CodeWriter.local.o: ../../lib/nnc/mfa/kernels/CodeWriter.cpp

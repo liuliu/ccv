@@ -7,6 +7,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -14,9 +15,15 @@
 #include <vector>
 #include <QuartzCore/QuartzCore.h>
 
+extern "C" {
+#include "ccv.h"
+#include "nnc/ccv_nnc.h"
+}
 #include "nnc/mfa/ccv_nnc_mfa_error.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseDescriptor.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseKernel.hpp"
+#include "nnc/mfa/kernels/Dequantize8iRowwiseXDescriptor.hpp"
+#include "nnc/mfa/kernels/Dequantize8iRowwiseXKernel.hpp"
 #include "nnc/mfa/kernels/DeviceProperties.hpp"
 #include "nnc/mfa/kernels/GEMMOperandPrecision.hpp"
 #include "nnc/mfa/kernels/GemvDescriptor.hpp"
@@ -65,8 +72,15 @@ struct Config {
   int sleep_ms = 200;
   uint32_t mrows = 1;
   bool fused_bias = true;
+  bool all_formats = false;
   std::string dtype = "fp16";
+  std::string format = "rowwise";
   std::vector<Shape> shapes;
+};
+
+struct FormatInfo {
+  uint32_t value;
+  const char* name;
 };
 
 struct Stats {
@@ -87,7 +101,23 @@ struct Pipelines {
   Dequantize8iRowwiseKernel* dequant_kernel = nullptr;
   NS::SharedPtr<MTL::ComputePipelineState> dequant;
   NS::SharedPtr<MTL::ComputePipelineState> scaled;
+  Dequantize8iRowwiseXKernel* dequant_x_kernel = nullptr;
+  NS::SharedPtr<MTL::ComputePipelineState> dequant_x;
+  NS::SharedPtr<MTL::ComputePipelineState> scaled_x;
+  uint32_t dequant_x_dispatch_items = 0;
   uint32_t gemv_rows_per_threadgroup = 0;
+};
+
+constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
+
+constexpr FormatInfo kPackedFormats[] = {
+  { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
+  { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
+  { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ2_S, "iq2_s" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ2_XS, "iq2_xs" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, "iq3_xxs" },
 };
 
 uint32_t ceil_div(const uint32_t x, const uint32_t y)
@@ -187,13 +217,115 @@ GEMMOperandPrecision precision_for_dtype(const std::string& dtype)
   return GEMMOperandPrecision::FP16;
 }
 
+uint32_t format_from_name(const std::string& name)
+{
+  if (name == kRowwiseFormat.name)
+    return kRowwiseFormat.value;
+  for (const FormatInfo format : kPackedFormats)
+    if (name == format.name)
+      return format.value;
+  return UINT32_MAX;
+}
+
+std::vector<FormatInfo> selected_formats(const Config& config)
+{
+  std::vector<FormatInfo> formats;
+  if (config.all_formats) {
+    formats.push_back(kRowwiseFormat);
+    formats.insert(formats.end(), std::begin(kPackedFormats), std::end(kPackedFormats));
+    return formats;
+  }
+  const uint32_t value = format_from_name(config.format);
+  if (value == kRowwiseFormat.value) {
+    formats.push_back(kRowwiseFormat);
+  } else {
+    for (const FormatInfo format : kPackedFormats)
+      if (format.value == value)
+        formats.push_back(format);
+  }
+  return formats;
+}
+
+uint32_t rowwise_x_group_size(const uint32_t format)
+{
+  switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q4_K:
+    case CCV_NNC_QX_8I_ROWWISE_Q3_K:
+    case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
+      return 16;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+      return 8;
+    default:
+      return 0;
+  }
+}
+
+uint32_t rowwise_x_group_bits(const uint32_t format)
+{
+  switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q4_K:
+      return 72;
+    case CCV_NNC_QX_8I_ROWWISE_Q3_K:
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
+      return 56;
+    case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
+      return 42;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+      return 21;
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+      return 28;
+    default:
+      return 0;
+  }
+}
+
+template <typename T>
+std::vector<uint8_t> make_packed_rowwise_x(
+    const std::vector<uint8_t>& rowwise,
+    const uint32_t rows,
+    const uint32_t cols,
+    const uint32_t format)
+{
+  const uint32_t group_size = rowwise_x_group_size(format);
+  const uint32_t group_bits = rowwise_x_group_bits(format);
+  const uint32_t groups_per_row = ceil_div(cols, group_size);
+  const size_t payload_bits = (size_t)rows * groups_per_row * group_bits;
+  const size_t payload_bytes = (payload_bits + 7) / 8;
+  const size_t scale_offset = align_up(payload_bytes, 128);
+  const size_t rowwise_scale_offset = align_up((size_t)rows * cols, 128);
+  std::vector<uint8_t> packed(scale_offset + (size_t)rows * sizeof(T), 0);
+  for (size_t i = 0; i < scale_offset; ++i)
+    packed[i] = (uint8_t)((i * 131 + format * 17 + 23) & 0xff);
+  if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K || format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
+    const uint32_t groups_per_row = ceil_div(cols, group_size);
+    const uint32_t group_bytes = format == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 9 : 7;
+    for (uint32_t g = 0; g < rows * groups_per_row; ++g)
+      packed[(size_t)g * group_bytes + group_bytes - 1] = 0x80;
+  } else if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K) {
+    const uint32_t groups_per_row = ceil_div(cols, group_size);
+    const uint32_t groups = rows * groups_per_row;
+    for (uint32_t g = 0; g < groups; ++g) {
+      const size_t metadata_bit = (size_t)g * group_bits + 32;
+      for (uint32_t b = 0; b < 10; ++b)
+        packed[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
+    }
+  }
+  std::memcpy(packed.data() + scale_offset, rowwise.data() + rowwise_scale_offset, (size_t)rows * sizeof(T));
+  return packed;
+}
+
 Pipelines create_pipelines(
     MTL::Device* const device,
     ShaderCache& shader_cache,
     const Shape shape,
     const GEMMOperandPrecision precision,
     const uint32_t mrows,
-    const bool fused_bias)
+    const bool fused_bias,
+    const uint32_t packed_format)
 {
   DeviceProperties dprops{};
 
@@ -216,17 +348,52 @@ Pipelines create_pipelines(
   Int8GemvDescriptor scaled_desc;
   scaled_desc.fusedBias = fused_bias ? 1 : 0;
   scaled_desc.mrows = (uint8_t)mrows;
+  scaled_desc.format = 0;
   scaled_desc.memoryPrecision = precision;
   scaled_desc.nrows = shape.rows;
   scaled_desc.ncols = shape.cols;
   auto scaled_value = shader_cache.findKernel<Int8GemvKernel, Int8GemvDescriptor, Int8GemvKernelDescriptor>(
       scaled_desc, device, dprops);
 
+  PipelineValue<Dequantize8iRowwiseXKernel>* dequant_x_value = nullptr;
+  PipelineValue<Int8GemvKernel>* scaled_x_value = nullptr;
+  if (packed_format != 0) {
+    Dequantize8iRowwiseXDescriptor dequant_x_desc;
+    dequant_x_desc.format = packed_format;
+    dequant_x_desc.scaleSize = precision == GEMMOperandPrecision::FP32 ? 4 : 2;
+    dequant_x_desc.rowLength = shape.cols;
+    dequant_x_desc.length = shape.rows * shape.cols;
+    dequant_x_value = shader_cache.findKernel<Dequantize8iRowwiseXKernel, Dequantize8iRowwiseXDescriptor, Dequantize8iRowwiseXKernelDescriptor>(
+        dequant_x_desc, device, dprops);
+
+    Int8GemvDescriptor scaled_x_desc;
+    scaled_x_desc.fusedBias = fused_bias ? 1 : 0;
+    scaled_x_desc.mrows = (uint8_t)mrows;
+    scaled_x_desc.format = packed_format;
+    scaled_x_desc.memoryPrecision = precision;
+    scaled_x_desc.nrows = shape.rows;
+    scaled_x_desc.ncols = shape.cols;
+    scaled_x_value = shader_cache.findKernel<Int8GemvKernel, Int8GemvDescriptor, Int8GemvKernelDescriptor>(
+        scaled_x_desc, device, dprops);
+  }
+
   Pipelines pipelines;
   pipelines.gemv = gemv_value->pipeline;
   pipelines.dequant_kernel = dequant_value->kernel;
   pipelines.dequant = dequant_value->pipeline;
   pipelines.scaled = scaled_value->pipeline;
+  if (dequant_x_value) {
+    pipelines.dequant_x_kernel = dequant_x_value->kernel;
+    pipelines.dequant_x = dequant_x_value->pipeline;
+    Dequantize8iRowwiseXDescriptor dequant_x_desc;
+    dequant_x_desc.format = packed_format;
+    dequant_x_desc.scaleSize = precision == GEMMOperandPrecision::FP32 ? 4 : 2;
+    dequant_x_desc.rowLength = shape.cols;
+    dequant_x_desc.length = shape.rows * shape.cols;
+    pipelines.dequant_x_dispatch_items = dequant_x_desc.dispatchItems();
+  }
+  if (scaled_x_value)
+    pipelines.scaled_x = scaled_x_value->pipeline;
   pipelines.gemv_rows_per_threadgroup = GemvDescriptor::rowsPerThreadgroup(device);
   return pipelines;
 }
@@ -338,6 +505,41 @@ void encode_scaled_gemv(
       MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
 }
 
+void encode_dequant_x(
+    MTL::ComputeCommandEncoder* const encoder,
+    const Pipelines& pipelines,
+    const Shape shape,
+    MTL::Buffer* const quantized,
+    MTL::Buffer* const rowwise)
+{
+  encoder->setComputePipelineState(pipelines.dequant_x.get());
+  encoder->setBuffer(quantized, 0, 0);
+  encoder->setBuffer(rowwise, 0, 1);
+  encoder->dispatchThreadgroups(
+      pipelines.dequant_x_kernel->gridSize(pipelines.dequant_x_dispatch_items),
+      MTL::Size(256, 1, 1));
+}
+
+void encode_scaled_x_gemv(
+    MTL::ComputeCommandEncoder* const encoder,
+    const Pipelines& pipelines,
+    const Shape shape,
+    MTL::Buffer* const quantized,
+    MTL::Buffer* const vector,
+    MTL::Buffer* const output,
+    MTL::Buffer* const bias)
+{
+  encoder->setComputePipelineState(pipelines.scaled_x.get());
+  encoder->setBuffer(quantized, 0, 0);
+  encoder->setBuffer(vector, 0, 1);
+  encoder->setBuffer(output, 0, 2);
+  if (bias)
+    encoder->setBuffer(bias, 0, 3);
+  encoder->dispatchThreadgroups(
+      MTL::Size(ceil_div(shape.rows, kInt8GemvRowsPerThreadgroup), 1, 1),
+      MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
+}
+
 double run_raw_once(
     MTL::CommandQueue* const command_queue,
     const Pipelines& pipelines,
@@ -398,6 +600,52 @@ double run_scaled_once(
   for (int i = 0; i < duplicated_dispatches; ++i) {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
     encode_scaled_gemv(encoder.get(), pipelines, shape, quantized, vector, output, bias);
+    encoder->endEncoding();
+  }
+  return finish_and_time(command_buffer, duplicated_dispatches);
+}
+
+double run_dequant_x_scaled_once(
+    MTL::CommandQueue* const command_queue,
+    const Pipelines& pipelines,
+    const Shape shape,
+    const int duplicated_dispatches,
+    MTL::Buffer* const quantized,
+    MTL::Buffer* const rowwise,
+    MTL::Buffer* const vector,
+    MTL::Buffer* const output,
+    MTL::Buffer* const bias)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  for (int i = 0; i < duplicated_dispatches; ++i) {
+    {
+      auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+      encode_dequant_x(encoder.get(), pipelines, shape, quantized, rowwise);
+      encoder->endEncoding();
+    }
+    {
+      auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+      encode_scaled_gemv(encoder.get(), pipelines, shape, rowwise, vector, output, bias);
+      encoder->endEncoding();
+    }
+  }
+  return finish_and_time(command_buffer, duplicated_dispatches);
+}
+
+double run_scaled_x_once(
+    MTL::CommandQueue* const command_queue,
+    const Pipelines& pipelines,
+    const Shape shape,
+    const int duplicated_dispatches,
+    MTL::Buffer* const quantized,
+    MTL::Buffer* const vector,
+    MTL::Buffer* const output,
+    MTL::Buffer* const bias)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  for (int i = 0; i < duplicated_dispatches; ++i) {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encode_scaled_x_gemv(encoder.get(), pipelines, shape, quantized, vector, output, bias);
     encoder->endEncoding();
   }
   return finish_and_time(command_buffer, duplicated_dispatches);
@@ -479,6 +727,7 @@ int run_shape(
     ShaderCache& shader_cache,
     const Config& config,
     const Shape shape,
+    const FormatInfo format,
     const GEMMOperandPrecision precision)
 {
   const size_t element_bytes = sizeof(T);
@@ -491,42 +740,71 @@ int run_shape(
   auto original_matrix = make_matrix<T>(shape.rows, shape.cols, 0.015625f, 2);
   std::vector<T> dense_matrix;
   auto quantized = quantize_rowwise(original_matrix, shape.rows, shape.cols, &dense_matrix);
+  std::vector<uint8_t> packed_quantized;
+  if (format.value != 0) {
+    packed_quantized = make_packed_rowwise_x<T>(quantized, shape.rows, shape.cols, format.value);
+    if (packed_quantized.empty())
+      return 1;
+  }
   auto vector = make_matrix<T>(config.mrows, shape.cols, 0.03125f, 3);
   auto bias = make_bias<T>(shape.rows);
 
   auto quantized_stage = NS::TransferPtr(device->newBuffer(quantized.data(), quantized.size(), kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> packed_quantized_stage;
+  if (format.value != 0)
+    packed_quantized_stage = NS::TransferPtr(device->newBuffer(packed_quantized.data(), packed_quantized.size(), kSharedResourceOptions));
   auto dense_stage = NS::TransferPtr(device->newBuffer(dense_matrix.data(), dense_bytes, kSharedResourceOptions));
   auto vector_stage = NS::TransferPtr(device->newBuffer(vector.data(), vector_bytes, kSharedResourceOptions));
   auto bias_stage = NS::TransferPtr(device->newBuffer(bias.data(), bias_bytes, kSharedResourceOptions));
   auto raw_output_stage = NS::TransferPtr(device->newBuffer(output_bytes, kSharedResourceOptions));
   auto dequant_output_stage = NS::TransferPtr(device->newBuffer(output_bytes, kSharedResourceOptions));
   auto scaled_output_stage = NS::TransferPtr(device->newBuffer(output_bytes, kSharedResourceOptions));
+  NS::SharedPtr<MTL::Buffer> dequant_x_output_stage;
+  NS::SharedPtr<MTL::Buffer> scaled_x_output_stage;
+  if (format.value != 0) {
+    dequant_x_output_stage = NS::TransferPtr(device->newBuffer(output_bytes, kSharedResourceOptions));
+    scaled_x_output_stage = NS::TransferPtr(device->newBuffer(output_bytes, kSharedResourceOptions));
+  }
 
   auto quantized_buffer = NS::TransferPtr(device->newBuffer(quantized.size(), kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> packed_quantized_buffer;
+  if (format.value != 0)
+    packed_quantized_buffer = NS::TransferPtr(device->newBuffer(packed_quantized.size(), kPrivateResourceOptions));
   auto dense_buffer = NS::TransferPtr(device->newBuffer(dense_bytes, kPrivateResourceOptions));
   auto dequant_dense_buffer = NS::TransferPtr(device->newBuffer(dense_bytes, kPrivateResourceOptions));
+  auto dequant_x_rowwise_buffer = NS::TransferPtr(device->newBuffer(quantized.size(), kPrivateResourceOptions));
   auto vector_buffer = NS::TransferPtr(device->newBuffer(vector_bytes, kPrivateResourceOptions));
   auto bias_buffer = NS::TransferPtr(device->newBuffer(bias_bytes, kPrivateResourceOptions));
   auto raw_output_buffer = NS::TransferPtr(device->newBuffer(output_bytes, kPrivateResourceOptions));
   auto dequant_output_buffer = NS::TransferPtr(device->newBuffer(output_bytes, kPrivateResourceOptions));
   auto scaled_output_buffer = NS::TransferPtr(device->newBuffer(output_bytes, kPrivateResourceOptions));
+  NS::SharedPtr<MTL::Buffer> dequant_x_output_buffer;
+  NS::SharedPtr<MTL::Buffer> scaled_x_output_buffer;
+  if (format.value != 0) {
+    dequant_x_output_buffer = NS::TransferPtr(device->newBuffer(output_bytes, kPrivateResourceOptions));
+    scaled_x_output_buffer = NS::TransferPtr(device->newBuffer(output_bytes, kPrivateResourceOptions));
+  }
 
   if (!quantized_stage || !dense_stage || !vector_stage || !bias_stage ||
       !raw_output_stage || !dequant_output_stage || !scaled_output_stage ||
       !quantized_buffer || !dense_buffer || !dequant_dense_buffer || !vector_buffer ||
-      !bias_buffer || !raw_output_buffer || !dequant_output_buffer || !scaled_output_buffer) {
+      !bias_buffer || !raw_output_buffer || !dequant_output_buffer || !scaled_output_buffer ||
+      (format.value != 0 && (!packed_quantized_stage || !dequant_x_output_stage || !scaled_x_output_stage ||
+          !packed_quantized_buffer || !dequant_x_rowwise_buffer || !dequant_x_output_buffer || !scaled_x_output_buffer))) {
     std::cerr << "failed to allocate buffers for shape rows=" << shape.rows
               << " cols=" << shape.cols << '\n';
     return 1;
   }
 
   upload_buffer(command_queue, quantized_stage.get(), quantized_buffer.get(), quantized.size());
+  if (format.value != 0)
+    upload_buffer(command_queue, packed_quantized_stage.get(), packed_quantized_buffer.get(), packed_quantized.size());
   upload_buffer(command_queue, dense_stage.get(), dense_buffer.get(), dense_bytes);
   upload_buffer(command_queue, vector_stage.get(), vector_buffer.get(), vector_bytes);
   upload_buffer(command_queue, bias_stage.get(), bias_buffer.get(), bias_bytes);
 
   auto pool = NS::AutoreleasePool::alloc()->init();
-  Pipelines pipelines = create_pipelines(device, shader_cache, shape, precision, config.mrows, config.fused_bias);
+  Pipelines pipelines = create_pipelines(device, shader_cache, shape, precision, config.mrows, config.fused_bias, format.value);
   pool->drain();
 
   MTL::Buffer* const active_bias = config.fused_bias ? bias_buffer.get() : nullptr;
@@ -534,10 +812,18 @@ int run_shape(
   (void)run_raw_once(command_queue, pipelines, shape, 1, dense_buffer.get(), vector_buffer.get(), raw_output_buffer.get(), active_bias);
   (void)run_dequant_gemv_once(command_queue, pipelines, shape, 1, quantized_buffer.get(), dequant_dense_buffer.get(), vector_buffer.get(), dequant_output_buffer.get(), active_bias);
   (void)run_scaled_once(command_queue, pipelines, shape, 1, quantized_buffer.get(), vector_buffer.get(), scaled_output_buffer.get(), active_bias);
+  if (format.value != 0) {
+    (void)run_dequant_x_scaled_once(command_queue, pipelines, shape, 1, packed_quantized_buffer.get(), dequant_x_rowwise_buffer.get(), vector_buffer.get(), dequant_x_output_buffer.get(), active_bias);
+    (void)run_scaled_x_once(command_queue, pipelines, shape, 1, packed_quantized_buffer.get(), vector_buffer.get(), scaled_x_output_buffer.get(), active_bias);
+  }
 
   download_buffer(command_queue, raw_output_buffer.get(), raw_output_stage.get(), output_bytes);
   download_buffer(command_queue, dequant_output_buffer.get(), dequant_output_stage.get(), output_bytes);
   download_buffer(command_queue, scaled_output_buffer.get(), scaled_output_stage.get(), output_bytes);
+  if (format.value != 0) {
+    download_buffer(command_queue, dequant_x_output_buffer.get(), dequant_x_output_stage.get(), output_bytes);
+    download_buffer(command_queue, scaled_x_output_buffer.get(), scaled_x_output_stage.get(), output_bytes);
+  }
   std::vector<T> raw_output((size_t)config.mrows * shape.rows);
   std::vector<T> dequant_output((size_t)config.mrows * shape.rows);
   std::vector<T> scaled_output((size_t)config.mrows * shape.rows);
@@ -546,10 +832,20 @@ int run_shape(
   std::memcpy(scaled_output.data(), scaled_output_stage->contents(), output_bytes);
   const ValidationStats dequant_validation = validate_output(raw_output, dequant_output);
   const ValidationStats scaled_validation = validate_output(raw_output, scaled_output);
+  ValidationStats scaled_x_validation;
+  if (format.value != 0) {
+    std::vector<T> dequant_x_output((size_t)config.mrows * shape.rows);
+    std::vector<T> scaled_x_output((size_t)config.mrows * shape.rows);
+    std::memcpy(dequant_x_output.data(), dequant_x_output_stage->contents(), output_bytes);
+    std::memcpy(scaled_x_output.data(), scaled_x_output_stage->contents(), output_bytes);
+    scaled_x_validation = validate_output(dequant_x_output, scaled_x_output);
+  }
 
   Stats raw_stats;
   Stats dequant_stats;
   Stats scaled_stats;
+  Stats dequant_x_stats;
+  Stats scaled_x_stats;
   if (!benchmark(config, [&]() {
         return run_raw_once(command_queue, pipelines, shape, config.duplicated_dispatches,
             dense_buffer.get(), vector_buffer.get(), raw_output_buffer.get(), active_bias);
@@ -565,6 +861,18 @@ int run_shape(
             quantized_buffer.get(), vector_buffer.get(), scaled_output_buffer.get(), active_bias);
       }, &scaled_stats))
     return 1;
+  if (format.value != 0) {
+    if (!benchmark(config, [&]() {
+          return run_dequant_x_scaled_once(command_queue, pipelines, shape, config.duplicated_dispatches,
+              packed_quantized_buffer.get(), dequant_x_rowwise_buffer.get(), vector_buffer.get(), dequant_x_output_buffer.get(), active_bias);
+        }, &dequant_x_stats))
+      return 1;
+    if (!benchmark(config, [&]() {
+          return run_scaled_x_once(command_queue, pipelines, shape, config.duplicated_dispatches,
+              packed_quantized_buffer.get(), vector_buffer.get(), scaled_x_output_buffer.get(), active_bias);
+        }, &scaled_x_stats))
+      return 1;
+  }
 
   const double flops = 2.0 * (double)config.mrows * shape.rows * shape.cols;
   const double bias_read_bytes = config.fused_bias ? (double)bias_bytes : 0.0;
@@ -574,31 +882,58 @@ int run_shape(
       (double)row_groups * vector_bytes + output_bytes + bias_read_bytes;
   const double dequant_bytes = (double)shape.rows * shape.cols + qx_scale_bytes +
       dense_bytes + raw_bytes;
+  const double packed_scaled_bytes = format.value != 0 ? (double)packed_quantized.size() +
+      (double)row_groups * vector_bytes + output_bytes + bias_read_bytes : 0;
+  const double packed_dequant_bytes = format.value != 0 ? (double)packed_quantized.size() +
+      (double)quantized.size() + scaled_bytes : 0;
 
   std::cout << "shape mrows=" << config.mrows
             << " rows=" << shape.rows << " cols=" << shape.cols
             << " dtype=" << config.dtype
+            << " format=" << format.name
             << " bias=" << (config.fused_bias ? 1 : 0)
             << " dispatches=" << config.duplicated_dispatches
             << " runs=" << config.timed_iterations
-            << " sleep_ms=" << config.sleep_ms << '\n';
+            << " sleep_ms=" << config.sleep_ms;
+  if (format.value != 0) {
+    std::cout << " rowwise_bytes=" << quantized.size()
+              << " packed_bytes=" << packed_quantized.size()
+              << " compression=" << (double)quantized.size() / (double)packed_quantized.size();
+  }
+  std::cout << '\n';
   print_validation("dequant_vs_raw", dequant_validation);
   print_validation("scaled_vs_raw", scaled_validation);
+  if (format.value != 0)
+    print_validation("packed_direct_vs_packed_dequant", scaled_x_validation);
   print_stats("raw_gemv", raw_stats, flops, raw_bytes);
   print_stats("dequant_gemv", dequant_stats, flops, dequant_bytes);
-  print_stats("scaled_gemv", scaled_stats, flops, scaled_bytes);
-  std::cout << "  scaled_vs_raw_speedup="
-            << raw_stats.best3_average_seconds / scaled_stats.best3_average_seconds
-            << " scaled_vs_dequant_speedup="
-            << dequant_stats.best3_average_seconds / scaled_stats.best3_average_seconds
-            << "\n\n";
+  print_stats("rowwise_int8_gemv", scaled_stats, flops, scaled_bytes);
+  if (format.value != 0) {
+    print_stats("packed_dequant_int8_gemv", dequant_x_stats, flops, packed_dequant_bytes);
+    print_stats("packed_direct_int8_gemv", scaled_x_stats, flops, packed_scaled_bytes);
+    std::cout << "  packed_direct_vs_rowwise_best3="
+              << scaled_stats.best3_average_seconds / scaled_x_stats.best3_average_seconds
+              << " packed_direct_vs_dequant_best3="
+              << dequant_x_stats.best3_average_seconds / scaled_x_stats.best3_average_seconds
+              << " packed_direct_time_over_rowwise="
+              << scaled_x_stats.best3_average_seconds / scaled_stats.best3_average_seconds
+              << "\n\n";
+  } else {
+    std::cout << "  scaled_vs_raw_speedup="
+              << raw_stats.best3_average_seconds / scaled_stats.best3_average_seconds
+              << " scaled_vs_dequant_speedup="
+              << dequant_stats.best3_average_seconds / scaled_stats.best3_average_seconds
+              << "\n\n";
+  }
   return 0;
 }
 
 void print_usage(const char* const argv0)
 {
-  std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] [--bias 0|1] [--mrows 1|2] [--shape rows cols] "
-            << "[--runs 20] [--warmup 3] [--dispatches 5] [--sleep-ms 200]\n";
+  std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
+            << "[--format rowwise|q4_k|q3_k|q2_k|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--bias 0|1] [--mrows 1|2] [--shape rows cols] [--runs 20] [--warmup 3] "
+            << "[--dispatches 5] [--sleep-ms 200]\n";
 }
 
 bool parse_args(int argc, char** argv, Config* const config)
@@ -609,6 +944,12 @@ bool parse_args(int argc, char** argv, Config* const config)
       config->dtype = argv[++i];
       if (config->dtype != "fp16" && config->dtype != "bf16" && config->dtype != "fp32")
         return false;
+    } else if (arg == "--format" && i + 1 < argc) {
+      config->format = argv[++i];
+      if (format_from_name(config->format) == UINT32_MAX)
+        return false;
+    } else if (arg == "--all-formats") {
+      config->all_formats = true;
     } else if (arg == "--bias" && i + 1 < argc) {
       int value = 0;
       if (!parse_int(argv[++i], &value))
@@ -664,6 +1005,16 @@ bool parse_args(int argc, char** argv, Config* const config)
     if (shape.rows == 0 || shape.cols == 0 || (shape.cols % 4) != 0)
       return false;
   }
+  const std::vector<FormatInfo> formats = selected_formats(*config);
+  if (formats.empty())
+    return false;
+  for (const FormatInfo format : formats) {
+    if (format.value == 0)
+      continue;
+    for (const Shape shape : config->shapes)
+      if ((shape.rows % 256) != 0 || (shape.cols % 256) != 0)
+        return false;
+  }
   return true;
 }
 
@@ -693,14 +1044,19 @@ int main(int argc, char** argv)
 
   ShaderCache shader_cache;
   const GEMMOperandPrecision precision = precision_for_dtype(config.dtype);
+  const std::vector<FormatInfo> formats = selected_formats(config);
   int status = 0;
   for (const Shape shape : config.shapes) {
-    if (config.dtype == "fp32")
-      status = run_shape<float>(device.get(), command_queue.get(), shader_cache, config, shape, precision);
-    else if (config.dtype == "bf16")
-      status = run_shape<bfloat16_value>(device.get(), command_queue.get(), shader_cache, config, shape, precision);
-    else
-      status = run_shape<half_float>(device.get(), command_queue.get(), shader_cache, config, shape, precision);
+    for (const FormatInfo format : formats) {
+      if (config.dtype == "fp32")
+        status = run_shape<float>(device.get(), command_queue.get(), shader_cache, config, shape, format, precision);
+      else if (config.dtype == "bf16")
+        status = run_shape<bfloat16_value>(device.get(), command_queue.get(), shader_cache, config, shape, format, precision);
+      else
+        status = run_shape<half_float>(device.get(), command_queue.get(), shader_cache, config, shape, format, precision);
+      if (status != 0)
+        break;
+    }
     if (status != 0)
       break;
   }

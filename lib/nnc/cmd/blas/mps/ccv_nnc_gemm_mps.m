@@ -354,7 +354,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 		const int use_scaled_gemv =
-			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
+			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
@@ -362,6 +362,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
+			(!w_8i_rowwise_x_format || ((w_rows % 256) == 0 && (w_cols % 256) == 0)) &&
 			!is_batched &&
 			is_contiguous &&
 			is_same_dtype &&
@@ -386,6 +387,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			ccv_nnc_mfa_scaled_gemv_params_t params = {
 				.data_type = mtl_data_type,
+				.format = w_8i_rowwise_x_format,
 				.mrows = (uint32_t)a_rows,
 				.ncols = (uint32_t)w_rows,
 				.nrows = (uint32_t)w_cols,
