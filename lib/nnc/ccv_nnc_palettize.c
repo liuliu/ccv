@@ -1,5 +1,6 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_internal.h"
+#include <float.h>
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #elif defined(HAVE_MPS)
@@ -996,6 +997,275 @@ void ccv_nnc_depalettize(const void* input, const int datatype, const int memory
 	}
 }
 
+static inline int _ccv_nnc_8i_rowwise_quantize(const double v, const double inv_scale)
+{
+	const int q = (int)lrint(v * inv_scale);
+	return ccv_clamp(q, -127, 127);
+}
+
+static float _ccv_nnc_quantize_8i_rowwise_16f(const uint16_t* const row, const size_t row_length, int8_t* const q)
+{
+	size_t j;
+	double max_abs = 0;
+	for (j = 0; j < row_length; j++)
+	{
+		float v;
+		ccv_half_precision_to_float(row + j, &v, 1);
+		max_abs = ccv_max(max_abs, fabs(v));
+	}
+	if (max_abs == 0)
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	double scale = max_abs / 127.;
+	float best_scale = 0;
+	double best_sse = DBL_MAX;
+	int k;
+	for (k = 0; k < 8; k++)
+	{
+		// Round with the scale that will actually be stored, then refit scale by least squares.
+		const float scale_f = (float)scale;
+		uint16_t scale_h;
+		float stored_scale;
+		ccv_float_to_half_precision(&scale_f, &scale_h, 1);
+		ccv_half_precision_to_float(&scale_h, &stored_scale, 1);
+		if (!(stored_scale > 0))
+			break;
+		const double inv_scale = 1. / stored_scale;
+		double sum_qx = 0;
+		double sum_qq = 0;
+		double sse = 0;
+		for (j = 0; j < row_length; j++)
+		{
+			float v_f;
+			ccv_half_precision_to_float(row + j, &v_f, 1);
+			const double v = v_f;
+			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+			const double d = v - stored_scale * qj;
+			sse += d * d;
+			sum_qx += qj * v;
+			sum_qq += qj * qj;
+		}
+		if (sse < best_sse)
+		{
+			best_sse = sse;
+			best_scale = stored_scale;
+		}
+		if (!(sum_qq > 0) || !(sum_qx > 0))
+			break;
+		const double next_scale = sum_qx / sum_qq;
+		const float next_scale_f = (float)next_scale;
+		uint16_t next_scale_h;
+		float next_stored_scale;
+		ccv_float_to_half_precision(&next_scale_f, &next_scale_h, 1);
+		ccv_half_precision_to_float(&next_scale_h, &next_stored_scale, 1);
+		if (next_stored_scale == stored_scale)
+			break;
+		scale = next_scale;
+	}
+	if (!(best_scale > 0))
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	const double inv_scale = 1. / best_scale;
+	for (j = 0; j < row_length; j++)
+	{
+		float v;
+		ccv_half_precision_to_float(row + j, &v, 1);
+		q[j] = (int8_t)_ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+	}
+	return best_scale;
+}
+
+static float _ccv_nnc_quantize_8i_rowwise_16bf(const uint16_t* const row, const size_t row_length, int8_t* const q)
+{
+	size_t j;
+	double max_abs = 0;
+	for (j = 0; j < row_length; j++)
+	{
+		float v;
+		ccv_bfloat_to_float(row + j, &v, 1);
+		max_abs = ccv_max(max_abs, fabs(v));
+	}
+	if (max_abs == 0)
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	double scale = max_abs / 127.;
+	float best_scale = 0;
+	double best_sse = DBL_MAX;
+	int k;
+	for (k = 0; k < 8; k++)
+	{
+		const float scale_f = (float)scale;
+		uint16_t scale_bf;
+		float stored_scale;
+		ccv_float_to_bfloat(&scale_f, &scale_bf, 1);
+		ccv_bfloat_to_float(&scale_bf, &stored_scale, 1);
+		if (!(stored_scale > 0))
+			break;
+		const double inv_scale = 1. / stored_scale;
+		double sum_qx = 0;
+		double sum_qq = 0;
+		double sse = 0;
+		for (j = 0; j < row_length; j++)
+		{
+			float v_f;
+			ccv_bfloat_to_float(row + j, &v_f, 1);
+			const double v = v_f;
+			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+			const double d = v - stored_scale * qj;
+			sse += d * d;
+			sum_qx += qj * v;
+			sum_qq += qj * qj;
+		}
+		if (sse < best_sse)
+		{
+			best_sse = sse;
+			best_scale = stored_scale;
+		}
+		if (!(sum_qq > 0) || !(sum_qx > 0))
+			break;
+		const double next_scale = sum_qx / sum_qq;
+		const float next_scale_f = (float)next_scale;
+		uint16_t next_scale_bf;
+		float next_stored_scale;
+		ccv_float_to_bfloat(&next_scale_f, &next_scale_bf, 1);
+		ccv_bfloat_to_float(&next_scale_bf, &next_stored_scale, 1);
+		if (next_stored_scale == stored_scale)
+			break;
+		scale = next_scale;
+	}
+	if (!(best_scale > 0))
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	const double inv_scale = 1. / best_scale;
+	for (j = 0; j < row_length; j++)
+	{
+		float v;
+		ccv_bfloat_to_float(row + j, &v, 1);
+		q[j] = (int8_t)_ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+	}
+	return best_scale;
+}
+
+static float _ccv_nnc_quantize_8i_rowwise_32f(const float* const row, const size_t row_length, int8_t* const q)
+{
+	size_t j;
+	double max_abs = 0;
+	for (j = 0; j < row_length; j++)
+		max_abs = ccv_max(max_abs, fabs(row[j]));
+	if (max_abs == 0)
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	double scale = max_abs / 127.;
+	float best_scale = 0;
+	double best_sse = DBL_MAX;
+	int k;
+	for (k = 0; k < 8; k++)
+	{
+		const float stored_scale = (float)scale;
+		if (!(stored_scale > 0))
+			break;
+		const double inv_scale = 1. / stored_scale;
+		double sum_qx = 0;
+		double sum_qq = 0;
+		double sse = 0;
+		for (j = 0; j < row_length; j++)
+		{
+			const double v = row[j];
+			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+			const double d = v - stored_scale * qj;
+			sse += d * d;
+			sum_qx += qj * v;
+			sum_qq += qj * qj;
+		}
+		if (sse < best_sse)
+		{
+			best_sse = sse;
+			best_scale = stored_scale;
+		}
+		if (!(sum_qq > 0) || !(sum_qx > 0))
+			break;
+		const double next_scale = sum_qx / sum_qq;
+		if ((float)next_scale == stored_scale)
+			break;
+		scale = next_scale;
+	}
+	if (!(best_scale > 0))
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	const double inv_scale = 1. / best_scale;
+	for (j = 0; j < row_length; j++)
+		q[j] = (int8_t)_ccv_nnc_8i_rowwise_quantize(row[j], inv_scale);
+	return best_scale;
+}
+
+static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const size_t row_length, int8_t* const q)
+{
+	size_t j;
+	double max_abs = 0;
+	for (j = 0; j < row_length; j++)
+		max_abs = ccv_max(max_abs, fabs(row[j]));
+	if (max_abs == 0)
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	double scale = max_abs / 127.;
+	double best_scale = 0;
+	double best_sse = DBL_MAX;
+	int k;
+	for (k = 0; k < 8; k++)
+	{
+		const double stored_scale = scale;
+		if (!(stored_scale > 0))
+			break;
+		const double inv_scale = 1. / stored_scale;
+		double sum_qx = 0;
+		double sum_qq = 0;
+		double sse = 0;
+		for (j = 0; j < row_length; j++)
+		{
+			const double v = row[j];
+			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
+			const double d = v - stored_scale * qj;
+			sse += d * d;
+			sum_qx += qj * v;
+			sum_qq += qj * qj;
+		}
+		if (sse < best_sse)
+		{
+			best_sse = sse;
+			best_scale = stored_scale;
+		}
+		if (!(sum_qq > 0) || !(sum_qx > 0))
+			break;
+		const double next_scale = sum_qx / sum_qq;
+		if (next_scale == stored_scale)
+			break;
+		scale = next_scale;
+	}
+	if (!(best_scale > 0))
+	{
+		memset(q, 0, row_length);
+		return 0;
+	}
+	const double inv_scale = 1. / best_scale;
+	for (j = 0; j < row_length; j++)
+		q[j] = (int8_t)_ccv_nnc_8i_rowwise_quantize(row[j], inv_scale);
+	return best_scale;
+}
+
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
@@ -1014,77 +1284,23 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			double max_abs = 0;
-			size_t j;
-			for (j = 0; j < row_length; j++)
-			{
-				float v;
-				ccv_half_precision_to_float(f16 + row_start + j, &v, 1);
-				max_abs = ccv_max(max_abs, fabs(v));
-			}
-			const float scale_f = (float)(max_abs / 127.);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16f(f16 + row_start, row_length, q + row_start);
 			ccv_float_to_half_precision(&scale_f, scales + i, 1);
-			if (scale_f == 0)
-				memset(q + row_start, 0, row_length);
-			else {
-				const double inv_scale = 1. / scale_f;
-				for (j = 0; j < row_length; j++)
-				{
-					float v;
-					ccv_half_precision_to_float(f16 + row_start + j, &v, 1);
-					const int iv = (int)lrint(v * inv_scale);
-					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
-				}
-			}
 		} parallel_endfor
 	} else if (datatype == CCV_16BF) {
 		const uint16_t* const bf16 = (const uint16_t*)input;
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			double max_abs = 0;
-			size_t j;
-			for (j = 0; j < row_length; j++)
-			{
-				float v;
-				ccv_bfloat_to_float(bf16 + row_start + j, &v, 1);
-				max_abs = ccv_max(max_abs, fabs(v));
-			}
-			const float scale_f = (float)(max_abs / 127.);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16bf(bf16 + row_start, row_length, q + row_start);
 			ccv_float_to_bfloat(&scale_f, scales + i, 1);
-			if (scale_f == 0)
-				memset(q + row_start, 0, row_length);
-			else {
-				const double inv_scale = 1. / scale_f;
-				for (j = 0; j < row_length; j++)
-				{
-					float v;
-					ccv_bfloat_to_float(bf16 + row_start + j, &v, 1);
-					const int iv = (int)lrint(v * inv_scale);
-					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
-				}
-			}
 		} parallel_endfor
 	} else if (datatype == CCV_32F) {
 		const float* const f32 = (const float*)input;
 		float* const scales = (float*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			double max_abs = 0;
-			size_t j;
-			for (j = 0; j < row_length; j++)
-				max_abs = ccv_max(max_abs, fabs(f32[row_start + j]));
-			scales[i] = (float)(max_abs / 127.);
-			if (scales[i] == 0)
-				memset(q + row_start, 0, row_length);
-			else {
-				const double inv_scale = 1. / scales[i];
-				for (j = 0; j < row_length; j++)
-				{
-					const int iv = (int)lrint(f32[row_start + j] * inv_scale);
-					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
-				}
-			}
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_32f(f32 + row_start, row_length, q + row_start);
 		} parallel_endfor
 	} else {
 		assert(datatype == CCV_64F);
@@ -1092,21 +1308,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		double* const scales = (double*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			double max_abs = 0;
-			size_t j;
-			for (j = 0; j < row_length; j++)
-				max_abs = ccv_max(max_abs, fabs(f64[row_start + j]));
-			scales[i] = max_abs / 127.;
-			if (scales[i] == 0)
-				memset(q + row_start, 0, row_length);
-			else {
-				const double inv_scale = 1. / scales[i];
-				for (j = 0; j < row_length; j++)
-				{
-					const int iv = (int)lrint(f64[row_start + j] * inv_scale);
-					q[row_start + j] = (int8_t)ccv_clamp(iv, -127, 127);
-				}
-			}
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_64f(f64 + row_start, row_length, q + row_start);
 		} parallel_endfor
 	}
 	return scale_offset + scale_size;

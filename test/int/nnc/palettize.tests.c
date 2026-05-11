@@ -36,6 +36,33 @@ TEST_CASE("quantize float to row-wise int8 and dequantize on CPU losslessly")
 	ccv_nnc_tensor_free(tensor);
 }
 
+TEST_CASE("quantize float to row-wise int8 with lower MSE than absmax scale")
+{
+	float values[8] = {
+		-1.442847, 2.885900, 0.940176, 1.100095,
+		-1.533835, -0.690122, -0.371144, -0.208764
+	};
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 1, 8)), 0);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8,
+		tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	float dequantized[8];
+	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 8);
+	const float absmax_scale = 2.885900 / 127;
+	double absmax_sse = 0;
+	double rowwise_sse = 0;
+	int i;
+	for (i = 0; i < 8; i++)
+	{
+		const int q = ccv_clamp((int)lrint(values[i] / absmax_scale), -127, 127);
+		const double d0 = values[i] - absmax_scale * q;
+		const double d1 = values[i] - dequantized[i];
+		absmax_sse += d0 * d0;
+		rowwise_sse += d1 * d1;
+	}
+	REQUIRE(rowwise_sse < absmax_sse * 0.2, "least-squares row scale should reduce MSE");
+	ccv_nnc_tensor_free(tensor);
+}
+
 TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")
 {
 	float values_f32[32];
