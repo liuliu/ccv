@@ -502,6 +502,8 @@ cc_library(
 		"nnc/_ccv_cnnp_dataframe.h",
 		"nnc/_ccv_cnnp_model.h",
 		"nnc/ccv_nnc_palettize.c",
+		"nnc/ccv_nnc_8i_rowwise_packed_grids.inc",
+		"nnc/ccv_nnc_8i_rowwise.c",
 		"nnc/ccv_nnc_tensor.c",
 		"nnc/ccv_nnc_tensor_io.c",
 		"nnc/ccv_nnc_tensor_tape.c",
