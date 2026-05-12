@@ -281,20 +281,24 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
 #include <metal_stdlib>
 using namespace metal;
 
-inline uint read_bits(device const uchar* data, const uint bit_offset, const uint bits)
+inline ulong q2_payload(device const uchar* data, const uint group_index)
 {
+  const uint bit_offset = group_index * 42u;
   const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7;
-  const uint value =
-    (uint)data[byte_offset] |
-    ((uint)data[byte_offset + 1] << 8) |
-    ((uint)data[byte_offset + 2] << 16);
-  return (value >> shift) & ((1u << bits) - 1u);
+  const uint shift = bit_offset & 7u;
+  const ulong value =
+    (ulong)data[byte_offset] |
+    ((ulong)data[byte_offset + 1] << 8) |
+    ((ulong)data[byte_offset + 2] << 16) |
+    ((ulong)data[byte_offset + 3] << 24) |
+    ((ulong)data[byte_offset + 4] << 32) |
+    ((ulong)data[byte_offset + 5] << 40);
+  return value >> shift;
 }
 
-inline float4 q2_values(device const uchar* p, const uint bit_offset)
+inline float4 q2_values(const uint qbits, const uint offset)
 {
-  const uint q = read_bits(p, bit_offset, 8);
+  const uint q = (qbits >> offset) & 255u;
   return float4(
     (float)(q & 3u),
     (float)((q >> 2) & 3u),
@@ -304,15 +308,16 @@ inline float4 q2_values(device const uchar* p, const uint bit_offset)
 
 inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  const uint bit = group_index * group_bits;
-  const uint m = read_bits(source, bit + 32, 6) + 1;
-  const uint z = read_bits(source, bit + 38, 4) << 3;
+  const ulong payload = q2_payload(source, group_index);
+  const uint qbits = (uint)payload;
+  const uint m = (uint)((payload >> 32) & 63u) + 1;
+  const uint z = (uint)((payload >> 38) & 15u) << 3;
   const float mf = (float)m;
   const float zf = (float)z;
-  const float4 v0 = mf * q2_values(source, bit + 0) - float4(zf);
-  const float4 v1 = mf * q2_values(source, bit + 8) - float4(zf);
-  const float4 v2 = mf * q2_values(source, bit + 16) - float4(zf);
-  const float4 v3 = mf * q2_values(source, bit + 24) - float4(zf);
+  const float4 v0 = mf * q2_values(qbits, 0) - float4(zf);
+  const float4 v1 = mf * q2_values(qbits, 8) - float4(zf);
+  const float4 v2 = mf * q2_values(qbits, 16) - float4(zf);
+  const float4 v3 = mf * q2_values(qbits, 24) - float4(zf);
   return float3(
     dot(v0, float4(y0[yv_base + 0])) + dot(v1, float4(y0[yv_base + 1])) + dot(v2, float4(y0[yv_base + 2])) + dot(v3, float4(y0[yv_base + 3])),
     dot(v0, float4(y1[yv_base + 0])) + dot(v1, float4(y1[yv_base + 1])) + dot(v2, float4(y1[yv_base + 2])) + dot(v3, float4(y1[yv_base + 3])),
@@ -1031,20 +1036,24 @@ inline float vec_sum(const float4 v)
   return v.x + v.y + v.z + v.w;
 }
 
-inline uint read_bits(device const uchar* data, const uint bit_offset, const uint bits)
+inline ulong q2_payload(device const uchar* data, const uint group_index)
 {
+  const uint bit_offset = group_index * 42u;
   const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7;
-  const uint value =
-    (uint)data[byte_offset] |
-    ((uint)data[byte_offset + 1] << 8) |
-    ((uint)data[byte_offset + 2] << 16);
-  return (value >> shift) & ((1u << bits) - 1u);
+  const uint shift = bit_offset & 7u;
+  const ulong value =
+    (ulong)data[byte_offset] |
+    ((ulong)data[byte_offset + 1] << 8) |
+    ((ulong)data[byte_offset + 2] << 16) |
+    ((ulong)data[byte_offset + 3] << 24) |
+    ((ulong)data[byte_offset + 4] << 32) |
+    ((ulong)data[byte_offset + 5] << 40);
+  return value >> shift;
 }
 
-inline float4 q2_values(device const uchar* p, const uint bit_offset)
+inline float4 q2_values(const uint qbits, const uint offset)
 {
-  const uint q = read_bits(p, bit_offset, 8);
+  const uint q = (qbits >> offset) & 255u;
   return float4(
     (float)(q & 3u),
     (float)((q >> 2) & 3u),
@@ -1099,27 +1108,29 @@ kernel void int8_gemv(
     const float4 y13 = float4(y1[yv_base + 3]);
     const float ysum0 = vec_sum(y00) + vec_sum(y01) + vec_sum(y02) + vec_sum(y03);
     const float ysum1 = vec_sum(y10) + vec_sum(y11) + vec_sum(y12) + vec_sum(y13);
-    const uint bit0 = ((rb + 0) * groups_per_row + g) * group_bits;
-    const uint m0 = read_bits(src0, bit0 + 32, 6) + 1;
-    const uint z0 = read_bits(src0, bit0 + 38, 4) << 3;
+    const ulong payload0 = q2_payload(src0, (rb + 0) * groups_per_row + g);
+    const uint qbits0 = (uint)payload0;
+    const uint m0 = (uint)((payload0 >> 32) & 63u) + 1;
+    const uint z0 = (uint)((payload0 >> 38) & 15u) << 3;
     const float m0f = (float)m0;
     const float z0f = (float)z0;
-    const float4 q00 = q2_values(src0, bit0 + 0);
-    const float4 q01 = q2_values(src0, bit0 + 8);
-    const float4 q02 = q2_values(src0, bit0 + 16);
-    const float4 q03 = q2_values(src0, bit0 + 24);
+    const float4 q00 = q2_values(qbits0, 0);
+    const float4 q01 = q2_values(qbits0, 8);
+    const float4 q02 = q2_values(qbits0, 16);
+    const float4 q03 = q2_values(qbits0, 24);
     sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) - z0f * ysum0;
     sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) - z0f * ysum1;
     if (active1) {
-      const uint bit1 = ((rb + 1) * groups_per_row + g) * group_bits;
-      const uint m1 = read_bits(src0, bit1 + 32, 6) + 1;
-      const uint z1 = read_bits(src0, bit1 + 38, 4) << 3;
+      const ulong payload1 = q2_payload(src0, (rb + 1) * groups_per_row + g);
+      const uint qbits1 = (uint)payload1;
+      const uint m1 = (uint)((payload1 >> 32) & 63u) + 1;
+      const uint z1 = (uint)((payload1 >> 38) & 15u) << 3;
       const float m1f = (float)m1;
       const float z1f = (float)z1;
-      const float4 q10 = q2_values(src0, bit1 + 0);
-      const float4 q11 = q2_values(src0, bit1 + 8);
-      const float4 q12 = q2_values(src0, bit1 + 16);
-      const float4 q13 = q2_values(src0, bit1 + 24);
+      const float4 q10 = q2_values(qbits1, 0);
+      const float4 q11 = q2_values(qbits1, 8);
+      const float4 q12 = q2_values(qbits1, 16);
+      const float4 q13 = q2_values(qbits1, 24);
       sum01 += m1f * (dot(q10, y00) + dot(q11, y01) + dot(q12, y02) + dot(q13, y03)) - z1f * ysum0;
       sum11 += m1f * (dot(q10, y10) + dot(q11, y11) + dot(q12, y12) + dot(q13, y13)) - z1f * ysum1;
     }
@@ -1222,24 +1233,26 @@ kernel void int8_gemv(
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
     const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
-    const uint bit0 = ((rb + 0) * groups_per_row + g) * group_bits;
-    const uint m0 = read_bits(src0, bit0 + 32, 6) + 1;
-    const uint z0 = read_bits(src0, bit0 + 38, 4) << 3;
+    const ulong payload0 = q2_payload(src0, (rb + 0) * groups_per_row + g);
+    const uint qbits0 = (uint)payload0;
+    const uint m0 = (uint)((payload0 >> 32) & 63u) + 1;
+    const uint z0 = (uint)((payload0 >> 38) & 15u) << 3;
     const float m0f = (float)m0;
-    sum0 += m0f * dot(q2_values(src0, bit0 + 0), y0);
-    sum0 += m0f * dot(q2_values(src0, bit0 + 8), y1);
-    sum0 += m0f * dot(q2_values(src0, bit0 + 16), y2);
-    sum0 += m0f * dot(q2_values(src0, bit0 + 24), y3);
+    sum0 += m0f * dot(q2_values(qbits0, 0), y0);
+    sum0 += m0f * dot(q2_values(qbits0, 8), y1);
+    sum0 += m0f * dot(q2_values(qbits0, 16), y2);
+    sum0 += m0f * dot(q2_values(qbits0, 24), y3);
     sum0 -= (float)z0 * ysum;
     if (active1) {
-      const uint bit1 = ((rb + 1) * groups_per_row + g) * group_bits;
-      const uint m1 = read_bits(src0, bit1 + 32, 6) + 1;
-      const uint z1 = read_bits(src0, bit1 + 38, 4) << 3;
+      const ulong payload1 = q2_payload(src0, (rb + 1) * groups_per_row + g);
+      const uint qbits1 = (uint)payload1;
+      const uint m1 = (uint)((payload1 >> 32) & 63u) + 1;
+      const uint z1 = (uint)((payload1 >> 38) & 15u) << 3;
       const float m1f = (float)m1;
-      sum1 += m1f * dot(q2_values(src0, bit1 + 0), y0);
-      sum1 += m1f * dot(q2_values(src0, bit1 + 8), y1);
-      sum1 += m1f * dot(q2_values(src0, bit1 + 16), y2);
-      sum1 += m1f * dot(q2_values(src0, bit1 + 24), y3);
+      sum1 += m1f * dot(q2_values(qbits1, 0), y0);
+      sum1 += m1f * dot(q2_values(qbits1, 8), y1);
+      sum1 += m1f * dot(q2_values(qbits1, 16), y2);
+      sum1 += m1f * dot(q2_values(qbits1, 24), y3);
       sum1 -= (float)z1 * ysum;
     }
   }
