@@ -761,6 +761,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
 	const size_t group_size = _ccv_nnc_8i_rowwise_x_group_size(format);
+	const int group_bits = _ccv_nnc_8i_rowwise_x_group_bits(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
 	const size_t padded_row_length = groups_per_row * group_size;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
@@ -769,32 +770,92 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	uint8_t* const u8 = (uint8_t*)output;
 	uint8_t* const scales = u8 + scale_offset;
 	memset(u8, 0, scale_offset);
-	size_t i;
-	for (i = 0; i < row_count; i++)
+	const size_t row_bits = groups_per_row * group_bits;
+	size_t rows_per_chunk;
+	switch (row_bits & 7)
 	{
-		double* const row = (double*)ccmalloc(sizeof(double) * padded_row_length);
-		double* const weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
-		int* const q8 = (int*)ccmalloc(sizeof(int) * padded_row_length);
-		const size_t row_start = i * row_length;
-		_ccv_nnc_8i_rowwise_packed_read_row(input, datatype, row_start, row_length, padded_row_length, row);
-		double max_abs = 0;
-		size_t j;
-		for (j = 0; j < row_length; j++)
+		case 0:
+			rows_per_chunk = 1;
+			break;
+		case 4:
+			rows_per_chunk = 2;
+			break;
+		case 2:
+		case 6:
+			rows_per_chunk = 4;
+			break;
+		default:
+			rows_per_chunk = 8;
+			break;
+	}
+	const size_t row_chunks = (row_count + rows_per_chunk - 1) / rows_per_chunk;
+	parallel_for(chunk_idx, (int)row_chunks) {
+		const size_t chunk_begin = (size_t)chunk_idx * rows_per_chunk;
+		const size_t chunk_end = ccv_min(chunk_begin + rows_per_chunk, row_count);
+		size_t i;
+		for (i = chunk_begin; i < chunk_end; i++)
 		{
-			max_abs = ccv_max(max_abs, fabs(row[j]));
-			weights[j] = imatrix ? ccv_max((double)imatrix[j], 0.) : 1.;
-		}
-		for (; j < padded_row_length; j++)
-			weights[j] = 0;
-		double scale = max_abs / 127.;
-		double best_scale = 0;
-		double best_sse = DBL_MAX;
-		int k;
-		for (k = 0; k < 8; k++)
-		{
-			const double stored_scale = _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype);
-			if (!(stored_scale > 0))
-				break;
+			double* const row = (double*)ccmalloc(sizeof(double) * padded_row_length);
+			double* const weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
+			int* const q8 = (int*)ccmalloc(sizeof(int) * padded_row_length);
+			const size_t row_start = i * row_length;
+			_ccv_nnc_8i_rowwise_packed_read_row(input, datatype, row_start, row_length, padded_row_length, row);
+			double max_abs = 0;
+			size_t j;
+			for (j = 0; j < row_length; j++)
+			{
+				max_abs = ccv_max(max_abs, fabs(row[j]));
+				weights[j] = imatrix ? ccv_max((double)imatrix[j], 0.) : 1.;
+			}
+			for (; j < padded_row_length; j++)
+				weights[j] = 0;
+			double scale = max_abs / 127.;
+			double best_scale = 0;
+			double best_sse = DBL_MAX;
+			int k;
+			for (k = 0; k < 8; k++)
+			{
+				const double stored_scale = _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype);
+				if (!(stored_scale > 0))
+					break;
+				size_t g;
+				for (g = 0; g < groups_per_row; g++)
+				{
+					double y[16] = {0};
+					double w[16] = {0};
+					for (j = 0; j < group_size; j++)
+					{
+						y[j] = row[g * group_size + j] / stored_scale;
+						w[j] = weights[g * group_size + j];
+					}
+					ccv_nnc_8i_rowwise_packed_group_t group;
+					_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
+					memcpy(q8 + g * group_size, group.q8, sizeof(int) * group_size);
+				}
+				double sse = 0;
+				double sum_qx = 0;
+				double sum_qq = 0;
+				for (j = 0; j < row_length; j++)
+				{
+					const double d = row[j] - stored_scale * q8[j];
+					sse += weights[j] * d * d;
+					sum_qx += weights[j] * q8[j] * row[j];
+					sum_qq += weights[j] * q8[j] * q8[j];
+				}
+				if (sse < best_sse)
+				{
+					best_sse = sse;
+					best_scale = stored_scale;
+				}
+				if (!(sum_qq > 0) || !(sum_qx > 0))
+					break;
+				const double next_scale = sum_qx / sum_qq;
+				if (_ccv_nnc_8i_rowwise_packed_stored_scale(next_scale, datatype) == stored_scale)
+					break;
+				scale = next_scale;
+			}
+			_ccv_nnc_8i_rowwise_packed_store_scale(scales, datatype, i, best_scale);
+			const double final_scale = best_scale > 0 ? best_scale : 1;
 			size_t g;
 			for (g = 0; g < groups_per_row; g++)
 			{
@@ -802,55 +863,18 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 				double w[16] = {0};
 				for (j = 0; j < group_size; j++)
 				{
-					y[j] = row[g * group_size + j] / stored_scale;
+					y[j] = row[g * group_size + j] / final_scale;
 					w[j] = weights[g * group_size + j];
 				}
 				ccv_nnc_8i_rowwise_packed_group_t group;
 				_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
-				memcpy(q8 + g * group_size, group.q8, sizeof(int) * group_size);
+				_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, format, &group);
 			}
-			double sse = 0;
-			double sum_qx = 0;
-			double sum_qq = 0;
-			for (j = 0; j < row_length; j++)
-			{
-				const double d = row[j] - stored_scale * q8[j];
-				sse += weights[j] * d * d;
-				sum_qx += weights[j] * q8[j] * row[j];
-				sum_qq += weights[j] * q8[j] * q8[j];
-			}
-			if (sse < best_sse)
-			{
-				best_sse = sse;
-				best_scale = stored_scale;
-			}
-			if (!(sum_qq > 0) || !(sum_qx > 0))
-				break;
-			const double next_scale = sum_qx / sum_qq;
-			if (_ccv_nnc_8i_rowwise_packed_stored_scale(next_scale, datatype) == stored_scale)
-				break;
-			scale = next_scale;
+			ccfree(q8);
+			ccfree(weights);
+			ccfree(row);
 		}
-		_ccv_nnc_8i_rowwise_packed_store_scale(scales, datatype, i, best_scale);
-		const double final_scale = best_scale > 0 ? best_scale : 1;
-		size_t g;
-		for (g = 0; g < groups_per_row; g++)
-		{
-			double y[16] = {0};
-			double w[16] = {0};
-			for (j = 0; j < group_size; j++)
-			{
-				y[j] = row[g * group_size + j] / final_scale;
-				w[j] = weights[g * group_size + j];
-			}
-			ccv_nnc_8i_rowwise_packed_group_t group;
-			_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
-			_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, format, &group);
-		}
-		ccfree(q8);
-		ccfree(weights);
-		ccfree(row);
-	}
+	} parallel_endfor
 	return output_size;
 }
 
