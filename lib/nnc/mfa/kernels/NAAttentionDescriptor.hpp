@@ -50,14 +50,21 @@ struct NAAttentionDescriptor {
 
   uint32_t maskBatchStride = 0;
 
+  /// Whether to load C from a buffer instead of a function constant.
+  bool loadC = false;
+
   bool operator==(const NAAttentionDescriptor& rhs) const;
 
   std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<NAAttentionKernelDescriptor, std::unique_ptr<NAAttentionKernel>> *const libraryCache) const noexcept;
 
+  simd::ushort3 blockDimensions() const noexcept;
+  uint16_t executionSIMDGroups() const noexcept;
+  bool checkCEdge1(simd::ushort3 blockDimensions) const noexcept;
+  uint16_t splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept;
+
 private:
   NAAttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;
   AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions() const noexcept;
-  uint16_t splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept;
 };
 
 template<>

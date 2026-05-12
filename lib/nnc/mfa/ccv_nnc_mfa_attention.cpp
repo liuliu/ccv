@@ -393,6 +393,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isCausal = hash.is_causal;
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
+      attentionDesc.loadC = !hash.masked && !hash.is_varlen && hash.R <= 4;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -463,6 +464,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(tensors[2], tensor_offsets[2], AttentionOperand(AttentionOperand::V).bufferIndex());
         encoder->setBuffer(scratch, splitKVPartialOOffset, 5);
         encoder->setBuffer(scratch, splitKVPartialLOffset, 6);
+        if (attentionDesc.loadC) {
+          encoder->setBytes(&hash.C, sizeof(hash.C), 21);
+        }
         encoder->dispatchThreadgroups(
             kernel->threadgroupsPerGrid(attentionDesc),
             MTL::Size(kernel->threadgroupSize(pipeline.get(), attentionDesc), 1, 1));
@@ -527,6 +531,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[7], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[6], tensor_offsets[6], 17);
         encoder->setBuffer(tensors[7], tensor_offsets[7], 18);
+      }
+      if (attentionDesc.loadC) {
+        encoder->setBytes(&hash.C, sizeof(hash.C), 21);
       }
 
       // Calculate the grid size.

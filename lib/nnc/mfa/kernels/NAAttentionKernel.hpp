@@ -45,6 +45,8 @@ struct NAAttentionKernel {
 
   bool isVarlen;
 
+  bool loadC;
+
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;
 
   /// The number of threads per group.
@@ -64,6 +66,7 @@ private:
   /// AttentionKernel+Source
   std::string createSource() const noexcept;
   void createConstants(CodeWriter &source) const noexcept;
+  void createLoadCConstants(CodeWriter &source) const noexcept;
   void loopForward(CodeWriter &source) const noexcept;
   void loopForwardSplitKV(CodeWriter &source) const noexcept;
   std::string createSplitKVCombine() const noexcept;

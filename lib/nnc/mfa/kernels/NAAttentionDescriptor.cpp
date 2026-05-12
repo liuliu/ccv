@@ -5,6 +5,24 @@
 #include "../ccv_nnc_mfa_error.hpp"
 
 bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
+  auto lhsMatrixDimensions = matrixDimensions;
+  auto rhsMatrixDimensions = rhs.matrixDimensions;
+  if (loadC && rhs.loadC) {
+    lhsMatrixDimensions[1] = 0;
+    rhsMatrixDimensions[1] = 0;
+  }
+  bool loadCSourceMatch = true;
+  if (loadC && rhs.loadC) {
+    const auto lhsBlockDimensions = blockDimensions();
+    const auto rhsBlockDimensions = rhs.blockDimensions();
+    const auto lhsExecutionSIMDGroups = executionSIMDGroups();
+    const auto rhsExecutionSIMDGroups = rhs.executionSIMDGroups();
+    loadCSourceMatch =
+      simd_all(lhsBlockDimensions == rhsBlockDimensions) &&
+      lhsExecutionSIMDGroups == rhsExecutionSIMDGroups &&
+      checkCEdge1(lhsBlockDimensions) == rhs.checkCEdge1(rhsBlockDimensions) &&
+      splitKV(lhsBlockDimensions, lhsExecutionSIMDGroups) == rhs.splitKV(rhsBlockDimensions, rhsExecutionSIMDGroups);
+  }
   return
   batchDimension == rhs.batchDimension &&
   Hq == rhs.Hq &&
@@ -14,12 +32,14 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   maskBatchStride == rhs.maskBatchStride &&
+  loadC == rhs.loadC &&
+  loadCSourceMatch &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
   batchStrides == rhs.batchStrides &&
-  simd_all(matrixDimensions == rhs.matrixDimensions);
+  simd_all(lhsMatrixDimensions == rhsMatrixDimensions);
 }
 
 std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescriptor& hash) const noexcept {
@@ -29,83 +49,94 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   combine_32(seed, hash.Hq);
   combine_32(seed, hash.Hk);
   combine_32(seed, hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
+  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
+  if (hash.loadC) {
+    const auto blockDimensions = hash.blockDimensions();
+    const uint16_t executionSIMDGroups = hash.executionSIMDGroups();
+    combine_64(seed, pack_64(simd_make_ushort4(blockDimensions, 0)));
+    combine_32(seed, pack_32(simd::ushort2 {
+        executionSIMDGroups,
+        hash.splitKV(blockDimensions, executionSIMDGroups) }));
+    combine_32(seed, hash.checkCEdge1(blockDimensions) ? 1 : 0);
+  }
   combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
+  combine_32(seed, hash.loadC ? 1 : 0);
   return seed;
 }
 
+simd::ushort3 NAAttentionDescriptor::blockDimensions() const noexcept {
+  unsigned short headDimension = matrixDimensions[2];
+  unsigned short revisedHead = (headDimension + 15) / 16 * 16;
+  if (type.value != AttentionKernelType::forward && lowPrecisionInputs && headDimension == 128) {
+    revisedHead = 64;
+  } else if (headDimension <= 128) {
+    revisedHead = std::min(headDimension, revisedHead);
+  } else {
+    revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
+  }
+  if (type.value != AttentionKernelType::forward) {
+    return simd::ushort3 { 16, 64, revisedHead };
+  }
+  if (isCausal) {
+    return simd::ushort3 { 16, 32, revisedHead };
+  }
+  // Prefer ones without partial matrix multiplication (due to tiling).
+  if (matrixDimensions[1] % 64 == 0) {
+    return simd::ushort3 { 16, 64, revisedHead };
+  } else if (matrixDimensions[1] % 48 == 0) {
+    return simd::ushort3 { 16, 48, revisedHead };
+  }
+  // Prefer no trailing involved, so the compute is more evenly distributed.
+  if (matrixDimensions[1] % 128 > 64 && matrixDimensions[1] % 96 < 48) {
+    return simd::ushort3 { 16, 64, revisedHead };
+  } else if (matrixDimensions[1] % 128 < 64 && matrixDimensions[1] % 96 > 48) {
+    return simd::ushort3 { 16, 48, revisedHead };
+  }
+  // If we have to use matrix multiplication, calculate how much wasted compute we are going to be with.
+  const unsigned short remainder64 = matrixDimensions[1] % 64;
+  const unsigned short remainder48 = matrixDimensions[1] % 48;
+  if (remainder64 * 48 < remainder48 * 64) {
+    return simd::ushort3 { 16, 48, revisedHead };
+  } else {
+    return simd::ushort3 { 16, 64, revisedHead };
+  }
+}
+
+uint16_t NAAttentionDescriptor::executionSIMDGroups() const noexcept {
+  const unsigned short headDimension = matrixDimensions[2];
+  if (type.value == AttentionKernelType::backwardQuery &&
+      lowPrecisionInputs && headDimension >= 128) {
+    return 6;
+  }
+  if (type.value == AttentionKernelType::backwardKeyValue &&
+      lowPrecisionInputs && headDimension >= 128) {
+    return 6;
+  }
+  if (type.value == AttentionKernelType::forward && isCausal) {
+    return 8;
+  }
+  return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
+}
+
+bool NAAttentionDescriptor::checkCEdge1(simd::ushort3 blockDimensions) const noexcept {
+  return (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
+}
+
 NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept {
-  auto createHeadDimension = 
-  [=]() -> unsigned short {
-    return matrixDimensions[2];
-  };
-  auto createBlockDimensions =
-  [=]() -> simd::ushort3 {
-    unsigned short headDimension = createHeadDimension();
-    unsigned short revisedHead = (headDimension + 15) / 16 * 16;
-    if (type.value != AttentionKernelType::forward && lowPrecisionInputs && headDimension == 128) {
-      revisedHead = 64;
-    } else if (headDimension <= 128) {
-      revisedHead = std::min(headDimension, revisedHead);
-    } else {
-      revisedHead = revisedHead / std::max(revisedHead / 128, 2); // At least it is 2, could be more.
-    }
-    if (type.value != AttentionKernelType::forward) {
-      return simd::ushort3 { 16, 64, revisedHead };
-    }
-    if (isCausal) {
-      return simd::ushort3 { 16, 32, revisedHead };
-    }
-    // Prefer ones without partial matrix multiplication (due to tiling).
-    if (matrixDimensions[1] % 64 == 0) {
-      return simd::ushort3 { 16, 64, revisedHead };
-    } else if (matrixDimensions[1] % 48 == 0) {
-      return simd::ushort3 { 16, 48, revisedHead };
-    }
-    // Prefer no trailing involved, so the compute is more evenly distributed.
-    if (matrixDimensions[1] % 128 > 64 && matrixDimensions[1] % 96 < 48) {
-      return simd::ushort3 { 16, 64, revisedHead };
-    } else if (matrixDimensions[1] % 128 < 64 && matrixDimensions[1] % 96 > 48) {
-      return simd::ushort3 { 16, 48, revisedHead };
-    }
-    // If we have to use matrix multiplication, calculate how much wasted compute we are going to be with.
-    const unsigned short remainder64 = matrixDimensions[1] % 64;
-    const unsigned short remainder48 = matrixDimensions[1] % 48;
-    if (remainder64 * 48 < remainder48 * 64) {
-      return simd::ushort3 { 16, 48, revisedHead };
-    } else {
-      return simd::ushort3 { 16, 64, revisedHead };
-    }
-  };
-  auto createExecutionSIMDGroups = 
-  [=]() -> uint16_t {
-    if (type.value == AttentionKernelType::backwardQuery &&
-        lowPrecisionInputs && createHeadDimension() >= 128) {
-      return 6;
-    }
-    if (type.value == AttentionKernelType::backwardKeyValue &&
-        lowPrecisionInputs && createHeadDimension() >= 128) {
-      return 6;
-    }
-    if (type.value == AttentionKernelType::forward && isCausal) {
-      return 8;
-    }
-    return (type.value == AttentionKernelType::forward) ? (lowPrecisionInputs ? 16 : 8) : 8;
-  };
   auto createBypassThreadgroupMemory =
   [=]() -> bool {
     return false;
   };
-  auto blockDimensions = createBlockDimensions();
-  const uint16_t executionSIMDGroups = createExecutionSIMDGroups();
-  bool checkCEdge1 = (matrixDimensions[1] % (blockDimensions[1] * 2)) > blockDimensions[1];
-  return NAAttentionKernelDescriptor(blockDimensions, createHeadDimension(), Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups));
+  auto blockDimensions = this->blockDimensions();
+  const uint16_t executionSIMDGroups = this->executionSIMDGroups();
+  const bool checkCEdge1 = this->checkCEdge1(blockDimensions);
+  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC);
 }
 
 uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept {
@@ -138,7 +169,9 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
     constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
-    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    if (!loadC) {
+      constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    }
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:

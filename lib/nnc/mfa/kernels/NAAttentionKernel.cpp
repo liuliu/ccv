@@ -37,6 +37,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
+  loadC = descriptor.loadC;
   splitKV = descriptor.splitKV;
 
   source = createSource();
@@ -203,11 +204,23 @@ kernel void attention(
   device {{MEMORY_NAME_V}}* V_buf [[buffer(2)]],
   device float* PartialO_buf [[buffer(5)]],
   device float* PartialL_buf [[buffer(6)]],
+)";
+  if (loadC) {
+    source += R"(
+  const device uint* C_buf [[buffer(21)]],
+)";
+  }
+  source += R"(
   threadgroup uchar *threadgroup_block [[threadgroup(0)]],
   ushort lane_id [[thread_index_in_simdgroup]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   uint3 tgid [[threadgroup_position_in_grid]]
 ) {
+)";
+  if (loadC) {
+    createLoadCConstants(source);
+  }
+  source += R"(
   const uint split_group = tgid.x / Hq;
   const uint head = tgid.x - split_group * Hq;
   const uint row_group = tgid.y;
@@ -350,6 +363,9 @@ kernel void generate_attention_block_mask(
       uint3 tgid [[threadgroup_position_in_grid]]
     ) {
 )";
+    if (loadC) {
+      createLoadCConstants(source);
+    }
   } else {
     source += R"(
       ushort tid [[thread_index_in_threadgroup]],
@@ -425,7 +441,13 @@ void NAAttentionKernel::createConstants(CodeWriter &source) const noexcept {
 // C = column dimension (input sequence)
 // Hq = number of query heads.
 constant uint R [[function_constant(0)]];
+)";
+  if (!loadC) {
+    source += R"(
 constant uint C [[function_constant(1)]];
+)";
+  }
+  source += R"(
 
 )";
   std::vector<AttentionOperand> operands;
@@ -460,12 +482,12 @@ constant uint Hk = {{HK}};
 )";
   if (type.value == AttentionKernelType::forward) {
     if (!isVarlen) {
-      if (isCausal || masked) {
+      if (!loadC && (isCausal || masked)) {
         source += R"(
 constant uint C_single_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint C_single_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 )";
-      } else {
+      } else if (!loadC) {
         source += R"(
 // In this special case, leaving the rest to the trailing block to process.
 constant uint C_remainder = (C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}) == {{BLOCK_DIMENSIONS_TRAVERSAL}} ? {{BLOCK_DIMENSIONS_TRAVERSAL}} : (C % {{BLOCK_DIMENSIONS_TRAVERSAL}});
@@ -517,11 +539,15 @@ constant uint K_Hk = {{HEAD_DIMENSION}} * Hk;
     source += R"(
 constant uint SplitKV_splits [[function_constant(19)]];
 constant uint Batch_dimension [[function_constant(20)]];
+)";
+    if (!loadC) {
+      source += R"(
 constant uint SplitKV_c_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant bool SplitKV_has_c_remainder = SplitKV_c_remainder > 0;
 constant uint SplitKV_c_blocks = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits - 1) / SplitKV_splits;
 )";
+    }
   }
   for (const auto& operand : operands) {
     source.SetValue("OPERAND_NAME", operand.name());
@@ -593,6 +619,60 @@ inline uint ceil_log2_u32(uint x) {
   }
 }
 
+void NAAttentionKernel::createLoadCConstants(CodeWriter &source) const noexcept {
+  source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
+  source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_2", std::to_string(blockDimensions[1] * 2));
+  source += R"(
+  const uniform<uint> C = make_uniform(C_buf[0]);
+)";
+  if (type.value != AttentionKernelType::forward || isVarlen) {
+    return;
+  }
+  if (splitKV > 1) {
+    source += R"(
+  const uniform<uint> SplitKV_c_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  const uniform<bool> SplitKV_has_c_remainder = SplitKV_c_remainder > 0u;
+  const uniform<uint> SplitKV_c_blocks = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}}u - 1u) / {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  const uniform<uint> SplitKV_splits_uniform = make_uniform(SplitKV_splits);
+  const uniform<uint> SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits_uniform - 1u) / SplitKV_splits_uniform;
+)";
+  } else if (isCausal || masked) {
+    source += R"(
+  const uniform<uint> C_single_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  uniform<uint> C_single_edge = 0u;
+  if (C >= {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
+    C_single_edge = C + 1u - {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  }
+)";
+  } else {
+    source += R"(
+  uniform<uint> C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  if ((C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u) == {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
+    C_remainder = {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  }
+)";
+    if (checkCEdge1) {
+      source += R"(
+  uniform<uint> C_edge = 0u;
+  if (C >= {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
+    C_edge = C + 1u - {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  }
+  uniform<uint> C_edge_1 = 0u;
+  if (C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u) {
+    C_edge_1 = C + 1u - {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u;
+  }
+)";
+    } else {
+      source += R"(
+  uniform<uint> C_edge = 0u;
+  if (C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u) {
+    C_edge = C + 1u - {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u;
+  }
+)";
+    }
+  }
+}
+
 std::string NAAttentionKernel::createBufferBindings() const noexcept {
   std::vector<AttentionOperand> operands;
   switch (type.value) {
@@ -622,6 +702,9 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
   if (type.value == AttentionKernelType::forward && isVarlen) {
     output += "  device const int* QSeqOffsets_buf [[buffer(17)]],\n";
     output += "  device const int* KVSeqOffsets_buf [[buffer(18)]],\n";
+  }
+  if (type.value == AttentionKernelType::forward && loadC) {
+    output += "  const device uint* C_buf [[buffer(21)]],\n";
   }
   return output;
 }
@@ -793,7 +876,7 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   const uint c_block_begin = split_id * SplitKV_blocks_per_split;
   const uint c_block_end = min(SplitKV_c_blocks, c_block_begin + SplitKV_blocks_per_split);
   const uint c_begin = c_block_begin * {{BLOCK_DIMENSIONS_TRAVERSAL}};
-  const uint c_end = min(C, c_block_end * {{BLOCK_DIMENSIONS_TRAVERSAL}});
+  const uint c_end = min(uint(C), c_block_end * {{BLOCK_DIMENSIONS_TRAVERSAL}});
   const uint row_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   device float* PartialO = PartialO_buf + (((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R) * {{HEAD_DIMENSION}};
   device float* PartialL = PartialL_buf + ((tgid.z * Hq + tgid.y) * SplitKV_splits + split_id) * R;
@@ -864,7 +947,10 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   }
   for (uint c = c_begin; c < c_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     const bool c_tail = SplitKV_has_c_remainder && c + {{BLOCK_DIMENSIONS_TRAVERSAL}} > C;
-    const uint c_remainder = c_tail ? SplitKV_c_remainder : {{BLOCK_DIMENSIONS_TRAVERSAL}};
+    uint c_remainder = {{BLOCK_DIMENSIONS_TRAVERSAL}};
+    if (c_tail) {
+      c_remainder = uint(SplitKV_c_remainder);
+    }
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
