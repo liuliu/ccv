@@ -318,7 +318,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_ane_rowwise_compatible_batch = is_mfa_compatible_batch && B_batch_size == 1;
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
-		const int is_mfa_gemv = !is_batched && ((((a_rows == 1) || (!is_transpose_a && a_rows == 2)) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
+		const int is_mfa_gemv = !is_batched && ((((a_rows == 1) || (!is_transpose_a && (a_rows == 2 || a_rows == 3))) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
 			w_qx_8i_rowwise &&
@@ -358,7 +358,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
-			(a_rows == 1 || a_rows == 2) &&
+			(a_rows == 1 || a_rows == 2 || a_rows == 3) &&
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
@@ -657,7 +657,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				// This is GEMV, use GEMV kernel.
 				ccv_nnc_mfa_gemv_params_t params;
-				if ((a_rows == 1 || a_rows == 2) && is_transpose_w)
+				if ((a_rows == 1 || a_rows == 2 || a_rows == 3) && is_transpose_w)
 				{
 					params = (ccv_nnc_mfa_gemv_params_t){
 						.data_type = mtl_data_type,
@@ -706,7 +706,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					b->dataof, // C offset
 					bias ? bias->dataof : 0, // D offset
 				};
-				if ((a_rows == 1 || a_rows == 2) && is_transpose_w)
+				if ((a_rows == 1 || a_rows == 2 || a_rows == 3) && is_transpose_w)
 				{
 					tensors[0] = w_data;
 					tensors[1] = a_data;

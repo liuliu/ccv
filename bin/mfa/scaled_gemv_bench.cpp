@@ -932,7 +932,7 @@ void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
             << "[--format rowwise|q4_k|q3_k|q2_k|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
-            << "[--bias 0|1] [--mrows 1|2] [--shape rows cols] [--runs 20] [--warmup 3] "
+            << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }
 
@@ -982,7 +982,7 @@ bool parse_args(int argc, char** argv, Config* const config)
       return false;
     }
   }
-  if ((config->mrows != 1 && config->mrows != 2) ||
+  if ((config->mrows != 1 && config->mrows != 2 && config->mrows != 3) ||
       config->timed_iterations <= 0 || config->warmup_iterations < 0 ||
       config->duplicated_dispatches <= 0 || config->sleep_ms < 0)
     return false;
