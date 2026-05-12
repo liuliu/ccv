@@ -89,18 +89,56 @@ std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 	shader += R"(
 #include <metal_stdlib>
 using namespace metal;
+)";
 
-inline uint read_bits(device const uchar* data, const uint bit_offset, const uint bits)
+	if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
+		shader += R"(
+inline ulong packed42_payload(device const uchar* data, const uint group_index)
 {
+  const uint bit_offset = group_index * 42u;
   const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7;
+  const uint shift = bit_offset & 7u;
+  const ulong value =
+    (ulong)data[byte_offset] |
+    ((ulong)data[byte_offset + 1] << 8) |
+    ((ulong)data[byte_offset + 2] << 16) |
+    ((ulong)data[byte_offset + 3] << 24) |
+    ((ulong)data[byte_offset + 4] << 32) |
+    ((ulong)data[byte_offset + 5] << 40);
+  return value >> shift;
+}
+)";
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
+		shader += R"(
+inline uint packed21_payload(device const uchar* data, const uint group_index)
+{
+  const uint bit_offset = group_index * 21u;
+  const uint byte_offset = bit_offset >> 3;
+  const uint shift = bit_offset & 7u;
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
-    ((uint)data[byte_offset + 2] << 16);
-  return (value >> shift) & ((1u << bits) - 1u);
+    ((uint)data[byte_offset + 2] << 16) |
+    ((uint)data[byte_offset + 3] << 24);
+  return value >> shift;
 }
 )";
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
+		shader += R"(
+inline uint packed28_payload(device const uchar* data, const uint group_index)
+{
+  const uint bit_offset = group_index * 28u;
+  const uint byte_offset = bit_offset >> 3;
+  const uint shift = bit_offset & 7u;
+  const uint value =
+    (uint)data[byte_offset] |
+    ((uint)data[byte_offset + 1] << 8) |
+    ((uint)data[byte_offset + 2] << 16) |
+    ((uint)data[byte_offset + 3] << 24);
+  return value >> shift;
+}
+)";
+	}
 
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
 		shader += R"(
@@ -132,29 +170,45 @@ inline int iq3xxs_value(const uint index, const uint lane)
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  uint bit = group_index * group_bits;
-  int q[16];
-  for (uint j = 0; j < 16; ++j, bit += 4)
-    q[j] = (int)read_bits(source, bit, 4) - 8;
-  const int m = (int)read_bits(source, bit, 4) + 1;
-  const int b = (int)read_bits(source, bit + 4, 4) - 8;
-  for (uint j = 0; j < 16; ++j)
-    q8[j] = q[j] * m + b;
+  device const uchar* p = source + group_index * 9u;
+  const int m = (int)(p[8] & 15u) + 1;
+  const int b = (int)(p[8] >> 4) - 8;
+  for (uint j = 0; j < 8; ++j) {
+    const uint q = p[j];
+    q8[j * 2] = ((int)(q & 15u) - 8) * m + b;
+    q8[j * 2 + 1] = ((int)(q >> 4) - 8) * m + b;
+  }
 }
 )";
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
 			shader += R"(
+inline void q3_values(const uint q, const uint base, const int m, const int b, thread int* q8)
+{
+  q8[base + 0] = ((int)(q & 7u) - 4) * m + b;
+  q8[base + 1] = ((int)((q >> 3) & 7u) - 4) * m + b;
+  q8[base + 2] = ((int)((q >> 6) & 7u) - 4) * m + b;
+  q8[base + 3] = ((int)((q >> 9) & 7u) - 4) * m + b;
+}
+
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  uint bit = group_index * group_bits;
-  int q[16];
-  for (uint j = 0; j < 16; ++j, bit += 3)
-    q[j] = (int)read_bits(source, bit, 3) - 4;
-  const int m = (int)read_bits(source, bit, 5) + 1;
-  const int b = ((int)read_bits(source, bit + 5, 3) - 4) << 1;
-  for (uint j = 0; j < 16; ++j)
-    q8[j] = q[j] * m + b;
+  device const uchar* p = source + group_index * 7u;
+  const uint lo =
+    (uint)p[0] |
+    ((uint)p[1] << 8) |
+    ((uint)p[2] << 16) |
+    ((uint)p[3] << 24);
+  const uint hi =
+    (uint)p[4] |
+    ((uint)p[5] << 8) |
+    ((uint)p[6] << 16);
+  const int m = (int)((hi >> 16) & 31u) + 1;
+  const int b = (((int)((hi >> 21) & 7u) - 4) << 1);
+  q3_values(lo & 0xfffu, 0, m, b, q8);
+  q3_values((lo >> 12) & 0xfffu, 4, m, b, q8);
+  q3_values(((lo >> 24) | ((hi & 15u) << 8)) & 0xfffu, 8, m, b, q8);
+  q3_values((hi >> 4) & 0xfffu, 12, m, b, q8);
 }
 )";
 			break;
@@ -162,14 +216,12 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  uint bit = group_index * group_bits;
-  int q[16];
-  for (uint j = 0; j < 16; ++j, bit += 2)
-    q[j] = (int)read_bits(source, bit, 2);
-  const int m = (int)read_bits(source, bit, 6) + 1;
-  const int z = (int)read_bits(source, bit + 6, 4) << 3;
+  const ulong payload = packed42_payload(source, group_index);
+  const uint q = (uint)payload;
+  const int m = (int)((payload >> 32) & 63u) + 1;
+  const int z = (int)((payload >> 38) & 15u) << 3;
   for (uint j = 0; j < 16; ++j)
-    q8[j] = q[j] * m - z;
+    q8[j] = (int)((q >> (j * 2)) & 3u) * m - z;
 }
 )";
 			break;
@@ -177,11 +229,11 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  const uint bit = group_index * group_bits;
-  const uint grid0 = read_bits(source, bit, 10);
-  const uint grid1 = read_bits(source, bit + 10, 10);
-  const uint signs = read_bits(source, bit + 20, 16);
-  const int scale = (int)read_bits(source, bit + 36, 6) + 1;
+  const ulong payload = packed42_payload(source, group_index);
+  const uint grid0 = (uint)(payload & 1023u);
+  const uint grid1 = (uint)((payload >> 10) & 1023u);
+  const uint signs = (uint)((payload >> 20) & 65535u);
+  const int scale = (int)((payload >> 36) & 63u) + 1;
   for (uint j = 0; j < 8; ++j) {
     const int mag0 = min(iq2_value(iq2s_grid, grid0, j) * scale, 127);
     const int mag1 = min(iq2_value(iq2s_grid, grid1, j) * scale, 127);
@@ -197,10 +249,10 @@ constant int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24,
 
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  const uint bit = group_index * group_bits;
-  const uint grid0 = read_bits(source, bit, 9);
-  const uint signs = read_bits(source, bit + 9, 8);
-  const int scale = q2_xs_scales[read_bits(source, bit + 17, 4)];
+  const uint payload = packed21_payload(source, group_index);
+  const uint grid0 = payload & 511u;
+  const uint signs = (payload >> 9) & 255u;
+  const int scale = q2_xs_scales[(payload >> 17) & 15u];
   for (uint j = 0; j < 8; ++j) {
     const int mag = min(iq2_value(iq2xs_grid, grid0, j) * scale, 127);
     q8[j] = (signs & (1u << j)) ? -mag : mag;
@@ -212,16 +264,18 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  const uint bit = group_index * group_bits;
-  uint grid[4];
-  for (uint j = 0; j < 4; ++j)
-    grid[j] = read_bits(source, bit + j * 9, 9);
-  const uint signs = read_bits(source, bit + 36, 16);
-  const int scale = (int)read_bits(source, bit + 52, 4) + 1;
+  device const uchar* p = source + group_index * 7u;
+  const uint grid0 = (uint)p[0] | (((uint)p[1] & 1u) << 8);
+  const uint grid1 = ((uint)p[1] >> 1) | (((uint)p[2] & 3u) << 7);
+  const uint grid2 = ((uint)p[2] >> 2) | (((uint)p[3] & 7u) << 6);
+  const uint grid3 = ((uint)p[3] >> 3) | (((uint)p[4] & 15u) << 5);
+  const uint signs = ((uint)p[4] >> 4) | ((uint)p[5] << 4) | (((uint)p[6] & 15u) << 12);
+  const int scale = (int)(p[6] >> 4) + 1;
   for (uint sg = 0; sg < 4; ++sg) {
+    const uint grid = sg == 0 ? grid0 : (sg == 1 ? grid1 : (sg == 2 ? grid2 : grid3));
     for (uint j = 0; j < 4; ++j) {
       const uint lane = sg * 4 + j;
-      const int mag = min(iq3s_value(grid[sg], j) * scale, 127);
+      const int mag = min(iq3s_value(grid, j) * scale, 127);
       q8[lane] = (signs & (1u << lane)) ? -mag : mag;
     }
   }
@@ -232,11 +286,11 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
-  const uint bit = group_index * group_bits;
-  const uint grid0 = read_bits(source, bit, 8);
-  const uint grid1 = read_bits(source, bit + 8, 8);
-  const uint signs = read_bits(source, bit + 16, 8);
-  const int scale = (int)read_bits(source, bit + 24, 4) + 1;
+  const uint payload = packed28_payload(source, group_index);
+  const uint grid0 = payload & 255u;
+  const uint grid1 = (payload >> 8) & 255u;
+  const uint signs = (payload >> 16) & 255u;
+  const int scale = (int)((payload >> 24) & 15u) + 1;
   for (uint j = 0; j < 4; ++j) {
     const int mag0 = min(iq3xxs_value(grid0, j) * scale, 127);
     const int mag1 = min(iq3xxs_value(grid1, j) * scale, 127);
@@ -288,7 +342,6 @@ std::string Dequantize8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant uint group_bits [[function_constant(3)]];\n";
 	defines += "constant uint input_scale_offset [[function_constant(4)]];\n";
 	defines += "constant uint output_scale_offset [[function_constant(5)]];\n";
 	defines += "constant uint total_groups [[function_constant(6)]];\n";

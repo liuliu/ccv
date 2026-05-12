@@ -125,7 +125,6 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		const uint32_t rowLength = this->rowLength;
 		const uint32_t groupSize = this->groupSize();
 		const uint32_t groupsPerRow = this->groupsPerRow();
-		const uint32_t groupBits = this->groupBits();
 		const uint32_t inputScaleOffset = this->inputScaleOffset();
 		const uint32_t outputScaleOffset = this->outputScaleOffset();
 		const uint32_t totalGroups = this->totalGroups();
@@ -134,7 +133,6 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-		constants->setConstantValue(&groupBits, MTL::DataTypeUInt, NS::UInteger(3));
 		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeUInt, NS::UInteger(4));
 		constants->setConstantValue(&outputScaleOffset, MTL::DataTypeUInt, NS::UInteger(5));
 		constants->setConstantValue(&totalGroups, MTL::DataTypeUInt, NS::UInteger(6));

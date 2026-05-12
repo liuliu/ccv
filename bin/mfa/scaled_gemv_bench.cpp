@@ -632,6 +632,23 @@ double run_dequant_x_scaled_once(
   return finish_and_time(command_buffer, duplicated_dispatches);
 }
 
+double run_dequant_x_once(
+    MTL::CommandQueue* const command_queue,
+    const Pipelines& pipelines,
+    const Shape shape,
+    const int duplicated_dispatches,
+    MTL::Buffer* const quantized,
+    MTL::Buffer* const rowwise)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  for (int i = 0; i < duplicated_dispatches; ++i) {
+    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    encode_dequant_x(encoder.get(), pipelines, shape, quantized, rowwise);
+    encoder->endEncoding();
+  }
+  return finish_and_time(command_buffer, duplicated_dispatches);
+}
+
 double run_scaled_x_once(
     MTL::CommandQueue* const command_queue,
     const Pipelines& pipelines,
@@ -844,6 +861,7 @@ int run_shape(
   Stats raw_stats;
   Stats dequant_stats;
   Stats scaled_stats;
+  Stats dequant_x_only_stats;
   Stats dequant_x_stats;
   Stats scaled_x_stats;
   if (!benchmark(config, [&]() {
@@ -862,6 +880,11 @@ int run_shape(
       }, &scaled_stats))
     return 1;
   if (format.value != 0) {
+    if (!benchmark(config, [&]() {
+          return run_dequant_x_once(command_queue, pipelines, shape, config.duplicated_dispatches,
+              packed_quantized_buffer.get(), dequant_x_rowwise_buffer.get());
+        }, &dequant_x_only_stats))
+      return 1;
     if (!benchmark(config, [&]() {
           return run_dequant_x_scaled_once(command_queue, pipelines, shape, config.duplicated_dispatches,
               packed_quantized_buffer.get(), dequant_x_rowwise_buffer.get(), vector_buffer.get(), dequant_x_output_buffer.get(), active_bias);
@@ -886,6 +909,8 @@ int run_shape(
       (double)row_groups * vector_bytes + output_bytes + bias_read_bytes : 0;
   const double packed_dequant_bytes = format.value != 0 ? (double)packed_quantized.size() +
       (double)quantized.size() + scaled_bytes : 0;
+  const double packed_dequant_x_bytes = format.value != 0 ? (double)packed_quantized.size() +
+      (double)quantized.size() : 0;
 
   std::cout << "shape mrows=" << config.mrows
             << " rows=" << shape.rows << " cols=" << shape.cols
@@ -909,6 +934,7 @@ int run_shape(
   print_stats("dequant_gemv", dequant_stats, flops, dequant_bytes);
   print_stats("rowwise_int8_gemv", scaled_stats, flops, scaled_bytes);
   if (format.value != 0) {
+    print_stats("dequant_x_only", dequant_x_only_stats, 0.0, packed_dequant_x_bytes);
     print_stats("packed_dequant_int8_gemv", dequant_x_stats, flops, packed_dequant_bytes);
     print_stats("packed_direct_int8_gemv", scaled_x_stats, flops, packed_scaled_bytes);
     std::cout << "  packed_direct_vs_rowwise_best3="
