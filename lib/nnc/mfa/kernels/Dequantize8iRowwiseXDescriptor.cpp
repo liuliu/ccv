@@ -35,6 +35,8 @@ uint32_t Dequantize8iRowwiseXDescriptor::groupSize() const noexcept {
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
 			return 16;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			return 32;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			return 8;
@@ -63,6 +65,8 @@ uint32_t Dequantize8iRowwiseXDescriptor::groupBits() const noexcept {
 			return 21;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			return 28;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			return 64;
 		default:
 			CCV_NNC_MFA_PRECONDITION(false);
 			return 0;

@@ -78,6 +78,7 @@ constexpr FormatInfo kFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_IQ2_XS, "iq2_xs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, "iq3_xxs" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, "iq2_xxs" },
 };
 
 constexpr MTL::ResourceOptions kPrivateResourceOptions =
@@ -355,6 +356,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
     case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
       return 16;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 32;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 8;
@@ -378,6 +381,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
       return 21;
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 28;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 64;
     default:
       std::abort();
   }
@@ -412,11 +417,11 @@ uint32_t read_bits(const uint8_t* const data, const size_t bit_offset, const uin
 {
   const size_t byte_offset = bit_offset >> 3;
   const uint32_t shift = (uint32_t)(bit_offset & 7);
-  const uint32_t value =
-      (uint32_t)data[byte_offset] |
-      ((uint32_t)data[byte_offset + 1] << 8) |
-      ((uint32_t)data[byte_offset + 2] << 16);
-  return (value >> shift) & ((1u << bits) - 1u);
+  const uint32_t byte_count = (shift + bits + 7) >> 3;
+  uint64_t value = 0;
+  for (uint32_t i = 0; i < byte_count; ++i)
+    value |= (uint64_t)data[byte_offset + i] << (i * 8);
+  return (uint32_t)((value >> shift) & ((uint64_t(1) << bits) - 1));
 }
 
 int iq2_value(const uint64_t* const grid, const uint32_t index, const uint32_t lane)
@@ -427,6 +432,11 @@ int iq2_value(const uint64_t* const grid, const uint32_t index, const uint32_t l
   if (v == 25)
     return 3;
   return 5;
+}
+
+int iq2xxs_value(const uint32_t index, const uint32_t lane)
+{
+  return (int)(1 + (((ccv_nnc_8i_rowwise_packed_iq2xxs_grid[index] >> (lane * 2)) & 3u) * 2));
 }
 
 int iq3xxs_value(const uint32_t index, const uint32_t lane)
@@ -498,6 +508,22 @@ void decode_group(const uint8_t* const input, const size_t group_index, const ui
       }
       break;
     }
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS: {
+      uint32_t grid[4];
+      for (uint32_t j = 0; j < 4; ++j)
+        grid[j] = read_bits(input, bit + j * 8, 8);
+      const uint32_t sign_codes = read_bits(input, bit + 32, 28);
+      const int scale = q2_xs_scales[read_bits(input, bit + 60, 4)];
+      for (uint32_t sg = 0; sg < 4; ++sg) {
+        const uint32_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[(sign_codes >> (sg * 7)) & 0x7f];
+        for (uint32_t j = 0; j < 8; ++j) {
+          const uint32_t lane = sg * 8 + j;
+          const int mag = std::min(iq2xxs_value(grid[sg], j) * scale, 127);
+          q8[lane] = (signs & (1u << j)) ? -mag : mag;
+        }
+      }
+      break;
+    }
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S: {
       uint32_t grid[4];
       for (uint32_t j = 0; j < 4; ++j)
@@ -552,7 +578,7 @@ ValidationStats validate_dequant(
   }
   for (uint32_t row = 0; row < config.N; ++row) {
     for (uint32_t group = 0; group < groups_per_row; ++group) {
-      int expected_q[16] = {};
+      int expected_q[32] = {};
       decode_group(packed_x.data(), (size_t)row * groups_per_row + group, format, expected_q);
       for (uint32_t j = 0; j < group_size; ++j) {
         const uint32_t col = group * group_size + j;

@@ -327,17 +327,29 @@ kernel void decode1_split_reduce(
   const uint hq = tgid.x;
   const uint batch = tgid.y;
   device const float* base = partial + ((batch * Hq + hq) * NWG * (D_LEN + 2));
-  float local_m = -INFINITY;
-  if (lane_id < NWG) {
-    local_m = base[lane_id * (D_LEN + 2) + D_LEN + 1];
+  float global_m = -INFINITY;
+  float global_s = 0;
+  if (NWG <= 32) {
+    float local_m = -INFINITY;
+    if (lane_id < NWG) {
+      local_m = base[lane_id * (D_LEN + 2) + D_LEN + 1];
+    }
+    global_m = simd_max(local_m);
+    float local_s = 0;
+    if (lane_id < NWG) {
+      local_s = base[lane_id * (D_LEN + 2) + D_LEN] *
+          fast::exp2(base[lane_id * (D_LEN + 2) + D_LEN + 1] - global_m);
+    }
+    global_s = simd_sum(local_s);
+  } else {
+    for (uint i = 0; i < NWG; ++i) {
+      global_m = max(global_m, base[i * (D_LEN + 2) + D_LEN + 1]);
+    }
+    for (uint i = 0; i < NWG; ++i) {
+      global_s += base[i * (D_LEN + 2) + D_LEN] *
+          fast::exp2(base[i * (D_LEN + 2) + D_LEN + 1] - global_m);
+    }
   }
-  const float global_m = simd_max(local_m);
-  float local_s = 0;
-  if (lane_id < NWG) {
-    local_s = base[lane_id * (D_LEN + 2) + D_LEN] *
-        fast::exp2(base[lane_id * (D_LEN + 2) + D_LEN + 1] - global_m);
-  }
-  const float global_s = simd_sum(local_s);
   device half* o_row = O + (batch * Hq + hq) * D_LEN;
   for (uint d = lane_id; d < D_LEN; d += 32) {
     float numerator = 0;
@@ -571,9 +583,9 @@ int main(int argc, char** argv)
   if (attention.D == 0 || attention.D > 256 || attention.D % 32 != 0 ||
       attention.Hq == 0 || attention.Hk == 0 || attention.Hq % attention.Hk != 0 ||
       config.simdgroups == 0 || config.simdgroups > 32 ||
-      config.workgroups == 0 || config.workgroups > 32) {
+      config.workgroups == 0 || config.workgroups > 128) {
     std::cerr << "usage: na_attention_decode1_bench C D B Hq Hk [warmup timed nsg nwg]\n";
-    std::cerr << "constraints: D in {32,64,...,256}, Hq divisible by Hk, 1 <= nsg <= 32, 1 <= nwg <= 32\n";
+    std::cerr << "constraints: D in {32,64,...,256}, Hq divisible by Hk, 1 <= nsg <= 32, 1 <= nwg <= 128\n";
     return 1;
   }
 

@@ -77,7 +77,10 @@ MTL::Size Dequantize8iRowwiseXKernel::gridSize(uint32_t dispatchItems) const noe
 std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 {
 	std::string shader = createConstants() + "\n";
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
+		append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
 		append_compact_grid(shader, "iq2s_grid", ccv_nnc_8i_rowwise_packed_iq2s_grid, 1024, compact_iq2_grid_entry);
 	else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
 		append_compact_grid(shader, "iq2xs_grid", ccv_nnc_8i_rowwise_packed_iq2xs_grid, 512, compact_iq2_grid_entry);
@@ -140,7 +143,7 @@ inline uint packed28_payload(device const uchar* data, const uint group_index)
 )";
 	}
 
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
 		shader += R"(
 inline int iq2_value(constant uint* grid, const uint index, const uint lane)
 {
@@ -260,6 +263,27 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 }
 )";
 			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			shader += R"(
+constant int q2_xxs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
+
+inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+{
+  device const uchar* p = source + group_index * 8u;
+  const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
+  const int scale = q2_xxs_scales[p[7] >> 4];
+  for (uint sg = 0; sg < 4; ++sg) {
+    const uint grid = p[sg];
+    const uint signs = iq2xxs_ksigns[(sign_codes >> (sg * 7u)) & 127u];
+    for (uint j = 0; j < 8; ++j) {
+      const uint lane = sg * 8u + j;
+      const int mag = min(iq2_value(iq2xxs_grid, grid, j) * scale, 127);
+      q8[lane] = (signs & (1u << j)) ? -mag : mag;
+    }
+  }
+}
+)";
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
@@ -318,7 +342,12 @@ kernel void dequantize_8i_rowwise_x(
   if (x < total_groups) {
     const uint row = x / groups_per_row;
     const uint group = x - row * groups_per_row;
-    int q8[16] = {0};
+)";
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+		shader += "    int q8[32] = {0};\n";
+	else
+		shader += "    int q8[16] = {0};\n";
+	shader += R"(
     decode_group(source, x, q8);
     device int8_t* destination_q = reinterpret_cast<device int8_t*>(destination);
     const uint col_base = group * group_size;
