@@ -258,6 +258,69 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
         append_packed_m3_kernel(shader, fusedBias);
         return shader;
       }
+      if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
+        shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+inline ulong q5_lo(device const uchar* p)
+{
+  return
+    (ulong)p[0] |
+    ((ulong)p[1] << 8) |
+    ((ulong)p[2] << 16) |
+    ((ulong)p[3] << 24) |
+    ((ulong)p[4] << 32) |
+    ((ulong)p[5] << 40) |
+    ((ulong)p[6] << 48) |
+    ((ulong)p[7] << 56);
+}
+
+inline uint q5_hi(device const uchar* p)
+{
+  return (uint)p[8] | ((uint)p[9] << 8) | ((uint)p[10] << 16);
+}
+
+inline float4 q5_values_lo(const ulong q, const uint offset)
+{
+  return float4(
+    (float)((q >> offset) & 31ul),
+    (float)((q >> (offset + 5)) & 31ul),
+    (float)((q >> (offset + 10)) & 31ul),
+    (float)((q >> (offset + 15)) & 31ul));
+}
+
+inline float4 q5_values_last(const ulong lo, const uint hi)
+{
+  return float4(
+    (float)(((lo >> 60) | ((ulong)hi << 4)) & 31ul),
+    (float)((hi >> 1) & 31u),
+    (float)((hi >> 6) & 31u),
+    (float)((hi >> 11) & 31u));
+}
+
+inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+{
+  device const uchar* p = source + group_index * 11u;
+  const ulong lo = q5_lo(p);
+  const uint hi = q5_hi(p);
+  const int m = (int)((hi >> 16) & 7u) + 1;
+  const int b = (int)((hi >> 19) & 31u) - 16;
+  const float mf = (float)m;
+  const float offset = (float)b - 16.0f * mf;
+  const float4 v0 = mf * q5_values_lo(lo, 0) + float4(offset);
+  const float4 v1 = mf * q5_values_lo(lo, 20) + float4(offset);
+  const float4 v2 = mf * q5_values_lo(lo, 40) + float4(offset);
+  const float4 v3 = mf * q5_values_last(lo, hi) + float4(offset);
+  return float3(
+    dot(v0, float4(y0[yv_base + 0])) + dot(v1, float4(y0[yv_base + 1])) + dot(v2, float4(y0[yv_base + 2])) + dot(v3, float4(y0[yv_base + 3])),
+    dot(v0, float4(y1[yv_base + 0])) + dot(v1, float4(y1[yv_base + 1])) + dot(v2, float4(y1[yv_base + 2])) + dot(v3, float4(y1[yv_base + 3])),
+    dot(v0, float4(y2[yv_base + 0])) + dot(v1, float4(y2[yv_base + 1])) + dot(v2, float4(y2[yv_base + 2])) + dot(v3, float4(y2[yv_base + 3])));
+}
+)";
+        append_packed_m3_kernel(shader, fusedBias);
+        return shader;
+      }
       if (format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
         shader += R"(
 #include <metal_stdlib>
@@ -613,6 +676,297 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
         return shader;
       }
       CCV_NNC_MFA_PRECONDITION(false);
+      return shader;
+    }
+    if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
+      shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+inline float vec_sum(const float4 v)
+{
+  return v.x + v.y + v.z + v.w;
+}
+
+inline ulong q5_lo(device const uchar* p)
+{
+  return
+    (ulong)p[0] |
+    ((ulong)p[1] << 8) |
+    ((ulong)p[2] << 16) |
+    ((ulong)p[3] << 24) |
+    ((ulong)p[4] << 32) |
+    ((ulong)p[5] << 40) |
+    ((ulong)p[6] << 48) |
+    ((ulong)p[7] << 56);
+}
+
+inline uint q5_hi(device const uchar* p)
+{
+  return (uint)p[8] | ((uint)p[9] << 8) | ((uint)p[10] << 16);
+}
+
+inline float4 q5_values_lo(const ulong q, const uint offset)
+{
+  return float4(
+    (float)((q >> offset) & 31ul),
+    (float)((q >> (offset + 5)) & 31ul),
+    (float)((q >> (offset + 10)) & 31ul),
+    (float)((q >> (offset + 15)) & 31ul));
+}
+
+inline float4 q5_values_last(const ulong lo, const uint hi)
+{
+  return float4(
+    (float)(((lo >> 60) | ((ulong)hi << 4)) & 31ul),
+    (float)((hi >> 1) & 31u),
+    (float)((hi >> 6) & 31u),
+    (float)((hi >> 11) & 31u));
+}
+)";
+      if (mrows == 2) {
+        shader += R"(
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+        if (fusedBias) {
+          shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+        }
+        shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+        shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+        shader += R"(;
+  constexpr uint S = )";
+        shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+        shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  device const real4* y0 = (device const real4*)src1;
+  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real* scales = (device const real*)(src0 + scale_offset);
+  threadgroup float partials[4][32];
+
+  float sum00 = 0;
+  float sum01 = 0;
+  float sum10 = 0;
+  float sum11 = 0;
+  const uint group_stride = S * 32;
+  for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
+    const uint yv_base = g * 4;
+    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 11u;
+    const ulong lo0 = q5_lo(p0);
+    const uint hi0 = q5_hi(p0);
+    const int m0 = (int)((hi0 >> 16) & 7u) + 1;
+    const int b0 = (int)((hi0 >> 19) & 31u) - 16;
+    const float m0f = (float)m0;
+    const float o0 = (float)b0 - 16.0f * m0f;
+    const float4 q00 = q5_values_lo(lo0, 0);
+    const float4 q01 = q5_values_lo(lo0, 20);
+    const float4 q02 = q5_values_lo(lo0, 40);
+    const float4 q03 = q5_values_last(lo0, hi0);
+    const float4 y00 = float4(y0[yv_base + 0]);
+    const float4 y01 = float4(y0[yv_base + 1]);
+    const float4 y02 = float4(y0[yv_base + 2]);
+    const float4 y03 = float4(y0[yv_base + 3]);
+    const float4 y10 = float4(y1[yv_base + 0]);
+    const float4 y11 = float4(y1[yv_base + 1]);
+    const float4 y12 = float4(y1[yv_base + 2]);
+    const float4 y13 = float4(y1[yv_base + 3]);
+    const float ysum0 = vec_sum(y00) + vec_sum(y01) + vec_sum(y02) + vec_sum(y03);
+    const float ysum1 = vec_sum(y10) + vec_sum(y11) + vec_sum(y12) + vec_sum(y13);
+    sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) + o0 * ysum0;
+    sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) + o0 * ysum1;
+    if (active1) {
+      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 11u;
+      const ulong lo1 = q5_lo(p1);
+      const uint hi1 = q5_hi(p1);
+      const int m1 = (int)((hi1 >> 16) & 7u) + 1;
+      const int b1 = (int)((hi1 >> 19) & 31u) - 16;
+      const float m1f = (float)m1;
+      const float o1 = (float)b1 - 16.0f * m1f;
+      const float4 q10 = q5_values_lo(lo1, 0);
+      const float4 q11 = q5_values_lo(lo1, 20);
+      const float4 q12 = q5_values_lo(lo1, 40);
+      const float4 q13 = q5_values_last(lo1, hi1);
+      sum01 += m1f * (dot(q10, y00) + dot(q11, y01) + dot(q12, y02) + dot(q13, y03)) + o1 * ysum0;
+      sum11 += m1f * (dot(q10, y10) + dot(q11, y11) + dot(q12, y12) + dot(q13, y13)) + o1 * ysum1;
+    }
+  }
+
+  if (sgitg == 0) {
+    partials[0][tiisg] = 0;
+    partials[1][tiisg] = 0;
+    partials[2][tiisg] = 0;
+    partials[3][tiisg] = 0;
+  }
+  const float lane_sum00 = simd_sum(sum00);
+  const float lane_sum01 = simd_sum(sum01);
+  const float lane_sum10 = simd_sum(sum10);
+  const float lane_sum11 = simd_sum(sum11);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum00;
+    partials[1][sgitg] = lane_sum01;
+    partials[2][sgitg] = lane_sum10;
+    partials[3][sgitg] = lane_sum11;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    const float all_sum00 = simd_sum(partials[0][tiisg]);
+    const float all_sum01 = simd_sum(partials[1][tiisg]);
+    const float all_sum10 = simd_sum(partials[2][tiisg]);
+    const float all_sum11 = simd_sum(partials[3][tiisg]);
+    if (tiisg == 0) {
+      const float scale = (float)scales[rb + 0];
+      float value0 = all_sum00 * scale;
+      float value1 = all_sum10 * scale;
+)";
+        if (fusedBias) {
+          shader += R"(
+      const float biasv = (float)bias[rb + 0];
+      value0 += biasv;
+      value1 += biasv;
+)";
+        }
+        shader += R"(
+      dst[rb + 0] = (real)value0;
+      dst[nrows + rb + 0] = (real)value1;
+    }
+    if (tiisg == 1 && active1) {
+      const float scale = (float)scales[rb + 1];
+      float value0 = all_sum01 * scale;
+      float value1 = all_sum11 * scale;
+)";
+        if (fusedBias) {
+          shader += R"(
+      const float biasv = (float)bias[rb + 1];
+      value0 += biasv;
+      value1 += biasv;
+)";
+        }
+        shader += R"(
+      dst[rb + 1] = (real)value0;
+      dst[nrows + rb + 1] = (real)value1;
+    }
+  }
+}
+)";
+      } else {
+        shader += R"(
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+        if (fusedBias) {
+          shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+        }
+        shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+        shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+        shader += R"(;
+  constexpr uint S = )";
+        shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+        shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  device const real4* y4 = (device const real4*)src1;
+  device const real* scales = (device const real*)(src0 + scale_offset);
+  threadgroup float partials[ROWS][32];
+
+  float sum0 = 0;
+  float sum1 = 0;
+  const uint group_stride = S * 32;
+  for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
+    const uint yv_base = g * 4;
+    const float4 y0 = float4(y4[yv_base + 0]);
+    const float4 y1 = float4(y4[yv_base + 1]);
+    const float4 y2 = float4(y4[yv_base + 2]);
+    const float4 y3 = float4(y4[yv_base + 3]);
+    const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
+    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 11u;
+    const ulong lo0 = q5_lo(p0);
+    const uint hi0 = q5_hi(p0);
+    const int m0 = (int)((hi0 >> 16) & 7u) + 1;
+    const int b0 = (int)((hi0 >> 19) & 31u) - 16;
+    const float m0f = (float)m0;
+    const float offset0 = (float)b0 - 16.0f * m0f;
+    sum0 += m0f * dot(q5_values_lo(lo0, 0), y0);
+    sum0 += m0f * dot(q5_values_lo(lo0, 20), y1);
+    sum0 += m0f * dot(q5_values_lo(lo0, 40), y2);
+    sum0 += m0f * dot(q5_values_last(lo0, hi0), y3);
+    sum0 += offset0 * ysum;
+    if (active1) {
+      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 11u;
+      const ulong lo1 = q5_lo(p1);
+      const uint hi1 = q5_hi(p1);
+      const int m1 = (int)((hi1 >> 16) & 7u) + 1;
+      const int b1 = (int)((hi1 >> 19) & 31u) - 16;
+      const float m1f = (float)m1;
+      const float offset1 = (float)b1 - 16.0f * m1f;
+      sum1 += m1f * dot(q5_values_lo(lo1, 0), y0);
+      sum1 += m1f * dot(q5_values_lo(lo1, 20), y1);
+      sum1 += m1f * dot(q5_values_lo(lo1, 40), y2);
+      sum1 += m1f * dot(q5_values_last(lo1, hi1), y3);
+      sum1 += offset1 * ysum;
+    }
+  }
+
+  if (sgitg == 0) {
+    partials[0][tiisg] = 0;
+    partials[1][tiisg] = 0;
+  }
+  const float lane_sum0 = simd_sum(sum0);
+  const float lane_sum1 = simd_sum(sum1);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum0;
+    partials[1][sgitg] = lane_sum1;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    const float all_sum0 = simd_sum(partials[0][tiisg]);
+    const float all_sum1 = simd_sum(partials[1][tiisg]);
+    if (tiisg == 0) {
+      float value = all_sum0 * (float)scales[rb + 0];
+)";
+        if (fusedBias) {
+          shader += R"(
+      value += (float)bias[rb + 0];
+)";
+        }
+        shader += R"(
+      dst[rb + 0] = (real)value;
+    }
+    if (tiisg == 1 && active1) {
+      float value = all_sum1 * (float)scales[rb + 1];
+)";
+        if (fusedBias) {
+          shader += R"(
+      value += (float)bias[rb + 1];
+)";
+        }
+        shader += R"(
+      dst[rb + 1] = (real)value;
+    }
+  }
+}
+)";
+      }
       return shader;
     }
     if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K) {

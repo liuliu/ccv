@@ -29,6 +29,7 @@ uint32_t Dequantize8iRowwiseXDescriptor::rowCount() const noexcept {
 
 uint32_t Dequantize8iRowwiseXDescriptor::groupSize() const noexcept {
 	switch (format) {
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -53,6 +54,8 @@ uint32_t Dequantize8iRowwiseXDescriptor::groupsPerRow() const noexcept {
 
 uint32_t Dequantize8iRowwiseXDescriptor::groupBits() const noexcept {
 	switch (format) {
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			return 88;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			return 72;
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:

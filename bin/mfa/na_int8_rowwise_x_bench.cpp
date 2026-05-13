@@ -71,6 +71,7 @@ struct ValidationStats {
 };
 
 constexpr FormatInfo kFormats[] = {
+  { CCV_NNC_QX_8I_ROWWISE_Q5_K, "q5_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
@@ -350,6 +351,7 @@ TimingStats benchmark(const BenchmarkConfig& config, const std::function<double(
 uint32_t rowwise_x_group_size(const uint32_t format)
 {
   switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q5_K:
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -369,6 +371,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
 uint32_t rowwise_x_group_bits(const uint32_t format)
 {
   switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+      return 88;
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
       return 72;
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -455,6 +459,16 @@ void decode_group(const uint8_t* const input, const size_t group_index, const ui
   static const int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
   size_t bit = group_index * (size_t)rowwise_x_group_bits(format);
   switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q5_K: {
+      int q[16];
+      for (uint32_t j = 0; j < 16; ++j, bit += 5)
+        q[j] = (int)read_bits(input, bit, 5) - 16;
+      const int m = (int)read_bits(input, bit, 3) + 1;
+      const int b = (int)read_bits(input, bit + 3, 5) - 16;
+      for (uint32_t j = 0; j < 16; ++j)
+        q8[j] = q[j] * m + b;
+      break;
+    }
     case CCV_NNC_QX_8I_ROWWISE_Q4_K: {
       int q[16];
       for (uint32_t j = 0; j < 16; ++j, bit += 4)

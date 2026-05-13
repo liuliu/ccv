@@ -230,6 +230,7 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -251,6 +252,8 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			return 88;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			return 72;
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:

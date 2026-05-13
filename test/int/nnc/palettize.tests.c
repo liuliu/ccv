@@ -100,6 +100,7 @@ TEST_CASE("quantize float to row-wise-x int8 formats and dequantize on CPU")
 {
 	const ccv_nnc_tensor_param_t source_params = CPU_TENSOR_NHWC(32F, 3, 19);
 	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
 		CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q3_K,
 		CCV_NNC_QX_8I_ROWWISE_Q2_K,
@@ -110,6 +111,7 @@ TEST_CASE("quantize float to row-wise-x int8 formats and dequantize on CPU")
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
 	};
 	const ccv_nnc_tensor_param_t params[] = {
+		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q5_K),
 		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q4_K),
 		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q3_K),
 		ccv_nnc_tensor_8i_rowwise_x(source_params, CCV_NNC_QX_8I_ROWWISE_Q2_K),

@@ -12,6 +12,7 @@ static int _ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -33,6 +34,8 @@ static int _ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			return 88;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			return 72;
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -204,6 +207,43 @@ typedef struct {
 	int grid[4];
 	uint32_t signs;
 } ccv_nnc_8i_rowwise_packed_group_t;
+
+static void _ccv_nnc_8i_rowwise_packed_quant_q5(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
+{
+	double best_sse = DBL_MAX;
+	int best_q[16] = {0};
+	int best_q8[16] = {0};
+	int best_m = 1, best_b = 0;
+	int m, b, j;
+	for (m = 1; m <= 8; m++)
+		for (b = -16; b <= 15; b++)
+		{
+			if (-16 * m + b < -127 || 15 * m + b > 127)
+				continue;
+			double sse = 0;
+			int q[16];
+			int q8[16];
+			for (j = 0; j < 16; j++)
+			{
+				q[j] = ccv_clamp((int)lrint((y[j] - b) / m), -16, 15);
+				q8[j] = q[j] * m + b;
+				const double d = q8[j] - y[j];
+				sse += w[j] * d * d;
+			}
+			if (sse < best_sse)
+			{
+				best_sse = sse;
+				best_m = m;
+				best_b = b;
+				memcpy(best_q, q, sizeof(best_q));
+				memcpy(best_q8, q8, sizeof(best_q8));
+			}
+		}
+	group->m = best_m;
+	group->b = best_b;
+	memcpy(group->q, best_q, sizeof(best_q));
+	memcpy(group->q8, best_q8, sizeof(best_q8));
+}
 
 static void _ccv_nnc_8i_rowwise_packed_quant_q4(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
 {
@@ -848,6 +888,9 @@ static void _ccv_nnc_8i_rowwise_packed_quant_group(const int format, const doubl
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			_ccv_nnc_8i_rowwise_packed_quant_q5(y, w, group);
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			_ccv_nnc_8i_rowwise_packed_quant_q4(y, w, group);
 			break;
@@ -884,6 +927,12 @@ static void _ccv_nnc_8i_rowwise_packed_pack_group(uint8_t* const output, const s
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			for (j = 0; j < 16; j++, bit += 5)
+				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit, (uint32_t)(group->q[j] + 16), 5);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit, (uint32_t)(group->m - 1), 3);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 3, (uint32_t)(group->b + 16), 5);
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			for (j = 0; j < 16; j++, bit += 4)
 				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit, (uint32_t)(group->q[j] + 8), 4);
@@ -944,6 +993,16 @@ static void _ccv_nnc_8i_rowwise_packed_decode_group(const uint8_t* const input, 
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K: {
+			int q[16];
+			for (j = 0; j < 16; j++, bit += 5)
+				q[j] = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit, 5) - 16;
+			const int m = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit, 3) + 1;
+			const int b = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 3, 5) - 16;
+			for (j = 0; j < 16; j++)
+				q8[j] = q[j] * m + b;
+			break;
+		}
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K: {
 			int q[16];
 			for (j = 0; j < 16; j++, bit += 4)

@@ -169,6 +169,35 @@ inline int iq3xxs_value(const uint index, const uint lane)
 	}
 
 	switch (format) {
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+			shader += R"(
+inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+{
+  device const uchar* p = source + group_index * 11u;
+  const ulong lo =
+    (ulong)p[0] |
+    ((ulong)p[1] << 8) |
+    ((ulong)p[2] << 16) |
+    ((ulong)p[3] << 24) |
+    ((ulong)p[4] << 32) |
+    ((ulong)p[5] << 40) |
+    ((ulong)p[6] << 48) |
+    ((ulong)p[7] << 56);
+  const uint hi =
+    (uint)p[8] |
+    ((uint)p[9] << 8) |
+    ((uint)p[10] << 16);
+  const int m = (int)((hi >> 16) & 7u) + 1;
+  const int b = (int)((hi >> 19) & 31u) - 16;
+  for (uint j = 0; j < 12; ++j)
+    q8[j] = ((int)((lo >> (j * 5)) & 31ul) - 16) * m + b;
+  q8[12] = ((int)(((lo >> 60) | ((ulong)hi << 4)) & 31ul) - 16) * m + b;
+  q8[13] = ((int)((hi >> 1) & 31u) - 16) * m + b;
+  q8[14] = ((int)((hi >> 6) & 31u) - 16) * m + b;
+  q8[15] = ((int)((hi >> 11) & 31u) - 16) * m + b;
+}
+)";
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 			shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)

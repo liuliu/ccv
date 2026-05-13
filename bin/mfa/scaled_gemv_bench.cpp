@@ -111,6 +111,7 @@ struct Pipelines {
 constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
 
 constexpr FormatInfo kPackedFormats[] = {
+  { CCV_NNC_QX_8I_ROWWISE_Q5_K, "q5_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
@@ -250,6 +251,7 @@ std::vector<FormatInfo> selected_formats(const Config& config)
 uint32_t rowwise_x_group_size(const uint32_t format)
 {
   switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q5_K:
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -269,6 +271,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
 uint32_t rowwise_x_group_bits(const uint32_t format)
 {
   switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+      return 88;
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
       return 72;
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -305,9 +309,9 @@ std::vector<uint8_t> make_packed_rowwise_x(
   std::vector<uint8_t> packed(scale_offset + (size_t)rows * sizeof(T), 0);
   for (size_t i = 0; i < scale_offset; ++i)
     packed[i] = (uint8_t)((i * 131 + format * 17 + 23) & 0xff);
-  if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K || format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
+  if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q4_K || format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
     const uint32_t groups_per_row = ceil_div(cols, group_size);
-    const uint32_t group_bytes = format == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 9 : 7;
+    const uint32_t group_bytes = format == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 11 : (format == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 9 : 7);
     for (uint32_t g = 0; g < rows * groups_per_row; ++g)
       packed[(size_t)g * group_bytes + group_bytes - 1] = 0x80;
   } else if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K) {
@@ -962,7 +966,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--format rowwise|q5_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }
