@@ -114,6 +114,7 @@ constexpr FormatInfo kPackedFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, "iq2_xxs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ2_S, "iq2_s" },
   { CCV_NNC_QX_8I_ROWWISE_IQ2_XS, "iq2_xs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
@@ -255,6 +256,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
     case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
       return 16;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 32;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 8;
@@ -278,6 +281,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
       return 21;
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 28;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 64;
     default:
       return 0;
   }
@@ -957,7 +962,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q4_k|q3_k|q2_k|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--format rowwise|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }

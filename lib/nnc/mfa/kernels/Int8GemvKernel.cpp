@@ -45,6 +45,34 @@ static void append_compact_grid(std::string& shader, const char* const name, con
   shader += "\n};\n";
 }
 
+static void append_iq2xxs_scaled_grid(std::string& shader)
+{
+  static constexpr int q2_xxs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
+  shader += "constant uint iq2xxs_scaled_grid[8192] = {";
+  for (uint32_t scale_code = 0; scale_code < 16; ++scale_code) {
+    const int scale = q2_xxs_scales[scale_code];
+    for (uint32_t index = 0; index < 256; ++index) {
+      const uint16_t entry = ccv_nnc_8i_rowwise_packed_iq2xxs_grid[index];
+      for (uint32_t block = 0; block < 2; ++block) {
+        if (scale_code != 0 || index != 0 || block != 0)
+          shader += ",";
+        if (((scale_code * 512 + index * 2 + block) % 8) == 0)
+          shader += "\n  ";
+        uint32_t packed = 0;
+        for (uint32_t lane = 0; lane < 4; ++lane) {
+          const uint32_t code = (entry >> ((block * 4 + lane) * 2)) & 3;
+          const int raw = (1 + (int)code * 2) * scale;
+          const uint32_t mag = (uint32_t)(raw < 127 ? raw : 127);
+          packed |= mag << (lane * 8);
+        }
+        shader += std::to_string(packed);
+        shader += "u";
+      }
+    }
+  }
+  shader += "\n};\n";
+}
+
 static void append_packed_m3_kernel(std::string& shader, const bool fusedBias)
 {
   shader += R"(
@@ -328,11 +356,15 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
         append_packed_m3_kernel(shader, fusedBias);
         return shader;
       }
-      if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
+      if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
+          format == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
           format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
           format == CCV_NNC_QX_8I_ROWWISE_IQ3_S ||
           format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
-        if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+        if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+          append_iq2xxs_scaled_grid(shader);
+          append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });
+        } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
           append_compact_grid(shader, "iq2s_grid", ccv_nnc_8i_rowwise_packed_iq2s_grid, 1024, compact_iq2_grid_entry);
         else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
           append_compact_grid(shader, "iq2xs_grid", ccv_nnc_8i_rowwise_packed_iq2xs_grid, 512, compact_iq2_grid_entry);
@@ -392,6 +424,24 @@ inline uint iq3xxs_payload(device const uchar* data, const uint group_index)
 }
 )";
         }
+        if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+          shader += R"(
+inline float4 signed_iq2xxs_values(const uint packed, const uint signs, const uint sign_lane)
+{
+  const float4 mag = float4(
+    (float)(packed & 255u),
+    (float)((packed >> 8) & 255u),
+    (float)((packed >> 16) & 255u),
+    (float)((packed >> 24) & 255u));
+  const uint sign_bits = signs >> sign_lane;
+  return select(mag, -mag, bool4(
+    (sign_bits & 1u) != 0u,
+    (sign_bits & 2u) != 0u,
+    (sign_bits & 4u) != 0u,
+    (sign_bits & 8u) != 0u));
+}
+)";
+        }
         if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
           shader += R"(
 inline float4 signed_iq2_values(constant uint* grid, const uint index, const uint code_lane, const uint signs, const uint sign_lane, const float scale)
@@ -447,6 +497,36 @@ inline float4 signed_iq3xxs_values(const uint index, const uint signs, const uin
 )";
         }
         switch (format) {
+          case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+            shader += R"(
+inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+{
+  device const uchar* p = source + group_index * 8u;
+  const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
+  const uint scale_base = ((uint)p[7] >> 4) << 9;
+  const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
+  const uint signs1 = iq2xxs_ksigns[(sign_codes >> 7) & 127u];
+  const uint signs2 = iq2xxs_ksigns[(sign_codes >> 14) & 127u];
+  const uint signs3 = iq2xxs_ksigns[(sign_codes >> 21) & 127u];
+  const uint grid0 = scale_base + ((uint)p[0] << 1);
+  const uint grid1 = scale_base + ((uint)p[1] << 1);
+  const uint grid2 = scale_base + ((uint)p[2] << 1);
+  const uint grid3 = scale_base + ((uint)p[3] << 1);
+  const float4 v0 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0], signs0, 0);
+  const float4 v1 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0 + 1], signs0, 4);
+  const float4 v2 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1], signs1, 0);
+  const float4 v3 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1 + 1], signs1, 4);
+  const float4 v4 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2], signs2, 0);
+  const float4 v5 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2 + 1], signs2, 4);
+  const float4 v6 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3], signs3, 0);
+  const float4 v7 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3 + 1], signs3, 4);
+  return float3(
+    dot(v0, float4(y0[yv_base + 0])) + dot(v1, float4(y0[yv_base + 1])) + dot(v2, float4(y0[yv_base + 2])) + dot(v3, float4(y0[yv_base + 3])) + dot(v4, float4(y0[yv_base + 4])) + dot(v5, float4(y0[yv_base + 5])) + dot(v6, float4(y0[yv_base + 6])) + dot(v7, float4(y0[yv_base + 7])),
+    dot(v0, float4(y1[yv_base + 0])) + dot(v1, float4(y1[yv_base + 1])) + dot(v2, float4(y1[yv_base + 2])) + dot(v3, float4(y1[yv_base + 3])) + dot(v4, float4(y1[yv_base + 4])) + dot(v5, float4(y1[yv_base + 5])) + dot(v6, float4(y1[yv_base + 6])) + dot(v7, float4(y1[yv_base + 7])),
+    dot(v0, float4(y2[yv_base + 0])) + dot(v1, float4(y2[yv_base + 1])) + dot(v2, float4(y2[yv_base + 2])) + dot(v3, float4(y2[yv_base + 3])) + dot(v4, float4(y2[yv_base + 4])) + dot(v5, float4(y2[yv_base + 5])) + dot(v6, float4(y2[yv_base + 6])) + dot(v7, float4(y2[yv_base + 7])));
+}
+)";
+            break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
 inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
@@ -1581,11 +1661,15 @@ kernel void int8_gemv(
       }
       return shader;
     }
-    if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
+        format == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
         format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
         format == CCV_NNC_QX_8I_ROWWISE_IQ3_S ||
         format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
-      if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+      if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+        append_iq2xxs_scaled_grid(shader);
+        append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });
+      } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
         append_compact_grid(shader, "iq2s_grid", ccv_nnc_8i_rowwise_packed_iq2s_grid, 1024, compact_iq2_grid_entry);
       else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
         append_compact_grid(shader, "iq2xs_grid", ccv_nnc_8i_rowwise_packed_iq2xs_grid, 512, compact_iq2_grid_entry);
@@ -1645,6 +1729,24 @@ inline uint iq3xxs_payload(device const uchar* data, const uint group_index)
 }
 )";
       }
+      if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+        shader += R"(
+inline float4 signed_iq2xxs_values(const uint packed, const uint signs, const uint sign_lane)
+{
+  const float4 mag = float4(
+    (float)(packed & 255u),
+    (float)((packed >> 8) & 255u),
+    (float)((packed >> 16) & 255u),
+    (float)((packed >> 24) & 255u));
+  const uint sign_bits = signs >> sign_lane;
+  return select(mag, -mag, bool4(
+    (sign_bits & 1u) != 0u,
+    (sign_bits & 2u) != 0u,
+    (sign_bits & 4u) != 0u,
+    (sign_bits & 8u) != 0u));
+}
+)";
+      }
       if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
         shader += R"(
 inline float4 signed_iq2_values(constant uint* grid, const uint index, const uint code_lane, const uint signs, const uint sign_lane, const float scale)
@@ -1701,6 +1803,35 @@ inline float4 signed_iq3xxs_values(const uint index, const uint signs, const uin
       }
       if (mrows == 2) {
         switch (format) {
+          case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+            shader += R"(
+inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+{
+  device const uchar* p = source + group_index * 8u;
+  const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
+  const uint scale_base = ((uint)p[7] >> 4) << 9;
+  const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
+  const uint signs1 = iq2xxs_ksigns[(sign_codes >> 7) & 127u];
+  const uint signs2 = iq2xxs_ksigns[(sign_codes >> 14) & 127u];
+  const uint signs3 = iq2xxs_ksigns[(sign_codes >> 21) & 127u];
+  const uint grid0 = scale_base + ((uint)p[0] << 1);
+  const uint grid1 = scale_base + ((uint)p[1] << 1);
+  const uint grid2 = scale_base + ((uint)p[2] << 1);
+  const uint grid3 = scale_base + ((uint)p[3] << 1);
+  const float4 v0 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0], signs0, 0);
+  const float4 v1 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0 + 1], signs0, 4);
+  const float4 v2 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1], signs1, 0);
+  const float4 v3 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1 + 1], signs1, 4);
+  const float4 v4 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2], signs2, 0);
+  const float4 v5 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2 + 1], signs2, 4);
+  const float4 v6 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3], signs3, 0);
+  const float4 v7 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3 + 1], signs3, 4);
+  return float2(
+    dot(v0, float4(y0[yv_base + 0])) + dot(v1, float4(y0[yv_base + 1])) + dot(v2, float4(y0[yv_base + 2])) + dot(v3, float4(y0[yv_base + 3])) + dot(v4, float4(y0[yv_base + 4])) + dot(v5, float4(y0[yv_base + 5])) + dot(v6, float4(y0[yv_base + 6])) + dot(v7, float4(y0[yv_base + 7])),
+    dot(v0, float4(y1[yv_base + 0])) + dot(v1, float4(y1[yv_base + 1])) + dot(v2, float4(y1[yv_base + 2])) + dot(v3, float4(y1[yv_base + 3])) + dot(v4, float4(y1[yv_base + 4])) + dot(v5, float4(y1[yv_base + 5])) + dot(v6, float4(y1[yv_base + 6])) + dot(v7, float4(y1[yv_base + 7])));
+}
+)";
+            break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
 inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
@@ -1885,6 +2016,33 @@ kernel void int8_gemv(
 )";
       } else {
         switch (format) {
+          case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+            shader += R"(
+inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+{
+  device const uchar* p = source + group_index * 8u;
+  const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
+  const uint scale_base = ((uint)p[7] >> 4) << 9;
+  const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
+  const uint signs1 = iq2xxs_ksigns[(sign_codes >> 7) & 127u];
+  const uint signs2 = iq2xxs_ksigns[(sign_codes >> 14) & 127u];
+  const uint signs3 = iq2xxs_ksigns[(sign_codes >> 21) & 127u];
+  const uint grid0 = scale_base + ((uint)p[0] << 1);
+  const uint grid1 = scale_base + ((uint)p[1] << 1);
+  const uint grid2 = scale_base + ((uint)p[2] << 1);
+  const uint grid3 = scale_base + ((uint)p[3] << 1);
+  const float4 v0 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0], signs0, 0);
+  const float4 v1 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid0 + 1], signs0, 4);
+  const float4 v2 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1], signs1, 0);
+  const float4 v3 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid1 + 1], signs1, 4);
+  const float4 v4 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2], signs2, 0);
+  const float4 v5 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid2 + 1], signs2, 4);
+  const float4 v6 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3], signs3, 0);
+  const float4 v7 = signed_iq2xxs_values(iq2xxs_scaled_grid[grid3 + 1], signs3, 4);
+  return dot(v0, float4(y4[yv_base + 0])) + dot(v1, float4(y4[yv_base + 1])) + dot(v2, float4(y4[yv_base + 2])) + dot(v3, float4(y4[yv_base + 3])) + dot(v4, float4(y4[yv_base + 4])) + dot(v5, float4(y4[yv_base + 5])) + dot(v6, float4(y4[yv_base + 6])) + dot(v7, float4(y4[yv_base + 7]));
+}
+)";
+            break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
 inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
@@ -2466,8 +2624,6 @@ std::string Int8GemvKernel::createConstants() const noexcept {
     defines += "constant uint group_size [[function_constant(3)]];";
     defines += "\n";
     defines += "constant uint groups_per_row [[function_constant(4)]];";
-    defines += "\n";
-    defines += "constant uint group_bits [[function_constant(5)]];";
     defines += "\n";
   }
   return defines;

@@ -33,6 +33,8 @@ uint32_t Int8GemvDescriptor::groupSize() const noexcept {
     case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
       return 16;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 32;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 8;
@@ -63,6 +65,8 @@ uint32_t Int8GemvDescriptor::groupBits() const noexcept {
       return 21;
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 28;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 64;
     default:
       CCV_NNC_MFA_PRECONDITION(false);
       return 0;
@@ -101,13 +105,11 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
     const uint32_t scaleOffset = format == 0 ? (uint32_t)(((uint64_t)nrows * ncols + 127) & ~UINT64_C(127)) : inputScaleOffset();
     const uint32_t groupSize = this->groupSize();
     const uint32_t groupsPerRow = this->groupsPerRow();
-    const uint32_t groupBits = this->groupBits();
     constants->setConstantValue(&ncols, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&scaleOffset, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(4));
-    constants->setConstantValue(&groupBits, MTL::DataTypeUInt, NS::UInteger(5));
 
     NS::String* swiftName = NS::String::string("int8_gemv", NS::UTF8StringEncoding);
     NS::Error* error = nil;
