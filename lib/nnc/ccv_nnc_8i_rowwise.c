@@ -18,6 +18,8 @@ static int _ccv_nnc_8i_rowwise_x_group_size(const int format)
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
 			return 16;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			return 32;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			return 8;
@@ -43,6 +45,8 @@ static int _ccv_nnc_8i_rowwise_x_group_bits(const int format)
 			return 21;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			return 28;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			return 64;
 		default:
 			assert(0);
 			return 0;
@@ -191,8 +195,8 @@ static void _ccv_nnc_8i_rowwise_packed_write_value(void* const output, const int
 }
 
 typedef struct {
-	int q[16];
-	int q8[16];
+	int q[32];
+	int q8[32];
 	int m;
 	int b;
 	int z;
@@ -323,7 +327,79 @@ static int _ccv_nnc_8i_rowwise_packed_iq2_value(const uint64_t* const grid, cons
 	return 5;
 }
 
-#define CCV_NNC_8I_ROWWISE_PACKED_IQ2S_GRID_SIZE (1024)
+static int _ccv_nnc_8i_rowwise_packed_iq2xxs_value(const int index, const int lane)
+{
+	const int v = (int)((ccv_nnc_8i_rowwise_packed_iq2xxs_grid[index] >> (lane * 2)) & 3);
+	assert(v < 3);
+	return 1 + v * 2;
+}
+
+enum {
+	CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE = 256,
+	CCV_NNC_8I_ROWWISE_PACKED_IQ2S_GRID_SIZE = 1024,
+};
+
+static const int ccv_nnc_8i_rowwise_packed_iq2xxs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
+static int ccv_nnc_8i_rowwise_packed_iq2xxs_initialized = 0;
+static uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[33][CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE][8];
+
+static void _ccv_nnc_8i_rowwise_packed_iq2xxs_init(void)
+{
+	if (ccv_nnc_8i_rowwise_packed_iq2xxs_initialized)
+		return;
+	int index, j, scale;
+	for (scale = 1; scale <= 32; scale++)
+		for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
+			for (j = 0; j < 8; j++)
+				ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index][j] = (uint8_t)ccv_min(_ccv_nnc_8i_rowwise_packed_iq2xxs_value(index, j) * scale, 127);
+	ccv_nnc_8i_rowwise_packed_iq2xxs_initialized = 1;
+}
+
+static double _ccv_nnc_8i_rowwise_packed_iq2xxs_sse(const double* const y, const double* const w, const int lane, const int scale, const int index, const int sign_index)
+{
+	const uint8_t* const mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index];
+	const uint8_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[sign_index];
+	int j;
+	double sse = 0;
+	for (j = 0; j < 8; j++)
+	{
+		const int q8 = (signs & (1u << j)) ? -(int)mag[j] : (int)mag[j];
+		const double d = (double)q8 - y[lane + j];
+		sse += w[lane + j] * d * d;
+	}
+	return sse;
+}
+
+static double _ccv_nnc_8i_rowwise_packed_iq2xxs_best_sign_sse(const double* const y, const double* const w, const int lane, const int scale, const int index, int* const sign_index)
+{
+	const uint8_t* const mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index];
+	uint8_t signs = 0;
+	int negative_count = 0;
+	int j;
+	for (j = 0; j < 8; j++)
+		if (y[lane + j] < 0)
+		{
+			signs |= (uint8_t)(1u << j);
+			negative_count++;
+		}
+	if (negative_count & 1)
+	{
+		int best_flip = 0;
+		double best_cost = DBL_MAX;
+		for (j = 0; j < 8; j++)
+		{
+			const double cost = w[lane + j] * (double)mag[j] * fabs(y[lane + j]);
+			if (cost < best_cost)
+			{
+				best_cost = cost;
+				best_flip = j;
+			}
+		}
+		signs ^= (uint8_t)(1u << best_flip);
+	}
+	*sign_index = signs & 0x7f;
+	return _ccv_nnc_8i_rowwise_packed_iq2xxs_sse(y, w, lane, scale, index, *sign_index);
+}
 
 static int ccv_nnc_8i_rowwise_packed_iq2s_initialized = 0;
 static uint8_t ccv_nnc_8i_rowwise_packed_iq2s_level[CCV_NNC_8I_ROWWISE_PACKED_IQ2S_GRID_SIZE][8];
@@ -461,6 +537,67 @@ static double _ccv_nnc_8i_rowwise_packed_iq3xxs_sse(const double* const ay, cons
 	d = (double)mag[3] - ay[lane + 3];
 	sse += w[lane + 3] * d * d;
 	return sse;
+}
+
+static void _ccv_nnc_8i_rowwise_packed_quant_iq2_xxs(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
+{
+	assert(ccv_nnc_8i_rowwise_packed_iq2xxs_initialized);
+	double best_sse = DBL_MAX;
+	int best_scale_code = 0;
+	int best_grid[4] = {0};
+	int best_sign[4] = {0};
+	int scale_code;
+	for (scale_code = 0; scale_code < 16; scale_code++)
+	{
+		const int scale = ccv_nnc_8i_rowwise_packed_iq2xxs_scales[scale_code];
+		double group_sse = 0;
+		int group_grid[4] = {0};
+		int group_sign[4] = {0};
+		int sg;
+		for (sg = 0; sg < 4; sg++)
+		{
+			double best_sub_sse = DBL_MAX;
+			int best_sub_grid = 0;
+			int best_sub_sign = 0;
+			const int lane = sg * 8;
+			int index;
+			for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
+				{
+					int sign;
+					const double sse = _ccv_nnc_8i_rowwise_packed_iq2xxs_best_sign_sse(y, w, lane, scale, index, &sign);
+					if (sse < best_sub_sse)
+					{
+						best_sub_sse = sse;
+						best_sub_grid = index;
+						best_sub_sign = sign;
+					}
+				}
+			group_sse += best_sub_sse;
+			group_grid[sg] = best_sub_grid;
+			group_sign[sg] = best_sub_sign;
+		}
+		if (group_sse < best_sse)
+		{
+			best_sse = group_sse;
+			best_scale_code = scale_code;
+			memcpy(best_grid, group_grid, sizeof(best_grid));
+			memcpy(best_sign, group_sign, sizeof(best_sign));
+		}
+	}
+	group->scale = best_scale_code;
+	group->signs = 0;
+	memcpy(group->grid, best_grid, sizeof(best_grid));
+	int j;
+	for (j = 0; j < 4; j++)
+		group->signs |= (uint32_t)best_sign[j] << (j * 7);
+	for (j = 0; j < 32; j++)
+	{
+		const int sg = j >> 3;
+		const int lane = j & 7;
+		const uint8_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[best_sign[sg]];
+		const int mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[ccv_nnc_8i_rowwise_packed_iq2xxs_scales[best_scale_code]][best_grid[sg]][lane];
+		group->q8[j] = (signs & (1u << lane)) ? -mag : mag;
+	}
 }
 
 static void _ccv_nnc_8i_rowwise_packed_quant_iq2_s(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
@@ -720,6 +857,9 @@ static void _ccv_nnc_8i_rowwise_packed_quant_group(const int format, const doubl
 		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
 			_ccv_nnc_8i_rowwise_packed_quant_q2(y, w, group);
 			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			_ccv_nnc_8i_rowwise_packed_quant_iq2_xxs(y, w, group);
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 			_ccv_nnc_8i_rowwise_packed_quant_iq2_s(y, w, group);
 			break;
@@ -772,6 +912,12 @@ static void _ccv_nnc_8i_rowwise_packed_pack_group(uint8_t* const output, const s
 			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit, (uint32_t)group->grid[0], 9);
 			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 9, group->signs, 8);
 			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 17, (uint32_t)group->scale, 4);
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			for (j = 0; j < 4; j++)
+				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + j * 8, (uint32_t)group->grid[j], 8);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 32, group->signs, 28);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 60, (uint32_t)group->scale, 4);
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
 			for (j = 0; j < 4; j++)
@@ -853,6 +999,25 @@ static void _ccv_nnc_8i_rowwise_packed_decode_group(const uint8_t* const input, 
 			}
 			break;
 		}
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS: {
+			int grid[4];
+			for (j = 0; j < 4; j++)
+				grid[j] = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + j * 8, 8);
+			const uint32_t sign_codes = _ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 32, 28);
+			const int scale = ccv_nnc_8i_rowwise_packed_iq2xxs_scales[_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 60, 4)];
+			int sg;
+			for (sg = 0; sg < 4; sg++)
+			{
+				const uint8_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[(sign_codes >> (sg * 7)) & 0x7f];
+				for (j = 0; j < 8; j++)
+				{
+					const int lane = sg * 8 + j;
+					const int mag = ccv_min(_ccv_nnc_8i_rowwise_packed_iq2xxs_value(grid[sg], j) * scale, 127);
+					q8[lane] = (signs & (1u << j)) ? -mag : mag;
+				}
+			}
+			break;
+		}
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S: {
 			int grid[4];
 			for (j = 0; j < 4; j++)
@@ -904,6 +1069,9 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	assert(output_length >= output_size);
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+			_ccv_nnc_8i_rowwise_packed_iq2xxs_init();
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 			_ccv_nnc_8i_rowwise_packed_iq2s_init();
 			break;
@@ -968,8 +1136,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 				size_t g;
 				for (g = 0; g < groups_per_row; g++)
 				{
-					double y[16] = {0};
-					double w[16] = {0};
+					double y[32] = {0};
+					double w[32] = {0};
 					for (j = 0; j < group_size; j++)
 					{
 						y[j] = row[g * group_size + j] / stored_scale;
@@ -1006,8 +1174,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			size_t g;
 			for (g = 0; g < groups_per_row; g++)
 			{
-				double y[16] = {0};
-				double w[16] = {0};
+				double y[32] = {0};
+				double w[32] = {0};
 				for (j = 0; j < group_size; j++)
 				{
 					y[j] = row[g * group_size + j] / final_scale;
@@ -1043,7 +1211,7 @@ void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, cons
 		size_t g;
 		for (g = 0; g < groups_per_row; g++)
 		{
-			int q8[16] = {0};
+			int q8[32] = {0};
 			_ccv_nnc_8i_rowwise_packed_decode_group(u8, (size_t)i * groups_per_row + g, format, q8);
 			size_t j;
 			for (j = 0; j < group_size; j++)
