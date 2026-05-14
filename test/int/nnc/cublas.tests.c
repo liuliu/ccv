@@ -276,7 +276,7 @@ TEST_CASE("gemm no transpose with bias and row-wise int8 weights")
 	};
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 2, 3)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, 0, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
 	ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_dequantize_8i_rowwise(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, 3, dq_b->data.u8, 6);
 	float dp[] = {
@@ -476,7 +476,7 @@ TEST_CASE("backward gemm with no transpose and row-wise int8 weights")
 	};
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(bp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 2, 3)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, 6, 3, 0, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
 	ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_dequantize_8i_rowwise(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, 3, dq_b->data.u8, 6);
 	ccv_nnc_tensor_t* const ht = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);

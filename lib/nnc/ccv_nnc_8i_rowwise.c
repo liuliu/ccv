@@ -197,6 +197,11 @@ static void _ccv_nnc_8i_rowwise_packed_write_value(void* const output, const int
 		((double*)output)[j] = v;
 }
 
+static inline double _ccv_nnc_8i_rowwise_weight(const float* const imatrix, const size_t j)
+{
+	return imatrix ? ccv_max((double)imatrix[j], 0.) : 1.;
+}
+
 typedef struct {
 	int q[32];
 	int q8[32];
@@ -1179,7 +1184,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			for (j = 0; j < row_length; j++)
 			{
 				max_abs = ccv_max(max_abs, fabs(row[j]));
-				weights[j] = imatrix ? ccv_max((double)imatrix[j], 0.) : 1.;
+				weights[j] = _ccv_nnc_8i_rowwise_weight(imatrix, j);
 			}
 			for (; j < padded_row_length; j++)
 				weights[j] = 0;
@@ -1289,7 +1294,7 @@ static inline int _ccv_nnc_8i_rowwise_quantize(const double v, const double inv_
 	return ccv_clamp(q, -127, 127);
 }
 
-static float _ccv_nnc_quantize_8i_rowwise_16f(const uint16_t* const row, const size_t row_length, int8_t* const q)
+static float _ccv_nnc_quantize_8i_rowwise_16f(const uint16_t* const row, const size_t row_length, const float* const imatrix, int8_t* const q)
 {
 	size_t j;
 	double max_abs = 0;
@@ -1324,14 +1329,15 @@ static float _ccv_nnc_quantize_8i_rowwise_16f(const uint16_t* const row, const s
 		double sse = 0;
 		for (j = 0; j < row_length; j++)
 		{
+			const double w = _ccv_nnc_8i_rowwise_weight(imatrix, j);
 			float v_f;
 			ccv_half_precision_to_float(row + j, &v_f, 1);
 			const double v = v_f;
 			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
 			const double d = v - stored_scale * qj;
-			sse += d * d;
-			sum_qx += qj * v;
-			sum_qq += qj * qj;
+			sse += w * d * d;
+			sum_qx += w * qj * v;
+			sum_qq += w * qj * qj;
 		}
 		if (sse < best_sse)
 		{
@@ -1365,7 +1371,7 @@ static float _ccv_nnc_quantize_8i_rowwise_16f(const uint16_t* const row, const s
 	return best_scale;
 }
 
-static float _ccv_nnc_quantize_8i_rowwise_16bf(const uint16_t* const row, const size_t row_length, int8_t* const q)
+static float _ccv_nnc_quantize_8i_rowwise_16bf(const uint16_t* const row, const size_t row_length, const float* const imatrix, int8_t* const q)
 {
 	size_t j;
 	double max_abs = 0;
@@ -1399,14 +1405,15 @@ static float _ccv_nnc_quantize_8i_rowwise_16bf(const uint16_t* const row, const 
 		double sse = 0;
 		for (j = 0; j < row_length; j++)
 		{
+			const double w = _ccv_nnc_8i_rowwise_weight(imatrix, j);
 			float v_f;
 			ccv_bfloat_to_float(row + j, &v_f, 1);
 			const double v = v_f;
 			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
 			const double d = v - stored_scale * qj;
-			sse += d * d;
-			sum_qx += qj * v;
-			sum_qq += qj * qj;
+			sse += w * d * d;
+			sum_qx += w * qj * v;
+			sum_qq += w * qj * qj;
 		}
 		if (sse < best_sse)
 		{
@@ -1440,7 +1447,7 @@ static float _ccv_nnc_quantize_8i_rowwise_16bf(const uint16_t* const row, const 
 	return best_scale;
 }
 
-static float _ccv_nnc_quantize_8i_rowwise_32f(const float* const row, const size_t row_length, int8_t* const q)
+static float _ccv_nnc_quantize_8i_rowwise_32f(const float* const row, const size_t row_length, const float* const imatrix, int8_t* const q)
 {
 	size_t j;
 	double max_abs = 0;
@@ -1466,12 +1473,13 @@ static float _ccv_nnc_quantize_8i_rowwise_32f(const float* const row, const size
 		double sse = 0;
 		for (j = 0; j < row_length; j++)
 		{
+			const double w = _ccv_nnc_8i_rowwise_weight(imatrix, j);
 			const double v = row[j];
 			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
 			const double d = v - stored_scale * qj;
-			sse += d * d;
-			sum_qx += qj * v;
-			sum_qq += qj * qj;
+			sse += w * d * d;
+			sum_qx += w * qj * v;
+			sum_qq += w * qj * qj;
 		}
 		if (sse < best_sse)
 		{
@@ -1496,7 +1504,7 @@ static float _ccv_nnc_quantize_8i_rowwise_32f(const float* const row, const size
 	return best_scale;
 }
 
-static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const size_t row_length, int8_t* const q)
+static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const size_t row_length, const float* const imatrix, int8_t* const q)
 {
 	size_t j;
 	double max_abs = 0;
@@ -1522,12 +1530,13 @@ static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const si
 		double sse = 0;
 		for (j = 0; j < row_length; j++)
 		{
+			const double w = _ccv_nnc_8i_rowwise_weight(imatrix, j);
 			const double v = row[j];
 			const int qj = _ccv_nnc_8i_rowwise_quantize(v, inv_scale);
 			const double d = v - stored_scale * qj;
-			sse += d * d;
-			sum_qx += qj * v;
-			sum_qq += qj * qj;
+			sse += w * d * d;
+			sum_qx += w * qj * v;
+			sum_qq += w * qj * qj;
 		}
 		if (sse < best_sse)
 		{
@@ -1552,7 +1561,7 @@ static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const si
 	return best_scale;
 }
 
-CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length)
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const float* const imatrix, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
@@ -1570,7 +1579,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16f(f16 + row_start, row_length, q + row_start);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16f(f16 + row_start, row_length, imatrix, q + row_start);
 			ccv_float_to_half_precision(&scale_f, scales + i, 1);
 		} parallel_endfor
 	} else if (datatype == CCV_16BF) {
@@ -1578,7 +1587,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16bf(bf16 + row_start, row_length, q + row_start);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16bf(bf16 + row_start, row_length, imatrix, q + row_start);
 			ccv_float_to_bfloat(&scale_f, scales + i, 1);
 		} parallel_endfor
 	} else if (datatype == CCV_32F) {
@@ -1586,7 +1595,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		float* const scales = (float*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			scales[i] = _ccv_nnc_quantize_8i_rowwise_32f(f32 + row_start, row_length, q + row_start);
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_32f(f32 + row_start, row_length, imatrix, q + row_start);
 		} parallel_endfor
 	} else {
 		assert(datatype == CCV_64F);
@@ -1594,7 +1603,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		double* const scales = (double*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			scales[i] = _ccv_nnc_quantize_8i_rowwise_64f(f64 + row_start, row_length, q + row_start);
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_64f(f64 + row_start, row_length, imatrix, q + row_start);
 		} parallel_endfor
 	}
 	return scale_offset + scale_size;

@@ -740,6 +740,7 @@ int main(int argc, char** argv)
       CCV_TENSOR_CPU_MEMORY,
       weights_half.size(),
       config.K,
+      0,
       b_rowwise.data(),
       b_rowwise.size());
   if (rowwise_written > b_rowwise.size()) {

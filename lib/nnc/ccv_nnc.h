@@ -1024,11 +1024,12 @@ void ccv_nnc_depalettize(const void* input, const int datatype, const int memory
  * @param memory_type Where the memory resides. Right now only support CPU_MEMORY.
  * @param input_length How many elements in the input.
  * @param row_length The number of elements in each row.
+ * @param imatrix Optional per-column importance weights of length @p row_length. Pass 0 for unweighted MSE.
  * @param output The output memory region.
  * @param output_length The maximum size of the output in bytes.
  * @return The actual length in bytes of the output.
  */
-CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, void* output, const size_t output_length);
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const float* const imatrix, void* output, const size_t output_length);
 /**
  * Dequantize a memory region from row-wise int8 + scale.
  * The row-wise split is based on the innermost dimension, thus @p row_length is required.

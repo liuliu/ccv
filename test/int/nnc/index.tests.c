@@ -298,7 +298,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
 	for (i = 0; i < rows * cols; i++)
 		source->data.f32[i] = ((i * 19) % 67 - 33) / 48.0f;
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	int ip[] = {3, 5, 3, 22, 0, 11, 5, 18, 7};
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);
@@ -338,7 +338,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with half output")
 	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
 	ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, rows * cols);
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	int ip[] = {1, 12, 1, 16, 3, 0, 12, 8};
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);
@@ -385,7 +385,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with bfloat output")
 	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
 	ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, rows * cols);
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	int ip[] = {2, 18, 2, 6, 14, 0, 18};
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, selected), 0);

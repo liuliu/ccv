@@ -338,7 +338,7 @@ TEST_CASE("mps forward convolution in nchw format with row-wise 8i weight")
 		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5f;
 	for (i = 0; i < output_dim; i++)
 		bias->data.f32[i] = (float)i / output_dim;
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_dim * input_dim, 1, wq->data.u8, ccv_nnc_tensor_data_size_without_padding(wq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_dim * input_dim, 1, 0, wq->data.u8, ccv_nnc_tensor_data_size_without_padding(wq->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(wq->info), "row-wise 8i convolution weight should fit the tensor exactly");
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, batch_size, input_dim, spatial, spatial), 0);
