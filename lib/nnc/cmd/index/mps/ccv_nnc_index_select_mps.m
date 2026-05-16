@@ -79,6 +79,14 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
+	assert(a->info.datatype == b->info.datatype);
+	if (indices->info.datatype == CCV_32S)
+	{
+		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF || a->info.datatype == CCV_32S);
+	} else {
+		assert(indices->info.datatype == CCV_32F);
+		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF);
+	}
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);

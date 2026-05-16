@@ -34,7 +34,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const size_t data_size = CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 	if (indices->info.datatype == CCV_32S)
 	{
-		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F);
+		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F || a->info.datatype == CCV_32S);
 		parallel_for(i, b_rows) {
 			const int index = indices->data.i32[i];
 			assert(index < a_rows);

@@ -33,6 +33,31 @@ TEST_CASE("index select a tensor")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("index select a 32s tensor")
+{
+	int ap[] = {
+		10, 20, 30,
+		40, 50, 60,
+		70, 80, 90,
+		100, 110, 120,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(ap, CPU_TENSOR_NHWC(32S, 4, 3), 0);
+	int ip[] = {3, 0, 2};
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(ip, CPU_TENSOR_NHWC(32S, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3, 3), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices), TENSOR_LIST(b), 0);
+	int btp[] = {
+		100, 110, 120,
+		10, 20, 30,
+		70, 80, 90,
+	};
+	ccv_nnc_tensor_t const bt = ccv_nnc_tensor(btp, CPU_TENSOR_NHWC(32S, 3, 3), 0);
+	REQUIRE_TENSOR_EQ(b, &bt, "should be equal");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(b);
+}
+
 TEST_CASE("index select a tensor with float")
 {
 	float ap[] = {

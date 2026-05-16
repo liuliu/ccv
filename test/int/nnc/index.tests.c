@@ -287,6 +287,38 @@ TEST_CASE("index select forward with half precision")
 	ccv_nnc_tensor_free(bt32);
 }
 
+TEST_CASE("mps index select forward with 32s tensor")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 97;
+	const int cols = 13;
+	const int selected = 31;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		a->data.i32[i] = ((i * 37) % 1009) - 503;
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected), 0);
+	for (i = 0; i < selected; i++)
+		indices->data.i32[i] = (i * 17 + 11) % rows;
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, cols), 0);
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices), TENSOR_LIST(ga, gindices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices), TENSOR_LIST(gb), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected, cols), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(actual), 0);
+	REQUIRE_ARRAY_EQ(int, expected->data.i32, actual->data.i32, selected * cols, "MPS index select should support 32s input and output tensors");
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
