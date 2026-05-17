@@ -1407,8 +1407,11 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t weights_params = params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
-	weights_params.dim[0] = self->count;
-	weights_params.dim[1] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	if (params.dim[0] != 0)
+	{
+		weights_params.dim[0] = self->count;
+		weights_params.dim[1] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	}
 	if (!self->weights.graph)
 		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
 	assert(self->weights.graph == graph);

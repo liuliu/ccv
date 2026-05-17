@@ -455,6 +455,8 @@ static int _ccv_nnc_tensor_symbol_check_dim(const ccv_nnc_symbolic_graph_t* cons
 		.graph = dest_graph
 	};
 	const ccv_nnc_tensor_param_t dest_params = ccv_nnc_tensor_symbol_params(dest_graph, dest_symbol);
+	if (src_params.dim[0] == 0 || dest_params.dim[0] == 0)
+		return 1;
 	return memcmp(src_params.dim, dest_params.dim, sizeof(src_params.dim)) == 0;
 }
 
