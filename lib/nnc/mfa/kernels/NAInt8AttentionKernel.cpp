@@ -2036,7 +2036,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
 )";
   if (isCausal) {
     source += R"(
-  for (uint c = 0; c < causal_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+  for (uint c = ((causal_c_edge + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}}) * {{BLOCK_DIMENSIONS_TRAVERSAL}}; c > 0;) {
+    c -= {{BLOCK_DIMENSIONS_TRAVERSAL}};
 )";
   } else {
     source += R"(
@@ -2178,6 +2179,25 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cL[k] *= correction[k];
       }
     }
+)";
+  if (isCausal) {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = correction.map_iterator(it);
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    }
+    source += R"(
+      }
+    }
+)";
+  } else {
+    source += R"(
     if (c == 0) {
       #pragma clang loop unroll(full)
       for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
@@ -2206,6 +2226,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
+  }
   if (isCausal) {
     source += R"(
     if (causal_mask) {
@@ -2393,6 +2414,25 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         cL[k] *= correction[k];
       }
     }
+)";
+  if (isCausal) {
+    source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+      if (cO_0.is_valid_element(k)) {
+        auto it = cO_0.get_iterator(k);
+        auto dst_it = correction.map_iterator(it);
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    }
+    source += R"(
+      }
+    }
+)";
+  } else {
+    source += R"(
     if (c == 0) {
       #pragma clang loop unroll(full)
       for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
@@ -2420,6 +2460,9 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         }
       }
     }
+)";
+  }
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
