@@ -11,6 +11,8 @@ static int _ccv_nnc_sigmoid_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(output_size == 1);
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;
@@ -108,6 +110,8 @@ static int _ccv_nnc_sigmoid_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const ccv_nnc_tensor_view_t* const g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (g->info.dim[0] == 0 || b->info.dim[0] == 0 || h->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;

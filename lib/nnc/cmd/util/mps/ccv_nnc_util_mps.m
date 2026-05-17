@@ -29,6 +29,8 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			assert(CCV_GET_DATA_TYPE_SIZE(a->info.datatype) == CCV_GET_DATA_TYPE_SIZE(b->info.datatype));
 			size = (ssize_t)ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
 		}
+		if (size == 0)
+			continue;
 		if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
 		{
 			unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)a->data.u8 & -vm_page_size);
@@ -161,11 +163,18 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nn
 static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i, j;
+	int executable_output_size = 0;
+	for (i = 0; i < output_size; i++)
+		executable_output_size += outputs[i]->info.dim[0] != 0;
+	if (executable_output_size == 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
+			if (a->info.dim[0] == 0)
+				continue;
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -186,11 +195,18 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i, j;
+	int executable_output_size = 0;
+	for (i = 0; i < output_size; i++)
+		executable_output_size += outputs[i]->info.dim[0] != 0;
+	if (executable_output_size == 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
 		{
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
+			if (a->info.dim[0] == 0)
+				continue;
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);

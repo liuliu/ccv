@@ -110,6 +110,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		return CCV_NNC_EXEC_INVALID;
 
 	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
+	if (q->info.dim[0] == 0 || k->info.dim[0] == 0 || v->info.dim[0] == 0 || o->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	assert(q_nd == 3 || q_nd == 4);
 	const int k_nd = ccv_nnc_tensor_nd(k->info.dim);
@@ -890,7 +892,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;

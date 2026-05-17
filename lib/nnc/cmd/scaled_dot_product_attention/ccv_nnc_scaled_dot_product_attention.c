@@ -45,6 +45,19 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 {
 	assert(input_size >= 3);
 	assert(output_size >= 1);
+	if (inputs[0].dim[0] == 0 || inputs[1].dim[0] == 0 || inputs[2].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		if (output_size > 1)
+		{
+			outputs[1] = outputs[0];
+			outputs[1].datatype = CCV_32F;
+		}
+		if (!cmd.scaled_dot_product_attention.is_varlen && input_size > 4 && output_size > 2)
+			outputs[2] = outputs[0];
+		return;
+	}
 	const int q_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	assert(q_nd == 3 || q_nd == 4);
 	const int k_nd = ccv_nnc_tensor_nd(inputs[1].dim);

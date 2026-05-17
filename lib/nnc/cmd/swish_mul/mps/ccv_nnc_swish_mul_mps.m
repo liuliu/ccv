@@ -28,6 +28,8 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0 || c->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	assert(c->info.datatype == a->info.datatype);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)

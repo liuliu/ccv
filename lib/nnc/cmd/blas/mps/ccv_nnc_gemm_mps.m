@@ -135,6 +135,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (a->info.dim[0] == 0 || w->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // It is a 1-d array
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;

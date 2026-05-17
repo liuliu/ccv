@@ -48,6 +48,12 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	assert(output_size == 1);
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
+	if (inputs[0].dim[0] == 0 || inputs[1].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		return;
+	}
 	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	const int w_nd = ccv_nnc_tensor_nd(inputs[1].dim);
 	const int nd = ccv_max(a_nd, w_nd);
@@ -125,6 +131,12 @@ static void _ccv_nnc_broadcast_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, c
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
+	if (inputs[0].dim[0] == 0 || inputs[1].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		return;
+	}
 	const int a_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	const int b_nd = ccv_nnc_tensor_nd(inputs[1].dim);
 	outputs[0] = inputs[0];

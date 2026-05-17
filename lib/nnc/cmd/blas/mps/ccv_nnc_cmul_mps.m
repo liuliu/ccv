@@ -37,6 +37,8 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* const c = outputs[0];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0 || c->info.dim[0] == 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;
