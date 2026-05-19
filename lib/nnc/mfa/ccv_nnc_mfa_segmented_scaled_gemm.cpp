@@ -5,9 +5,9 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8MatMulKernel.hpp"
 #include "kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulDescriptor.hpp"
-#include "kernels/SegmentedScaledGEMMPrologueKernel.hpp"
-#include "kernels/SegmentedScaledGEMMPrologueKernelDescriptor.hpp"
-#include "kernels/SegmentedScaledGEMMPrologueDescriptor.hpp"
+#include "kernels/SegmentedScaledGEMMKernel.hpp"
+#include "kernels/SegmentedScaledGEMMKernelDescriptor.hpp"
+#include "kernels/SegmentedScaledGEMMDescriptor.hpp"
 
 namespace {
 
@@ -24,9 +24,12 @@ typedef struct {
 } ccv_nnc_mfa_activation_quant_layout_t;
 
 typedef struct {
-  uint32_t a_scale_offset;
-  uint32_t b_scale_offset;
-} ccv_nnc_mfa_segmented_scaled_gemm_offsets_t;
+  size_t records_offset;
+  size_t dispatch_offset;
+  size_t scratch_bytes;
+} ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t;
+
+static constexpr uint32_t kSegmentedScaledGEMMBlockM = 128;
 
 static GEMMOperandPrecision io_precision(uint64_t data_type) noexcept
 {
@@ -61,6 +64,21 @@ static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols) 
   return align_up((size_t)rows * cols * sizeof(int8_t), 128);
 }
 
+static ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t plan_layout(ccv_nnc_mfa_segmented_scaled_gemm_params_t params) noexcept
+{
+  const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
+  const size_t records_offset = align_up(a_layout.scratch_bytes, 256);
+  const size_t records_per_segment = (params.originalM + kSegmentedScaledGEMMBlockM - 1) / kSegmentedScaledGEMMBlockM;
+  const size_t records = (size_t)params.segments * (records_per_segment > 0 ? records_per_segment : (size_t)1);
+  const size_t records_bytes = align_up(records * sizeof(simd::uint4), 256);
+  const size_t dispatch_offset = records_offset + records_bytes;
+  return (ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t){
+    .records_offset = records_offset,
+    .dispatch_offset = dispatch_offset,
+    .scratch_bytes = align_up(dispatch_offset + sizeof(simd::uint4), 256),
+  };
+}
+
 }
 
 void ccv_nnc_mfa_prepare_segmented_scaled_gemm(mfa::context* context, ccv_nnc_mfa_segmented_scaled_gemm_params_t params)
@@ -73,7 +91,7 @@ size_t ccv_nnc_mfa_segmented_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_segme
 {
   if (!params.use_neural_accelerators)
     return 0;
-  return activation_quant_layout(params).scratch_bytes;
+  return plan_layout(params).scratch_bytes;
 }
 
 void ccv_nnc_mfa_encode_segmented_scaled_gemm(
@@ -89,40 +107,33 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   CCV_NNC_MFA_PRECONDITION((num_tensors == 5) || (num_tensors == 6));
   CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators);
 
-  NAInt8MatMulDescriptor matmulDesc;
-  matmulDesc.batchDimension = 1;
-  matmulDesc.ioPrecision = io_precision(params.data_type);
-  matmulDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
-  matmulDesc.batchStrides = std::nullopt;
-  matmulDesc.useBias = params.fused_bias;
-  matmulDesc.loadM = true;
-  matmulDesc.supportIndirectCommandBuffers = true;
-
-  NAInt8MatMulDescriptor quantizeDesc = matmulDesc;
-  quantizeDesc.matrixDimensions[0] = params.originalM;
+  NAInt8MatMulDescriptor quantizeDesc;
+  quantizeDesc.batchDimension = 1;
+  quantizeDesc.ioPrecision = io_precision(params.data_type);
+  quantizeDesc.matrixDimensions = simd::uint3 { params.originalM, params.N, params.K };
+  quantizeDesc.batchStrides = std::nullopt;
+  quantizeDesc.useBias = params.fused_bias;
   quantizeDesc.loadM = false;
   quantizeDesc.supportIndirectCommandBuffers = false;
 
+  SegmentedScaledGEMMDescriptor segmentedDesc;
+  segmentedDesc.ioPrecision = io_precision(params.data_type);
+  segmentedDesc.matrixDimensions = simd::uint4 { params.originalM, params.N, params.K, params.segments };
+  segmentedDesc.useBias = params.fused_bias;
+
   auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
-  auto matmulPipelineValue = shaderCache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(matmulDesc, context->device.get(), dprops);
-  auto matmulKernel = matmulPipelineValue->kernel;
-  auto matmulPipeline = matmulPipelineValue->pipeline;
   auto quantizePipelineValue = shaderCache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(quantizeDesc, context->device.get(), dprops);
+  auto quantizeKernel = quantizePipelineValue->kernel;
   auto quantizePipeline = quantizePipelineValue->second;
-
-  SegmentedScaledGEMMPrologueDescriptor prologueDesc;
-  prologueDesc.matrixDimensions = simd::uint3 { params.segments, params.N, params.K };
-  prologueDesc.blockDimensions = matmulKernel->blockDimensions;
-  prologueDesc.ioPrecision = matmulDesc.ioPrecision;
-  prologueDesc.useBias = params.fused_bias;
-  prologueDesc.threadgroupSize = matmulKernel->threadgroupSize(matmulPipeline.get());
-  auto prologuePipelineValue = shaderCache.findKernel<SegmentedScaledGEMMPrologueKernel, SegmentedScaledGEMMPrologueDescriptor, SegmentedScaledGEMMPrologueKernelDescriptor>(prologueDesc, context->device.get(), dprops);
-  auto prologuePipeline = prologuePipelineValue->pipeline;
-  auto indirectCommandBuffer = prologuePipelineValue->indirect1;
+  auto segmentedPipelineValue = shaderCache.findKernel<SegmentedScaledGEMMKernel, SegmentedScaledGEMMDescriptor, SegmentedScaledGEMMKernelDescriptor>(segmentedDesc, context->device.get(), dprops);
+  auto segmentedKernel = segmentedPipelineValue->kernel;
+  auto segmentedPipeline = segmentedPipelineValue->pipeline;
+  auto planPipeline = segmentedPipelineValue->second;
 
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
-  auto scratch = context->request_scratch(a_layout.scratch_bytes);
+  const ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t p_layout = plan_layout(params);
+  auto scratch = context->request_scratch(p_layout.scratch_bytes);
   const size_t b_scale_offset = rowwise_8i_scale_offset(params.segments * params.N, params.K);
 
   {
@@ -135,55 +146,44 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->setBuffer(scratch, a_layout.scale_offset, 2);
     encoder->dispatchThreadgroups(
         MTL::Size(params.originalM, 1, 1),
-        MTL::Size(matmulKernel->activationQuantizeThreads, 1, 1));
+        MTL::Size(quantizeKernel->activationQuantizeThreads, 1, 1));
     command_batch->finishCommand(encoder);
   }
 
   {
     auto encoder = command_batch->startCommand();
-    encoder->setComputePipelineState(prologuePipeline.get());
-    encoder->useResource(scratch, MTL::ResourceUsageRead);
+    encoder->setComputePipelineState(planPipeline.get());
     encoder->useResource(tensors[1], MTL::ResourceUsageRead);
     encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+    encoder->useResource(scratch, MTL::ResourceUsageWrite);
+    encoder->setBuffer(tensors[1], tensor_offsets[1], 0);
+    encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
+    encoder->setBuffer(scratch, p_layout.records_offset, 2);
+    encoder->setBuffer(scratch, p_layout.dispatch_offset, 3);
+    encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(256, 1, 1));
+    command_batch->finishCommand(encoder);
+  }
+
+  {
+    auto encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(segmentedPipeline.get());
+    encoder->useResource(scratch, MTL::ResourceUsageRead);
     encoder->useResource(tensors[3], MTL::ResourceUsageRead);
     encoder->useResource(tensors[4], MTL::ResourceUsageWrite);
     if (num_tensors >= 6)
       encoder->useResource(tensors[5], MTL::ResourceUsageRead);
     encoder->setBuffer(scratch, 0, 0);
-    encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
-    encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
-    encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
-    encoder->setBuffer(tensors[4], tensor_offsets[4], 4);
-    const ccv_nnc_mfa_segmented_scaled_gemm_offsets_t offsets = {
-      .a_scale_offset = (uint32_t)a_layout.scale_offset,
-      .b_scale_offset = (uint32_t)b_scale_offset,
-    };
-    encoder->setBytes(&offsets, sizeof(offsets), 5);
-    const NS::UInteger argsIndex = params.fused_bias ? 7 : 6;
+    encoder->setBuffer(tensors[3], tensor_offsets[3], 1);
+    encoder->setBuffer(tensors[4], tensor_offsets[4], 2);
+    encoder->setBuffer(scratch, a_layout.scale_offset, 3);
+    encoder->setBuffer(tensors[3], tensor_offsets[3] + b_scale_offset, 4);
+    encoder->setBuffer(scratch, p_layout.records_offset, 5);
     if (num_tensors >= 6)
       encoder->setBuffer(tensors[5], tensor_offsets[5], 6);
-    encoder->useResource(indirectCommandBuffer.get(), MTL::ResourceUsageWrite);
-    auto argumentEncoder = NS::TransferPtr(prologuePipelineValue->function->newArgumentEncoder(argsIndex));
-    auto argumentBuffer = NS::TransferPtr(context->device->newBuffer(argumentEncoder->encodedLength(), MTL::ResourceStorageModeShared));
-    argumentEncoder->setArgumentBuffer(argumentBuffer.get(), 0);
-    argumentEncoder->setIndirectCommandBuffer(indirectCommandBuffer.get(), 0);
-    argumentEncoder->setComputePipelineState(matmulPipeline.get(), 1);
-    encoder->useResource(argumentBuffer.get(), MTL::ResourceUsageRead);
-    encoder->setBuffer(argumentBuffer.get(), 0, argsIndex);
-    encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(params.segments, 1, 1));
-    command_batch->finishCommand(encoder);
-  }
-
-  {
-    auto encoder = command_batch->startCommand();
-    encoder->useResource(scratch, MTL::ResourceUsageRead);
-    encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[3], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[4], MTL::ResourceUsageWrite);
-    if (num_tensors >= 6)
-      encoder->useResource(tensors[5], MTL::ResourceUsageRead);
-    encoder->useResource(indirectCommandBuffer.get(), MTL::ResourceUsageRead);
-    encoder->executeCommandsInBuffer(indirectCommandBuffer.get(), NS::Range::Make(0, params.segments));
+    encoder->dispatchThreadgroups(
+        scratch,
+        p_layout.dispatch_offset,
+        MTL::Size(segmentedKernel->threadgroupSize(segmentedPipeline.get()), 1, 1));
     command_batch->finishCommand(encoder);
   }
 }

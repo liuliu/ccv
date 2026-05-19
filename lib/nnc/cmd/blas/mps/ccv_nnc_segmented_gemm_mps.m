@@ -141,7 +141,6 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	const int is_transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 	int biasdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	int biasstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
-	int bias_batch_size = 1;
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	if (bias)
 	{
@@ -155,8 +154,6 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			memcpy(biasdim, bias->info.dim, sizeof(biasdim));
 			if (CCV_IS_TENSOR_VIEW(bias))
 				memcpy(biasstride, bias->stride, sizeof(biasstride));
-			for (i = 0; i < bias_nd - 2; i++)
-				bias_batch_size *= biasdim[i];
 		} else if (bias_nd == 2) {
 			biasdim[0] = bias->info.dim[0];
 			for (i = 1; i < b_nd - 1; i++)
@@ -169,8 +166,6 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 					biasstride[i] = biasstride[0];
 				biasstride[b_nd - 1] = bias->stride[1];
 			}
-			for (i = 0; i < bias_nd - 1; i++)
-				bias_batch_size *= biasdim[i];
 		} else {
 			for (i = 0; i < b_nd - 1; i++)
 				biasdim[i] = 1;
@@ -181,14 +176,8 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 					biasstride[i] = bias->info.dim[0] * bias->stride[0];
 				biasstride[b_nd - 1] = bias->stride[0];
 			}
-			for (i = 0; i < bias_nd - 1; i++)
-				bias_batch_size *= biasdim[i];
 		}
 	}
-	int* adim_r = adim;
-	int* astride_r = astride;
-	int* biasdim_r = biasdim;
-	int* biasstride_r = biasstride;
 	const int a_nd = ccv_nnc_tensor_nd(adim);
 	const int w_nd = ccv_nnc_tensor_nd(w->info.dim);
 	a_batch_size = a_nd < 3 ? 1 : adim[a_nd - 3];
@@ -223,6 +212,8 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 
 		const int a_qx_subtype = a->info.datatype & 0xf00;
 		const int w_qx_subtype = w->info.datatype & 0xf00;
+		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
+		const uint32_t w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
 		const int is_same_dtype =
@@ -258,7 +249,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
 		const int use_segmented_scaled_gemm =
-			(w_qx_subtype == CCV_NNC_QX_8I_ROWWISE) &&
+			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
@@ -281,6 +272,15 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		size_t w_data_size = 0;
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
+		const uint32_t w_8i_rowwise_rows = (uint32_t)((size_t)w_batch_size * b_cols);
+		const uint32_t w_8i_rowwise_cols = (uint32_t)w_rows;
+		const ccv_nnc_tensor_param_t w_8i_rowwise_params = {
+			.type = CCV_TENSOR_GPU_MEMORY,
+			.format = CCV_TENSOR_FORMAT_NHWC,
+			.datatype = w_datatype,
+			.dim = { (int)w_8i_rowwise_rows, (int)w_8i_rowwise_cols, 0 },
+		};
+		const size_t w_8i_rowwise_data_size = w_8i_rowwise_x_format ? ccv_nnc_tensor_data_size_without_padding(ccv_nnc_tensor_8i_rowwise(w_8i_rowwise_params)) : 0;
 
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
@@ -305,6 +305,8 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 
 		assert(is_mfa_supported);
+		if (w_8i_rowwise_x_format && !use_segmented_scaled_gemm)
+			return CCV_NNC_EXEC_INVALID;
 		if (use_segmented_scaled_gemm)
 		{
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
@@ -318,7 +320,47 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				.segments = w_batch_size,
 			};
 			ccv_nnc_mfa_prepare_segmented_scaled_gemm(context, params);
+			size_t scratch_offset = ccv_nnc_mfa_segmented_scaled_gemm_reserved_scratch_size(params);
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = w->dataof;
+			ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t w_decode_params;
+			mtl_buffer_t* scratch = 0;
+			if (w_8i_rowwise_x_format)
+			{
+				w_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t){
+					.data_type = mtl_data_type,
+					.format = w_8i_rowwise_x_format,
+					.row_length = (uint32_t)w_rows,
+					.rows_per_expert = (uint32_t)b_cols,
+					.expert_count = (uint32_t)w_batch_size,
+					.segment_count = (uint32_t)w_batch_size,
+				};
+				const size_t decode_scratch_size = ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(w_decode_params);
+				scratch_offset = ccv_max(scratch_offset, decode_scratch_size);
+				scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
+				w_data = scratch;
+				w_dataof = scratch_offset;
+			}
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			if (w_8i_rowwise_x_format)
+			{
+				mtl_buffer_t* decode_tensors[6] = {
+					mpgetbuffer((ccv_nnc_tensor_t*)w),
+					mpgetbuffer((ccv_nnc_tensor_t*)indices),
+					mpgetbuffer((ccv_nnc_tensor_t*)counts),
+					scratch,
+					scratch,
+					NULL,
+				};
+				size_t decode_tensor_offsets[5] = {
+					w->dataof,
+					indices->dataof,
+					counts->dataof,
+					scratch_offset,
+					0,
+				};
+				ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(context, w_decode_params, command_batch, decode_tensors, decode_tensor_offsets);
+			}
 			mtl_buffer_t* bias_buffer = NULL;
 			if (bias)
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
@@ -326,7 +368,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				mpgetbuffer((ccv_nnc_tensor_t*)a),
 				mpgetbuffer((ccv_nnc_tensor_t*)indices),
 				mpgetbuffer((ccv_nnc_tensor_t*)counts),
-				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				w_data,
 				mpgetbuffer((ccv_nnc_tensor_t*)b),
 				bias_buffer,
 				NULL,
@@ -335,7 +377,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				a->dataof,
 				indices->dataof,
 				counts->dataof,
-				w->dataof,
+				w_dataof,
 				b->dataof,
 				bias ? bias->dataof : 0,
 			};

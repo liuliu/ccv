@@ -1317,14 +1317,18 @@ static float _mps_segmented_scaled_gemm_bias_value(const int segment, const int 
 	return (float)(((segment * 5 + col * 3) % 29) - 14) / 256.0f;
 }
 
-static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use_bias, const int force_fallback, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const int use_bias, const int force_fallback, const int format, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int total_m = 384;
 	const int n_dim = 128;
 	const int k_dim = 256;
-	const int segments = 3;
-	const int counts_data[] = {129, 131, 124};
-	const int indices_data[] = {1, 0, 2};
+	const int segments = format ? 4 : 3;
+	const int counts_data_3[] = {129, 131, 124};
+	const int indices_data_3[] = {1, 0, 2};
+	const int counts_data_4[] = {129, 0, 131, 124};
+	const int indices_data_4[] = {2, 1, 0, 3};
+	const int* const counts_data = format ? counts_data_4 : counts_data_3;
+	const int* const indices_data = format ? indices_data_4 : indices_data_3;
 	const ccv_nnc_tensor_param_t ha_params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
@@ -1377,12 +1381,12 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
 	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
 	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, hwd_params, 0);
-	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(hwd_params), 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(hwd_params, format) : ccv_nnc_tensor_8i_rowwise(hwd_params), 0);
 	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, hbias_params, 0) : 0;
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
 	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(gw_params), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(gw_params, format) : ccv_nnc_tensor_8i_rowwise(gw_params), 0);
 	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
@@ -1418,11 +1422,13 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 		if (use_bias)
 			memcpy(hbias->data.f32, bias_values, sizeof(float) * segments * n_dim);
 	}
-	memcpy(hindices->data.i32, indices_data, sizeof(indices_data));
-	memcpy(hcounts->data.i32, counts_data, sizeof(counts_data));
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	memcpy(hindices->data.i32, indices_data, sizeof(int) * segments);
+	memcpy(hcounts->data.i32, counts_data, sizeof(int) * segments);
+	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, format, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
+	if (format)
+		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)segments * n_dim * k_dim);
 	if (use_bias)
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hwq, hbias), TENSOR_LIST(a, indices, counts, w, bias), 0);
 	else
@@ -1450,7 +1456,10 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 		_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8, total_m * k_dim, a_ref);
 	else
 		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
-	_mps_forward_scaled_gemm_quantized_reference(datatype, hwd->data.u8, segments * n_dim, k_dim, w_ref);
+	if (format)
+		_mps_forward_scaled_gemm_to_float(datatype, hwd->data.u8, segments * n_dim * k_dim, w_ref);
+	else
+		_mps_forward_scaled_gemm_quantized_reference(datatype, hwd->data.u8, segments * n_dim, k_dim, w_ref);
 	if (use_bias)
 		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, segments * n_dim, bias_ref);
 	_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, total_m * n_dim, actual);
@@ -1505,6 +1514,11 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 	ccv_nnc_tensor_free(hindices);
 	ccv_nnc_tensor_free(ha);
 	return 0;
+}
+
+static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use_bias, const int force_fallback, double* const max_abs_ref, double* const max_rel_ref)
+{
+	return _mps_segmented_scaled_gemm_validate_format(datatype, use_bias, force_fallback, 0, max_abs_ref, max_rel_ref);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight NA")
@@ -1624,6 +1638,30 @@ TEST_CASE("mps segmented gemm with row-wise 8i weight NA")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16BF, 0, 0, &max_abs, &max_rel), 0, "segmented row-wise 8i NA validation should run");
 	REQUIRE(max_rel < 6e-3, "segmented row-wise 8i NA bf16 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		double max_abs = 0;
+		double max_rel = 0;
+		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16F, 0, 0, formats[i], &max_abs, &max_rel), 0, "segmented row-wise 8i-x NA validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel < 3e-3, "segmented row-wise 8i-x fp16 should match selected-decode quantized reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
+	}
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i weight and bias fallback dequantize")

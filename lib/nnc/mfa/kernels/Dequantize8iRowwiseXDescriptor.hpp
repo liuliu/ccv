@@ -41,10 +41,38 @@ struct Dequantize8iRowwiseXDescriptor {
 	std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwiseXKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Dequantize8iRowwiseXKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXKernel>> *const libraryCache) const noexcept;
 };
 
+struct Dequantize8iRowwiseXSelectedDescriptor {
+	uint32_t format;
+	uint32_t scaleSize;
+	uint32_t rowLength;
+	uint32_t rowsPerExpert;
+	uint32_t expertCount;
+	uint32_t segmentCount;
+
+	bool operator==(const Dequantize8iRowwiseXSelectedDescriptor& rhs) const;
+
+	uint32_t groupSize() const noexcept;
+	uint32_t groupsPerRow() const noexcept;
+	uint32_t groupBits() const noexcept;
+	uint32_t groupsPerExpert() const noexcept;
+	uint32_t inputScaleOffset() const noexcept;
+	uint32_t outputScaleOffset() const noexcept;
+	uint32_t scaleBytesPerExpert() const noexcept;
+	uint32_t dispatchItemsPerExpert() const noexcept;
+
+	std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwiseXKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Dequantize8iRowwiseXKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXKernel>> *const libraryCache) const noexcept;
+};
+
 template<>
 struct std::hash<Dequantize8iRowwiseXDescriptor>
 {
 	std::size_t operator()(const Dequantize8iRowwiseXDescriptor& hash) const noexcept;
+};
+
+template<>
+struct std::hash<Dequantize8iRowwiseXSelectedDescriptor>
+{
+	std::size_t operator()(const Dequantize8iRowwiseXSelectedDescriptor& hash) const noexcept;
 };
 
 #endif
