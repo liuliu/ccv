@@ -106,4 +106,24 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_free(vgbias);
 }
 
+TEST_CASE("graph async enter makes cancel before run effective")
+{
+	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new();
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	a->data.f32[0] = 0;
+	const ccv_nnc_graph_exec_t set = ccv_nnc_graph_exec_new(graph, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(a));
+	ccv_nnc_graph_cancel(graph);
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(set), GRAPH_EXEC_LIST(set), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(a->data.f32[0], 1, 1e-5, "stale cancel without async enter should be cleared by run");
+	a->data.f32[0] = 0;
+	ccv_nnc_graph_async_enter(graph);
+	ccv_nnc_graph_cancel(graph);
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(set), GRAPH_EXEC_LIST(set), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(a->data.f32[0], 0, 1e-5, "cancel after async enter should cancel the next run");
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(set), GRAPH_EXEC_LIST(set), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(a->data.f32[0], 1, 1e-5, "the canceled async-enter state should be consumed by one run");
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(a);
+}
+
 #include "case_main.h"

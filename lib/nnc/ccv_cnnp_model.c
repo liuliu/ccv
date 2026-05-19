@@ -3449,6 +3449,17 @@ void ccv_cnnp_model_cancel(ccv_cnnp_model_t* const model)
 		ccv_nnc_graph_cancel(compiled_data->apply_gradients.graph);
 }
 
+void ccv_cnnp_model_async_enter(ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (!compiled_data)
+		return;
+	if (compiled_data->graph)
+		ccv_nnc_graph_async_enter(compiled_data->graph);
+	if (compiled_data->apply_gradients.graph)
+		ccv_nnc_graph_async_enter(compiled_data->apply_gradients.graph);
+}
+
 void ccv_cnnp_model_set_flags(ccv_cnnp_model_t* const model, const int flags)
 {
 	model->exec_flags = flags;

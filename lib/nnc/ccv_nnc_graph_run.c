@@ -1120,9 +1120,21 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static int _ccv_nnc_graph_run_state_check(ccv_nnc_graph_t* const graph)
+{
+	const int run_state = __atomic_exchange_n(&graph->run_state, CCV_NNC_GRAPH_STATE_RUNNING, __ATOMIC_ACQ_REL);
+	if (run_state == CCV_NNC_GRAPH_STATE_ASYNC_CANCEL)
+	{
+		__atomic_store_n(&graph->run_state, CCV_NNC_GRAPH_STATE_CANCEL, __ATOMIC_RELEASE);
+		return 0;
+	}
+	return 1;
+}
+
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
-	__atomic_store_n(&graph->run_state, CCV_NNC_GRAPH_STATE_RUNNING, __ATOMIC_RELEASE);
+	if (!_ccv_nnc_graph_run_state_check(graph))
+		return CCV_NNC_EXEC_SUCCESS;
 	if (stream_context && graph->topsorted && graph->stream_size > 0 && graph->default_schedule && source_size == 0 && destination_size == 0)
 	{
 		co_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
@@ -1139,7 +1151,8 @@ int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flag
 	assert(graph->topsorted);
 	if (graph->exec_info->rnum == 0)
 		return CCV_NNC_EXEC_SUCCESS;
-	__atomic_store_n(&graph->run_state, CCV_NNC_GRAPH_STATE_RUNNING, __ATOMIC_RELEASE);
+	if (!_ccv_nnc_graph_run_state_check(graph))
+		return CCV_NNC_EXEC_SUCCESS;
 	assert(graph->stream_size > 0);
 	const ccv_nnc_graph_static_schedule_t* const schedule = _schedule ? _schedule : graph->default_schedule;
 	assert(schedule);
@@ -1154,7 +1167,16 @@ int ccv_nnc_graph_run_with_schedule(ccv_nnc_graph_t* const graph, const int flag
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+void ccv_nnc_graph_async_enter(ccv_nnc_graph_t* const graph)
+{
+	__atomic_store_n(&graph->run_state, CCV_NNC_GRAPH_STATE_ASYNC_ENTER, __ATOMIC_RELEASE);
+}
+
 void ccv_nnc_graph_cancel(ccv_nnc_graph_t* const graph)
 {
+	int run_state = CCV_NNC_GRAPH_STATE_ASYNC_ENTER;
+	if (__atomic_compare_exchange_n(&graph->run_state, &run_state, CCV_NNC_GRAPH_STATE_ASYNC_CANCEL, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE) ||
+		run_state == CCV_NNC_GRAPH_STATE_ASYNC_CANCEL)
+		return;
 	__atomic_store_n(&graph->run_state, CCV_NNC_GRAPH_STATE_CANCEL, __ATOMIC_RELEASE);
 }
