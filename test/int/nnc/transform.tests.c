@@ -370,4 +370,113 @@ TEST_CASE("format transform to new strides for mps")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("format transform strided copy 32f vectorized for mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 13;
+	const int cols = 28;
+	const int source_row_stride = 40;
+	const int source_row_offset = 2;
+	const int source_col_offset = 4;
+	const int output_row_offset = 1;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rows + output_row_offset, cols), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, rows + output_row_offset, cols), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, rows + output_row_offset, cols), 0);
+	int i;
+	for (i = 0; i < (rows + source_row_offset + 1) * source_row_stride; i++)
+		ha->data.f32[i] = (float)((i * 17) % 257 - 128) / 17;
+	for (i = 0; i < (rows + output_row_offset) * cols; i++)
+		hb->data.f32[i] = bt->data.f32[i] = -1000 - i;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(a, b), 0);
+	ccv_nnc_tensor_view_t* const hav = ccv_nnc_tensor_view_new(ha, CPU_TENSOR_NCHW(32F, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, GPU_TENSOR_NCHW(000, 32F, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_tensor_view_t* const btv = ccv_nnc_tensor_view_new(bt, CPU_TENSOR_NCHW(32F, rows, cols), DIM_ALLOC(output_row_offset, 0), DIM_ALLOC(cols, 1));
+	ccv_nnc_tensor_view_t* const bv = ccv_nnc_tensor_view_new(b, GPU_TENSOR_NCHW(000, 32F, rows, cols), DIM_ALLOC(output_row_offset, 0), DIM_ALLOC(cols, 1));
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)hav), TENSOR_LIST((ccv_nnc_tensor_t*)btv), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST((ccv_nnc_tensor_t*)bv), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "strided copy should match cpu reference");
+	ccv_nnc_tensor_view_free(hav);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_view_free(btv);
+	ccv_nnc_tensor_view_free(bv);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("format transform strided copy 16f scalar for mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 11;
+	const int cols = 23;
+	const int source_row_stride = 35;
+	const int source_row_offset = 1;
+	const int source_col_offset = 1;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 16F, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 16F, rows, cols), 0);
+	int i;
+	for (i = 0; i < (rows + source_row_offset + 1) * source_row_stride; i++)
+	{
+		const float v = (float)((i * 13) % 193 - 96) / 19;
+		ccv_float_to_half_precision(&v, (uint16_t*)ha->data.f16 + i, 1);
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_view_t* const hav = ccv_nnc_tensor_view_new(ha, CPU_TENSOR_NCHW(16F, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, GPU_TENSOR_NCHW(000, 16F, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)hav), TENSOR_LIST(bt), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)bt->data.f16, (uint16_t*)hb->data.f16, rows * cols, "strided copy should match cpu reference");
+	ccv_nnc_tensor_view_free(hav);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("format transform strided copy 16bf vectorized for mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 9;
+	const int cols = 32;
+	const int source_row_stride = 48;
+	const int source_row_offset = 1;
+	const int source_col_offset = 4;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16BF, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16BF, rows, cols), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16BF, rows, cols), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 16BF, rows + source_row_offset + 1, source_row_stride), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 16BF, rows, cols), 0);
+	int i;
+	for (i = 0; i < (rows + source_row_offset + 1) * source_row_stride; i++)
+	{
+		const float v = (float)((i * 29) % 251 - 125) / 23;
+		ccv_float_to_bfloat(&v, (uint16_t*)ha->data.f16 + i, 1);
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_view_t* const hav = ccv_nnc_tensor_view_new(ha, CPU_TENSOR_NCHW(16BF, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a, GPU_TENSOR_NCHW(000, 16BF, rows, cols), DIM_ALLOC(source_row_offset, source_col_offset), DIM_ALLOC(source_row_stride, 1));
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)hav), TENSOR_LIST(bt), 0);
+	ccv_nnc_cmd_exec(CMD_FORMAT_TRANSFORM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)bt->data.f16, (uint16_t*)hb->data.f16, rows * cols, "strided copy should match cpu reference");
+	ccv_nnc_tensor_view_free(hav);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

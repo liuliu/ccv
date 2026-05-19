@@ -247,7 +247,9 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
-		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+		MPSCommandBuffer* command_buffer = nil;
+		ccv_nnc_mfa_context_t* const mfa_context = ccv_nnc_default_mfa_context();
+		const int use_mfa = ccv_nnc_mfa_context_supported(mfa_context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
@@ -261,6 +263,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 				const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 				assert(device_a == device_b);
+				if (!command_buffer)
+					command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBuffer> buffer_a = mpgetbuffer((const ccv_nnc_tensor_t*)a);
 				id<MTLBuffer> buffer_b = mpgetbuffer((const ccv_nnc_tensor_t*)b);
 				const off_t offset_a = mpgetoffset((const ccv_nnc_tensor_t*)a);
@@ -272,6 +276,66 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				}
 				continue;
 			}
+			if (use_mfa && a->info.format == b->info.format && a->info.datatype == b->info.datatype &&
+				CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY &&
+				CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY &&
+				CCV_IS_TENSOR_VIEW(a) && CCV_IS_TENSOR_CONTIGUOUS(b) &&
+				ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info))
+			{
+				const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+				if (a_nd == 2 && a->info.dim[0] == b->info.dim[0] && a->info.dim[1] == b->info.dim[1] &&
+					a->info.dim[0] > 0 && a->info.dim[1] > 0 && a->stride[1] == 1 && a->stride[0] >= a->info.dim[1])
+				{
+					uint32_t mtl_data_type = UINT32_MAX;
+					switch (a->info.datatype) {
+						case CCV_16F:
+							mtl_data_type = 16;
+							break;
+						case CCV_16BF:
+							mtl_data_type = 121;
+							break;
+						case CCV_32F:
+							mtl_data_type = 3;
+							break;
+						default:
+							break;
+					}
+					id<MTLBuffer> buffer_a = mpgetbuffer((const ccv_nnc_tensor_t*)a);
+					id<MTLBuffer> buffer_b = mpgetbuffer((const ccv_nnc_tensor_t*)b);
+					if (mtl_data_type != UINT32_MAX && buffer_a != buffer_b)
+					{
+						const int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
+						const int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
+						assert(device_a == device_b);
+						if (command_buffer)
+						{
+							ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+							command_buffer = nil;
+						}
+						mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+						ccv_nnc_mfa_strided_copy_params_t params = {
+							.data_type = mtl_data_type,
+							.rows = (uint32_t)a->info.dim[0],
+							.cols = (uint32_t)a->info.dim[1],
+							.source_row_stride = (uint32_t)a->stride[0],
+						};
+						mtl_buffer_t* tensors[3] = {
+							buffer_a,
+							buffer_b,
+							NULL
+						};
+						size_t tensor_offsets[2] = {
+							a->dataof,
+							b->dataof
+						};
+						ccv_nnc_mfa_encode_strided_copy(mfa_context, params, command_batch, tensors, tensor_offsets);
+						ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+						continue;
+					}
+				}
+			}
+			if (!command_buffer)
+				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			ccv_nnc_tensor_view_t bt = ccv_nnc_get_tensor_view(outputs[i]);
 			MPSGraph *graph = [MPSGraph new];
 			graph.options = MPSGraphOptionsSynchronizeResults;
@@ -368,7 +432,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				ccv_nnc_mps_export_data(data_a, command_buffer, &bt, bdim, bstride);
 			[graph release];
 		}
-		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		if (command_buffer)
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
