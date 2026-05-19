@@ -2567,6 +2567,54 @@ static ccv_cnnp_model_t* _ccv_cnnp_rotate_half_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_rotate_half(super->name);
 }
 
+// MARK - Walsh-Hadamard Transform Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	float scale;
+} ccv_cnnp_model_walsh_hadamard_transform_t;
+
+static void _ccv_cnnp_walsh_hadamard_transform_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_walsh_hadamard_transform_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	const ccv_cnnp_model_walsh_hadamard_transform_t* const self = (const ccv_cnnp_model_walsh_hadamard_transform_t*)super;
+	ccv_nnc_tensor_param_t input_params[1];
+	ccv_nnc_tensor_param_t output_params;
+	const ccv_nnc_cmd_t walsh_hadamard_transform = CMD_WALSH_HADAMARD_TRANSFORM_FORWARD(self->scale);
+	input_params[0] = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_hint_tensor_auto(walsh_hadamard_transform, input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, walsh_hadamard_transform, inputs, 1, outputs, output_size, "walsh_hadamard_transform");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_walsh_hadamard_transform_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_walsh_hadamard_transform_isa = {
+	.build = _ccv_cnnp_walsh_hadamard_transform_build,
+	.copy = _ccv_cnnp_walsh_hadamard_transform_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_walsh_hadamard_transform(const float scale, const char* const name)
+{
+	ccv_cnnp_model_walsh_hadamard_transform_t* const model_walsh_hadamard_transform = (ccv_cnnp_model_walsh_hadamard_transform_t*)cccalloc(1, sizeof(ccv_cnnp_model_walsh_hadamard_transform_t));
+	model_walsh_hadamard_transform->super.isa = &ccv_cnnp_walsh_hadamard_transform_isa;
+	model_walsh_hadamard_transform->super.input_size = 1;
+	model_walsh_hadamard_transform->super.outputs = &model_walsh_hadamard_transform->output;
+	model_walsh_hadamard_transform->super.output_size = 1;
+	model_walsh_hadamard_transform->scale = scale;
+	ccv_cnnp_model_copy_name(&model_walsh_hadamard_transform->super, name);
+	return (ccv_cnnp_model_t*)model_walsh_hadamard_transform;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_walsh_hadamard_transform_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_walsh_hadamard_transform_t* const self = (const ccv_cnnp_model_walsh_hadamard_transform_t*)super;
+	return ccv_cnnp_walsh_hadamard_transform(self->scale, self->super.name);
+}
+
 // MARK - Gated Delta Layer
 
 typedef struct {

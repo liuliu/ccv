@@ -4761,6 +4761,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sin(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
 /**
+ * A Walsh-Hadamard transform model over the last dimension.
+ * @param scale The scale applied after the Walsh-Hadamard transform.
+ * @param name The unique name of the model.
+ * @return A model that can be applied with one input, and generate output that is the Walsh-Hadamard transform of the input.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_walsh_hadamard_transform(const float scale, const char* const name);
+/**
  * Rotate the last dimension of the input tensor by half.
  * @param name The unique name of the model.
  * @return A model that can be applied with one input, and generate output that is the input with the last dimension rotated by half.
