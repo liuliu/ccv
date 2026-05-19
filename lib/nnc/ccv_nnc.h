@@ -299,6 +299,9 @@ typedef struct {
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 		} scaled_dot_product_attention;
 		struct {
+			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */
+		} walsh_hadamard_transform;
+		struct {
 			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
 			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
 		} pad;

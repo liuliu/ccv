@@ -378,5 +378,9 @@
 #define CMD_DATATYPE_CONVERSION_FORWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_DATATYPE_CONVERSION_BACKWARD
 #define CMD_DATATYPE_CONVERSION_BACKWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_WALSH_HADAMARD_TRANSFORM_FORWARD
+#define CMD_WALSH_HADAMARD_TRANSFORM_FORWARD(_scale) ccv_nnc_cmd(CCV_NNC_WALSH_HADAMARD_TRANSFORM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.walsh_hadamard_transform={.scale=(_scale)}}), 0)
+// CCV_NNC_WALSH_HADAMARD_TRANSFORM_BACKWARD
+#define CMD_WALSH_HADAMARD_TRANSFORM_BACKWARD(_scale) ccv_nnc_cmd(CCV_NNC_WALSH_HADAMARD_TRANSFORM_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.walsh_hadamard_transform={.scale=(_scale)}}), 0)
 
 /** @} */
