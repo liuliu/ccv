@@ -158,6 +158,38 @@ TEST_CASE("query connectivity from one exec symbol to another")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
+TEST_CASE("autogen all execs connects more than two producers and consumers for the same tensor")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t a0 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a0");
+	ccv_nnc_tensor_symbol_t a1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "a1");
+	ccv_nnc_tensor_symbol_t b0 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b0");
+	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "b1");
+	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "c0");
+	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "c1");
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "x");
+	ccv_nnc_tensor_symbol_t y0 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y0");
+	ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y1");
+	ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y2");
+	ccv_nnc_graph_exec_symbol_t sum0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a0, a1), TENSOR_SYMBOL_LIST(x), "sum0");
+	ccv_nnc_graph_exec_symbol_t sum1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(b0, b1), TENSOR_SYMBOL_LIST(x), "sum1");
+	ccv_nnc_graph_exec_symbol_t sum2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(c0, c1), TENSOR_SYMBOL_LIST(x), "sum2");
+	ccv_nnc_graph_exec_symbol_t log0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y0), "log0");
+	ccv_nnc_graph_exec_symbol_t log1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y1), "log1");
+	ccv_nnc_graph_exec_symbol_t log2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y2), "log2");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	uint64_t bitmask = 0;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum0, sum1, sum2), GRAPH_EXEC_SYMBOL_LIST(log0), &bitmask);
+	REQUIRE(bitmask == 7, "all producers should be reachable to log0");
+	bitmask = 0;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum0, sum1, sum2), GRAPH_EXEC_SYMBOL_LIST(log1), &bitmask);
+	REQUIRE(bitmask == 7, "all producers should be reachable to log1");
+	bitmask = 0;
+	ccv_nnc_symbolic_graph_sources_to_destinations(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sum0, sum1, sum2), GRAPH_EXEC_SYMBOL_LIST(log2), &bitmask);
+	REQUIRE(bitmask == 7, "all producers should be reachable to log2");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 typedef struct {
 	int called;
 	int softmax_called;

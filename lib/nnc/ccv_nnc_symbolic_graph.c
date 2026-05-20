@@ -1209,9 +1209,16 @@ typedef struct {
 } ccv_nnc_autogen_exec_io_t;
 
 typedef struct {
-	ccv_array_t* producers;
-	ccv_array_t* consumers;
-} ccv_nnc_autogen_tensor_io_t;
+	int flags;
+	union {
+		ccv_nnc_autogen_exec_io_t inline_exec_io[2];
+		ccv_array_t* array;
+	};
+} ccv_nnc_autogen_exec_io_set_t;
+
+enum {
+	CCV_NNC_AUTOGEN_EXEC_IO_SET_IS_ARRAY = 0x1,
+};
 
 int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const tensor_a, const ccv_nnc_tensor_symbol_info_t* const tensor_b)
 {
@@ -1228,16 +1235,32 @@ int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const
 	return 1;
 }
 
-static inline int _ccv_nnc_autogen_tensor_ref(const ccv_nnc_tensor_symbol_info_t* const tensor_info, const int tensor_idx)
+static inline void _ccv_nnc_autogen_exec_io_set_push(ccv_nnc_autogen_exec_io_set_t* const set, const ccv_nnc_autogen_exec_io_t exec_io)
 {
-	return tensor_info->alias_ref ? tensor_info->alias_ref - 1 : tensor_idx;
-}
-
-static inline int _ccv_nnc_autogen_tensor_symbols_overlap(const ccv_nnc_tensor_symbol_info_t* const input_tensor_info, const ccv_nnc_tensor_symbol_info_t* const output_tensor_info)
-{
-	return (!input_tensor_info->alias_ref ||
-		!output_tensor_info->alias_ref ||
-		ccv_nnc_over_tensor_symbol_aliases(input_tensor_info, output_tensor_info));
+	if (set->flags & CCV_NNC_AUTOGEN_EXEC_IO_SET_IS_ARRAY)
+	{
+		ccv_array_push(set->array, &exec_io);
+		return;
+	}
+	if (set->inline_exec_io[0].exec < 0)
+	{
+		set->inline_exec_io[0] = exec_io;
+		return;
+	}
+	if (set->inline_exec_io[1].exec < 0)
+	{
+		set->inline_exec_io[1] = exec_io;
+		return;
+	}
+	const ccv_nnc_autogen_exec_io_t inline_exec_io[2] = {
+		set->inline_exec_io[0],
+		set->inline_exec_io[1],
+	};
+	set->array = ccv_array_new(sizeof(ccv_nnc_autogen_exec_io_t), 3, 0);
+	ccv_array_push(set->array, inline_exec_io);
+	ccv_array_push(set->array, inline_exec_io + 1);
+	ccv_array_push(set->array, &exec_io);
+	set->flags = CCV_NNC_AUTOGEN_EXEC_IO_SET_IS_ARRAY;
 }
 
 static void _ccv_nnc_graph_exec_symbol_autogen_all_execs(ccv_nnc_symbolic_graph_t* const graph)
@@ -1245,8 +1268,22 @@ static void _ccv_nnc_graph_exec_symbol_autogen_all_execs(ccv_nnc_symbolic_graph_
 	// Index by the tensor / alias root so unrelated exec pairs are never compared.
 	const int exec_symbol_size = graph->exec_symbol_info->rnum;
 	const int tensor_symbol_size = graph->tensor_symbol_info->rnum;
-	ccv_nnc_autogen_tensor_io_t* const tensor_ios = (ccv_nnc_autogen_tensor_io_t*)cccalloc(tensor_symbol_size, sizeof(ccv_nnc_autogen_tensor_io_t));
+	struct {
+		ccv_nnc_autogen_exec_io_set_t producers;
+		ccv_nnc_autogen_exec_io_set_t consumers;
+	} * const tensor_ios = cccalloc(tensor_symbol_size, sizeof(*tensor_ios));
 	int i, j, k;
+	const ccv_nnc_autogen_exec_io_t no_exec_io = {
+		.exec = -1,
+		.tensor = -1,
+	};
+	for (i = 0; i < tensor_symbol_size; i++)
+	{
+		tensor_ios[i].producers.inline_exec_io[0] = no_exec_io;
+		tensor_ios[i].producers.inline_exec_io[1] = no_exec_io;
+		tensor_ios[i].consumers.inline_exec_io[0] = no_exec_io;
+		tensor_ios[i].consumers.inline_exec_io[1] = no_exec_io;
+	}
 	for (i = 0; i < exec_symbol_size; i++)
 	{
 		ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
@@ -1258,14 +1295,12 @@ static void _ccv_nnc_graph_exec_symbol_autogen_all_execs(ccv_nnc_symbolic_graph_
 			if (tensor_idx < 0)
 				continue;
 			ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_idx);
-			const int tensor_ref = _ccv_nnc_autogen_tensor_ref(tensor_info, tensor_idx);
-			if (!tensor_ios[tensor_ref].consumers)
-				tensor_ios[tensor_ref].consumers = ccv_array_new(sizeof(ccv_nnc_autogen_exec_io_t), 1, 0);
+			const int tensor_ref = tensor_info->alias_ref ? tensor_info->alias_ref - 1 : tensor_idx;
 			const ccv_nnc_autogen_exec_io_t exec_io = {
 				.exec = i,
 				.tensor = tensor_idx,
 			};
-			ccv_array_push(tensor_ios[tensor_ref].consumers, &exec_io);
+			_ccv_nnc_autogen_exec_io_set_push(&tensor_ios[tensor_ref].consumers, exec_io);
 		}
 		for (j = 0; j < symbol_info->output_size; j++)
 		{
@@ -1273,47 +1308,52 @@ static void _ccv_nnc_graph_exec_symbol_autogen_all_execs(ccv_nnc_symbolic_graph_
 			if (tensor_idx < 0)
 				continue;
 			ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_idx);
-			const int tensor_ref = _ccv_nnc_autogen_tensor_ref(tensor_info, tensor_idx);
-			if (!tensor_ios[tensor_ref].producers)
-				tensor_ios[tensor_ref].producers = ccv_array_new(sizeof(ccv_nnc_autogen_exec_io_t), 1, 0);
+			const int tensor_ref = tensor_info->alias_ref ? tensor_info->alias_ref - 1 : tensor_idx;
 			const ccv_nnc_autogen_exec_io_t exec_io = {
 				.exec = i,
 				.tensor = tensor_idx,
 			};
-			ccv_array_push(tensor_ios[tensor_ref].producers, &exec_io);
+			_ccv_nnc_autogen_exec_io_set_push(&tensor_ios[tensor_ref].producers, exec_io);
 		}
 	}
 	for (i = 0; i < tensor_symbol_size; i++)
 	{
-		ccv_array_t* const producers = tensor_ios[i].producers;
-		ccv_array_t* const consumers = tensor_ios[i].consumers;
-		if (producers && consumers)
-			for (j = 0; j < producers->rnum; j++)
+		ccv_nnc_autogen_exec_io_set_t* const producers = &tensor_ios[i].producers;
+		ccv_nnc_autogen_exec_io_set_t* const consumers = &tensor_ios[i].consumers;
+		const int producers_is_array = producers->flags & CCV_NNC_AUTOGEN_EXEC_IO_SET_IS_ARRAY;
+		const int consumers_is_array = consumers->flags & CCV_NNC_AUTOGEN_EXEC_IO_SET_IS_ARRAY;
+		const int producer_size = producers_is_array ? producers->array->rnum : (producers->inline_exec_io[0].exec >= 0) + (producers->inline_exec_io[1].exec >= 0);
+		const int consumer_size = consumers_is_array ? consumers->array->rnum : (consumers->inline_exec_io[0].exec >= 0) + (consumers->inline_exec_io[1].exec >= 0);
+		for (j = 0; j < producer_size; j++)
+		{
+			const ccv_nnc_autogen_exec_io_t producer = producers_is_array ?
+				*(ccv_nnc_autogen_exec_io_t*)ccv_array_get(producers->array, j) : producers->inline_exec_io[j];
+			ccv_nnc_tensor_symbol_info_t* const output_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, producer.tensor);
+			for (k = 0; k < consumer_size; k++)
 			{
-				const ccv_nnc_autogen_exec_io_t producer = *(ccv_nnc_autogen_exec_io_t*)ccv_array_get(producers, j);
-				ccv_nnc_tensor_symbol_info_t* const output_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, producer.tensor);
-				for (k = 0; k < consumers->rnum; k++)
-				{
-					const ccv_nnc_autogen_exec_io_t consumer = *(ccv_nnc_autogen_exec_io_t*)ccv_array_get(consumers, k);
-					if (producer.exec == consumer.exec)
-						continue;
-					ccv_nnc_tensor_symbol_info_t* const input_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, consumer.tensor);
-					if (_ccv_nnc_autogen_tensor_symbols_overlap(input_tensor_info, output_tensor_info))
-						ccv_nnc_graph_exec_symbol_concat(graph,
-							(ccv_nnc_graph_exec_symbol_t) {
-								.d = producer.exec,
-								.graph = graph
-							}, (ccv_nnc_graph_exec_symbol_t) {
-								.d = consumer.exec,
-								.graph = graph
-							}
-						);
-				}
+				const ccv_nnc_autogen_exec_io_t consumer = consumers_is_array ?
+					*(ccv_nnc_autogen_exec_io_t*)ccv_array_get(consumers->array, k) : consumers->inline_exec_io[k];
+				if (producer.exec == consumer.exec)
+					continue;
+				ccv_nnc_tensor_symbol_info_t* const input_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, consumer.tensor);
+				if (!input_tensor_info->alias_ref ||
+					!output_tensor_info->alias_ref ||
+					ccv_nnc_over_tensor_symbol_aliases(input_tensor_info, output_tensor_info))
+					ccv_nnc_graph_exec_symbol_concat(graph,
+						(ccv_nnc_graph_exec_symbol_t) {
+							.d = producer.exec,
+							.graph = graph
+						}, (ccv_nnc_graph_exec_symbol_t) {
+							.d = consumer.exec,
+							.graph = graph
+						}
+					);
 			}
-		if (producers)
-			ccv_array_free(producers);
-		if (consumers)
-			ccv_array_free(consumers);
+		}
+		if (producers_is_array)
+			ccv_array_free(producers->array);
+		if (consumers_is_array)
+			ccv_array_free(consumers->array);
 	}
 	ccfree(tensor_ios);
 }
@@ -1383,7 +1423,9 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 						if (b_tensor_info->alias_ref)
 							b = b_tensor_info->alias_ref - 1;
 						if (a == b && // This two have matching inputs and outputs.
-							_ccv_nnc_autogen_tensor_symbols_overlap(a_tensor_info, b_tensor_info)) // If both are aliases, explicitly check whether they overlap.
+							(!a_tensor_info->alias_ref ||
+							 !b_tensor_info->alias_ref || // If any of them are not alias, they must overlap, you can concatenate.
+							 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
 							b_to_a = 1;
 					}
 				}
@@ -1408,7 +1450,9 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 						if (b_tensor_info->alias_ref)
 							b = b_tensor_info->alias_ref - 1;
 						if (a == b && // This two have matching inputs and outputs.
-							_ccv_nnc_autogen_tensor_symbols_overlap(b_tensor_info, a_tensor_info)) // If both are aliases, explicitly check whether they overlap.
+							(!a_tensor_info->alias_ref ||
+							 !b_tensor_info->alias_ref || // If any of them are not alias, they must overlap, you can concatenate.
+							 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
 							a_to_b = 1;
 					}
 				}
