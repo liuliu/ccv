@@ -1203,6 +1203,16 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 #define CCV_NNC_IS_AUTOGEN_ALL_EXECS(x) ((x) & CCV_NNC_AUTOGEN_ALL_EXECS)
 #define CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(x) ((x) & CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS)
 
+typedef struct {
+	int exec;
+	int tensor;
+} ccv_nnc_autogen_exec_io_t;
+
+typedef struct {
+	ccv_array_t* producers;
+	ccv_array_t* consumers;
+} ccv_nnc_autogen_tensor_io_t;
+
 int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const tensor_a, const ccv_nnc_tensor_symbol_info_t* const tensor_b)
 {
 	int i;
@@ -1216,6 +1226,96 @@ int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const
 		if (ccv_min(ofs[i] + dim[i], tensor_b->ofs[i] + tensor_b->info.dim[i]) <= ccv_max(ofs[i], tensor_b->ofs[i]))
 			return 0; // Cannot overlap.
 	return 1;
+}
+
+static inline int _ccv_nnc_autogen_tensor_ref(const ccv_nnc_tensor_symbol_info_t* const tensor_info, const int tensor_idx)
+{
+	return tensor_info->alias_ref ? tensor_info->alias_ref - 1 : tensor_idx;
+}
+
+static inline int _ccv_nnc_autogen_tensor_symbols_overlap(const ccv_nnc_tensor_symbol_info_t* const input_tensor_info, const ccv_nnc_tensor_symbol_info_t* const output_tensor_info)
+{
+	return (!input_tensor_info->alias_ref ||
+		!output_tensor_info->alias_ref ||
+		ccv_nnc_over_tensor_symbol_aliases(input_tensor_info, output_tensor_info));
+}
+
+static void _ccv_nnc_graph_exec_symbol_autogen_all_execs(ccv_nnc_symbolic_graph_t* const graph)
+{
+	// Index by the tensor / alias root so unrelated exec pairs are never compared.
+	const int exec_symbol_size = graph->exec_symbol_info->rnum;
+	const int tensor_symbol_size = graph->tensor_symbol_info->rnum;
+	ccv_nnc_autogen_tensor_io_t* const tensor_ios = (ccv_nnc_autogen_tensor_io_t*)cccalloc(tensor_symbol_size, sizeof(ccv_nnc_autogen_tensor_io_t));
+	int i, j, k;
+	for (i = 0; i < exec_symbol_size; i++)
+	{
+		ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags))
+			continue;
+		for (j = 0; j < symbol_info->input_size; j++)
+		{
+			const int tensor_idx = symbol_info->inputs[j];
+			if (tensor_idx < 0)
+				continue;
+			ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_idx);
+			const int tensor_ref = _ccv_nnc_autogen_tensor_ref(tensor_info, tensor_idx);
+			if (!tensor_ios[tensor_ref].consumers)
+				tensor_ios[tensor_ref].consumers = ccv_array_new(sizeof(ccv_nnc_autogen_exec_io_t), 1, 0);
+			const ccv_nnc_autogen_exec_io_t exec_io = {
+				.exec = i,
+				.tensor = tensor_idx,
+			};
+			ccv_array_push(tensor_ios[tensor_ref].consumers, &exec_io);
+		}
+		for (j = 0; j < symbol_info->output_size; j++)
+		{
+			const int tensor_idx = symbol_info->outputs[j];
+			if (tensor_idx < 0)
+				continue;
+			ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_idx);
+			const int tensor_ref = _ccv_nnc_autogen_tensor_ref(tensor_info, tensor_idx);
+			if (!tensor_ios[tensor_ref].producers)
+				tensor_ios[tensor_ref].producers = ccv_array_new(sizeof(ccv_nnc_autogen_exec_io_t), 1, 0);
+			const ccv_nnc_autogen_exec_io_t exec_io = {
+				.exec = i,
+				.tensor = tensor_idx,
+			};
+			ccv_array_push(tensor_ios[tensor_ref].producers, &exec_io);
+		}
+	}
+	for (i = 0; i < tensor_symbol_size; i++)
+	{
+		ccv_array_t* const producers = tensor_ios[i].producers;
+		ccv_array_t* const consumers = tensor_ios[i].consumers;
+		if (producers && consumers)
+			for (j = 0; j < producers->rnum; j++)
+			{
+				const ccv_nnc_autogen_exec_io_t producer = *(ccv_nnc_autogen_exec_io_t*)ccv_array_get(producers, j);
+				ccv_nnc_tensor_symbol_info_t* const output_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, producer.tensor);
+				for (k = 0; k < consumers->rnum; k++)
+				{
+					const ccv_nnc_autogen_exec_io_t consumer = *(ccv_nnc_autogen_exec_io_t*)ccv_array_get(consumers, k);
+					if (producer.exec == consumer.exec)
+						continue;
+					ccv_nnc_tensor_symbol_info_t* const input_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, consumer.tensor);
+					if (_ccv_nnc_autogen_tensor_symbols_overlap(input_tensor_info, output_tensor_info))
+						ccv_nnc_graph_exec_symbol_concat(graph,
+							(ccv_nnc_graph_exec_symbol_t) {
+								.d = producer.exec,
+								.graph = graph
+							}, (ccv_nnc_graph_exec_symbol_t) {
+								.d = consumer.exec,
+								.graph = graph
+							}
+						);
+				}
+			}
+		if (producers)
+			ccv_array_free(producers);
+		if (consumers)
+			ccv_array_free(consumers);
+	}
+	ccfree(tensor_ios);
 }
 
 int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size, const int flags)
@@ -1242,107 +1342,80 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 		if (CCV_NNC_GRAPH_REF(symbol_info)[0])
 			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(symbol_info)[0] - 1), execs, exec_size, flags);
 	}
-	for (i = 0; i < exec_total_size; i++)
-	{
-		if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[i].graph != graph)
-			continue;
-		int a_idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
-		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
-		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(a_symbol_info->flags))
-			continue;
-		for (j = i + 1; j < exec_total_size; j++)
+	if (CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags))
+		_ccv_nnc_graph_exec_symbol_autogen_all_execs(graph);
+	else
+		for (i = 0; i < exec_total_size; i++)
 		{
-			if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[j].graph != graph)
+			if (execs[i].graph != graph)
 				continue;
-			int b_idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? j : execs[j].d;
-			// Skip if they are the same.
-			if (a_idx == b_idx)
+			int a_idx = execs[i].d;
+			ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(a_symbol_info->flags))
 				continue;
-			ccv_nnc_graph_exec_symbol_info_t* b_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, b_idx);
-			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(b_symbol_info->flags))
-				continue;
-			int b_to_a = 0;
-			for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
+			for (j = i + 1; j < exec_total_size; j++)
 			{
-				int a = a_symbol_info->inputs[x];
-				if (a < 0)
+				if (execs[j].graph != graph)
 					continue;
-				// Handle alias as well.
-				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
-				if (a_tensor_info->alias_ref)
-					a = a_tensor_info->alias_ref - 1;
-				for (y = 0; y < b_symbol_info->output_size && !b_to_a; y++)
+				int b_idx = execs[j].d;
+				// Skip if they are the same.
+				if (a_idx == b_idx)
+					continue;
+				ccv_nnc_graph_exec_symbol_info_t* b_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, b_idx);
+				if (CCV_NNC_GRAPH_EXEC_IS_DEAD(b_symbol_info->flags))
+					continue;
+				int b_to_a = 0;
+				for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
 				{
-					int b = b_symbol_info->outputs[y];
-					if (b < 0)
+					int a = a_symbol_info->inputs[x];
+					if (a < 0)
 						continue;
-					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
-					if (b_tensor_info->alias_ref)
-						b = b_tensor_info->alias_ref - 1;
-					if (a == b && // This two have matching inputs and outputs.
-						(!a_tensor_info->alias_ref ||
-						 !b_tensor_info->alias_ref || // If any of them are not alias, the must overlap, you can concatenate.
-						 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
-						b_to_a = 1;
+					// Handle alias as well.
+					ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
+					if (a_tensor_info->alias_ref)
+						a = a_tensor_info->alias_ref - 1;
+					for (y = 0; y < b_symbol_info->output_size && !b_to_a; y++)
+					{
+						int b = b_symbol_info->outputs[y];
+						if (b < 0)
+							continue;
+						ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
+						if (b_tensor_info->alias_ref)
+							b = b_tensor_info->alias_ref - 1;
+						if (a == b && // This two have matching inputs and outputs.
+							_ccv_nnc_autogen_tensor_symbols_overlap(a_tensor_info, b_tensor_info)) // If both are aliases, explicitly check whether they overlap.
+							b_to_a = 1;
+					}
 				}
-			}
-			if (b_to_a)
-			{
-				if (execs)
+				if (b_to_a)
 					ccv_nnc_graph_exec_symbol_concat(graph, execs[j], execs[i]);
-				else
-					ccv_nnc_graph_exec_symbol_concat(graph,
-						(ccv_nnc_graph_exec_symbol_t) {
-							.d = j,
-							.graph = graph
-						}, (ccv_nnc_graph_exec_symbol_t) {
-							.d = i,
-							.graph = graph
-						}
-					);
-			}
-			int a_to_b = 0;
-			for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
-			{
-				int a = a_symbol_info->outputs[x];
-				if (a < 0)
-					continue;
-				// Handle alias as well.
-				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
-				if (a_tensor_info->alias_ref)
-					a = a_tensor_info->alias_ref - 1;
-				for (y = 0; y < b_symbol_info->input_size && !a_to_b; y++)
+				int a_to_b = 0;
+				for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
 				{
-					int b = b_symbol_info->inputs[y];
-					if (b < 0)
+					int a = a_symbol_info->outputs[x];
+					if (a < 0)
 						continue;
-					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
-					if (b_tensor_info->alias_ref)
-						b = b_tensor_info->alias_ref - 1;
-					if (a == b && // This two have matching inputs and outputs.
-						(!a_tensor_info->alias_ref ||
-						 !b_tensor_info->alias_ref || // If any of them are not alias, the must overlap, you can concatenate.
-						 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
-						a_to_b = 1;
+					// Handle alias as well.
+					ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
+					if (a_tensor_info->alias_ref)
+						a = a_tensor_info->alias_ref - 1;
+					for (y = 0; y < b_symbol_info->input_size && !a_to_b; y++)
+					{
+						int b = b_symbol_info->inputs[y];
+						if (b < 0)
+							continue;
+						ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
+						if (b_tensor_info->alias_ref)
+							b = b_tensor_info->alias_ref - 1;
+						if (a == b && // This two have matching inputs and outputs.
+							_ccv_nnc_autogen_tensor_symbols_overlap(b_tensor_info, a_tensor_info)) // If both are aliases, explicitly check whether they overlap.
+							a_to_b = 1;
+					}
 				}
-			}
-			if (a_to_b)
-			{
-				if (execs)
+				if (a_to_b)
 					ccv_nnc_graph_exec_symbol_concat(graph, execs[i], execs[j]);
-				else
-					ccv_nnc_graph_exec_symbol_concat(graph,
-						(ccv_nnc_graph_exec_symbol_t) {
-							.d = i,
-							.graph = graph
-						}, (ccv_nnc_graph_exec_symbol_t) {
-							.d = j,
-							.graph = graph
-						}
-					);
 			}
 		}
-	}
 	// If flag says so, loop over to find sources / destinations too.
 	if (CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(flags))
 	{
