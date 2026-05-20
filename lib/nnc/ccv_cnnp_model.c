@@ -403,13 +403,16 @@ static void _ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc
 			ccv_nnc_graph_exec_symbol_new(model->graph, loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(compiled_data->f[i]), 0);
 		}
 	}
-	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_simplify(model->graph,
-		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_OPS_FUSION), // Only do Ops fusion, in this way, we can fuse the loss function.
-		0, 0, // No need to provide binds at this point.
-		compiled_data->f, model->output_size,
-		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
-	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	if (loss.cmd != CCV_NNC_NOOP)
+	{
+		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+		ccv_nnc_symbolic_graph_simplify(model->graph,
+			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_OPS_FUSION), // Only do Ops fusion, in this way, we can fuse the loss function.
+			0, 0, // No need to provide binds at this point.
+			compiled_data->f, model->output_size,
+			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	}
 	// If inputs are from GPU, stream type is GPU.
 	compiled_data->parameters = parameters;
 	compiled_data->parameter_flags = parameter_flags;
