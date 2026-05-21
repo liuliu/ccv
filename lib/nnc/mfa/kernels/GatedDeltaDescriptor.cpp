@@ -11,6 +11,7 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   valueHeadCount == rhs.valueHeadCount &&
   keyDim == rhs.keyDim &&
   valueDim == rhs.valueDim &&
+  stateCheckpointCount == rhs.stateCheckpointCount &&
   inputMemoryPrecision == rhs.inputMemoryPrecision &&
   betaMemoryPrecision == rhs.betaMemoryPrecision &&
   logDecay == rhs.logDecay;
@@ -22,6 +23,7 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   combine_64(seed, pack_64(simd::uint2 { hash.batchSize, hash.sequenceLength }));
   combine_64(seed, pack_64(simd::uint2 { hash.keyHeadCount, hash.valueHeadCount }));
   combine_64(seed, pack_64(simd::uint2 { hash.keyDim, hash.valueDim }));
+  combine_64(seed, hash.stateCheckpointCount);
   combine_64(seed, hash.inputMemoryPrecision.value);
   combine_64(seed, hash.betaMemoryPrecision.value);
   combine_64(seed, hash.logDecay ? 1 : 0);
@@ -43,6 +45,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
 
   GatedDeltaKernelDescriptor kernelDesc;
   kernelDesc.stateElementsPerLane = (uint8_t)((keyDim + 31) / 32);
+  kernelDesc.stateCheckpointing = stateCheckpointCount > 0;
   kernelDesc.inputMemoryPrecision = inputMemoryPrecision;
   kernelDesc.betaMemoryPrecision = betaMemoryPrecision;
 
@@ -60,6 +63,8 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
     const bool valueDimMultipleOf4 = (valueDim % 4) == 0;
     constants->setConstantValue(&keyDimMultipleOf32, MTL::DataTypeBool, NS::UInteger(7));
     constants->setConstantValue(&valueDimMultipleOf4, MTL::DataTypeBool, NS::UInteger(8));
+    if (stateCheckpointCount > 0)
+      constants->setConstantValue(&stateCheckpointCount, MTL::DataTypeUInt, NS::UInteger(9));
 
     NS::String* swiftName = NS::String::string("gated_delta", NS::UTF8StringEncoding);
     NS::Error* error = nil;

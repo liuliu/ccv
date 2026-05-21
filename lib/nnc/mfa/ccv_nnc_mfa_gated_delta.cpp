@@ -26,8 +26,10 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.valueHeadCount = params.value_head_count;
   descriptor.keyDim = params.key_dim;
   descriptor.valueDim = params.value_dim;
+  descriptor.stateCheckpointCount = params.state_checkpoint_count;
   CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || params.data_type == MTL::DataTypeHalf || params.data_type == MTL::DataTypeBFloat);
   CCV_NNC_MFA_PRECONDITION(params.beta_data_type == MTL::DataTypeFloat || params.beta_data_type == MTL::DataTypeHalf || params.beta_data_type == MTL::DataTypeBFloat);
+  CCV_NNC_MFA_PRECONDITION(params.state_checkpoint_count < params.sequence_length);
   descriptor.inputMemoryPrecision = params.data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.betaMemoryPrecision = params.beta_data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.beta_data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.logDecay = params.log_decay != 0;

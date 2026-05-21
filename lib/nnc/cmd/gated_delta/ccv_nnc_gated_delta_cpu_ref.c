@@ -83,7 +83,11 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(y->info.dim[2] == Hv);
 	assert(y->info.dim[3] == Dv);
 	assert(state_out->info.dim[0] == B);
-	assert(state_out->info.dim[1] == Hv);
+	const int state_checkpoint_count = cmd.info.gated_delta.state_checkpoint_count;
+	assert(state_checkpoint_count >= 0);
+	assert(state_checkpoint_count < T);
+	const int state_history_count = state_checkpoint_count + 1;
+	assert(state_out->info.dim[1] == Hv * state_history_count);
 	assert(state_out->info.dim[2] == Dv);
 	assert(state_out->info.dim[3] == Dk);
 	assert(Hv % Hk == 0);
@@ -104,10 +108,11 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			const int hk = hv / hv_per_hk;
 			for (dv = 0; dv < Dv; dv++)
 			{
-				const size_t state_offset = (((size_t)b * Hv + hv) * Dv + dv) * Dk;
+				const size_t state_in_offset = (((size_t)b * Hv + hv) * Dv + dv) * Dk;
+				const size_t final_state_offset = (((size_t)b * state_history_count * Hv + hv) * Dv + dv) * Dk;
 				if (state_inp != state_outp)
-					memcpy(state_outp + state_offset, state_inp + state_offset, sizeof(float) * Dk);
-				float* const state_row = state_outp + state_offset;
+					memcpy(state_outp + final_state_offset, state_inp + state_in_offset, sizeof(float) * Dk);
+				float* const state_row = state_outp + final_state_offset;
 				for (t = 0; t < T; t++)
 				{
 					const size_t qk_offset = (((size_t)b * T + t) * Hk + hk) * Dk;
@@ -132,6 +137,12 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						out += next * q_row[dk];
 					}
 					yp[v_offset] = out;
+					const int history_index = T - 1 - t;
+					if (history_index > 0 && history_index <= state_checkpoint_count)
+					{
+						const size_t checkpoint_state_offset = (((size_t)b * state_history_count * Hv + history_index * Hv + hv) * Dv + dv) * Dk;
+						memcpy(state_outp + checkpoint_state_offset, state_row, sizeof(float) * Dk);
+					}
 				}
 			}
 		}

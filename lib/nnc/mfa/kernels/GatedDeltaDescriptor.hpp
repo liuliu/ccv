@@ -9,15 +9,16 @@
 
 struct GatedDeltaKernelDescriptor {
   uint8_t stateElementsPerLane;
+  bool stateCheckpointing;
   GEMMOperandPrecision inputMemoryPrecision;
   GEMMOperandPrecision betaMemoryPrecision;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision; }
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && stateCheckpointing == rhs.stateCheckpointing && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16); }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16) | ((size_t)hash.stateCheckpointing << 24); }
 };
 
 struct GatedDeltaKernel;
@@ -34,6 +35,8 @@ struct GatedDeltaDescriptor {
   uint32_t keyDim;
 
   uint32_t valueDim;
+
+  uint32_t stateCheckpointCount;
 
   GEMMOperandPrecision inputMemoryPrecision;
 

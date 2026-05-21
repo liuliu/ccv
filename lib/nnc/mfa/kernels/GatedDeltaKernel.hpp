@@ -16,6 +16,8 @@ struct GatedDeltaKernel {
 
   uint8_t stateElementsPerLane;
 
+  bool stateCheckpointing;
+
   GEMMOperandPrecision inputMemoryPrecision;
 
   GEMMOperandPrecision betaMemoryPrecision;

@@ -45,6 +45,10 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int Dk = q->info.dim[3];
 	const int Hv = v->info.dim[2];
 	const int Dv = v->info.dim[3];
+	const int state_checkpoint_count = cmd.info.gated_delta.state_checkpoint_count;
+	const int state_history_count = state_checkpoint_count + 1;
+	assert(state_checkpoint_count >= 0);
+	assert(state_checkpoint_count < T);
 	assert(k->info.dim[0] == B);
 	assert(k->info.dim[1] == T);
 	assert(k->info.dim[2] == Hk);
@@ -66,7 +70,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(y->info.dim[2] == Hv);
 	assert(y->info.dim[3] == Dv);
 	assert(state_out->info.dim[0] == B);
-	assert(state_out->info.dim[1] == Hv);
+	assert(state_out->info.dim[1] == Hv * state_history_count);
 	assert(state_out->info.dim[2] == Dv);
 	assert(state_out->info.dim[3] == Dk);
 	assert(Hv % Hk == 0);
@@ -93,6 +97,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			.value_dim = (uint32_t)Dv,
 			.data_type = input_datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (input_datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
 			.beta_data_type = beta->info.datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (beta->info.datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
+			.state_checkpoint_count = (uint32_t)state_checkpoint_count,
 			.log_decay = cmd.info.gated_delta.log_decay != 0,
 		};
 		ccv_nnc_mfa_prepare_gated_delta(context, params);

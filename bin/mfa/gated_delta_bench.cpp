@@ -25,6 +25,7 @@ struct BenchmarkConfig {
   int warmup_iterations = 3;
   int timed_iterations = 10;
   int duplicated_dispatches = 8;
+  uint32_t state_checkpoint_count = 0;
   bool log_decay_input = true;
 };
 
@@ -113,21 +114,21 @@ NS::SharedPtr<MTL::Buffer> make_buffer(MTL::Device* device, const std::vector<fl
       values.data(), values.size() * sizeof(float), kSharedResourceOptions));
 }
 
-Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench, bool log_decay_input)
+Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench, const BenchmarkConfig& config)
 {
   Buffers buffers;
   buffers.q = make_buffer(device, make_data<float>(qk_count(bench), 0.0015f, 1));
   buffers.k = make_buffer(device, make_data<float>(qk_count(bench), 0.0013f, 2));
   buffers.v = make_buffer(device, make_data<float>(v_count(bench), 0.0011f, 3));
-  buffers.log_decay = make_buffer(device, make_decay(gate_count(bench), log_decay_input));
+  buffers.log_decay = make_buffer(device, make_decay(gate_count(bench), config.log_decay_input));
   buffers.beta = make_buffer(device, make_beta(gate_count(bench)));
   buffers.state_in = make_buffer(device, make_data<float>(state_count(bench), 0.0007f, 4));
   buffers.y = NS::TransferPtr(device->newBuffer(v_count(bench) * sizeof(float), kSharedResourceOptions));
-  buffers.state_out = NS::TransferPtr(device->newBuffer(state_count(bench) * sizeof(float), kSharedResourceOptions));
+  buffers.state_out = NS::TransferPtr(device->newBuffer(state_count(bench) * (config.state_checkpoint_count + 1) * sizeof(float), kSharedResourceOptions));
   return buffers;
 }
 
-GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, bool log_decay_input)
+GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, const BenchmarkConfig& config)
 {
   GatedDeltaDescriptor descriptor;
   descriptor.batchSize = bench.B;
@@ -136,9 +137,10 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, bool log_dec
   descriptor.valueHeadCount = bench.Hv;
   descriptor.keyDim = bench.Dk;
   descriptor.valueDim = bench.Dv;
+  descriptor.stateCheckpointCount = config.state_checkpoint_count;
   descriptor.inputMemoryPrecision = GEMMOperandPrecision::FP32;
   descriptor.betaMemoryPrecision = GEMMOperandPrecision::FP32;
-  descriptor.logDecay = log_decay_input;
+  descriptor.logDecay = config.log_decay_input;
   return descriptor;
 }
 
@@ -229,6 +231,7 @@ void print_stats(const GatedDeltaCase& bench, const BenchmarkConfig& config, con
             << " Hv=" << bench.Hv
             << " Dk=" << bench.Dk
             << " Dv=" << bench.Dv
+            << " state_checkpoint_count=" << config.state_checkpoint_count
             << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
             << " avg_ms=" << std::fixed << std::setprecision(4) << stats.average_seconds * 1e3
             << " best3_avg_ms=" << stats.best3_average_seconds * 1e3
@@ -247,7 +250,7 @@ void print_usage(const char* argv0)
   std::cerr
       << "usage: " << argv0
       << " [--single] [--label NAME] [--B N] [--T N] [--Hk N] [--Hv N] [--Dk N] [--Dv N]"
-      << " [--warmup N] [--iters N] [--dups N] [--log-decay-input|--decay-input]\n";
+      << " [--warmup N] [--iters N] [--dups N] [--state-checkpoint-count N] [--log-decay-input|--decay-input]\n";
 }
 
 bool parse_u32(const char* text, uint32_t* value)
@@ -315,7 +318,7 @@ int main(int argc, char** argv)
       else
         single_case.Dv = parsed;
       single = true;
-    } else if (arg == "--warmup" || arg == "--iters" || arg == "--dups") {
+    } else if (arg == "--warmup" || arg == "--iters" || arg == "--dups" || arg == "--state-checkpoint-count") {
       const char* value = require_value(arg.c_str());
       if (!value)
         return 1;
@@ -328,8 +331,16 @@ int main(int argc, char** argv)
         config.warmup_iterations = parsed;
       else if (arg == "--iters")
         config.timed_iterations = parsed;
-      else
+      else if (arg == "--dups")
         config.duplicated_dispatches = parsed;
+      else
+      {
+        if (parsed < 0) {
+          std::cerr << "invalid state checkpoint count.\n";
+          return 1;
+        }
+        config.state_checkpoint_count = (uint32_t)parsed;
+      }
     } else if (arg == "--log-decay-input") {
       config.log_decay_input = true;
     } else if (arg == "--decay-input") {
@@ -375,6 +386,7 @@ int main(int argc, char** argv)
             << " warmup=" << config.warmup_iterations
             << " iters=" << config.timed_iterations
             << " duplicated_dispatches=" << config.duplicated_dispatches
+            << " state_checkpoint_count=" << config.state_checkpoint_count
             << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
             << '\n';
 
@@ -382,15 +394,16 @@ int main(int argc, char** argv)
   DeviceProperties dprops{};
   for (const auto& bench : cases) {
     if (bench.B == 0 || bench.T == 0 || bench.Hk == 0 || bench.Hv == 0 ||
-        bench.Dk == 0 || bench.Dv == 0 || (bench.Hv % bench.Hk) != 0) {
+        bench.Dk == 0 || bench.Dv == 0 || (bench.Hv % bench.Hk) != 0 ||
+        config.state_checkpoint_count >= bench.T) {
       std::cerr << "invalid shape for " << bench.label << ".\n";
       return 1;
     }
-    const auto descriptor = create_descriptor(bench, config.log_decay_input);
+    const auto descriptor = create_descriptor(bench, config);
     auto pipeline_value =
         shader_cache.findKernel<GatedDeltaKernel, GatedDeltaDescriptor, GatedDeltaKernelDescriptor>(
             descriptor, device.get(), dprops);
-    Buffers buffers = create_buffers(device.get(), bench, config.log_decay_input);
+    Buffers buffers = create_buffers(device.get(), bench, config);
     if (!buffers.q || !buffers.k || !buffers.v || !buffers.log_decay || !buffers.beta ||
         !buffers.state_in || !buffers.y || !buffers.state_out) {
       std::cerr << "buffer allocation failed for " << bench.label << ".\n";

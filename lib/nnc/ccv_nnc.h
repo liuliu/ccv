@@ -261,6 +261,7 @@ typedef struct {
 		} grid_sample;
 		struct {
 			int log_decay; /**< [gated_delta.log_decay] If 1, input 3 is log-decay and should be exponentiated. If 0, input 3 is precomputed decay. */
+			int state_checkpoint_count; /**< [gated_delta.state_checkpoint_count] Number of pre-final states to append after the final recurrent state. */
 		} gated_delta;
 		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
@@ -4792,7 +4793,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
  * @param name The unique name of the model.
  * @return A model that can be applied with six inputs and generates output plus updated recurrent state.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const char* const name);
 /**
  * Multiply two input tensors together as if these are complex numbers.
  * @param name The unique name of the model.

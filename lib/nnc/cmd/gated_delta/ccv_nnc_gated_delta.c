@@ -18,7 +18,7 @@ static int _ccv_nnc_gated_delta_back_bitmask(const ccv_nnc_cmd_param_t cmd, cons
 
 static int _ccv_nnc_gated_delta_allow_inplace(const ccv_nnc_cmd_param_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
-	if (input_idx == 5 && output_idx == 1)
+	if (cmd.gated_delta.state_checkpoint_count == 0 && input_idx == 5 && output_idx == 1)
 		return 1;
 	return 0;
 }
@@ -33,12 +33,15 @@ static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	const int log_decay_nd = ccv_nnc_tensor_nd(inputs[3].dim);
 	const int beta_nd = ccv_nnc_tensor_nd(inputs[4].dim);
 	const int state_nd = ccv_nnc_tensor_nd(inputs[5].dim);
+	const int state_checkpoint_count = cmd.gated_delta.state_checkpoint_count;
 	assert(q_nd == 4);
 	assert(k_nd == 4);
 	assert(v_nd == 4);
 	assert(log_decay_nd == 3);
 	assert(beta_nd == 3);
 	assert(state_nd == 4);
+	assert(state_checkpoint_count >= 0);
+	assert(state_checkpoint_count < inputs[0].dim[1]);
 	assert(inputs[0].dim[0] == inputs[1].dim[0]);
 	assert(inputs[0].dim[0] == inputs[2].dim[0]);
 	assert(inputs[0].dim[1] == inputs[1].dim[1]);
@@ -58,6 +61,7 @@ static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	assert(inputs[5].dim[3] == inputs[0].dim[3]);
 	outputs[0] = inputs[2];
 	outputs[1] = inputs[5];
+	outputs[1].dim[1] = inputs[5].dim[1] * (state_checkpoint_count + 1);
 }
 
 REGISTER_COMMAND(CCV_NNC_GATED_DELTA_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -74,8 +78,7 @@ REGISTER_COMMAND(CCV_NNC_GATED_DELTA_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GATED_DELTA_FORWARD)
-#define CMD_GATED_DELTA_FORWARD_X_F(...) ("This should not be used, you should have either 0 or 1 parameter for CMD_GATED_DELTA_FORWARD")
-#define CMD_GATED_DELTA_FORWARD_X_0() ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=1}}), 0)
-#define CMD_GATED_DELTA_FORWARD_X_1(_log_decay) ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=(_log_decay)}}), 0)
-#define CMD_GATED_DELTA_FORWARD_X_SEL(_0, _1, _FX, ...) _FX
-#define CMD_GATED_DELTA_FORWARD(...) CMD_GATED_DELTA_FORWARD_X_SEL(CMD_GATED_DELTA_FORWARD_X_F, ##__VA_ARGS__, CMD_GATED_DELTA_FORWARD_X_1, CMD_GATED_DELTA_FORWARD_X_0)(__VA_ARGS__)
+#define CMD_GATED_DELTA_FORWARD_X_F(...) ("This should not be used, you should have 2 parameters for CMD_GATED_DELTA_FORWARD")
+#define CMD_GATED_DELTA_FORWARD_X_2(_log_decay, _state_checkpoint_count) ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=(_log_decay),.state_checkpoint_count=(_state_checkpoint_count)}}), 0)
+#define CMD_GATED_DELTA_FORWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
+#define CMD_GATED_DELTA_FORWARD(...) CMD_GATED_DELTA_FORWARD_X_SEL(CMD_GATED_DELTA_FORWARD_X_F, ##__VA_ARGS__, CMD_GATED_DELTA_FORWARD_X_2, CMD_GATED_DELTA_FORWARD_X_F, CMD_GATED_DELTA_FORWARD_X_F)(__VA_ARGS__)
