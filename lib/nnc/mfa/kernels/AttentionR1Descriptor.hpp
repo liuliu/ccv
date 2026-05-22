@@ -17,9 +17,12 @@ struct AttentionR1KernelDescriptor {
 
   bool loadC;
 
+  bool attentionSinks;
+
   constexpr bool operator==(const AttentionR1KernelDescriptor& rhs) const {
     return memoryPrecision == rhs.memoryPrecision &&
-        loadC == rhs.loadC;
+        loadC == rhs.loadC &&
+        attentionSinks == rhs.attentionSinks;
   }
 };
 
@@ -27,7 +30,7 @@ template<>
 struct std::hash<AttentionR1KernelDescriptor>
 {
   std::size_t operator()(const AttentionR1KernelDescriptor& hash) const noexcept {
-    return std::hash<int>()(((int)hash.memoryPrecision.value << 1) | (hash.loadC ? 1 : 0));
+    return std::hash<int>()(((int)hash.memoryPrecision.value << 2) | ((hash.loadC ? 1 : 0) << 1) | (hash.attentionSinks ? 1 : 0));
   }
 };
 
@@ -53,6 +56,8 @@ struct AttentionR1Descriptor {
 
   bool loadC;
 
+  bool attentionSinks;
+
   uint32_t simdgroups;
 
   uint32_t workgroups;
@@ -68,7 +73,8 @@ struct AttentionR1Descriptor {
       uint32_t Hk,
       uint32_t D,
       float scale,
-      bool loadC) noexcept;
+      bool loadC,
+      bool attentionSinks = false) noexcept;
 
   std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> findKernel(
       MTL::Device* const device,

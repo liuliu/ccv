@@ -298,6 +298,7 @@ typedef struct {
 			int max_seqlen_kv; /**< [scaled_dot_product_attention.max_seqlen_kv] The maximum key / value sequence length for packed variable-length attention. */
 			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32, and whether to opt into quantized attention on supported backends. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
+			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
 		} scaled_dot_product_attention;
 		struct {
 			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */

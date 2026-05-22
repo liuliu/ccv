@@ -604,6 +604,160 @@ static void _mps_forward_scaled_gemm_to_float(const int datatype, const void* co
 		memcpy(values, data, sizeof(float) * count);
 }
 
+static void _mps_sdpa_store_float_as_datatype(const int datatype, const float* const values, void* const data, const int count)
+{
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)data, count);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)data, count);
+	else
+		memcpy(data, values, sizeof(float) * count);
+}
+
+static void _mps_sdpa_round_to_datatype(const int datatype, const float* const values, float* const rounded, const int count)
+{
+	void* const data = ccmalloc((size_t)CCV_GET_DATA_TYPE_SIZE(datatype) * count);
+	_mps_sdpa_store_float_as_datatype(datatype, values, data, count);
+	_mps_forward_scaled_gemm_to_float(datatype, data, count, rounded);
+	ccfree(data);
+}
+
+static int _mps_sdpa_attention_sinks_compare(const int datatype, const int force_generic, const int gpu_flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int sink_count, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
+{
+	const int q_count = B * R * Hq * D;
+	const int kv_count = B * C * Hk * D;
+	const float scale = 1.0 / sqrtf((float)D);
+	const ccv_nnc_tensor_param_t q_ref_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = CCV_32F,
+		.dim = { B, R, Hq, D },
+	};
+	const ccv_nnc_tensor_param_t kv_ref_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = CCV_32F,
+		.dim = { B, C, Hk, D },
+	};
+	const ccv_nnc_tensor_param_t sink_ref_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = CCV_32F,
+		.dim = { sink_count },
+	};
+	ccv_nnc_tensor_param_t q_input_params = q_ref_params;
+	q_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t kv_input_params = kv_ref_params;
+	kv_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t sink_input_params = sink_ref_params;
+	sink_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t gpu_q_params = q_input_params;
+	gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_param_t gpu_kv_params = kv_input_params;
+	gpu_kv_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_param_t gpu_sink_params = sink_input_params;
+	gpu_sink_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const q_ref = ccv_nnc_tensor_new(0, q_ref_params, 0);
+	ccv_nnc_tensor_t* const k_ref = ccv_nnc_tensor_new(0, kv_ref_params, 0);
+	ccv_nnc_tensor_t* const v_ref = ccv_nnc_tensor_new(0, kv_ref_params, 0);
+	ccv_nnc_tensor_t* const sinks_ref = ccv_nnc_tensor_new(0, sink_ref_params, 0);
+	ccv_nnc_tensor_t* const q_input = ccv_nnc_tensor_new(0, q_input_params, 0);
+	ccv_nnc_tensor_t* const k_input = ccv_nnc_tensor_new(0, kv_input_params, 0);
+	ccv_nnc_tensor_t* const v_input = ccv_nnc_tensor_new(0, kv_input_params, 0);
+	ccv_nnc_tensor_t* const sinks_input = ccv_nnc_tensor_new(0, sink_input_params, 0);
+	for (int i = 0; i < q_count; ++i)
+		q_ref->data.f32[i] = (float)(((i * 17 + R * 5 + is_causal * 11) % 97) - 48) / 256;
+	for (int i = 0; i < kv_count; ++i)
+	{
+		k_ref->data.f32[i] = (float)(((i * 19 + C * 3) % 89) - 44) / 256;
+		v_ref->data.f32[i] = (float)(((i * 23 + Hq * 7) % 101) - 50) / 128;
+	}
+	for (int i = 0; i < sink_count; ++i)
+		sinks_ref->data.f32[i] = (float)(((i * 7 + D) % 13) - 6) / 32;
+	_mps_sdpa_store_float_as_datatype(datatype, q_ref->data.f32, q_input->data.u8, q_count);
+	_mps_sdpa_store_float_as_datatype(datatype, k_ref->data.f32, k_input->data.u8, kv_count);
+	_mps_sdpa_store_float_as_datatype(datatype, v_ref->data.f32, v_input->data.u8, kv_count);
+	_mps_sdpa_store_float_as_datatype(datatype, sinks_ref->data.f32, sinks_input->data.u8, sink_count);
+	_mps_forward_scaled_gemm_to_float(datatype, q_input->data.u8, q_count, q_ref->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, k_input->data.u8, kv_count, k_ref->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, v_input->data.u8, kv_count, v_ref->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, sinks_input->data.u8, sink_count, sinks_ref->data.f32);
+
+	ccv_nnc_tensor_t* const o_ref = ccv_nnc_tensor_new(0, q_ref_params, 0);
+	ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
+	cpu_cmd.info.scaled_dot_product_attention.attention_sinks = 1;
+	if (ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_ref, k_ref, v_ref, NULL, NULL, NULL, NULL, NULL, sinks_ref), TENSOR_LIST(o_ref), 0) != CCV_NNC_EXEC_SUCCESS)
+		return -1;
+
+	ccv_nnc_tensor_t* const gpu_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, gpu_kv_params, 0);
+	ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, gpu_kv_params, 0);
+	ccv_nnc_tensor_t* const gpu_sinks = ccv_nnc_tensor_new(0, gpu_sink_params, 0);
+	ccv_nnc_tensor_t* const gpu_o = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const o_actual = ccv_nnc_tensor_new(0, q_input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_input, k_input, v_input, sinks_input), TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_sinks), 0);
+	ccv_nnc_cmd_t gpu_cmd = cpu_cmd;
+	gpu_cmd.info.scaled_dot_product_attention.flags = gpu_flags;
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (force_generic)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	const int exec_status = ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q, gpu_k, gpu_v, NULL, NULL, NULL, NULL, NULL, gpu_sinks), TENSOR_LIST(gpu_o), 0);
+	if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (exec_status != CCV_NNC_EXEC_SUCCESS)
+		return -2;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o), TENSOR_LIST(o_actual), 0);
+
+	float* const expected = (float*)ccmalloc(sizeof(float) * q_count);
+	float* const actual = (float*)ccmalloc(sizeof(float) * q_count);
+	_mps_sdpa_round_to_datatype(datatype, o_ref->data.f32, expected, q_count);
+	_mps_forward_scaled_gemm_to_float(datatype, o_actual->data.u8, q_count, actual);
+	float max_abs = 0;
+	float max_relative = 0;
+	int max_idx = 0;
+	int status = 0;
+	for (int i = 0; i < q_count; ++i)
+	{
+		if (!isfinite(actual[i]))
+		{
+			status = -3;
+			max_idx = i;
+			break;
+		}
+		const float abs_diff = fabsf(expected[i] - actual[i]);
+		const float denom = fmaxf(fmaxf(fabsf(expected[i]), fabsf(actual[i])), 1.0f);
+		const float relative = abs_diff / denom;
+		if (relative > max_relative)
+			max_relative = relative, max_abs = abs_diff, max_idx = i;
+	}
+	if (status == 0 && max_relative > tolerance)
+		status = 1;
+	*max_abs_ref = max_abs;
+	*max_relative_ref = max_relative;
+	*max_idx_ref = max_idx;
+	*expected_ref = expected[max_idx];
+	*actual_ref = actual[max_idx];
+
+	ccfree(expected);
+	ccfree(actual);
+	ccv_nnc_tensor_free(o_actual);
+	ccv_nnc_tensor_free(gpu_o);
+	ccv_nnc_tensor_free(gpu_sinks);
+	ccv_nnc_tensor_free(gpu_v);
+	ccv_nnc_tensor_free(gpu_k);
+	ccv_nnc_tensor_free(gpu_q);
+	ccv_nnc_tensor_free(o_ref);
+	ccv_nnc_tensor_free(sinks_input);
+	ccv_nnc_tensor_free(v_input);
+	ccv_nnc_tensor_free(k_input);
+	ccv_nnc_tensor_free(q_input);
+	ccv_nnc_tensor_free(sinks_ref);
+	ccv_nnc_tensor_free(v_ref);
+	ccv_nnc_tensor_free(k_ref);
+	ccv_nnc_tensor_free(q_ref);
+	return status;
+}
+
 static void _mps_forward_scaled_gemm_compare_rows(const int datatype, const void* const actual_data, const void* const expected_data, const int rows, const int cols, double* const max_abs_ref, double* const max_rel_ref)
 {
 	float* const actual_row = (float*)ccmalloc(sizeof(float) * cols);
@@ -4927,6 +5081,58 @@ TEST_CASE("scaled dot product attention with BF16 R1 mps decode")
 		ccv_nnc_tensor_free(k_tensor_bf16);
 		ccv_nnc_tensor_free(v_tensor_bf16);
 	}
+}
+
+TEST_CASE("scaled dot product attention with attention sinks on mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	float max_abs = 0;
+	float max_relative = 0;
+	float expected = 0;
+	float actual = 0;
+	int max_idx = 0;
+	int status = _mps_sdpa_attention_sinks_compare(CCV_32F, 1, 0, 1, 17, 23, 4, 2, 64, 0, 1, 2e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "generic global sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 47, 41, 8, 8, 64, 0, 8, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NA per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 7, 4096, 8, 8, 128, 1, 8, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NA splitKV per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 1536, 8, 4, 128, 1, 8, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "R1 direct per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 4097, 8, 4, 128, 1, 8, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "R1 split per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I, 1, 64, 64, 8, 8, 128, 0, 8, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NAInt8 per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 }
 
 TEST_CASE("scaled dot product attention with varlen NA mps")

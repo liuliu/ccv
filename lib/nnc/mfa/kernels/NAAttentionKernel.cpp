@@ -38,6 +38,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
   loadC = descriptor.loadC;
+  attentionSinks = descriptor.attentionSinks;
   splitKV = descriptor.splitKV;
 
   source = createSource();
@@ -205,6 +206,12 @@ kernel void attention(
   device float* PartialO_buf [[buffer(5)]],
   device float* PartialL_buf [[buffer(6)]],
 )";
+  if (attentionSinks) {
+    source += R"(
+  device const {{MEMORY_NAME_Q}}* Sinks_buf [[buffer(19)]],
+  constant uint& Sink_head_stride [[buffer(20)]],
+)";
+  }
   if (loadC) {
     source += R"(
   const device uint* C_buf [[buffer(21)]],
@@ -703,6 +710,12 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
     output += "  device const int* QSeqOffsets_buf [[buffer(17)]],\n";
     output += "  device const int* KVSeqOffsets_buf [[buffer(18)]],\n";
   }
+  if (type.value == AttentionKernelType::forward && attentionSinks) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Sinks_buf [[buffer(19)]],\n";
+    output += "  constant uint& Sink_head_stride [[buffer(20)]],\n";
+  }
   if (type.value == AttentionKernelType::forward && loadC) {
     output += "  const device uint* C_buf [[buffer(21)]],\n";
   }
@@ -918,6 +931,23 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
   auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+)";
+  if (attentionSinks) {
+    source += R"(
+  const bool include_sink = split_id == 0;
+  const float sink_m = include_sink ? (float)Sinks_buf[tgid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::infinity();
+  const float sink_l = include_sink ? 1 : numeric_limits<float>::denorm_min();
+)";
+  }
+  source += attentionSinks ? R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = sink_m;
+      cL[k] = sink_l;
+    }
+  }
+)" : R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
@@ -925,6 +955,8 @@ void NAAttentionKernel::loopForwardSplitKV(CodeWriter &source) const noexcept {
       cL[k] = numeric_limits<float>::denorm_min();
     }
   }
+)";
+  source += R"(
   auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}}, 0);
   constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
@@ -1279,6 +1311,21 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+)";
+  if (attentionSinks) {
+    source += R"(
+  const float sink_m = (float)Sinks_buf[tgid.y * Sink_head_stride] * 1.442695041;
+)";
+  }
+  source += attentionSinks ? R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = sink_m;
+      cL[k] = 1;
+    }
+  }
+)" : R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
@@ -1286,6 +1333,8 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       cL[k] = numeric_limits<float>::denorm_min();
     }
   }
+)";
+  source += R"(
   auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(0, 0);
   constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
@@ -1937,6 +1986,21 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+)";
+  if (attentionSinks) {
+    source += R"(
+  const float sink_m = (float)Sinks_buf[tgid.y * Sink_head_stride] * 1.442695041;
+)";
+  }
+  source += attentionSinks ? R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = sink_m;
+      cL[k] = 1;
+    }
+  }
+)" : R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
@@ -1944,6 +2008,8 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
       cL[k] = numeric_limits<float>::denorm_min();
     }
   }
+)";
+  source += R"(
   auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(0, 0);
   constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;

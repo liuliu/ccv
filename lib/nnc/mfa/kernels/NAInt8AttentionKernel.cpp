@@ -63,6 +63,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
   hasCausalEmptyRows = descriptor.hasCausalEmptyRows;
+  attentionSinks = descriptor.attentionSinks;
 
   source = createSource();
 
@@ -1032,6 +1033,12 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device const int *KVSeqOffsets_buf [[buffer(18)]],
 )";
     }
+    if (attentionSinks) {
+      source += R"(
+    device const {{IO_MEMORY_NAME}} *Sinks_buf [[buffer(19)]],
+    constant uint& Sink_head_stride [[buffer(20)]],
+)";
+    }
     break;
   case AttentionKernelType::backwardQuery:
     source += R"(
@@ -1962,6 +1969,21 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   auto cM = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+)";
+  if (attentionSinks) {
+    source += R"(
+  const float sink_m = (float)Sinks_buf[tgid.y * Sink_head_stride] * 1.442695041;
+)";
+  }
+  source += attentionSinks ? R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      cM[k] = sink_m;
+      cL[k] = 1;
+    }
+  }
+)" : R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
@@ -1969,6 +1991,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       cL[k] = numeric_limits<float>::denorm_min();
     }
   }
+)";
+  source += R"(
   auto mV = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(0, 0);
   constexpr auto pv_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<pv_desc, execution_simdgroups<1>> matmul_pv_op;
@@ -1986,6 +2010,21 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
+  }
+  if (attentionSinks && !isCausal && !masked) {
+    source += R"(
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+    if (cO_0.is_valid_element(k)) {
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
+    }
+    source += R"(
+    }
+  }
+)";
   }
   if (isCausal && !masked) {
     source += R"(

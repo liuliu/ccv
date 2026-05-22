@@ -5,6 +5,7 @@
 AttentionR1Kernel::AttentionR1Kernel(AttentionR1KernelDescriptor descriptor, MTL::Device* const device) {
   memoryPrecision = descriptor.memoryPrecision;
   loadC = descriptor.loadC;
+  attentionSinks = descriptor.attentionSinks;
   source = createSource();
 
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -39,6 +40,12 @@ kernel void attention_r1_direct(
     device const real* V [[buffer(2)]],
     device real* O [[buffer(3)]],
 )";
+  if (attentionSinks) {
+    source += R"(
+    device const real* Sinks [[buffer(19)]],
+    constant uint& Sink_head_stride [[buffer(20)]],
+)";
+  }
   if (loadC) {
     source += R"(
     const device uint* loadC [[buffer(4)]],
@@ -54,6 +61,11 @@ kernel void attention_r1_direct(
   const uint batch = tgid.y;
   const uint hk = hq / (Hq / Hk);
 )";
+  if (attentionSinks) {
+    source += R"(
+  const float sink_m = (float)Sinks[hq * Sink_head_stride] * 1.442695041;
+)";
+  }
   if (loadC) {
     source += R"(
   const uniform<uint> C_LEN = make_uniform(loadC[0]);
@@ -78,8 +90,12 @@ kernel void attention_r1_direct(
   for (uint i = 0; i < 8; ++i) {
     acc[i] = 0;
   }
-  float row_m = -INFINITY;
-  float row_s = 0;
+  float row_m = )";
+  source += attentionSinks ? "(sgid == 0 ? sink_m : -INFINITY)" : "-INFINITY";
+  source += R"(;
+  float row_s = )";
+  source += attentionSinks ? "(sgid == 0 ? 1 : 0)" : "0";
+  source += R"(;
 
   for (uint c = sgid; c < C_LEN; c += NSG) {
     float dot_acc = 0;
@@ -140,6 +156,12 @@ kernel void attention_r1_split_partials(
     device const real* V [[buffer(2)]],
     device float* partial [[buffer(3)]],
 )";
+  if (attentionSinks) {
+    source += R"(
+    device const real* Sinks [[buffer(19)]],
+    constant uint& Sink_head_stride [[buffer(20)]],
+)";
+  }
   if (loadC) {
     source += R"(
     const device uint* loadC [[buffer(4)]],
@@ -156,6 +178,11 @@ kernel void attention_r1_split_partials(
   const uint iwg = tgid.z;
   const uint hk = hq / (Hq / Hk);
 )";
+  if (attentionSinks) {
+    source += R"(
+  const float sink_m = (float)Sinks[hq * Sink_head_stride] * 1.442695041;
+)";
+  }
   if (loadC) {
     source += R"(
   const uniform<uint> C_LEN = make_uniform(loadC[0]);
@@ -180,8 +207,12 @@ kernel void attention_r1_split_partials(
   for (uint i = 0; i < 8; ++i) {
     acc[i] = 0;
   }
-  float row_m = -INFINITY;
-  float row_s = 0;
+  float row_m = )";
+  source += attentionSinks ? "(iwg == 0 && sgid == 0 ? sink_m : -INFINITY)" : "-INFINITY";
+  source += R"(;
+  float row_s = )";
+  source += attentionSinks ? "(iwg == 0 && sgid == 0 ? 1 : 0)" : "0";
+  source += R"(;
 
   for (uint c = iwg * NSG + sgid; c < C_LEN; c += NWG * NSG) {
     float dot_acc = 0;

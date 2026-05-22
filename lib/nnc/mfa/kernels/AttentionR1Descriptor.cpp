@@ -37,6 +37,7 @@ bool AttentionR1Descriptor::operator==(const AttentionR1Descriptor& rhs) const {
       Hk == rhs.Hk &&
       D == rhs.D &&
       scale == rhs.scale &&
+      attentionSinks == rhs.attentionSinks &&
       simdgroups == rhs.simdgroups &&
       workgroups == rhs.workgroups &&
       mode == rhs.mode;
@@ -49,7 +50,8 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
     uint32_t Hk,
     uint32_t D,
     float scale,
-    bool loadC) noexcept
+    bool loadC,
+    bool attentionSinks) noexcept
 {
   AttentionR1Descriptor descriptor;
   descriptor.memoryPrecision = memoryPrecision;
@@ -59,6 +61,7 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
   descriptor.D = D;
   descriptor.scale = scale;
   descriptor.loadC = loadC;
+  descriptor.attentionSinks = attentionSinks;
 
   if (C < 2048) {
     descriptor.mode = Mode::direct;
@@ -80,6 +83,7 @@ std::size_t std::hash<AttentionR1Descriptor>::operator()(const AttentionR1Descri
   combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
   combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
   combine_32(seed, hash.loadC ? 1 : 0);
+  combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }
@@ -111,6 +115,7 @@ std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> Attent
   AttentionR1KernelDescriptor kernelDesc;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.loadC = loadC;
+  kernelDesc.attentionSinks = attentionSinks;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* functionNameString) -> MTL::ComputePipelineState* {

@@ -61,6 +61,7 @@ static NAAttentionKernel* create_kernel(const NAAttentionKernelDescriptor& kerne
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
   kernel->isVarlen = kernel_descriptor.isVarlen;
+  kernel->attentionSinks = kernel_descriptor.attentionSinks;
   return kernel;
 }
 

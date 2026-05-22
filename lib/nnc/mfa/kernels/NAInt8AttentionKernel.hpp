@@ -41,6 +41,7 @@ struct NAInt8AttentionKernel {
   bool masked;
   bool isVarlen;
   bool hasCausalEmptyRows;
+  bool attentionSinks;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 

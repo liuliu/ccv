@@ -114,7 +114,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         (hash.Hq % hash.Hk) == 0;
     if (useAttentionR1) {
       AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
-          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true);
+          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks);
       auto pool = NS::AutoreleasePool::alloc()->init();
       auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
@@ -132,11 +132,18 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[1], MTL::ResourceUsageRead);
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
         encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+        if (hash.attention_sinks) {
+          encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+        }
         encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
         encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
         encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
         encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
         encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+        if (hash.attention_sinks) {
+          encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+          encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+        }
         encoder->dispatchThreadgroups(
             MTL::Size(hash.Hq, batch_sizes[0], 1),
             MTL::Size(threadgroupSize, 1, 1));
@@ -154,11 +161,18 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->useResource(tensors[1], MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageRead);
       encoder->useResource(scratch, MTL::ResourceUsageWrite);
+      if (hash.attention_sinks) {
+        encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+      }
       encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
       encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
       encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
       encoder->setBuffer(scratch, 0, 3);
       encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+      if (hash.attention_sinks) {
+        encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+        encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+      }
       encoder->dispatchThreadgroups(
           MTL::Size(hash.Hq, batch_sizes[0], attentionDesc.workgroups),
           MTL::Size(threadgroupSize, 1, 1));
@@ -201,6 +215,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isCausal = hash.is_causal;
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
+      attentionDesc.attentionSinks = hash.attention_sinks;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -372,6 +387,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(tensors[6], tensor_offsets[6], 17);
         encoder->setBuffer(tensors[7], tensor_offsets[7], 18);
       }
+      if (hash.attention_sinks) {
+        encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+        encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+      }
       encoder->dispatchThreadgroups(
           kernel->threadgroupsPerGrid(batchDimension, hash.R),
           MTL::Size(kernel->threadgroupSize(pipeline.get()), 1, 1));
@@ -393,6 +413,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isCausal = hash.is_causal;
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
+      attentionDesc.attentionSinks = hash.attention_sinks;
       attentionDesc.loadC = !hash.masked && !hash.is_varlen && hash.R <= 4;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
@@ -459,6 +480,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[1], MTL::ResourceUsageRead);
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        if (hash.attention_sinks) {
+          encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+        }
         encoder->setBuffer(tensors[0], tensor_offsets[0], AttentionOperand(AttentionOperand::Q).bufferIndex());
         encoder->setBuffer(tensors[1], tensor_offsets[1], AttentionOperand(AttentionOperand::K).bufferIndex());
         encoder->setBuffer(tensors[2], tensor_offsets[2], AttentionOperand(AttentionOperand::V).bufferIndex());
@@ -466,6 +490,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(scratch, splitKVPartialLOffset, 6);
         if (attentionDesc.loadC) {
           encoder->setBytes(&hash.C, sizeof(hash.C), 21);
+        }
+        if (hash.attention_sinks) {
+          encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+          encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
         }
         encoder->dispatchThreadgroups(
             kernel->threadgroupsPerGrid(attentionDesc),
@@ -535,6 +563,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (attentionDesc.loadC) {
         encoder->setBytes(&hash.C, sizeof(hash.C), 21);
       }
+      if (hash.attention_sinks) {
+        encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+        encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+      }
 
       // Calculate the grid size.
       MTL::Size gridSize = kernel->threadgroupsPerGrid(attentionDesc);
@@ -569,6 +602,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.isCausal = hash.is_causal;
     attentionDesc.masked = hash.masked;
     attentionDesc.isVarlen = hash.is_varlen;
+    attentionDesc.attentionSinks = hash.attention_sinks;
     if (hash.masked && batch_sizes[1] > 1) {
       attentionDesc.maskBatchStride = hash.R * hash.C;
     }
@@ -686,6 +720,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[7], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[6], tensor_offsets[6], 17);
         encoder->setBuffer(tensors[7], tensor_offsets[7], 18);
+      }
+      if (hash.attention_sinks) {
+        encoder->useResource(tensors[8], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
+        encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
       }
     
       MTL::Size gridSize
@@ -1222,6 +1261,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   upcast = params.upcast;
   type = params.type;
   use_quantized_attention = params.use_quantized_attention;
+  attention_sinks = params.attention_sinks;
 }
 
 bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
@@ -1243,7 +1283,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (is_varlen == hash.is_varlen) &&
   (upcast == hash.upcast) &&
   (type == hash.type) &&
-  (use_quantized_attention == hash.use_quantized_attention);
+  (use_quantized_attention == hash.use_quantized_attention) &&
+  (attention_sinks == hash.attention_sinks);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
@@ -1265,6 +1306,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .is_varlen = " << bool(hash.is_varlen) << ", ";
   os << " .upcast = " << bool(hash.upcast) << " ";
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
+  os << " .attention_sinks = " << bool(hash.attention_sinks) << " ";
   os << " .type = " << hash.type << " ";
   os << "}";
   return os;
@@ -1280,6 +1322,7 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.is_varlen })}));
   combine_32(seed, hash.type);
   combine_32(seed, hash.use_quantized_attention);
+  combine_32(seed, hash.attention_sinks);
   combine_32(seed, hash.upcast);
   return seed;
 }

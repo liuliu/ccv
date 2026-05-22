@@ -16,17 +16,23 @@ static double get_current_time(void)
 	return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
 }
 
-static double benchmark_sdpa(ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const q_tensor, ccv_nnc_tensor_t* const k_tensor, ccv_nnc_tensor_t* const v_tensor, ccv_nnc_tensor_t* const mask_tensor, ccv_nnc_tensor_t* const o_tensor, const int warmup, const int iterations)
+static double benchmark_sdpa(ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const q_tensor, ccv_nnc_tensor_t* const k_tensor, ccv_nnc_tensor_t* const v_tensor, ccv_nnc_tensor_t* const mask_tensor, ccv_nnc_tensor_t* const sinks_tensor, ccv_nnc_tensor_t* const o_tensor, const int warmup, const int iterations)
 {
 	int i;
-	if (mask_tensor)
+	if (sinks_tensor)
+		for (i = 0; i < warmup; i++)
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, mask_tensor, NULL, NULL, NULL, NULL, sinks_tensor), TENSOR_LIST(o_tensor, NULL), 0);
+	else if (mask_tensor)
 		for (i = 0; i < warmup; i++)
 			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, mask_tensor), TENSOR_LIST(o_tensor, NULL), 0);
 	else
 		for (i = 0; i < warmup; i++)
 			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, NULL, NULL, NULL), TENSOR_LIST(o_tensor, NULL), 0);
 	double elapsed_time = get_current_time();
-	if (mask_tensor)
+	if (sinks_tensor)
+		for (i = 0; i < iterations; i++)
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, mask_tensor, NULL, NULL, NULL, NULL, sinks_tensor), TENSOR_LIST(o_tensor, NULL), 0);
+	else if (mask_tensor)
 		for (i = 0; i < iterations; i++)
 			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, mask_tensor), TENSOR_LIST(o_tensor, NULL), 0);
 	else
@@ -35,12 +41,13 @@ static double benchmark_sdpa(ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const q_tensor
 	return (get_current_time() - elapsed_time) / (double)iterations;
 }
 
-static void benchmark_sdpa_nomask_case(const char* const backend, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int warmup, const int iterations)
+static void benchmark_sdpa_nomask_case(const char* const backend, const int flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int attention_sinks, const int warmup, const int iterations)
 {
 	const float scale = 1.0 / sqrt((float)D);
 	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const sinks_tensor = attention_sinks ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, Hq), 0) : 0;
 	int i;
 	for (i = 0; i < B * R * Hq * D; ++i)
 		q_tensor->data.f32[i] = (float)(i) / (float)(B * R * Hq * D);
@@ -48,25 +55,42 @@ static void benchmark_sdpa_nomask_case(const char* const backend, const int B, c
 		k_tensor->data.f32[i] = (float)(i) / (float)(B * C * Hk * D);
 	for (i = 0; i < B * C * Hk * D; ++i)
 		v_tensor->data.f32[i] = (float)(i) / (float)(B * C * Hk * D);
+	if (attention_sinks)
+		for (i = 0; i < Hq; ++i)
+			sinks_tensor->data.f32[i] = (float)(((i * 7 + D) % 13) - 6) / 32;
 	ccv_nnc_tensor_t* const q_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, Hq, D), 0);
 	ccv_nnc_tensor_t* const k_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, Hk, D), 0);
 	ccv_nnc_tensor_t* const v_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const sinks_tensor_f16 = attention_sinks ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, Hq), 0) : 0;
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), 0);
+	if (attention_sinks)
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sinks_tensor), TENSOR_LIST(sinks_tensor_f16), 0);
 	ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, Hq, D), 0);
 	ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, Hk, D), 0);
 	ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const gpu_sinks_tensor = attention_sinks ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, Hq), 0) : 0;
 	ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, Hq, D), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
-	const ccv_nnc_cmd_t attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
-	const double seconds = benchmark_sdpa(attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_o_tensor, warmup, iterations);
-	printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", backend, is_causal ? "causal" : "plain", B, R, C, Hq, Hk, D, seconds, 1.0);
+	if (attention_sinks)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sinks_tensor_f16), TENSOR_LIST(gpu_sinks_tensor), 0);
+	ccv_nnc_cmd_t attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
+	attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
+	attention.info.scaled_dot_product_attention.flags = flags;
+	const double seconds = benchmark_sdpa(attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, warmup, iterations);
+	printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", backend, attention_sinks ? (is_causal ? "causal_sink" : "plain_sink") : (is_causal ? "causal" : "plain"), B, R, C, Hq, Hk, D, seconds, 1.0);
+	if (gpu_sinks_tensor)
+		ccv_nnc_tensor_free(gpu_sinks_tensor);
 	ccv_nnc_tensor_free(gpu_o_tensor);
 	ccv_nnc_tensor_free(q_tensor);
 	ccv_nnc_tensor_free(k_tensor);
 	ccv_nnc_tensor_free(v_tensor);
+	if (sinks_tensor)
+		ccv_nnc_tensor_free(sinks_tensor);
 	ccv_nnc_tensor_free(q_tensor_f16);
 	ccv_nnc_tensor_free(k_tensor_f16);
 	ccv_nnc_tensor_free(v_tensor_f16);
+	if (sinks_tensor_f16)
+		ccv_nnc_tensor_free(sinks_tensor_f16);
 	ccv_nnc_tensor_free(gpu_q_tensor);
 	ccv_nnc_tensor_free(gpu_k_tensor);
 	ccv_nnc_tensor_free(gpu_v_tensor);
@@ -100,6 +124,8 @@ int main(int argc, char** argv)
 	int custom_Hq = 32;
 	int custom_Hk = 32;
 	int custom_D = 256;
+	int attention_sinks = 0;
+	int attention_flags = 0;
 	int i;
 	for (i = 1; i < argc; i++)
 	{
@@ -109,6 +135,10 @@ int main(int argc, char** argv)
 			force_generic = 1;
 		else if (strcmp(argv[i], "--quick") == 0)
 			trial_limit = 8;
+		else if (strcmp(argv[i], "--sinks") == 0)
+			attention_sinks = 1;
+		else if (strcmp(argv[i], "--int8") == 0)
+			attention_flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
 		else if (strcmp(argv[i], "--small-r-grid") == 0)
 			small_r_grid = 1;
 		else if (strcmp(argv[i], "--small-r-causal-grid") == 0)
@@ -163,7 +193,7 @@ int main(int argc, char** argv)
 		if (c_sweep_step <= 0)
 			c_sweep_step = 128;
 		for (int C = c_sweep_from; C <= c_sweep_to; C += c_sweep_step)
-			benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", c_sweep_B, c_sweep_R, C, c_sweep_Hq, c_sweep_Hk, c_sweep_D, c_sweep_causal, nomask_warmup, nomask_iterations);
+			benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, c_sweep_B, c_sweep_R, C, c_sweep_Hq, c_sweep_Hk, c_sweep_D, c_sweep_causal, attention_sinks, nomask_warmup, nomask_iterations);
 		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		return 0;
@@ -177,7 +207,7 @@ int main(int argc, char** argv)
 		for (int d_idx = 0; d_idx < (int)(sizeof(D_values) / sizeof(D_values[0])); ++d_idx)
 			for (int c_idx = 0; c_idx < (int)(sizeof(C_values) / sizeof(C_values[0])); ++c_idx)
 				for (int r_idx = 0; r_idx < (int)(sizeof(R_values) / sizeof(R_values[0])); ++r_idx)
-					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], small_r_causal_grid, nomask_warmup, nomask_iterations);
+					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], small_r_causal_grid, attention_sinks, nomask_warmup, nomask_iterations);
 		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		return 0;
@@ -208,6 +238,7 @@ int main(int argc, char** argv)
 		ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const sinks_tensor = attention_sinks ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, Hq), 0) : 0;
 
 		for (int i = 0; i < B * R * Hq * D; ++i) {
 			q_tensor->data.f32[i] = (float)(i) / (float)(B * R * Hq * D);
@@ -218,10 +249,14 @@ int main(int argc, char** argv)
 		for (int i = 0; i < B * C * Hk * D; ++i) {
 			v_tensor->data.f32[i] = (float)(i) / (float)(B * C * Hk * D);
 		}
+		if (attention_sinks)
+			for (i = 0; i < Hq; ++i)
+				sinks_tensor->data.f32[i] = (float)(((i * 7 + D) % 13) - 6) / 32;
 
 		ccv_nnc_tensor_t* const q_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const k_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, Hk, D), 0);
 		ccv_nnc_tensor_t* const v_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const sinks_tensor_f16 = attention_sinks ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, Hq), 0) : 0;
 		ccv_nnc_tensor_t* const triangular_mask_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
 		ccv_nnc_tensor_t* const triangular_mask_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1, R, C), 0);
 		for (i = 0; i < R; i++)
@@ -229,33 +264,48 @@ int main(int argc, char** argv)
 				triangular_mask_tensor->data.f32[i * C + j] = (j <= i + C - R) ? 0 : -FLT_MAX;
 		ccv_float_to_half_precision(triangular_mask_tensor->data.f32, (uint16_t*)triangular_mask_tensor_f16->data.f16, R * C);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16), 0);
+		if (attention_sinks)
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sinks_tensor), TENSOR_LIST(sinks_tensor_f16), 0);
 
 		// Why it there 000 in the beginning of the argument list for GPU_TENSOR_NHWC?
 		ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, Hk, D), 0);
 		ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_sinks_tensor = attention_sinks ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, Hq), 0) : 0;
 		ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, B, R, Hq, D), 0);
 		ccv_nnc_tensor_t* const gpu_triangular_mask_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 1, R, C), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor_f16, k_tensor_f16, v_tensor_f16, triangular_mask_tensor_f16), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_triangular_mask_tensor), 0);
+		if (attention_sinks)
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sinks_tensor_f16), TENSOR_LIST(gpu_sinks_tensor), 0);
 
-		const ccv_nnc_cmd_t plain_attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
-		const ccv_nnc_cmd_t causal_attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1);
-		const double plain_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_o_tensor, 5, 40);
-		const double causal_seconds = benchmark_sdpa(causal_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_o_tensor, 5, 40);
-		const double triangular_mask_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_triangular_mask_tensor, gpu_o_tensor, 5, 40);
-		printf("%s,plain,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", B, R, C, Hq, Hk, D, plain_seconds, 1.0);
-		printf("%s,causal,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", B, R, C, Hq, Hk, D, causal_seconds, causal_seconds / plain_seconds);
-		printf("%s,triangular_mask,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", B, R, C, Hq, Hk, D, triangular_mask_seconds, triangular_mask_seconds / plain_seconds);
+		ccv_nnc_cmd_t plain_attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
+		ccv_nnc_cmd_t causal_attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1);
+		plain_attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
+		causal_attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
+		plain_attention.info.scaled_dot_product_attention.flags = attention_flags;
+		causal_attention.info.scaled_dot_product_attention.flags = attention_flags;
+		const double plain_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
+		const double causal_seconds = benchmark_sdpa(causal_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
+		const double triangular_mask_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_triangular_mask_tensor, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
+		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "plain_sink" : "plain", B, R, C, Hq, Hk, D, plain_seconds, 1.0);
+		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "causal_sink" : "causal", B, R, C, Hq, Hk, D, causal_seconds, causal_seconds / plain_seconds);
+		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "triangular_mask_sink" : "triangular_mask", B, R, C, Hq, Hk, D, triangular_mask_seconds, triangular_mask_seconds / plain_seconds);
 
 		ccv_nnc_tensor_free(gpu_triangular_mask_tensor);
+		if (gpu_sinks_tensor)
+			ccv_nnc_tensor_free(gpu_sinks_tensor);
 		ccv_nnc_tensor_free(gpu_o_tensor);
 		ccv_nnc_tensor_free(q_tensor);
 		ccv_nnc_tensor_free(k_tensor);
 		ccv_nnc_tensor_free(v_tensor);
+		if (sinks_tensor)
+			ccv_nnc_tensor_free(sinks_tensor);
 		ccv_nnc_tensor_free(triangular_mask_tensor);
 		ccv_nnc_tensor_free(q_tensor_f16);
 		ccv_nnc_tensor_free(k_tensor_f16);
 		ccv_nnc_tensor_free(v_tensor_f16);
+		if (sinks_tensor_f16)
+			ccv_nnc_tensor_free(sinks_tensor_f16);
 		ccv_nnc_tensor_free(triangular_mask_tensor_f16);
 		ccv_nnc_tensor_free(gpu_q_tensor);
 		ccv_nnc_tensor_free(gpu_k_tensor);

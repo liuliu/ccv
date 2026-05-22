@@ -101,12 +101,16 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const bias = input_size > 5 ? (ccv_nnc_tensor_view_t*)inputs[5] : 0;
 	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
 	ccv_nnc_tensor_view_t* const kv_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
+	const int attention_sinks = cmd.info.scaled_dot_product_attention.attention_sinks;
+	ccv_nnc_tensor_view_t* const sinks = attention_sinks && input_size > 8 ? (ccv_nnc_tensor_view_t*)inputs[8] : 0;
 	if (bias) // bias always requires a weight matrix.
 	{
 		assert(CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX);
 		assert(weights);
 	}
 	if (is_varlen && (attn_mask || weights || bias || !q_seq_offsets || !kv_seq_offsets))
+		return CCV_NNC_EXEC_INVALID;
+	if (attention_sinks && !sinks)
 		return CCV_NNC_EXEC_INVALID;
 
 	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
@@ -211,6 +215,15 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		D = qdim[3];
 		assert(D == kdim[3]);
 	}
+	uint32_t sink_head_stride = 0;
+	if (attention_sinks)
+	{
+		assert(CCV_IS_TENSOR_CONTIGUOUS(sinks));
+		assert(sinks->info.datatype == q->info.datatype);
+		const int sink_count = ccv_nnc_tensor_count(sinks->info);
+		assert(sink_count == 1 || sink_count == Hq);
+		sink_head_stride = (sink_count == 1) ? 0 : 1;
+	}
 
 	if (attn_mask) {
 		// MFA can support am_nd == 2 and broadcast batch=1 -> batch=batch_size, but
@@ -253,7 +266,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		(q->info.datatype == o->info.datatype) &&
 		(attn_mask ? (q->info.datatype == attn_mask->info.datatype) : 1) &&
 		(weights ? (q->info.datatype == weights_datatype) : 1) &&
-		(bias ? (q->info.datatype == bias->info.datatype) : 1);
+		(bias ? (q->info.datatype == bias->info.datatype) : 1) &&
+		(sinks ? (q->info.datatype == sinks->info.datatype) : 1);
 	assert(is_same_dtype);
 
 	uint32_t mtl_data_type = UINT32_MAX;
@@ -281,6 +295,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION);
 		if (is_varlen && !is_mfa_supported)
+			return CCV_NNC_EXEC_INVALID;
+		if (attention_sinks && !is_mfa_supported)
 			return CCV_NNC_EXEC_INVALID;
 		if (!is_mfa_supported && !attn_mask && !weights && !bias)
 		{
@@ -371,6 +387,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
+			.attention_sinks = attention_sinks,
+			.sink_head_stride = sink_head_stride,
 
 			.batch_dims_q = { 0 },
 			.batch_dims_mask = { 0 },
@@ -388,7 +406,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		if (params.masked) {
 			mask_buffer = mpgetbuffer((ccv_nnc_tensor_t*)attn_mask);
 		}
-		mtl_buffer_t* tensors[9] = {
+		mtl_buffer_t* tensors[10] = {
 			mpgetbuffer((ccv_nnc_tensor_t*)q),
 			mpgetbuffer((ccv_nnc_tensor_t*)k),
 			mpgetbuffer((ccv_nnc_tensor_t*)v),
@@ -397,9 +415,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			lse ? mpgetbuffer((ccv_nnc_tensor_t*)lse) : 0,
 			is_varlen ? mpgetbuffer((ccv_nnc_tensor_t*)q_seq_offsets) : 0,
 			is_varlen ? mpgetbuffer((ccv_nnc_tensor_t*)kv_seq_offsets) : 0,
+			attention_sinks ? mpgetbuffer((ccv_nnc_tensor_t*)sinks) : 0,
 			NULL,
 		};
-		size_t tensor_offsets[8] = {
+		size_t tensor_offsets[9] = {
 			q->dataof,
 			k->dataof,
 			v->dataof,
@@ -408,6 +427,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			lse ? lse->dataof : 0,
 			is_varlen ? q_seq_offsets->dataof : 0,
 			is_varlen ? kv_seq_offsets->dataof : 0,
+			attention_sinks ? sinks->dataof : 0,
 		};
 		ccv_nnc_mfa_encode_attention(context, params, command_batch, tensors, tensor_offsets);
 
@@ -593,6 +613,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	assert(input_size >= 6);
 	assert(output_size >= 3);
 	if (cmd.info.scaled_dot_product_attention.is_varlen)
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.attention_sinks)
 		return CCV_NNC_EXEC_INVALID;
 	assert(!cmd.info.scaled_dot_product_attention.is_causal);
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];

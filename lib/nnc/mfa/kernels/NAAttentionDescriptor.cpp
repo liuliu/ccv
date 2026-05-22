@@ -31,6 +31,7 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   isCausal == rhs.isCausal &&
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
+  attentionSinks == rhs.attentionSinks &&
   maskBatchStride == rhs.maskBatchStride &&
   loadC == rhs.loadC &&
   loadCSourceMatch &&
@@ -64,6 +65,7 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
+  combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   combine_32(seed, hash.loadC ? 1 : 0);
@@ -136,7 +138,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   auto blockDimensions = this->blockDimensions();
   const uint16_t executionSIMDGroups = this->executionSIMDGroups();
   const bool checkCEdge1 = this->checkCEdge1(blockDimensions);
-  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC);
+  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks);
 }
 
 uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept {

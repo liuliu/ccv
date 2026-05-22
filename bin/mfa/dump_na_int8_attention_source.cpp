@@ -58,6 +58,7 @@ static NAInt8AttentionKernel* create_kernel(const NAInt8AttentionKernelDescripto
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
   kernel->isVarlen = kernel_descriptor.isVarlen;
+  kernel->attentionSinks = kernel_descriptor.attentionSinks;
   kernel->hasCausalEmptyRows = kernel_descriptor.hasCausalEmptyRows;
   return kernel;
 }

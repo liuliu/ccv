@@ -20,6 +20,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     masked == rhs.masked &&
     isVarlen == rhs.isVarlen &&
     hasCausalEmptyRows == rhs.hasCausalEmptyRows &&
+    attentionSinks == rhs.attentionSinks &&
     scale == rhs.scale;
 }
 
@@ -46,6 +47,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
   combine_32(seed, hash.isVarlen ? 1 : 0);
+  combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }
@@ -68,7 +70,8 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     bool isCausal,
     bool masked,
     bool hasCausalEmptyRows,
-    bool isVarlen) noexcept
+    bool isVarlen,
+    bool attentionSinks) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->type = type;
@@ -88,4 +91,5 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->masked = masked;
   this->isVarlen = isVarlen;
   this->hasCausalEmptyRows = hasCausalEmptyRows;
+  this->attentionSinks = attentionSinks;
 }

@@ -6,14 +6,20 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_
 {
 	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
 	// 8 inputs with varlen (query, key, value, 0, 0, 0, q_seq_offsets, kv_seq_offsets)
+	// 9 inputs with attention sinks (query, key, value, [attn_mask], [unify head weight], [unify head bias], [q_seq_offsets], [kv_seq_offsets], sinks)
 	// 3 outputs (y, softmax_lse, [qkv])
-	if (cmd.scaled_dot_product_attention.is_varlen && input_size == 8 && (input_bitmasks[0] & 255u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7)) && (output_bitmasks[0] & 1u) == 1u)
+	const uint64_t sink_bit = (1u << 8);
+	const int attention_sinks = cmd.scaled_dot_product_attention.attention_sinks;
+	if (((input_bitmasks[0] & sink_bit) != 0) != (attention_sinks != 0))
+		return 0;
+	const uint64_t input_bitmask = input_bitmasks[0] & ~sink_bit;
+	if (cmd.scaled_dot_product_attention.is_varlen && input_size == (attention_sinks ? 9 : 8) && (input_bitmask & 255u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7)) && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
-	if (input_size == 6 && (input_bitmasks[0] & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
+	if ((input_size == 6 || (attention_sinks && input_size == 9)) && (input_bitmask & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
-	if (input_size == 5 && (input_bitmasks[0] & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
+	if ((input_size == 5 || (attention_sinks && input_size == 9)) && (input_bitmask & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
-	if ((input_bitmasks[0] & 55u) == 7u && (output_bitmasks[0] & 3u) == 3u)
+	if ((input_bitmask & 55u) == 7u && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
 	return 0;
 }
@@ -47,6 +53,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	assert(output_size >= 1);
 	if (inputs[0].dim[0] == 0 || inputs[1].dim[0] == 0 || inputs[2].dim[0] == 0)
 	{
+		const int has_unify_head = !cmd.scaled_dot_product_attention.is_varlen && input_size > 4 && inputs[4].dim[0] > 0;
 		outputs[0] = inputs[0];
 		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
 		if (output_size > 1)
@@ -54,7 +61,7 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 			outputs[1] = outputs[0];
 			outputs[1].datatype = CCV_32F;
 		}
-		if (!cmd.scaled_dot_product_attention.is_varlen && input_size > 4 && output_size > 2)
+		if (has_unify_head && output_size > 2)
 			outputs[2] = outputs[0];
 		return;
 	}
@@ -65,7 +72,8 @@ static void _ccv_nnc_scaled_dot_product_attention_tensor_auto_forw(const ccv_nnc
 	const int v_nd = ccv_nnc_tensor_nd(inputs[2].dim);
 	assert(v_nd == 3 || v_nd == 4);
 	assert(q_nd == k_nd && k_nd == v_nd);
-	if (!cmd.scaled_dot_product_attention.is_varlen && input_size > 4)
+	const int has_unify_head = !cmd.scaled_dot_product_attention.is_varlen && input_size > 4 && inputs[4].dim[0] > 0;
+	if (has_unify_head)
 	{
 		assert(output_size >= 3);
 		outputs[0] = inputs[0];

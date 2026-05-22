@@ -65,6 +65,8 @@ struct AttentionDescriptor {
 
   bool isVarlen = false;
 
+  bool attentionSinks = false;
+
   uint32_t maskBatchStride = 0;
 
   bool operator==(const AttentionDescriptor& rhs) const;

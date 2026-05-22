@@ -17,6 +17,8 @@ struct AttentionR1Kernel {
 
   bool loadC;
 
+  bool attentionSinks;
+
   AttentionR1Kernel(AttentionR1KernelDescriptor descriptor, MTL::Device* const device);
 
   uint32_t threadgroupMemoryAllocation(const AttentionR1Descriptor& descriptor) const noexcept;

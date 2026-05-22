@@ -21,6 +21,7 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
+  attentionSinks = descriptor.attentionSinks;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
 
@@ -649,6 +650,12 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "  device const int* QSeqOffsets_buf [[buffer(17)]],\n";
     output += "  device const int* KVSeqOffsets_buf [[buffer(18)]],\n";
   }
+  if (type.value == AttentionKernelType::forward && attentionSinks) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Sinks_buf [[buffer(19)]],\n";
+    output += "  constant uint& Sink_head_stride [[buffer(20)]],\n";
+  }
   return output;
 }
 
@@ -877,6 +884,7 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
     source.SetValue("L_MEMORY_NAME", memoryName(AttentionOperand::L));
     source.SetValue("O_LEADING_DIMENSION", leadingDimension(AttentionOperand::O));
     source.SetValue("O_TRANSPOSED", transposed(AttentionOperand::O) ? "true" : "false");
+    source.SetValue("EMPTY_LSE", attentionSinks ? "((float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041)" : "(-numeric_limits<float>::infinity())");
     source += R"(
   if (traversal_end == 0) {
     const uint tid = uint(sidx) * 32 + uint(lane_id);
@@ -892,7 +900,7 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
       }
     }
     for (uint row = tid; row < row_count; row += {{THREADGROUP_SIZE}}) {
-      L[parallelization_group_offset + row] = ({{L_MEMORY_NAME}})(-numeric_limits<float>::infinity());
+      L[parallelization_group_offset + row] = ({{L_MEMORY_NAME}}){{EMPTY_LSE}};
     }
     return;
   }
@@ -2178,12 +2186,22 @@ std::string AttentionKernel::createSetup() const noexcept {
     if (cached(AttentionOperand::O)) {
       output += allocate(AttentionOperand::O);
     }
-    output += R"(
+    if (attentionSinks) {
+      output += R"(
+
+    const float sink_m = (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041;
+    float m = sink_m;
+    float l = 1;
+
+)";
+    } else {
+      output += R"(
 
     float m = -numeric_limits<float>::max();
     float l = numeric_limits<float>::denorm_min();
 
 )";
+    }
     break;
   case AttentionKernelType::backwardQuery: {
     if (cached(AttentionOperand::Q)) {

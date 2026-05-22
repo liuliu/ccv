@@ -49,6 +49,7 @@ static AttentionKernel* create_kernel(const AttentionKernelDescriptor& kernel_de
   kernel->isCausal = kernel_descriptor.isCausal;
   kernel->masked = kernel_descriptor.masked;
   kernel->isVarlen = kernel_descriptor.isVarlen;
+  kernel->attentionSinks = kernel_descriptor.attentionSinks;
   kernel->memoryPrecisions = kernel_descriptor.memoryPrecisions;
   kernel->preferAsyncCache = kernel_descriptor.preferAsyncCache;
   kernel->preferAsyncLoad = kernel_descriptor.preferAsyncLoad;

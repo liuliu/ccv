@@ -47,6 +47,8 @@ struct NAAttentionKernel {
 
   bool loadC;
 
+  bool attentionSinks;
+
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;
 
   /// The number of threads per group.
