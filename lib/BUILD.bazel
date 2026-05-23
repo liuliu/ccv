@@ -223,6 +223,18 @@ cc_library(
 )
 
 cc_library(
+	name = "ccv_wavelet",
+	srcs = [
+		"ccv_wavelet.c"
+	],
+	copts = ccv_default_copts(),
+	deps = [
+		":ccv_memory",
+		":ccv_headers"
+	],
+)
+
+cc_library(
 	name = "ccv_numeric",
 	srcs = [
 		"ccv_numeric.c"
@@ -315,6 +327,7 @@ cc_library(
 		":ccv_io",
 		":ccv_basic",
 		":ccv_resample",
+		":ccv_wavelet",
 		":ccv_numeric",
 	] + select({
 		"//config:have_cuda": [

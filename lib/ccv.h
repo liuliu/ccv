@@ -1309,6 +1309,14 @@ enum {
  */
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, double rows_scale, double cols_scale, int type);
 /**
+ * Decompose a given matrix into high-frequency and low-frequency wavelet bands.
+ * @param a The input matrix.
+ * @param high The high-frequency output matrix.
+ * @param low The low-frequency output matrix.
+ * @param type The type of output matrices, if 0, ccv will use the same sample type as the input matrix.
+ */
+void ccv_wavelet_decompose(ccv_dense_matrix_t* a, ccv_dense_matrix_t** high, ccv_dense_matrix_t** low, int type);
+/**
  * Downsample a given matrix to exactly half size with a [Gaussian filter](https://en.wikipedia.org/wiki/Gaussian_filter). The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).
  * @param a The input matrix.
  * @param b The output matrix.
