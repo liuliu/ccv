@@ -8535,7 +8535,7 @@ static void _mps_scaled_dot_product_arg_partition_to_float(const int datatype, c
 		assert(0);
 }
 
-static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int C, const int H, const int D, const int kth, const int is_causal, const int datatype, const int force_graph, const int force_generic_mfa)
+static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int C, const int H, const int D, const int kth, const int is_causal, const int compression_ratio, const int datatype, const int force_graph, const int force_generic_mfa)
 {
 	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
 	ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, C, D), 0);
@@ -8558,7 +8558,7 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hq_input, hq->data.f32, T * H * D);
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hk_input, hk->data.f32, C * D);
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hhead_w_input, hhead_w->data.f32, T * H);
-	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(kth, 1, is_causal, 4);
+	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(kth, 1, is_causal, compression_ratio);
 	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hhead_w), TENSOR_LIST(href), 0);
 	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
 	q_params.datatype = datatype;
@@ -8612,32 +8612,35 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 TEST_CASE("scaled dot product arg partition with MPSGraph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, CCV_32F, 1, 0), 0, "MPSGraph selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(10, 2, 2, 4, 3, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad zero-visible causal compression rows");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_32F, 0, 0), 0, "MFA selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_32F, 0, 0), 0, "MFA selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, CCV_32F, 0, 0), 0, "MFA selected ids should pad zero-visible causal compression rows");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference");
 }
 
 TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should pad zero-visible causal compression rows");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_16BF, 0, 0), 0, "MFA BF16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16BF, 0, 0), 0, "MFA BF16 selected ids should match CPU reference");
 }
 
 #include "case_main.h"

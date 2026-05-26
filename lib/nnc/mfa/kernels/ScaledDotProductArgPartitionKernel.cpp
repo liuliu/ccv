@@ -257,11 +257,13 @@ kernel void index_score(
       }
       #pragma clang loop unroll(full)
       for (uint d = 0; d < {{score_block_d}}; d += 8) {
-        A_sram[0].{{load_function}}(q + h * D, H * D, ushort2(ushort(d), ushort(m_offset)), false);
+        auto A_src = simdgroup_matrix_storage<real>::apply_offset(q + h * D, H * D, uint2(d + uint(morton_offset.x), m_offset + uint(morton_offset.y)), false);
+        A_sram[0].{{load_function}}(A_src, H * D, ushort2(0, 0), false);
         #pragma clang loop unroll(full)
         for (ushort n = 0; n < {{score_register_n}}; n += 8) {
           auto B = get_sram(B_sram, {{score_register_n}}, ushort2(n, 0));
-          B->{{load_function}}(k, D, ushort2(ushort(n_offset + n), ushort(d)), true);
+          auto B_src = simdgroup_matrix_storage<real>::apply_offset(k, D, uint2(n_offset + uint(n) + uint(morton_offset.x), d + uint(morton_offset.y)), true);
+          B->{{load_function}}(B_src, D, ushort2(0, 0), true);
           auto dot_tile = get_sram(dot_sram, {{score_register_n}}, ushort2(n, 0));
           dot_tile->multiply(A_sram[0], *B);
         }
