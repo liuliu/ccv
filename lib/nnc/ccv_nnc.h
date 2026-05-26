@@ -301,6 +301,12 @@ typedef struct {
 			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
 		} scaled_dot_product_attention;
 		struct {
+			float scale; /**< [scaled_dot_product_arg_partition.scale] The scale we multiple to the summed positive dot product of Q & K. */
+			int kth; /**< [scaled_dot_product_arg_partition.kth] How many compressed-row ids to retain per query token. */
+			int is_causal; /**< [scaled_dot_product_arg_partition.is_causal] Whether to apply DS4 compressed causal visibility. */
+			int compression_ratio; /**< [scaled_dot_product_arg_partition.compression_ratio] Token-to-compressed-row ratio for causal visibility. */
+		} scaled_dot_product_arg_partition;
+		struct {
 			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */
 		} walsh_hadamard_transform;
 		struct {

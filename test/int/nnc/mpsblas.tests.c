@@ -8442,4 +8442,185 @@ NA_GEMM_BIAS_SHAPE_TEST(257, 2048, 8192)
 NA_GEMM_BIAS_SHAPE_TEST(33792, 128, 4096)
 NA_GEMM_BIAS_SHAPE_TEST(257, 128, 2048)
 
+TEST_CASE("scaled dot product arg partition cpu reference")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 2), 0);
+	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
+	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
+	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1, 3), 0);
+	q->data.f32[0] = 1;
+	q->data.f32[1] = 0;
+	q->data.f32[2] = 0;
+	q->data.f32[3] = 1;
+	const float k_data[] = { 1, 1, 2, -1, -1, 3, 0, 0 };
+	memcpy(k->data.f32, k_data, sizeof(k_data));
+	head_w->data.f32[0] = 1;
+	head_w->data.f32[1] = -2;
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 0, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
+	const int expected[] = { 1, 3, 0 };
+	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 3, "arg partition should apply relu before head weights and sort descending");
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(k);
+	ccv_nnc_tensor_free(head_w);
+	ccv_nnc_tensor_free(selected);
+}
+
+TEST_CASE("scaled dot product arg partition causal compression cpu reference")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1, 1), 0);
+	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 1), 0);
+	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 5, 3), 0);
+	int i;
+	for (i = 0; i < 5; i++)
+		q->data.f32[i] = head_w->data.f32[i] = 1;
+	k->data.f32[0] = 1;
+	k->data.f32[1] = 2;
+	k->data.f32[2] = 3;
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 1, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
+	const int expected[] = {
+		1, 0, -1,
+		1, 0, -1,
+		1, 0, -1,
+		1, 0, -1,
+		2, 1, 0,
+	};
+	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 15, "causal compression should pad rows with too few visible compressed ids");
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(k);
+	ccv_nnc_tensor_free(head_w);
+	ccv_nnc_tensor_free(selected);
+}
+
+static void _mps_scaled_dot_product_arg_partition_fill_stable(ccv_nnc_tensor_t* const q, ccv_nnc_tensor_t* const k, ccv_nnc_tensor_t* const head_w)
+{
+	const int T = q->info.dim[0];
+	const int H = q->info.dim[1];
+	const int D = q->info.dim[2];
+	const int C = k->info.dim[0];
+	int t, h, d, c;
+	for (t = 0; t < T; t++)
+		for (h = 0; h < H; h++)
+			for (d = 0; d < D; d++)
+				q->data.f32[(t * H + h) * D + d] = (d == 0) ? (1.0f + (float)h / 1024.0f) : 0;
+	for (c = 0; c < C; c++)
+		for (d = 0; d < D; d++)
+			k->data.f32[c * D + d] = (d == 0) ? (float)(c + 1) : 0;
+	for (t = 0; t < T; t++)
+		for (h = 0; h < H; h++)
+			head_w->data.f32[t * H + h] = 1;
+}
+
+static void _mps_scaled_dot_product_arg_partition_from_float(const int datatype, const float* const source, ccv_nnc_tensor_t* const tensor, const int count)
+{
+	if (datatype == CCV_32F)
+		memcpy(tensor->data.f32, source, sizeof(float) * count);
+	else if (datatype == CCV_16F)
+		ccv_float_to_half_precision(source, (uint16_t*)tensor->data.f16, count);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(source, (uint16_t*)tensor->data.f16, count);
+	else
+		assert(0);
+}
+
+static void _mps_scaled_dot_product_arg_partition_to_float(const int datatype, const ccv_nnc_tensor_t* const tensor, float* const destination, const int count)
+{
+	if (datatype == CCV_32F)
+		memcpy(destination, tensor->data.f32, sizeof(float) * count);
+	else if (datatype == CCV_16F)
+		ccv_half_precision_to_float((uint16_t*)tensor->data.f16, destination, count);
+	else if (datatype == CCV_16BF)
+		ccv_bfloat_to_float((uint16_t*)tensor->data.f16, destination, count);
+	else
+		assert(0);
+}
+
+static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int C, const int H, const int D, const int kth, const int is_causal, const int datatype, const int force_graph)
+{
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
+	ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, C, D), 0);
+	ccv_nnc_tensor_t* const hhead_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H), 0);
+	ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, kth), 0);
+	ccv_nnc_tensor_t* const hselected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, kth), 0);
+	_mps_scaled_dot_product_arg_partition_fill_stable(hq, hk, hhead_w);
+	ccv_nnc_tensor_param_t hq_input_params = CPU_TENSOR_NHWC(32F, T, H, D);
+	hq_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t hk_input_params = CPU_TENSOR_NHWC(32F, C, D);
+	hk_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t hhead_w_input_params = CPU_TENSOR_NHWC(32F, T, H);
+	hhead_w_input_params.datatype = datatype;
+	ccv_nnc_tensor_t* const hq_input = ccv_nnc_tensor_new(0, hq_input_params, 0);
+	ccv_nnc_tensor_t* const hk_input = ccv_nnc_tensor_new(0, hk_input_params, 0);
+	ccv_nnc_tensor_t* const hhead_w_input = ccv_nnc_tensor_new(0, hhead_w_input_params, 0);
+	_mps_scaled_dot_product_arg_partition_from_float(datatype, hq->data.f32, hq_input, T * H * D);
+	_mps_scaled_dot_product_arg_partition_from_float(datatype, hk->data.f32, hk_input, C * D);
+	_mps_scaled_dot_product_arg_partition_from_float(datatype, hhead_w->data.f32, hhead_w_input, T * H);
+	_mps_scaled_dot_product_arg_partition_to_float(datatype, hq_input, hq->data.f32, T * H * D);
+	_mps_scaled_dot_product_arg_partition_to_float(datatype, hk_input, hk->data.f32, C * D);
+	_mps_scaled_dot_product_arg_partition_to_float(datatype, hhead_w_input, hhead_w->data.f32, T * H);
+	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(kth, 1, is_causal, 4);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hhead_w), TENSOR_LIST(href), 0);
+	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
+	q_params.datatype = datatype;
+	ccv_nnc_tensor_param_t k_params = GPU_TENSOR_NHWC(000, 32F, C, D);
+	k_params.datatype = datatype;
+	ccv_nnc_tensor_param_t head_w_params = GPU_TENSOR_NHWC(000, 32F, T, H);
+	head_w_params.datatype = datatype;
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const kg = ccv_nnc_tensor_new(0, k_params, 0);
+	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, head_w_params, 0);
+	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, T, kth), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq_input, hk_input, hhead_w_input), TENSOR_LIST(q, kg, head_w), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (force_graph)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, kg, head_w), TENSOR_LIST(selected), 0);
+	if (force_graph && !(old_flags & CCV_NNC_DISABLE_MFA))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(selected), TENSOR_LIST(hselected), 0);
+	int i;
+	int mismatch = 0;
+	for (i = 0; i < T * kth && !mismatch; i++)
+		if (hselected->data.i32[i] != href->data.i32[i])
+			mismatch = i + 1;
+	ccv_nnc_tensor_free(hq);
+	ccv_nnc_tensor_free(hk);
+	ccv_nnc_tensor_free(hhead_w);
+	ccv_nnc_tensor_free(hq_input);
+	ccv_nnc_tensor_free(hk_input);
+	ccv_nnc_tensor_free(hhead_w_input);
+	ccv_nnc_tensor_free(href);
+	ccv_nnc_tensor_free(hselected);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(kg);
+	ccv_nnc_tensor_free(head_w);
+	ccv_nnc_tensor_free(selected);
+	return mismatch;
+}
+
+TEST_CASE("scaled dot product arg partition with MPSGraph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, CCV_32F, 1), 0, "MPSGraph selected ids should match CPU reference");
+}
+
+TEST_CASE("scaled dot product arg partition with MFA DS4-native shape")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_32F, 0), 0, "MFA selected ids should match CPU reference");
+}
+
+TEST_CASE("scaled dot product arg partition with MFA FP16 DS4-native shape")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_16F, 0), 0, "MFA FP16 selected ids should match CPU reference");
+}
+
+TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, CCV_16BF, 0), 0, "MFA BF16 selected ids should match CPU reference");
+}
+
 #include "case_main.h"
