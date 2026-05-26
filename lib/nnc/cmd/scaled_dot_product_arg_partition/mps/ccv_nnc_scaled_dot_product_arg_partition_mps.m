@@ -43,49 +43,31 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	assert(compression_ratio > 0);
 	@autoreleasepool {
 		bool use_mfa = true;
-		const char* fallback_reason = 0;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
-		{
 			use_mfa = false;
-			fallback_reason = "Disabled.";
-		}
-		if (use_mfa && (!ccv_nnc_mfa_has_neural_accelerators(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)))
-		{
-			use_mfa = false;
-			fallback_reason = "Neural accelerators unavailable.";
-		}
+		const int use_neural_accelerators = ccv_nnc_mfa_has_neural_accelerators(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		uint32_t mtl_data_type = UINT32_MAX;
 		if (use_mfa)
 		{
 			if (q->info.datatype != k->info.datatype || q->info.datatype != head_w->info.datatype)
-			{
 				use_mfa = false;
-				fallback_reason = "Mixed precision.";
-			} else if (q->info.datatype == CCV_32F) {
+			else if (q->info.datatype == CCV_32F) {
 				mtl_data_type = 3;
 			} else if (q->info.datatype == CCV_16F) {
 				mtl_data_type = 16;
 			} else if (q->info.datatype == CCV_16BF) {
 				mtl_data_type = 121;
 				if (!ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-				{
 					use_mfa = false;
-					fallback_reason = "BF16 neural accelerators unavailable.";
-				}
 			} else {
 				use_mfa = false;
-				fallback_reason = "Unsupported MFA data type.";
 			}
 		}
 		if (use_mfa && (H != 64 || D != 128 || kth > 1024))
-		{
 			use_mfa = false;
-			fallback_reason = "Outside DS4-native MFA shape.";
-		}
 		if (use_mfa)
 		{
-			(void)fallback_reason;
 			const ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t params = {
 				.data_type = mtl_data_type,
 				.T = (uint32_t)T,
@@ -96,7 +78,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 				.compression_ratio = (uint32_t)compression_ratio,
 				.scale = cmd.info.scaled_dot_product_arg_partition.scale,
 				.is_causal = (uint8_t)(cmd.info.scaled_dot_product_arg_partition.is_causal != 0),
-				.use_neural_accelerators = 1,
+				.use_neural_accelerators = (uint8_t)use_neural_accelerators,
 			};
 			ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -117,7 +99,6 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
-		(void)fallback_reason;
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int indices[3];

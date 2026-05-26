@@ -18,6 +18,9 @@ extern "C" {
 #include "nnc/mfa/kernels/NAScaledDotProductArgPartitionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAScaledDotProductArgPartitionKernel.hpp"
 #include "nnc/mfa/kernels/NAScaledDotProductArgPartitionKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/ScaledDotProductArgPartitionDescriptor.hpp"
+#include "nnc/mfa/kernels/ScaledDotProductArgPartitionKernel.hpp"
+#include "nnc/mfa/kernels/ScaledDotProductArgPartitionKernelDescriptor.hpp"
 
 using namespace ccv::nnc;
 
@@ -298,7 +301,8 @@ double run_topk_merge_stage_once(
   return (command_buffer->GPUEndTime() - command_buffer->GPUStartTime()) * 1000.0;
 }
 
-StageProfile benchmark_current_mfa_stages(
+template<typename Descriptor, typename Kernel, typename KernelDescriptor>
+StageProfile benchmark_mfa_stages(
   const Config& config,
   const ccv_nnc_tensor_t* const hq,
   const ccv_nnc_tensor_t* const hk,
@@ -309,7 +313,7 @@ StageProfile benchmark_current_mfa_stages(
   ccv_nnc_mfa_context_t* const context = ccv_nnc_init_mfa_context(device_owner.get());
   MTL::Device* const device = context->device.get();
   auto command_queue = NS::TransferPtr(device->newCommandQueue());
-  NAScaledDotProductArgPartitionDescriptor descriptor;
+  Descriptor descriptor;
   descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
   descriptor.T = (uint32_t)config.T;
   descriptor.C = (uint32_t)config.C;
@@ -320,7 +324,7 @@ StageProfile benchmark_current_mfa_stages(
   descriptor.scale = scale;
   descriptor.isCausal = config.is_causal != 0;
   DeviceProperties dprops = DeviceProperties();
-  auto pipeline_value = context->kernel_cache.findKernel<NAScaledDotProductArgPartitionKernel, NAScaledDotProductArgPartitionDescriptor, NAScaledDotProductArgPartitionKernelDescriptor>(descriptor, device, dprops);
+  auto pipeline_value = context->kernel_cache.findKernel<Kernel, Descriptor, KernelDescriptor>(descriptor, device, dprops);
   auto kernel = pipeline_value->kernel;
   const size_t q_bytes = (size_t)config.T * config.H * config.D * sizeof(uint16_t);
   const size_t k_bytes = (size_t)config.C * config.D * sizeof(uint16_t);
@@ -536,7 +540,7 @@ int main(int argc, char** argv)
   ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
   ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
   print_stats("sdpap_mfa", benchmark_sdpap(sdpap_cmd, q, k, head_w, selected, stream, config.warmup, config.timed));
-  const StageProfile current_mfa_profile = benchmark_current_mfa_stages(config, hq, hk, hhead_w, sdpap_scale);
+  const StageProfile current_mfa_profile = benchmark_mfa_stages<NAScaledDotProductArgPartitionDescriptor, NAScaledDotProductArgPartitionKernel, NAScaledDotProductArgPartitionKernelDescriptor>(config, hq, hk, hhead_w, sdpap_scale);
   print_stats("sdpap_mfa_score_stage_gpu", current_mfa_profile.score);
   print_stats("sdpap_mfa_topk_tile_stage_gpu", current_mfa_profile.topk_tile);
   print_stats("sdpap_mfa_topk_merge_stage_gpu", current_mfa_profile.topk_merge);
@@ -570,6 +574,13 @@ int main(int argc, char** argv)
                 << "\n";
     }
   }
+
+  ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+  print_stats("sdpap_mfa_generic", benchmark_sdpap(sdpap_cmd, q, k, head_w, selected, stream, config.warmup, config.timed));
+  const StageProfile generic_mfa_profile = benchmark_mfa_stages<ScaledDotProductArgPartitionDescriptor, ScaledDotProductArgPartitionKernel, ScaledDotProductArgPartitionKernelDescriptor>(config, hq, hk, hhead_w, sdpap_scale);
+  print_stats("sdpap_mfa_generic_score_stage_gpu", generic_mfa_profile.score);
+  print_stats("sdpap_mfa_generic_topk_tile_stage_gpu", generic_mfa_profile.topk_tile);
+  print_stats("sdpap_mfa_generic_topk_merge_stage_gpu", generic_mfa_profile.topk_merge);
 
   ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
   print_stats("sdpap_mpsgraph", benchmark_sdpap(sdpap_cmd, q, k, head_w, selected, stream, config.warmup, config.timed));
