@@ -8580,7 +8580,7 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	}
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, kg, head_w), TENSOR_LIST(selected), 0);
+	const int gpu_status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, kg, head_w), TENSOR_LIST(selected), 0);
 	if (old_flags & CCV_NNC_DISABLE_MFA)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	else
@@ -8589,12 +8589,16 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	else
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(selected), TENSOR_LIST(hselected), 0);
 	int i;
 	int mismatch = 0;
-	for (i = 0; i < T * kth && !mismatch; i++)
-		if (hselected->data.i32[i] != href->data.i32[i])
-			mismatch = i + 1;
+	if (gpu_status != CCV_NNC_EXEC_SUCCESS)
+		mismatch = -1;
+	else {
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(selected), TENSOR_LIST(hselected), 0);
+		for (i = 0; i < T * kth && !mismatch; i++)
+			if (hselected->data.i32[i] != href->data.i32[i])
+				mismatch = i + 1;
+	}
 	ccv_nnc_tensor_free(hq);
 	ccv_nnc_tensor_free(hk);
 	ccv_nnc_tensor_free(hhead_w);
@@ -8640,8 +8644,9 @@ TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native sha
 TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16BF, 0, 0), 0, "MFA BF16 selected ids should match CPU reference");
+	const int status = _mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16BF, 0, 0);
+	GUARD_ELSE_RETURN(status != -1);
+	REQUIRE_EQ(status, 0, "MFA BF16 selected ids should match CPU reference");
 }
 
 TEST_CASE("sparse indexed attention cpu reference applies dense causal mask and sparse terminator")
@@ -8779,6 +8784,7 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	const int q_count = T * H * D;
 	const int dense_count = dense_rows * D;
 	const int sparse_count = sparse_rows * D;
+	int status = 0;
 	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
 	ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, dense_rows, D), 0);
 	ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, sparse_rows, D), 0);
@@ -8810,7 +8816,10 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	ccv_nnc_cmd_t cpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, 1);
 	const int cpu_status = ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hdense, hdense, hsparse, hsparse, hindices, hsinks), TENSOR_LIST(href), 0);
 	if (cpu_status != CCV_NNC_EXEC_SUCCESS)
-		return -1;
+	{
+		status = -1;
+		goto cleanup_host;
+	}
 	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
 	q_params.datatype = datatype;
 	ccv_nnc_tensor_param_t dense_params = GPU_TENSOR_NHWC(000, 32F, dense_rows, D);
@@ -8832,7 +8841,10 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	gpu_cmd.algorithm = algorithm;
 	const int gpu_status = ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense, dense, sparse, sparse, indices, sinks), TENSOR_LIST(out), 0);
 	if (gpu_status != CCV_NNC_EXEC_SUCCESS)
-		return -2;
+	{
+		status = -2;
+		goto cleanup_device;
+	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out), TENSOR_LIST(hactual), 0);
 	float* const expected = (float*)ccmalloc(sizeof(float) * q_count);
 	float* const actual = (float*)ccmalloc(sizeof(float) * q_count);
@@ -8841,7 +8853,6 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	float max_abs = 0;
 	float max_relative = 0;
 	int max_idx = 0;
-	int status = 0;
 	int i;
 	for (i = 0; i < q_count; i++)
 	{
@@ -8866,6 +8877,7 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	*actual_ref = actual[max_idx];
 	ccfree(actual);
 	ccfree(expected);
+cleanup_device:
 	ccv_nnc_tensor_free(hactual);
 	ccv_nnc_tensor_free(out);
 	ccv_nnc_tensor_free(sinks);
@@ -8873,6 +8885,7 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	ccv_nnc_tensor_free(sparse);
 	ccv_nnc_tensor_free(dense);
 	ccv_nnc_tensor_free(q);
+cleanup_host:
 	ccv_nnc_tensor_free(hsinks_input);
 	ccv_nnc_tensor_free(hsparse_input);
 	ccv_nnc_tensor_free(hdense_input);
@@ -8889,10 +8902,10 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	float max_abs, max_relative, expected, actual;
 	int max_idx;
 	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA FP16 sparse indexed attention should match CPU reference");
 	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 37, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(dense_status, 0, "MFA FP16 dense-only sparse indexed attention should match CPU reference");
@@ -8909,10 +8922,10 @@ TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 TEST_CASE("sparse indexed attention with MFA BF16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
 	float max_abs, max_relative, expected, actual;
 	int max_idx;
 	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16BF, -1, 512, 4, 8, 4, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA BF16 sparse indexed attention should match CPU reference");
 }
 
