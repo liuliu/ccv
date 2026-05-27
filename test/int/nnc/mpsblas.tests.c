@@ -6,6 +6,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 #include <3rdparty/dsfmt/dSFMT.h>
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -8641,6 +8642,278 @@ TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16BF, 0, 0), 0, "MFA BF16 selected ids should match CPU reference");
+}
+
+TEST_CASE("sparse indexed attention cpu reference applies dense causal mask and sparse terminator")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 4, 3), 0);
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1, 1), 0);
+	int i;
+	for (i = 0; i < 4; i++)
+		q->data.f32[i] = 1;
+	const float dense_k_data[] = { 0, 1 };
+	const float dense_v_data[] = { 10, 20 };
+	const float sparse_k_data[] = { 2, 3, 4 };
+	const float sparse_v_data[] = { 30, 40, 50 };
+	const int indices_data[] = {
+		1, -1, 0,
+		2, 0, -1,
+		-1, 0, 1,
+		0, 1, 2,
+	};
+	memcpy(dense_k->data.f32, dense_k_data, sizeof(dense_k_data));
+	memcpy(dense_v->data.f32, dense_v_data, sizeof(dense_v_data));
+	memcpy(sparse_k->data.f32, sparse_k_data, sizeof(sparse_k_data));
+	memcpy(sparse_v->data.f32, sparse_v_data, sizeof(sparse_v_data));
+	memcpy(indices->data.i32, indices_data, sizeof(indices_data));
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1, 1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense_k, dense_v, sparse_k, sparse_v, indices), TENSOR_LIST(out), 0), "sparse indexed attention CPU reference should run");
+	float expected[4];
+	for (i = 0; i < 4; i++)
+	{
+		float scores[5];
+		float values[5];
+		int count = 0;
+		int dense_end = 2 - 4 + i + 1;
+		dense_end = ccv_max(0, ccv_min(2, dense_end));
+		int r;
+		for (r = 0; r < dense_end; r++)
+		{
+			scores[count] = dense_k_data[r];
+			values[count] = dense_v_data[r];
+			++count;
+		}
+		for (r = 0; r < 3; r++)
+		{
+			const int idx = indices_data[i * 3 + r];
+			if (idx < 0)
+				break;
+			scores[count] = sparse_k_data[idx];
+			values[count] = sparse_v_data[idx];
+			++count;
+		}
+		float maxval = -FLT_MAX;
+		for (r = 0; r < count; r++)
+			maxval = ccv_max(maxval, scores[r]);
+		float sumval = 0;
+		expected[i] = 0;
+		for (r = 0; r < count; r++)
+		{
+			const float weight = expf(scores[r] - maxval);
+			sumval += weight;
+			expected[i] += values[r] * weight;
+		}
+		expected[i] /= sumval;
+	}
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, out->data.f32, expected, 4, 1e-5, "CPU reference should apply causal dense rows while sparse ids terminate at first negative");
+	ccv_nnc_tensor_free(out);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(sparse_v);
+	ccv_nnc_tensor_free(sparse_k);
+	ccv_nnc_tensor_free(dense_v);
+	ccv_nnc_tensor_free(dense_k);
+	ccv_nnc_tensor_free(q);
+}
+
+TEST_CASE("sparse indexed attention cpu reference applies attention sink to denominator only")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 1), 0);
+	ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1, 1), 0);
+	q->data.f32[0] = q->data.f32[1] = 1;
+	dense_k->data.f32[0] = 0;
+	dense_v->data.f32[0] = 0;
+	sparse_k->data.f32[0] = 0;
+	sparse_v->data.f32[0] = 8;
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = -1;
+	sinks->data.f32[0] = 0;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1, 1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense_k, dense_v, sparse_k, sparse_v, indices, sinks), TENSOR_LIST(out), 0), "sparse indexed attention CPU reference with sinks should run");
+	const float expected[] = { 4, 0 };
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, out->data.f32, expected, 2, 1e-5, "attention sink should add softmax mass without adding value mass");
+	ccv_nnc_tensor_free(out);
+	ccv_nnc_tensor_free(sinks);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(sparse_v);
+	ccv_nnc_tensor_free(sparse_k);
+	ccv_nnc_tensor_free(dense_v);
+	ccv_nnc_tensor_free(dense_k);
+	ccv_nnc_tensor_free(q);
+}
+
+static void _mps_sparse_indexed_attention_fill(const int T, const int H, const int D, const int dense_rows, const int sparse_rows, const int K, float* const q, float* const dense, float* const sparse, int* const indices, float* const sinks)
+{
+	int i, h, t, k;
+	for (i = 0; i < T * H * D; i++)
+		q[i] = (float)(((i * 17 + 11) % 97) - 48) / 256;
+	for (i = 0; i < dense_rows * D; i++)
+		dense[i] = (float)(((i * 19 + 7) % 89) - 44) / 256;
+	for (i = 0; i < sparse_rows * D; i++)
+		sparse[i] = (float)(((i * 23 + 5) % 101) - 50) / 256;
+	if (K == 0)
+	{
+		for (t = 0; t < T; t++)
+			indices[t] = -1;
+	} else {
+		for (t = 0; t < T; t++)
+			for (k = 0; k < K; k++)
+				indices[t * K + k] = (k == K - 1 && (t & 1)) ? -1 : (t * 17 + k * 13) % sparse_rows;
+	}
+	for (h = 0; h < H; h++)
+		sinks[h] = (float)(((h * 7 + 3) % 17) - 8) / 32;
+}
+
+static int _mps_sparse_indexed_attention_compare(const int datatype, const int algorithm, const int D, const int dense_rows, const int sparse_rows, const int K, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
+{
+	const int T = 5;
+	const int H = 64;
+	const int q_count = T * H * D;
+	const int dense_count = dense_rows * D;
+	const int sparse_count = sparse_rows * D;
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
+	ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, dense_rows, D), 0);
+	ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, sparse_rows, D), 0);
+	ccv_nnc_tensor_param_t hindices_params = K == 0 ? CPU_TENSOR_NHWC(32S, T) : CPU_TENSOR_NHWC(32S, T, K);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, hindices_params, 0);
+	ccv_nnc_tensor_t* const hsinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, H), 0);
+	ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
+	_mps_sparse_indexed_attention_fill(T, H, D, dense_rows, sparse_rows, K, hq->data.f32, hdense->data.f32, hsparse->data.f32, hindices->data.i32, hsinks->data.f32);
+	ccv_nnc_tensor_param_t q_input_params = CPU_TENSOR_NHWC(32F, T, H, D);
+	q_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t dense_input_params = CPU_TENSOR_NHWC(32F, dense_rows, D);
+	dense_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t sparse_input_params = CPU_TENSOR_NHWC(32F, sparse_rows, D);
+	sparse_input_params.datatype = datatype;
+	ccv_nnc_tensor_param_t sinks_input_params = CPU_TENSOR_NHWC(32F, H);
+	sinks_input_params.datatype = datatype;
+	ccv_nnc_tensor_t* const hq_input = ccv_nnc_tensor_new(0, q_input_params, 0);
+	ccv_nnc_tensor_t* const hdense_input = ccv_nnc_tensor_new(0, dense_input_params, 0);
+	ccv_nnc_tensor_t* const hsparse_input = ccv_nnc_tensor_new(0, sparse_input_params, 0);
+	ccv_nnc_tensor_t* const hsinks_input = ccv_nnc_tensor_new(0, sinks_input_params, 0);
+	_mps_sdpa_store_float_as_datatype(datatype, hq->data.f32, hq_input->data.u8, q_count);
+	_mps_sdpa_store_float_as_datatype(datatype, hdense->data.f32, hdense_input->data.u8, dense_count);
+	_mps_sdpa_store_float_as_datatype(datatype, hsparse->data.f32, hsparse_input->data.u8, sparse_count);
+	_mps_sdpa_store_float_as_datatype(datatype, hsinks->data.f32, hsinks_input->data.u8, H);
+	_mps_forward_scaled_gemm_to_float(datatype, hq_input->data.u8, q_count, hq->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, hdense_input->data.u8, dense_count, hdense->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, hsparse_input->data.u8, sparse_count, hsparse->data.f32);
+	_mps_forward_scaled_gemm_to_float(datatype, hsinks_input->data.u8, H, hsinks->data.f32);
+	ccv_nnc_cmd_t cpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, 1);
+	const int cpu_status = ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hdense, hdense, hsparse, hsparse, hindices, hsinks), TENSOR_LIST(href), 0);
+	if (cpu_status != CCV_NNC_EXEC_SUCCESS)
+		return -1;
+	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
+	q_params.datatype = datatype;
+	ccv_nnc_tensor_param_t dense_params = GPU_TENSOR_NHWC(000, 32F, dense_rows, D);
+	dense_params.datatype = datatype;
+	ccv_nnc_tensor_param_t sparse_params = GPU_TENSOR_NHWC(000, 32F, sparse_rows, D);
+	sparse_params.datatype = datatype;
+	ccv_nnc_tensor_param_t sinks_params = GPU_TENSOR_NHWC(000, 32F, H);
+	sinks_params.datatype = datatype;
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const dense = ccv_nnc_tensor_new(0, dense_params, 0);
+	ccv_nnc_tensor_t* const sparse = ccv_nnc_tensor_new(0, sparse_params, 0);
+	ccv_nnc_tensor_param_t indices_params = K == 0 ? GPU_TENSOR_NHWC(000, 32S, T) : GPU_TENSOR_NHWC(000, 32S, T, K);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, indices_params, 0);
+	ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, sinks_params, 0);
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const hactual = ccv_nnc_tensor_new(0, q_input_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq_input, hdense_input, hsparse_input, hindices, hsinks_input), TENSOR_LIST(q, dense, sparse, indices, sinks), 0);
+	ccv_nnc_cmd_t gpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, 1);
+	gpu_cmd.algorithm = algorithm;
+	const int gpu_status = ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense, dense, sparse, sparse, indices, sinks), TENSOR_LIST(out), 0);
+	if (gpu_status != CCV_NNC_EXEC_SUCCESS)
+		return -2;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out), TENSOR_LIST(hactual), 0);
+	float* const expected = (float*)ccmalloc(sizeof(float) * q_count);
+	float* const actual = (float*)ccmalloc(sizeof(float) * q_count);
+	_mps_sdpa_round_to_datatype(datatype, href->data.f32, expected, q_count);
+	_mps_forward_scaled_gemm_to_float(datatype, hactual->data.u8, q_count, actual);
+	float max_abs = 0;
+	float max_relative = 0;
+	int max_idx = 0;
+	int status = 0;
+	int i;
+	for (i = 0; i < q_count; i++)
+	{
+		if (!isfinite(actual[i]))
+		{
+			status = -3;
+			max_idx = i;
+			break;
+		}
+		const float abs_diff = fabsf(expected[i] - actual[i]);
+		const float denom = fmaxf(fmaxf(fabsf(expected[i]), fabsf(actual[i])), 1.0f);
+		const float relative = abs_diff / denom;
+		if (relative > max_relative)
+			max_relative = relative, max_abs = abs_diff, max_idx = i;
+	}
+	if (status == 0 && max_relative > tolerance)
+		status = 1;
+	*max_abs_ref = max_abs;
+	*max_relative_ref = max_relative;
+	*max_idx_ref = max_idx;
+	*expected_ref = expected[max_idx];
+	*actual_ref = actual[max_idx];
+	ccfree(actual);
+	ccfree(expected);
+	ccv_nnc_tensor_free(hactual);
+	ccv_nnc_tensor_free(out);
+	ccv_nnc_tensor_free(sinks);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(sparse);
+	ccv_nnc_tensor_free(dense);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(hsinks_input);
+	ccv_nnc_tensor_free(hsparse_input);
+	ccv_nnc_tensor_free(hdense_input);
+	ccv_nnc_tensor_free(hq_input);
+	ccv_nnc_tensor_free(href);
+	ccv_nnc_tensor_free(hsinks);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hsparse);
+	ccv_nnc_tensor_free(hdense);
+	ccv_nnc_tensor_free(hq);
+	return status;
+}
+
+TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	float max_abs, max_relative, expected, actual;
+	int max_idx;
+	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(sparse_status, 0, "MFA FP16 sparse indexed attention should match CPU reference");
+	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 37, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(dense_status, 0, "MFA FP16 dense-only sparse indexed attention should match CPU reference");
+	const int threadgroup16_status = _mps_sparse_indexed_attention_compare(CCV_16F, 0, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(threadgroup16_status, 0, "MFA FP16 sparse indexed attention threadgroup16 should match CPU reference");
+	const int threadgroup24_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(threadgroup24_status, 0, "MFA FP16 sparse indexed attention threadgroup24 should match CPU reference");
+	const int threadgroup64_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(threadgroup64_status, 0, "MFA FP16 sparse indexed attention threadgroup64 should match CPU reference");
+	const int threadgroup64_d128_status = _mps_sparse_indexed_attention_compare(CCV_16F, 4, 128, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(threadgroup64_d128_status, 0, "MFA FP16 sparse indexed attention threadgroup64 D=128 should match CPU reference");
+}
+
+TEST_CASE("sparse indexed attention with MFA BF16 DS4-native shape")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_neural_accelerators_support_bfloat(ccv_nnc_default_mfa_context()));
+	float max_abs, max_relative, expected, actual;
+	int max_idx;
+	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16BF, -1, 512, 4, 8, 4, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(sparse_status, 0, "MFA BF16 sparse indexed attention should match CPU reference");
 }
 
 #include "case_main.h"

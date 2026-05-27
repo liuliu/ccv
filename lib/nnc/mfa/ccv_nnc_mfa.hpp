@@ -38,6 +38,7 @@ extern "C" {
 #include "ccv_nnc_mfa_fast_fence.hpp"
 #include "ccv_nnc_mfa_rotate_half.hpp"
 #include "ccv_nnc_mfa_scaled_dot_product_arg_partition.hpp"
+#include "ccv_nnc_mfa_sparse_indexed_attention.hpp"
 #include "ccv_nnc_mfa_walsh_hadamard_transform.hpp"
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 #include "ccv_nnc_mfa_gated_delta.hpp"
