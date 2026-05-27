@@ -419,8 +419,8 @@ int main(int argc, char** argv)
   const Variant variants[] = {
     {0, "sparse_indexed_attention_mfa_tg_h16"},
     {1, "sparse_indexed_attention_mfa_tg_h24"},
-    {2, "sparse_indexed_attention_mfa_device_h64"},
     {3, "sparse_indexed_attention_mfa_tg_h64"},
+    {5, "sparse_indexed_attention_mfa_generic"},
   };
   const Variant variants_d128[] = {
     {4, "sparse_indexed_attention_mfa_tg_h64_d128"},

@@ -16,9 +16,6 @@ struct NASparseIndexedAttentionKernel {
   static constexpr uint16_t threadgroupRowBlock = 32;
   static constexpr uint16_t threadgroupHeadDimensionD128 = 128;
   static constexpr uint16_t threadgroupRowBlockD128 = 64;
-  static constexpr uint16_t deviceHeadGroup = 32;
-  static constexpr uint16_t deviceHeadsPerThreadgroup = 64;
-  static constexpr uint16_t deviceRowBlock = 64;
   static constexpr uint16_t dimBlock = 128;
 
   GEMMOperandPrecision memoryPrecision;
@@ -29,8 +26,6 @@ struct NASparseIndexedAttentionKernel {
   NS::SharedPtr<MTL::Library> library;
 
   uint32_t threadgroupMemoryAllocation() const noexcept;
-  uint64_t scratchMemoryAllocation(uint32_t T, uint32_t H) const noexcept;
-  bool usesDeviceScratch() const noexcept;
   MTL::Size threadgroupSize() const noexcept;
   MTL::Size threadgroupsPerGrid(uint32_t T, uint32_t H) const noexcept;
 
@@ -43,10 +38,8 @@ private:
   std::string createDenseOnlySource() const noexcept;
   std::string createThreadgroupSource() const noexcept;
   std::string createThreadgroupD128Source() const noexcept;
-  std::string createDeviceSource() const noexcept;
   void createThreadgroupAttendBlock(CodeWriter& source) const noexcept;
   void createThreadgroupD128AttendBlock(CodeWriter& source) const noexcept;
-  void createDeviceAttendBlock(CodeWriter& source) const noexcept;
 };
 
 #endif

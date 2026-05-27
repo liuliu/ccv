@@ -38,7 +38,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	if (indices->info.datatype != CCV_32S)
 		return CCV_NNC_EXEC_INVALID;
 	uint32_t mtl_data_type;
-	if (q->info.datatype == CCV_16F)
+	if (q->info.datatype == CCV_32F)
+		mtl_data_type = 3;
+	else if (q->info.datatype == CCV_16F)
 		mtl_data_type = 16;
 	else if (q->info.datatype == CCV_16BF)
 		mtl_data_type = 121;
@@ -64,8 +66,6 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int dense_rows = dense_k->info.dim[0];
 	const int sparse_rows = sparse_k->info.dim[0];
 	const int K = (indices_nd == 1) ? 0 : indices->info.dim[1];
-	if (H != 64 || (D != 512 && D != 128))
-		return CCV_NNC_EXEC_INVALID;
 	assert(dense_k->info.dim[1] == D);
 	assert(dense_v->info.dim[0] == dense_rows);
 	assert(dense_v->info.dim[1] == D);
@@ -76,10 +76,6 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	assert(out->info.dim[0] == T);
 	assert(out->info.dim[1] == H);
 	assert(out->info.dim[2] == D);
-	if (mpgetbuffer((ccv_nnc_tensor_t*)dense_k) != mpgetbuffer((ccv_nnc_tensor_t*)dense_v) || dense_k->dataof != dense_v->dataof)
-		return CCV_NNC_EXEC_INVALID;
-	if (mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) != mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) || sparse_k->dataof != sparse_v->dataof)
-		return CCV_NNC_EXEC_INVALID;
 	uint32_t sink_head_stride = 0;
 	if (sinks)
 	{
@@ -89,17 +85,36 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	}
 	@autoreleasepool {
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
-		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) || !ccv_nnc_mfa_has_neural_accelerators(context))
+		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 			return CCV_NNC_EXEC_INVALID;
 		if (mtl_data_type == 121 && !ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
 			return CCV_NNC_EXEC_INVALID;
-		if (cmd.algorithm >= 5)
+		if (cmd.algorithm >= 6)
 			return CCV_NNC_EXEC_INVALID;
-		const uint32_t variant = (cmd.algorithm < 0) ? ((D == 128) ? 4 : 2) : (uint32_t)cmd.algorithm;
-		if ((D == 128 && (variant != 4 || K == 0)) || (D == 512 && variant >= 4))
+		if (cmd.algorithm == 2)
+			return CCV_NNC_EXEC_INVALID;
+		const int force_neural_accelerators = cmd.algorithm >= 0 && cmd.algorithm < 5;
+		const int force_generic = cmd.algorithm == 5;
+		const int kv_is_shared = mpgetbuffer((ccv_nnc_tensor_t*)dense_k) == mpgetbuffer((ccv_nnc_tensor_t*)dense_v) && dense_k->dataof == dense_v->dataof &&
+			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) == mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) && sparse_k->dataof == sparse_v->dataof;
+		if (!kv_is_shared)
+			return CCV_NNC_EXEC_INVALID;
+		const int na_shape = H == 64 && (D == 512 || D == 128);
+		int use_neural_accelerators = !force_generic && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
+		uint32_t variant = 0;
+		if (use_neural_accelerators)
+		{
+			variant = (cmd.algorithm < 0) ? ((D == 128) ? 4 : 3) : (uint32_t)cmd.algorithm;
+			if ((D == 128 && (variant != 4 || K == 0)) || (D == 512 && variant >= 4))
+				use_neural_accelerators = 0;
+		}
+		if (force_neural_accelerators && !use_neural_accelerators)
+			return CCV_NNC_EXEC_INVALID;
+		if (!use_neural_accelerators && D > 512)
 			return CCV_NNC_EXEC_INVALID;
 		const ccv_nnc_mfa_sparse_indexed_attention_params_t params = {
 			.data_type = mtl_data_type,
+			.use_neural_accelerators = (uint8_t)use_neural_accelerators,
 			.T = (uint32_t)T,
 			.dense_rows = (uint32_t)dense_rows,
 			.sparse_rows = (uint32_t)sparse_rows,
@@ -117,9 +132,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 		mtl_buffer_t* tensors[9] = {
 			mpgetbuffer((ccv_nnc_tensor_t*)q),
 			mpgetbuffer((ccv_nnc_tensor_t*)dense_k),
-			mpgetbuffer((ccv_nnc_tensor_t*)dense_v),
+			NULL,
 			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k),
-			mpgetbuffer((ccv_nnc_tensor_t*)sparse_v),
+			NULL,
 			mpgetbuffer((ccv_nnc_tensor_t*)indices),
 			attention_sinks ? mpgetbuffer((ccv_nnc_tensor_t*)sinks) : 0,
 			mpgetbuffer((ccv_nnc_tensor_t*)out),
@@ -128,9 +143,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 		size_t tensor_offsets[8] = {
 			q->dataof,
 			dense_k->dataof,
-			dense_v->dataof,
+			0,
 			sparse_k->dataof,
-			sparse_v->dataof,
+			0,
 			indices->dataof,
 			attention_sinks ? sinks->dataof : 0,
 			out->dataof,
@@ -149,16 +164,16 @@ static int _ccv_nnc_sparse_indexed_attention_back(const ccv_nnc_cmd_t cmd, const
 REGISTER_COMMAND_BACKEND(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_16F | CCV_16BF | CCV_32S;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	registry->algorithms = 5;
+	registry->algorithms = 6;
 	registry->exec = _ccv_nnc_sparse_indexed_attention_forw;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SPARSE_INDEXED_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_16F | CCV_16BF | CCV_32S;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_sparse_indexed_attention_back;

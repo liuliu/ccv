@@ -6,7 +6,6 @@
 enum class NASparseIndexedAttentionVariant : uint32_t {
   Threadgroup16 = 0,
   Threadgroup24 = 1,
-  Device64 = 2,
   Threadgroup64 = 3,
   Threadgroup64D128 = 4,
 };

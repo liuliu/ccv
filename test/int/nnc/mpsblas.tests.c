@@ -8777,9 +8777,8 @@ static void _mps_sparse_indexed_attention_fill(const int T, const int H, const i
 		sinks[h] = (float)(((h * 7 + 3) % 17) - 8) / 32;
 }
 
-static int _mps_sparse_indexed_attention_compare(const int datatype, const int algorithm, const int D, const int dense_rows, const int sparse_rows, const int K, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
+static int _mps_sparse_indexed_attention_compare(const int datatype, const int algorithm, const int T, const int D, const int dense_rows, const int sparse_rows, const int K, const int attention_sinks, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
 {
-	const int T = 5;
 	const int H = 64;
 	const int q_count = T * H * D;
 	const int dense_count = dense_rows * D;
@@ -8813,8 +8812,10 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	_mps_forward_scaled_gemm_to_float(datatype, hdense_input->data.u8, dense_count, hdense->data.f32);
 	_mps_forward_scaled_gemm_to_float(datatype, hsparse_input->data.u8, sparse_count, hsparse->data.f32);
 	_mps_forward_scaled_gemm_to_float(datatype, hsinks_input->data.u8, H, hsinks->data.f32);
-	ccv_nnc_cmd_t cpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, 1);
-	const int cpu_status = ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hdense, hdense, hsparse, hsparse, hindices, hsinks), TENSOR_LIST(href), 0);
+	ccv_nnc_cmd_t cpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, attention_sinks);
+	const int cpu_status = attention_sinks ?
+		ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hdense, hdense, hsparse, hsparse, hindices, hsinks), TENSOR_LIST(href), 0) :
+		ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hdense, hdense, hsparse, hsparse, hindices), TENSOR_LIST(href), 0);
 	if (cpu_status != CCV_NNC_EXEC_SUCCESS)
 	{
 		status = -1;
@@ -8836,10 +8837,15 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, sinks_params, 0);
 	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, q_params, 0);
 	ccv_nnc_tensor_t* const hactual = ccv_nnc_tensor_new(0, q_input_params, 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq_input, hdense_input, hsparse_input, hindices, hsinks_input), TENSOR_LIST(q, dense, sparse, indices, sinks), 0);
-	ccv_nnc_cmd_t gpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, 1);
+	if (attention_sinks)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq_input, hdense_input, hsparse_input, hindices, hsinks_input), TENSOR_LIST(q, dense, sparse, indices, sinks), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq_input, hdense_input, hsparse_input, hindices), TENSOR_LIST(q, dense, sparse, indices), 0);
+	ccv_nnc_cmd_t gpu_cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, attention_sinks);
 	gpu_cmd.algorithm = algorithm;
-	const int gpu_status = ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense, dense, sparse, sparse, indices, sinks), TENSOR_LIST(out), 0);
+	const int gpu_status = attention_sinks ?
+		ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense, dense, sparse, sparse, indices, sinks), TENSOR_LIST(out), 0) :
+		ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, dense, dense, sparse, sparse, indices), TENSOR_LIST(out), 0);
 	if (gpu_status != CCV_NNC_EXEC_SUCCESS)
 	{
 		status = -2;
@@ -8904,19 +8910,29 @@ TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	float max_abs, max_relative, expected, actual;
 	int max_idx;
-	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 5, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA FP16 sparse indexed attention should match CPU reference");
-	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 512, 37, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 5, 512, 37, 1, 0, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(dense_status, 0, "MFA FP16 dense-only sparse indexed attention should match CPU reference");
-	const int threadgroup16_status = _mps_sparse_indexed_attention_compare(CCV_16F, 0, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int threadgroup16_status = _mps_sparse_indexed_attention_compare(CCV_16F, 0, 5, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup16_status, 0, "MFA FP16 sparse indexed attention threadgroup16 should match CPU reference");
-	const int threadgroup24_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int threadgroup24_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 5, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup24_status, 0, "MFA FP16 sparse indexed attention threadgroup24 should match CPU reference");
-	const int threadgroup64_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 512, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int threadgroup64_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 5, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup64_status, 0, "MFA FP16 sparse indexed attention threadgroup64 should match CPU reference");
-	const int threadgroup64_d128_status = _mps_sparse_indexed_attention_compare(CCV_16F, 4, 128, 4, 8, 4, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int threadgroup64_t1_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 1, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(threadgroup64_t1_status, 0, "MFA FP16 sparse indexed attention threadgroup64 T=1 should match CPU reference");
+	const int threadgroup64_d128_status = _mps_sparse_indexed_attention_compare(CCV_16F, 4, 5, 128, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup64_d128_status, 0, "MFA FP16 sparse indexed attention threadgroup64 D=128 should match CPU reference");
+	const int generic_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 5, 512, 4, 8, 4, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(generic_status == 0, "generic MFA FP16 sparse indexed attention should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_status, max_abs, max_relative, max_idx, expected, actual);
+	const int generic_fp32_status = _mps_sparse_indexed_attention_compare(CCV_32F, 5, 5, 128, 7, 9, 3, 1, 1e-4, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(generic_fp32_status == 0, "generic MFA FP32 sparse indexed attention should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_fp32_status, max_abs, max_relative, max_idx, expected, actual);
+	const int generic_t9_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 9, 128, 7, 9, 3, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(generic_t9_status == 0, "generic MFA FP16 sparse indexed attention T=9 should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_t9_status, max_abs, max_relative, max_idx, expected, actual);
+	const int generic_no_sink_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 5, 96, 6, 7, 2, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(generic_no_sink_status == 0, "generic MFA FP16 sparse indexed attention without sinks should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_no_sink_status, max_abs, max_relative, max_idx, expected, actual);
 }
 
 TEST_CASE("sparse indexed attention with MFA BF16 DS4-native shape")
@@ -8924,7 +8940,7 @@ TEST_CASE("sparse indexed attention with MFA BF16 DS4-native shape")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	float max_abs, max_relative, expected, actual;
 	int max_idx;
-	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16BF, -1, 512, 4, 8, 4, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16BF, -1, 5, 512, 4, 8, 4, 1, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA BF16 sparse indexed attention should match CPU reference");
 }
