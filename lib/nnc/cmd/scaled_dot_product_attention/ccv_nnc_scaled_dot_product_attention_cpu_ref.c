@@ -27,9 +27,12 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
 	ccv_nnc_tensor_view_t* const kv_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
 	const int attention_sinks = cmd.info.scaled_dot_product_attention.attention_sinks;
+	const int sliding_window = cmd.info.scaled_dot_product_attention.sliding_window;
 	ccv_nnc_tensor_view_t* const sinks = attention_sinks && input_size > 8 ? (ccv_nnc_tensor_view_t*)inputs[8] : 0;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
+	if (sliding_window < 0 || (sliding_window > 0 && (!cmd.info.scaled_dot_product_attention.is_causal || is_varlen)))
+		return CCV_NNC_EXEC_INVALID;
 	if (is_varlen && (attn_mask || w || bias || !q_seq_offsets || !kv_seq_offsets))
 		return CCV_NNC_EXEC_INVALID;
 	if (attention_sinks && !sinks)
@@ -187,17 +190,20 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 					if (is_causal)
 					{
 						const int x_end = ccv_max(x - R + K + 1, 0);
+						const int x_start = sliding_window > 0 ? ccv_max(x_end - sliding_window, 0) : 0;
+						for (y = 0; y < x_start; y++)
+							qk0[y] = 0;
 						for (y = x_end; y < K; y++)
 							qk0[y] = 0;
-						double maxval = attention_sinks ? sink : qk0[0];
-						for (y = attention_sinks ? 0 : 1; y < x_end; y++)
+						double maxval = attention_sinks ? sink : qk0[x_start];
+						for (y = attention_sinks ? x_start : x_start + 1; y < x_end; y++)
 							if (qk0[y] > maxval)
 								maxval = qk0[y];
 						double sumval = attention_sinks ? expf(sink - maxval) : 0;
-						for (y = 0; y < x_end; y++)
+						for (y = x_start; y < x_end; y++)
 							sumval += (qk0[y] = expf(qk0[y] - maxval));
 						sumval = 1.0 / sumval;
-						for (y = 0; y < x_end; y++)
+						for (y = x_start; y < x_end; y++)
 							qk0[y] *= sumval;
 					} else {
 						double maxval = attention_sinks ? sink : qk0[0];
@@ -271,17 +277,20 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 				if (is_causal)
 				{
 					const int x_end = ccv_max(x - qdim[1] + kdim[1] + 1, 0);
+					const int x_start = sliding_window > 0 ? ccv_max(x_end - sliding_window, 0) : 0;
+					for (y = 0; y < x_start; y++)
+						qk0[y] = 0;
 					for (y = x_end; y < kdim[1]; y++)
 						qk0[y] = 0;
-					double maxval = attention_sinks ? sink : qk0[0];
-					for (y = attention_sinks ? 0 : 1; y < x_end; y++)
+					double maxval = attention_sinks ? sink : qk0[x_start];
+					for (y = attention_sinks ? x_start : x_start + 1; y < x_end; y++)
 						if (qk0[y] > maxval)
 							maxval = qk0[y];
 					double sumval = attention_sinks ? expf(sink - maxval) : 0;
-					for (y = 0; y < x_end; y++)
+					for (y = x_start; y < x_end; y++)
 						sumval += (qk0[y] = expf(qk0[y] - maxval));
 					sumval = 1.0 / sumval;
-					for (y = 0; y < x_end; y++)
+					for (y = x_start; y < x_end; y++)
 						qk0[y] *= sumval;
 				} else {
 					double maxval = attention_sinks ? sink : qk0[0];
@@ -390,6 +399,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	if (cmd.info.scaled_dot_product_attention.is_varlen)
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.attention_sinks)
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.sliding_window != 0)
 		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];

@@ -32,6 +32,7 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
+  slidingWindow == rhs.slidingWindow &&
   maskBatchStride == rhs.maskBatchStride &&
   loadC == rhs.loadC &&
   loadCSourceMatch &&
@@ -66,6 +67,7 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.attentionSinks ? 1 : 0);
+  combine_32(seed, hash.slidingWindow);
   combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   combine_32(seed, hash.loadC ? 1 : 0);
@@ -138,7 +140,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   auto blockDimensions = this->blockDimensions();
   const uint16_t executionSIMDGroups = this->executionSIMDGroups();
   const bool checkCEdge1 = this->checkCEdge1(blockDimensions);
-  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks);
+  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks, slidingWindow);
 }
 
 uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept {
@@ -146,7 +148,8 @@ uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t 
       matrixDimensions[0] == 0 ||
       matrixDimensions[0] > blockDimensions[0] * 4 ||
       masked ||
-      isVarlen) {
+      isVarlen ||
+      slidingWindow > 0) {
     return 1;
   }
   const uint32_t minSequenceLength = matrixDimensions[0] == 1 ? 2048 : 4096;

@@ -41,7 +41,7 @@ static double benchmark_sdpa(ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const q_tensor
 	return (get_current_time() - elapsed_time) / (double)iterations;
 }
 
-static void benchmark_sdpa_nomask_case(const char* const backend, const int flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int attention_sinks, const int warmup, const int iterations)
+static void benchmark_sdpa_nomask_case(const char* const backend, const int flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int attention_sinks, const int sliding_window, const int warmup, const int iterations)
 {
 	const float scale = 1.0 / sqrt((float)D);
 	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
@@ -75,9 +75,10 @@ static void benchmark_sdpa_nomask_case(const char* const backend, const int flag
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sinks_tensor_f16), TENSOR_LIST(gpu_sinks_tensor), 0);
 	ccv_nnc_cmd_t attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
 	attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
+	attention.info.scaled_dot_product_attention.sliding_window = sliding_window;
 	attention.info.scaled_dot_product_attention.flags = flags;
 	const double seconds = benchmark_sdpa(attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, warmup, iterations);
-	printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", backend, attention_sinks ? (is_causal ? "causal_sink" : "plain_sink") : (is_causal ? "causal" : "plain"), B, R, C, Hq, Hk, D, seconds, 1.0);
+	printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", backend, sliding_window > 0 ? (attention_sinks ? "sliding_window_sink" : "sliding_window") : (attention_sinks ? (is_causal ? "causal_sink" : "plain_sink") : (is_causal ? "causal" : "plain")), B, R, C, Hq, Hk, D, seconds, 1.0);
 	if (gpu_sinks_tensor)
 		ccv_nnc_tensor_free(gpu_sinks_tensor);
 	ccv_nnc_tensor_free(gpu_o_tensor);
@@ -126,6 +127,7 @@ int main(int argc, char** argv)
 	int custom_D = 256;
 	int attention_sinks = 0;
 	int attention_flags = 0;
+	int sliding_window = 0;
 	int i;
 	for (i = 1; i < argc; i++)
 	{
@@ -139,6 +141,8 @@ int main(int argc, char** argv)
 			attention_sinks = 1;
 		else if (strcmp(argv[i], "--int8") == 0)
 			attention_flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+		else if (strncmp(argv[i], "--sliding-window=", 17) == 0)
+			sliding_window = atoi(argv[i] + 17);
 		else if (strcmp(argv[i], "--small-r-grid") == 0)
 			small_r_grid = 1;
 		else if (strcmp(argv[i], "--small-r-causal-grid") == 0)
@@ -193,7 +197,7 @@ int main(int argc, char** argv)
 		if (c_sweep_step <= 0)
 			c_sweep_step = 128;
 		for (int C = c_sweep_from; C <= c_sweep_to; C += c_sweep_step)
-			benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, c_sweep_B, c_sweep_R, C, c_sweep_Hq, c_sweep_Hk, c_sweep_D, c_sweep_causal, attention_sinks, nomask_warmup, nomask_iterations);
+			benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, c_sweep_B, c_sweep_R, C, c_sweep_Hq, c_sweep_Hk, c_sweep_D, sliding_window > 0 ? 1 : c_sweep_causal, attention_sinks, sliding_window, nomask_warmup, nomask_iterations);
 		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		return 0;
@@ -207,7 +211,7 @@ int main(int argc, char** argv)
 		for (int d_idx = 0; d_idx < (int)(sizeof(D_values) / sizeof(D_values[0])); ++d_idx)
 			for (int c_idx = 0; c_idx < (int)(sizeof(C_values) / sizeof(C_values[0])); ++c_idx)
 				for (int r_idx = 0; r_idx < (int)(sizeof(R_values) / sizeof(R_values[0])); ++r_idx)
-					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], small_r_causal_grid, attention_sinks, nomask_warmup, nomask_iterations);
+					benchmark_sdpa_nomask_case(force_generic ? "generic" : "default", attention_flags, 1, R_values[r_idx], C_values[c_idx], small_r_Hq, small_r_Hk, D_values[d_idx], sliding_window > 0 ? 1 : small_r_causal_grid, attention_sinks, sliding_window, nomask_warmup, nomask_iterations);
 		if (force_generic && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 		return 0;
@@ -282,13 +286,14 @@ int main(int argc, char** argv)
 		ccv_nnc_cmd_t causal_attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1);
 		plain_attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
 		causal_attention.info.scaled_dot_product_attention.attention_sinks = attention_sinks;
+		causal_attention.info.scaled_dot_product_attention.sliding_window = sliding_window;
 		plain_attention.info.scaled_dot_product_attention.flags = attention_flags;
 		causal_attention.info.scaled_dot_product_attention.flags = attention_flags;
 		const double plain_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
 		const double causal_seconds = benchmark_sdpa(causal_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
 		const double triangular_mask_seconds = benchmark_sdpa(plain_attention, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_triangular_mask_tensor, gpu_sinks_tensor, gpu_o_tensor, nomask_warmup, nomask_iterations);
 		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "plain_sink" : "plain", B, R, C, Hq, Hk, D, plain_seconds, 1.0);
-		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "causal_sink" : "causal", B, R, C, Hq, Hk, D, causal_seconds, causal_seconds / plain_seconds);
+		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", sliding_window > 0 ? (attention_sinks ? "sliding_window_sink" : "sliding_window") : (attention_sinks ? "causal_sink" : "causal"), B, R, C, Hq, Hk, D, causal_seconds, causal_seconds / plain_seconds);
 		printf("%s,%s,%d,%d,%d,%d,%d,%d,%2.6f,%2.3f\n", force_generic ? "generic" : "default", attention_sinks ? "triangular_mask_sink" : "triangular_mask", B, R, C, Hq, Hk, D, triangular_mask_seconds, triangular_mask_seconds / plain_seconds);
 
 		ccv_nnc_tensor_free(gpu_triangular_mask_tensor);

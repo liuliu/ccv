@@ -50,6 +50,8 @@ struct NAAttentionDescriptor {
 
   bool attentionSinks = false;
 
+  uint32_t slidingWindow = 0;
+
   uint32_t maskBatchStride = 0;
 
   /// Whether to load C from a buffer instead of a function constant.

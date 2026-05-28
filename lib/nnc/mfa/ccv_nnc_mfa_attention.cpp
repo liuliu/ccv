@@ -50,6 +50,13 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
   }
   CCV_NNC_MFA_PRECONDITION(!(params.masked && params.is_varlen));
+  if (params.sliding_window > 0) {
+    CCV_NNC_MFA_PRECONDITION(params.type == 0);
+    CCV_NNC_MFA_PRECONDITION(params.is_causal);
+    CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
+    CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators);
+    CCV_NNC_MFA_PRECONDITION(!params.use_quantized_attention);
+  }
   {
     simd::ushort2 num_batch_dims(0);
     simd::uint2 batch_sizes(1);
@@ -106,6 +113,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         !params.use_quantized_attention &&
         !hash.masked &&
         !hash.is_varlen &&
+        hash.sliding_window == 0 &&
         attentionR1DataType &&
         hash.R == 1 &&
         hash.C > 0 &&
@@ -414,6 +422,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
+      attentionDesc.slidingWindow = hash.sliding_window;
       attentionDesc.loadC = !hash.masked && !hash.is_varlen && hash.R <= 4;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
@@ -584,6 +593,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       CCV_NNC_MFA_PRECONDITION(!params.is_causal);
       CCV_NNC_MFA_PRECONDITION(!params.masked);
     }
+    CCV_NNC_MFA_PRECONDITION(hash.sliding_window == 0);
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
     attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
@@ -1262,6 +1272,7 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   type = params.type;
   use_quantized_attention = params.use_quantized_attention;
   attention_sinks = params.attention_sinks;
+  sliding_window = params.sliding_window;
 }
 
 bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
@@ -1284,7 +1295,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (upcast == hash.upcast) &&
   (type == hash.type) &&
   (use_quantized_attention == hash.use_quantized_attention) &&
-  (attention_sinks == hash.attention_sinks);
+  (attention_sinks == hash.attention_sinks) &&
+  (sliding_window == hash.sliding_window);
 }
 
 std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
@@ -1307,6 +1319,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .upcast = " << bool(hash.upcast) << " ";
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
   os << " .attention_sinks = " << bool(hash.attention_sinks) << " ";
+  os << " .sliding_window = " << hash.sliding_window << " ";
   os << " .type = " << hash.type << " ";
   os << "}";
   return os;
@@ -1323,6 +1336,7 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   combine_32(seed, hash.type);
   combine_32(seed, hash.use_quantized_attention);
   combine_32(seed, hash.attention_sinks);
+  combine_32(seed, hash.sliding_window);
   combine_32(seed, hash.upcast);
   return seed;
 }

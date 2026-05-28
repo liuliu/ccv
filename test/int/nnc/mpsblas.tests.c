@@ -623,7 +623,7 @@ static void _mps_sdpa_round_to_datatype(const int datatype, const float* const v
 	ccfree(data);
 }
 
-static int _mps_sdpa_attention_sinks_compare(const int datatype, const int force_generic, const int gpu_flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int sink_count, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
+static int _mps_sdpa_attention_sinks_compare(const int datatype, const int force_generic, const int gpu_flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int sink_count, const int sliding_window, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
 {
 	const int q_count = B * R * Hq * D;
 	const int kv_count = B * C * Hk * D;
@@ -687,6 +687,7 @@ static int _mps_sdpa_attention_sinks_compare(const int datatype, const int force
 	ccv_nnc_tensor_t* const o_ref = ccv_nnc_tensor_new(0, q_ref_params, 0);
 	ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, is_causal);
 	cpu_cmd.info.scaled_dot_product_attention.attention_sinks = 1;
+	cpu_cmd.info.scaled_dot_product_attention.sliding_window = sliding_window;
 	if (ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_ref, k_ref, v_ref, NULL, NULL, NULL, NULL, NULL, sinks_ref), TENSOR_LIST(o_ref), 0) != CCV_NNC_EXEC_SUCCESS)
 		return -1;
 
@@ -5092,7 +5093,7 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	float expected = 0;
 	float actual = 0;
 	int max_idx = 0;
-	int status = _mps_sdpa_attention_sinks_compare(CCV_32F, 1, 0, 1, 17, 23, 4, 2, 64, 0, 1, 2e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	int status = _mps_sdpa_attention_sinks_compare(CCV_32F, 1, 0, 1, 17, 23, 4, 2, 64, 0, 1, 0, 2e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "generic global sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
 	max_abs = 0;
@@ -5100,7 +5101,7 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
-	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 47, 41, 8, 8, 64, 0, 8, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 47, 41, 8, 8, 64, 0, 8, 0, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "NA per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
 	max_abs = 0;
@@ -5108,7 +5109,31 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
-	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 7, 4096, 8, 8, 128, 1, 8, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 17, 23, 8, 4, 64, 1, 8, 4, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NA sliding-window grouped-query per-head sink should match CPU reference (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 23, 23, 8, 8, 64, 1, 8, 1, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NA sliding-window size 1 per-head sink should match CPU reference (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 17, 23, 8, 8, 64, 1, 8, 64, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "NA sliding-window size covering C should match CPU reference (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 7, 4096, 8, 8, 128, 1, 8, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "NA splitKV per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
 	max_abs = 0;
@@ -5116,7 +5141,7 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
-	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 1536, 8, 4, 128, 1, 8, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 1536, 8, 4, 128, 1, 8, 0, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "R1 direct per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
 	max_abs = 0;
@@ -5124,7 +5149,7 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
-	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 4097, 8, 4, 128, 1, 8, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, 0, 1, 1, 4097, 8, 4, 128, 1, 8, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "R1 split per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
 	max_abs = 0;
@@ -5132,7 +5157,7 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
-	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I, 1, 64, 64, 8, 8, 128, 0, 8, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I, 1, 64, 64, 8, 8, 128, 0, 8, 0, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "NAInt8 per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 }
 

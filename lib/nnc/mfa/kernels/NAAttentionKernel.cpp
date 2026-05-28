@@ -39,6 +39,7 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   isVarlen = descriptor.isVarlen;
   loadC = descriptor.loadC;
   attentionSinks = descriptor.attentionSinks;
+  slidingWindow = descriptor.slidingWindow;
   splitKV = descriptor.splitKV;
 
   source = createSource();
@@ -1289,6 +1290,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   source.SetValue("C_SINGLE_REMAINDER", isVarlen ? "C_single_remainder_seq" : "C_single_remainder");
   source.SetValue("DOT_SCALE", dotProductScale(scale, false));
   source.SetValue("MASK_SCALE", dotProductScale(1.0f, false));
+  source.SetValue("SLIDING_WINDOW", std::to_string(slidingWindow));
   source += R"(
   auto Q = tensor<device {{MEMORY_NAME_Q}},  dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, {{R_LENGTH}}));
   auto K = tensor<device {{MEMORY_NAME_K}},  dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, {{C_LENGTH}}));
@@ -1364,6 +1366,12 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   const int causal_first_column_limit = causal_row_start + causal_column_offset;
   const uint single_c_edge = causal_last_column < 0 ? 0 : min({{C_SINGLE_EDGE}}, uint(causal_last_column) + 1);
 )";
+    if (slidingWindow > 0) {
+      source += R"(
+  const int causal_first_visible_column = max(0, causal_first_column_limit + 1 - int({{SLIDING_WINDOW}}));
+  const uint single_c_begin = uint(causal_first_visible_column) / {{BLOCK_DIMENSIONS_TRAVERSAL}} * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+)";
+    }
   } else {
     source += R"(
   const uint single_c_edge = {{C_SINGLE_EDGE}};
@@ -1378,12 +1386,21 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "      cO_{{LOOP_INDEX}}[k] = 0;\n";
   }
-  source += R"(
+  if (slidingWindow > 0) {
+    source += R"(
+    }
+  }
+
+  for (uint c = single_c_begin; c < single_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
+  } else {
+    source += R"(
     }
   }
 
   for (uint c = 0; c < single_c_edge; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 )";
+  }
   if (masked) {
     source += R"(
     const uchar mask_flags = Block_mask_buf[tgid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
@@ -1435,12 +1452,22 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         }
 )";
     if (isCausal) {
-      source += R"(
+      if (slidingWindow > 0) {
+        source += R"(
+        const int causal_column_limit = row + causal_column_offset;
+        const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+        if ((causal_mask_0 && column > causal_column_limit) || column < causal_column_begin) {
+          score = -numeric_limits<float>::infinity();
+        }
+)";
+      } else {
+        source += R"(
         const int causal_column_limit = row + causal_column_offset;
         if (causal_mask_0 && column > causal_column_limit) {
           score = -numeric_limits<float>::infinity();
         }
 )";
+      }
     }
     source += R"(
         cS_0[k] = score;
@@ -1448,7 +1475,25 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   } else if (isCausal) {
-    source += R"(
+    if (slidingWindow > 0) {
+      source += R"(
+    const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+        const int column = int(c) + idx[0];
+        if ((causal_mask_0 && column > causal_column_limit) || column < causal_column_begin) {
+          cS_0[k] = -numeric_limits<float>::infinity();
+        }
+      }
+    }
+)";
+    } else {
+      source += R"(
     const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
     if (causal_mask_0) {
       #pragma clang loop unroll(full)
@@ -1464,6 +1509,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
+    }
   }
   source += R"(
     // Online reduce maximum.
@@ -1505,7 +1551,27 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   } else if (isCausal) {
-    source += R"(
+    if (slidingWindow > 0) {
+      source += R"(
+    // Softmax. cS becomes cP.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+        const int column = int(c) + idx[0];
+        cS_0[k] = (column <= causal_column_limit && column >= causal_column_begin) ?
+            fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it) :
+            0;
+      }
+    }
+)";
+    } else {
+      source += R"(
     // Softmax. cS becomes cP.
     if (causal_mask_0) {
       #pragma clang loop unroll(full)
@@ -1532,6 +1598,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
+    }
   } else {
     source += R"(
     // Softmax. cS becomes cP.
@@ -1611,9 +1678,15 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   }
 )";
   if (isCausal) {
-    source += R"(
+    if (slidingWindow > 0) {
+      source += R"(
+  if ({{C_SINGLE_REMAINDER}} > 0 && int({{C_LENGTH}} - {{C_SINGLE_REMAINDER}}) <= causal_last_column && int({{C_LENGTH}}) > causal_first_visible_column) {
+)";
+    } else {
+      source += R"(
   if ({{C_SINGLE_REMAINDER}} > 0 && int({{C_LENGTH}} - {{C_SINGLE_REMAINDER}}) <= causal_last_column) {
 )";
+    }
   } else {
     source += R"(
   if ({{C_SINGLE_REMAINDER}} > 0) {
@@ -1672,12 +1745,22 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
           }
 )";
     if (isCausal) {
-      source += R"(
+      if (slidingWindow > 0) {
+        source += R"(
+          const int causal_column_limit = row + causal_column_offset;
+          const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+          if (column > causal_column_limit || column < causal_column_begin) {
+            score = -numeric_limits<float>::infinity();
+          }
+)";
+      } else {
+        source += R"(
           const int causal_column_limit = row + causal_column_offset;
           if (column > causal_column_limit) {
             score = -numeric_limits<float>::infinity();
           }
 )";
+      }
     }
     source += R"(
           cS_0[k] = score;
@@ -1686,7 +1769,24 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   } else if (isCausal) {
-    source += R"(
+    if (slidingWindow > 0) {
+      source += R"(
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+        const int column = int({{C_LENGTH}} - {{C_SINGLE_REMAINDER}}) + idx[0];
+        if (column > causal_column_limit || column < causal_column_begin) {
+          cS_0[k] = -numeric_limits<float>::infinity();
+        }
+      }
+    }
+)";
+    } else {
+      source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -1699,6 +1799,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
+    }
   } else {
     source += R"(
     #pragma clang loop unroll(full)
@@ -1757,7 +1858,29 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   } else if (isCausal) {
-    source += R"(
+    if (slidingWindow > 0) {
+      source += R"(
+    // Softmax. cS becomes cP.
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
+      if (cS_0.is_valid_element(k)) {
+        auto it = cS_0.get_iterator(k);
+        auto dst_it = cM.map_iterator(it);
+        auto idx = cS_0.get_multidimensional_index(k);
+        const int causal_row = causal_row_start + idx[1];
+        const int causal_column_limit = causal_row + causal_column_offset;
+        const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+        const int column = int({{C_LENGTH}} - {{C_SINGLE_REMAINDER}}) + idx[0];
+        if (idx[0] >= (int){{C_SINGLE_REMAINDER}} || column > causal_column_limit || column < causal_column_begin) {
+          cS_0[k] = 0;
+        } else {
+          cS_0[k] = fast::exp2(cS_0[k] * {{DOT_SCALE}} - *dst_it);
+        }
+      }
+    }
+)";
+    } else {
+      source += R"(
     // Softmax. cS becomes cP.
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
@@ -1775,6 +1898,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
+    }
   } else {
     source += R"(
     // Softmax. cS becomes cP.

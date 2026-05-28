@@ -18,6 +18,7 @@ bool NAAttentionKernelDescriptor::operator==(const NAAttentionKernelDescriptor& 
   isVarlen == rhs.isVarlen &&
   loadC == rhs.loadC &&
   attentionSinks == rhs.attentionSinks &&
+  slidingWindow == rhs.slidingWindow &&
   splitKV == rhs.splitKV &&
   type == rhs.type &&
   scale == rhs.scale;
@@ -36,6 +37,7 @@ std::size_t std::hash<NAAttentionKernelDescriptor>::operator()(const NAAttention
   combine_32(seed, hash.splitKV);
   combine_32(seed, hash.loadC ? 1 : 0);
   combine_32(seed, hash.attentionSinks ? 1 : 0);
+  combine_32(seed, hash.slidingWindow);
   return seed;
 }
 
@@ -50,7 +52,7 @@ NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDime
 NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal, bool masked) noexcept
   : NAAttentionKernelDescriptor(blockDimensions, headDimension, Hq, Hk, executionSIMDGroups, checkCEdge1, memoryPrecisions, type, scale, bypassThreadgroupMemory, isCausal, masked, false) {}
 
-NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal, bool masked, bool isVarlen, uint16_t splitKV, bool loadC, bool attentionSinks) noexcept {
+NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDimensions, unsigned short headDimension, unsigned short Hq, unsigned short Hk, uint16_t executionSIMDGroups, bool checkCEdge1, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, AttentionKernelType type, float scale, bool bypassThreadgroupMemory, bool isCausal, bool masked, bool isVarlen, uint16_t splitKV, bool loadC, bool attentionSinks, uint32_t slidingWindow) noexcept {
   this->blockDimensions = blockDimensions;
   this->headDimension = headDimension;
   this->Hq = Hq;
@@ -67,4 +69,5 @@ NAAttentionKernelDescriptor::NAAttentionKernelDescriptor(simd::ushort3 blockDime
   this->splitKV = splitKV;
   this->loadC = loadC;
   this->attentionSinks = attentionSinks;
+  this->slidingWindow = slidingWindow;
 }

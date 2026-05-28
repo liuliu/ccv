@@ -299,6 +299,7 @@ typedef struct {
 			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32, and whether to opt into quantized attention on supported backends. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
+			int sliding_window; /**< [scaled_dot_product_attention.sliding_window] Causal sliding-window size, including the current token. 0 disables sliding-window attention. */
 		} scaled_dot_product_attention;
 		struct {
 			float scale; /**< [scaled_dot_product_arg_partition.scale] The scale we multiple to the summed positive dot product of Q & K. */
@@ -5063,13 +5064,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const in
  * @param max_seqlen_kv The maximum key / value sequence length for packed variable-length attention.
  * @param flags Which precision is preferred for the attention computation be run at (FP16 or FP32).
  * @param attention_sinks Whether the input would accept an attention sink tensor.
+ * @param sliding_window Causal sliding-window size, including the current token. 0 disables sliding-window attention.
  * @param fused_unify_head_weights Whether we also have unifying head weight fused into it. The output would be in shape of (N, S, H * Ev).
  * @param no_bias Whether we have bias or not for the unifying head output.
  * @param is_trainable Whether or not it is trainable (if weight / bias provided).
  * @param name The unique name of the model.
  * @return A model that can apply scaled dot product attention compute.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int attention_sinks, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
 /**
  * The function prototype to call during the model execution at this position.
  */

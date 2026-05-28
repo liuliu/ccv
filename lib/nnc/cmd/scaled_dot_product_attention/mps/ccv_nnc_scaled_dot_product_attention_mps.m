@@ -102,6 +102,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	ccv_nnc_tensor_view_t* const q_seq_offsets = is_varlen && input_size > 6 ? (ccv_nnc_tensor_view_t*)inputs[6] : 0;
 	ccv_nnc_tensor_view_t* const kv_seq_offsets = is_varlen && input_size > 7 ? (ccv_nnc_tensor_view_t*)inputs[7] : 0;
 	const int attention_sinks = cmd.info.scaled_dot_product_attention.attention_sinks;
+	const int sliding_window = cmd.info.scaled_dot_product_attention.sliding_window;
 	ccv_nnc_tensor_view_t* const sinks = attention_sinks && input_size > 8 ? (ccv_nnc_tensor_view_t*)inputs[8] : 0;
 	if (bias) // bias always requires a weight matrix.
 	{
@@ -111,6 +112,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 	if (is_varlen && (attn_mask || weights || bias || !q_seq_offsets || !kv_seq_offsets))
 		return CCV_NNC_EXEC_INVALID;
 	if (attention_sinks && !sinks)
+		return CCV_NNC_EXEC_INVALID;
+	if (sliding_window < 0 || (sliding_window > 0 && (!cmd.info.scaled_dot_product_attention.is_causal || is_varlen)))
+		return CCV_NNC_EXEC_INVALID;
+	if (sliding_window > 0 && (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I))
 		return CCV_NNC_EXEC_INVALID;
 
 	ccv_nnc_tensor_view_t* const o = (weights) ? (ccv_nnc_tensor_view_t*)outputs[2] : (ccv_nnc_tensor_view_t*)outputs[0];
@@ -298,6 +303,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			return CCV_NNC_EXEC_INVALID;
 		if (attention_sinks && !is_mfa_supported)
 			return CCV_NNC_EXEC_INVALID;
+		if (sliding_window > 0 && !is_mfa_supported)
+			return CCV_NNC_EXEC_INVALID;
 		if (!is_mfa_supported && !attn_mask && !weights && !bias)
 		{
 			MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
@@ -365,6 +372,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
 			!weights &&
 			!bias;
+		if (sliding_window > 0 && (!use_neural_accelerators || use_quantized_attention))
+			return CCV_NNC_EXEC_INVALID;
 		int attention_is_batched = (batch_size > 1);
 		ccv_nnc_mfa_attention_params_t params = {
 			.type = 0,
@@ -388,6 +397,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
 			.attention_sinks = attention_sinks,
+			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,
 
 			.batch_dims_q = { 0 },
@@ -615,6 +625,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	if (cmd.info.scaled_dot_product_attention.is_varlen)
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.attention_sinks)
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.sliding_window != 0)
 		return CCV_NNC_EXEC_INVALID;
 	assert(!cmd.info.scaled_dot_product_attention.is_causal);
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
