@@ -67,6 +67,8 @@ struct AttentionDescriptor {
 
   bool attentionSinks = false;
 
+  uint32_t slidingWindow = 0;
+
   uint32_t maskBatchStride = 0;
 
   bool operator==(const AttentionDescriptor& rhs) const;

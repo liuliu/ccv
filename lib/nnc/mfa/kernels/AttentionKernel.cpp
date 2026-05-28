@@ -22,6 +22,7 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
   attentionSinks = descriptor.attentionSinks;
+  slidingWindow = descriptor.slidingWindow;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
 
@@ -447,6 +448,7 @@ std::string AttentionKernel::createSource() const noexcept {
     source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
     source.SetValue("BLOCK_MASK_THREADS", std::to_string(blockMaskThreads));
+    source.SetValue("SLIDING_WINDOW", std::to_string(slidingWindow));
     source += R"(
 kernel void generate_attention_block_mask(
     device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
@@ -467,11 +469,21 @@ kernel void generate_attention_block_mask(
     const uint column = c_start + i - (i / c_extent) * c_extent;
 )";
     if (isCausal) {
-      source += R"(
+      if (slidingWindow > 0) {
+        source += R"(
+    const int causal_column_limit = int(row) + int(C) - int(R);
+    const int causal_column_begin = causal_column_limit + 1 - int({{SLIDING_WINDOW}});
+    if (int(column) > causal_column_limit || int(column) < causal_column_begin) {
+      continue;
+    }
+)";
+      } else {
+        source += R"(
     if (int(column) > int(row) + int(C) - int(R)) {
       continue;
     }
 )";
+      }
     }
     source += R"(
     const float value = (float)Mask_buf[tgid.z * Mask_batch_stride + row * C + column];
@@ -866,11 +878,12 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
 	  source.SetValue("SOFTMAX", softmax(false, masked));
 	  source.SetValue("ONLINE_REDUCE_SUM", onlineReduceSum());
 	  source.SetValue("PV", PV);
-	  source.SetValue("DECLARE_ACCUMULATION_STATE", masked ? "  bool has_accumulated = false;\n" : "");
-	  source.SetValue("FIRST_ACCUMULATION", masked ? "    const bool first_accumulation = !has_accumulated;\n" : "");
-	  source.SetValue("MARK_ACCUMULATED", masked ? "    has_accumulated = true;\n" : "");
-	  source.SetValue("R_LENGTH", parallelizationDimensionValue());
+  source.SetValue("DECLARE_ACCUMULATION_STATE", masked ? "  bool has_accumulated = false;\n" : "");
+  source.SetValue("FIRST_ACCUMULATION", masked ? "    const bool first_accumulation = !has_accumulated;\n" : "");
+  source.SetValue("MARK_ACCUMULATED", masked ? "    has_accumulated = true;\n" : "");
+  source.SetValue("R_LENGTH", parallelizationDimensionValue());
   source.SetValue("C_LENGTH", traversalDimensionValue());
+  source.SetValue("SLIDING_WINDOW", std::to_string(slidingWindow));
   if (isCausal) {
     source += R"(
 
@@ -878,6 +891,13 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
   const int causal_last_column = int(parallelization_group_offset) + int({{BLOCK_DIMENSIONS_PARALLELIZATION}}) - 1 + causal_column_offset;
   const uint traversal_end = causal_last_column < 0 ? 0 : min({{C_LENGTH}}, uint(causal_last_column) + 1);
 )";
+    if (slidingWindow > 0) {
+      source += R"(
+  const int causal_first_column_limit = int(parallelization_group_offset) + causal_column_offset;
+  const int causal_first_visible_column = max(0, causal_first_column_limit + 1 - int({{SLIDING_WINDOW}}));
+  const uint traversal_start = uint(causal_first_visible_column) / {{BLOCK_DIMENSIONS_TRAVERSAL}} * {{BLOCK_DIMENSIONS_TRAVERSAL}};
+)";
+    }
     source.SetValue("THREADGROUP_SIZE", std::to_string(threadgroupSize));
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
     source.SetValue("O_MEMORY_NAME", memoryName(AttentionOperand::O));
@@ -911,13 +931,22 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
   const uint traversal_end = {{C_LENGTH}};
 )";
   }
-	  source += R"(
+  if (slidingWindow > 0) {
+    source += R"(
+
+{{DECLARE_ACCUMULATION_STATE}}
+	  // Outer loop over the traversal dimension.
+	  for (uint c = traversal_start; c < traversal_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+	)";
+  } else {
+    source += R"(
 
 {{DECLARE_ACCUMULATION_STATE}}
 	  // Outer loop over the traversal dimension.
 	  for (uint c = 0; c < traversal_end; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 	)";
-	  if (masked) {
+  }
+  if (masked) {
 	    source += R"(
 	    const uchar mask_flags = Block_mask_buf[gid.x * K_block_tiles + c / {{BLOCK_DIMENSIONS_TRAVERSAL}}];
 	    if (mask_flags == 0 && c + {{BLOCK_DIMENSIONS_TRAVERSAL}} < traversal_end) {
@@ -3243,7 +3272,11 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
 	    source.SetValue("MASK_TERM", "");
 	  }
   if (isCausal) {
-    source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")");
+    if (slidingWindow > 0) {
+      source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(" + std::to_string(slidingWindow) + ")");
+    } else {
+      source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")");
+    }
   } else {
     source.SetValue("CAUSAL_VALID", "");
   }
@@ -3514,12 +3547,19 @@ std::string AttentionKernel::softmax(bool derivative, bool scoresAlreadyScaled) 
         } else if (valid && mask_flags == 2 && (float)Mask_buf[row * C + column] <= MASKED_THRESHOLD) {
           valid = false;
         })" : "";
+        std::string causalValidation;
+        if (isCausal) {
+          causalValidation = " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")";
+          if (slidingWindow > 0) {
+            causalValidation += " && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(" + std::to_string(slidingWindow) + ")";
+          }
+        }
         source.SetValue("VALIDATE_P", R"(
       #pragma clang loop unroll(full)
       for (ushort index = 0; index < 2; ++index) {
         const uint row = )" + unsafeParallelizationThreadOffsetValue() + R"(;
         const uint column = )" + traversalOffsetValue() + R"( + c_sram + morton_offset.x + index;
-        bool valid = row < )" + parallelizationDimensionValue() + " && column < " + traversalDimensionValue() + (isCausal ? (" && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")") : "") + R"(;
+        bool valid = row < )" + parallelizationDimensionValue() + " && column < " + traversalDimensionValue() + causalValidation + R"(;
         )" + maskValidation + R"(
         if (!valid) {
           P[index] = 0;

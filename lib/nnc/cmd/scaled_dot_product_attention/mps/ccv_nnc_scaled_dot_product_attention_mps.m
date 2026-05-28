@@ -372,7 +372,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
 			!weights &&
 			!bias;
-		if (sliding_window > 0 && (!use_neural_accelerators || use_quantized_attention))
+		if (sliding_window > 0 && use_quantized_attention)
 			return CCV_NNC_EXEC_INVALID;
 		int attention_is_batched = (batch_size > 1);
 		ccv_nnc_mfa_attention_params_t params = {

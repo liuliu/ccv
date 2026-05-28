@@ -14,6 +14,7 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
+  slidingWindow == rhs.slidingWindow &&
   maskBatchStride == rhs.maskBatchStride &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
@@ -46,6 +47,7 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.attentionSinks ? 1 : 0);
+  combine_32(seed, hash.slidingWindow);
   combine_32(seed, hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
@@ -131,9 +133,9 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
   };
 
   if (device && device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindow);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindow);
   }
 }
 

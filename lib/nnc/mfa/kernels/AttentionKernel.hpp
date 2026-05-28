@@ -47,6 +47,8 @@ struct AttentionKernel {
 
   bool attentionSinks;
 
+  uint32_t slidingWindow;
+
   bool disableAsyncCopy;
 
   unsigned short threadgroupMemoryAllocation;

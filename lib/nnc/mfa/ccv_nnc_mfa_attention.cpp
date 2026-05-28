@@ -54,7 +54,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     CCV_NNC_MFA_PRECONDITION(params.type == 0);
     CCV_NNC_MFA_PRECONDITION(params.is_causal);
     CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
-    CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators);
     CCV_NNC_MFA_PRECONDITION(!params.use_quantized_attention);
   }
   {
@@ -593,7 +592,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       CCV_NNC_MFA_PRECONDITION(!params.is_causal);
       CCV_NNC_MFA_PRECONDITION(!params.masked);
     }
-    CCV_NNC_MFA_PRECONDITION(hash.sliding_window == 0);
     AttentionDescriptor attentionDesc;
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
     attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
@@ -613,6 +611,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.masked = hash.masked;
     attentionDesc.isVarlen = hash.is_varlen;
     attentionDesc.attentionSinks = hash.attention_sinks;
+    attentionDesc.slidingWindow = hash.sliding_window;
     if (hash.masked && batch_sizes[1] > 1) {
       attentionDesc.maskBatchStride = hash.R * hash.C;
     }

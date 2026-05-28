@@ -5117,6 +5117,14 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	expected = 0;
 	actual = 0;
 	max_idx = 0;
+	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 1, CCV_NNC_GEMM_16F, 1, 17, 23, 8, 4, 64, 1, 8, 4, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0, "generic MFA sliding-window grouped-query per-head sink should match CPU reference (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
+
+	max_abs = 0;
+	max_relative = 0;
+	expected = 0;
+	actual = 0;
+	max_idx = 0;
 	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F, 1, 23, 23, 8, 8, 64, 1, 8, 1, 5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "NA sliding-window size 1 per-head sink should match CPU reference (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 
