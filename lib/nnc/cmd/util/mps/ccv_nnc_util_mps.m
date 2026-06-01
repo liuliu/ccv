@@ -279,12 +279,40 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			if (use_mfa && a->info.format == b->info.format && a->info.datatype == b->info.datatype &&
 				CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY &&
 				CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY &&
-				CCV_IS_TENSOR_VIEW(a) && CCV_IS_TENSOR_CONTIGUOUS(b) &&
 				ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info))
 			{
 				const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-				if (a_nd == 2 && a->info.dim[0] == b->info.dim[0] && a->info.dim[1] == b->info.dim[1] &&
-					a->info.dim[0] > 0 && a->info.dim[1] > 0 && a->stride[1] == 1 && a->stride[0] >= a->info.dim[1])
+				const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+				uint32_t rows = 0, cols = 0, source_row_stride = 0, destination_row_stride = 0;
+				if (a_nd == 2 && b_nd == 2 && a->info.dim[0] == b->info.dim[0] && a->info.dim[1] == b->info.dim[1] &&
+					a->info.dim[0] > 0 && a->info.dim[1] > 0)
+				{
+					if (CCV_IS_TENSOR_VIEW(a) && CCV_IS_TENSOR_CONTIGUOUS(b) &&
+						a->stride[1] == 1 && a->stride[0] >= a->info.dim[1])
+					{
+						rows = (uint32_t)a->info.dim[0];
+						cols = (uint32_t)a->info.dim[1];
+						source_row_stride = (uint32_t)a->stride[0];
+						destination_row_stride = cols;
+					} else if (CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_CONTIGUOUS(b) &&
+						b->stride[1] == 1 && b->stride[0] >= b->info.dim[1])
+					{
+						if (CCV_IS_TENSOR_VIEW(a))
+						{
+							if (a->stride[1] == 1 && a->stride[0] >= a->info.dim[1])
+								source_row_stride = (uint32_t)a->stride[0];
+						} else {
+							source_row_stride = (uint32_t)a->info.dim[1];
+						}
+						if (source_row_stride > 0)
+						{
+							rows = (uint32_t)a->info.dim[0];
+							cols = (uint32_t)a->info.dim[1];
+							destination_row_stride = (uint32_t)b->stride[0];
+						}
+					}
+				}
+				if (rows > 0)
 				{
 					uint32_t mtl_data_type = UINT32_MAX;
 					switch (a->info.datatype) {
@@ -315,9 +343,10 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 						mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 						ccv_nnc_mfa_strided_copy_params_t params = {
 							.data_type = mtl_data_type,
-							.rows = (uint32_t)a->info.dim[0],
-							.cols = (uint32_t)a->info.dim[1],
-							.source_row_stride = (uint32_t)a->stride[0],
+							.rows = rows,
+							.cols = cols,
+							.source_row_stride = source_row_stride,
+							.destination_row_stride = destination_row_stride,
 						};
 						mtl_buffer_t* tensors[3] = {
 							buffer_a,

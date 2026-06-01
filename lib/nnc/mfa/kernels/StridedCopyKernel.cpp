@@ -4,6 +4,7 @@
 StridedCopyKernel::StridedCopyKernel(StridedCopyKernelDescriptor descriptor, MTL::Device* const device)
 {
 	vectorized = descriptor.vectorized;
+	destinationStrided = descriptor.destinationStrided;
 	memoryPrecision = descriptor.memoryPrecision;
 
 	const std::string source = createSource();
@@ -28,6 +29,7 @@ std::string StridedCopyKernel::createSource() const noexcept
 {
 	std::string shader = createConstants() + "\n";
 	if (vectorized) {
+		const char* const destinationIndex = destinationStrided ? "row * destination_row_stride_units + col" : "x";
 		shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -43,10 +45,14 @@ kernel void strided_copy(
     return;
   const uint row = x / col_units;
   const uint col = x - row * col_units;
-  destination[x] = source[row * source_row_stride_units + col];
+)";
+		shader += "  destination[";
+		shader += destinationIndex;
+		shader += R"(] = source[row * source_row_stride_units + col];
 }
 		)";
 	} else {
+		const char* const destinationIndex = destinationStrided ? "row * destination_row_stride + col" : "x";
 		shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -62,7 +68,10 @@ kernel void strided_copy(
     return;
   const uint row = x / cols;
   const uint col = x - row * cols;
-  destination[x] = source[row * source_row_stride + col];
+)";
+		shader += "  destination[";
+		shader += destinationIndex;
+		shader += R"(] = source[row * source_row_stride + col];
 }
 		)";
 	}
@@ -89,10 +98,14 @@ std::string StridedCopyKernel::createConstants() const noexcept
 	{
 		defines += "constant uint col_units [[function_constant(0)]];\n";
 		defines += "constant uint source_row_stride_units [[function_constant(1)]];\n";
+		if (destinationStrided)
+			defines += "constant uint destination_row_stride_units [[function_constant(2)]];\n";
 	} else {
 		defines += "constant uint cols [[function_constant(0)]];\n";
 		defines += "constant uint source_row_stride [[function_constant(1)]];\n";
+		if (destinationStrided)
+			defines += "constant uint destination_row_stride [[function_constant(2)]];\n";
 	}
-	defines += "constant uint element_count [[function_constant(2)]];\n";
+	defines += destinationStrided ? "constant uint element_count [[function_constant(3)]];\n" : "constant uint element_count [[function_constant(2)]];\n";
 	return defines;
 }

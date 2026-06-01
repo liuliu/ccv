@@ -9,6 +9,8 @@ struct StridedCopyKernel {
 
 	uint8_t vectorized;
 
+	uint8_t destinationStrided;
+
 	GEMMOperandPrecision memoryPrecision;
 
 	MTL::Size threadgroupSize;

@@ -11,7 +11,9 @@ bool StridedCopyDescriptor::operator==(const StridedCopyDescriptor& rhs) const
 	vectorized == rhs.vectorized &&
 	rows == rhs.rows &&
 	cols == rhs.cols &&
-	sourceRowStride == rhs.sourceRowStride;
+	sourceRowStride == rhs.sourceRowStride &&
+	destinationStrided == rhs.destinationStrided &&
+	(!destinationStrided || destinationRowStride == rhs.destinationRowStride);
 }
 
 std::size_t std::hash<StridedCopyDescriptor>::operator()(const StridedCopyDescriptor& hash) const noexcept
@@ -21,6 +23,9 @@ std::size_t std::hash<StridedCopyDescriptor>::operator()(const StridedCopyDescri
 	combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.vectorized }));
 	combine_64(seed, pack_64(simd::uint2 { hash.rows, hash.cols }));
 	combine_32(seed, hash.sourceRowStride);
+	combine_32(seed, hash.destinationStrided);
+	if (hash.destinationStrided)
+		combine_32(seed, hash.destinationRowStride);
 	return seed;
 }
 
@@ -40,6 +45,7 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 
 	StridedCopyKernelDescriptor kernelDesc;
 	kernelDesc.vectorized = vectorized;
+	kernelDesc.destinationStrided = destinationStrided;
 	kernelDesc.memoryPrecision = memoryPrecision;
 
 	auto createPipeline =
@@ -53,12 +59,25 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 			elementCount = rows * colUnits;
 			constants->setConstantValue(&colUnits, MTL::DataTypeUInt, NS::UInteger(0));
 			constants->setConstantValue(&sourceRowStrideUnits, MTL::DataTypeUInt, NS::UInteger(1));
-			constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
+			if (destinationStrided)
+			{
+				const uint32_t destinationRowStrideUnits = destinationRowStride / 4;
+				constants->setConstantValue(&destinationRowStrideUnits, MTL::DataTypeUInt, NS::UInteger(2));
+				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
+			} else {
+				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
+			}
 		} else {
 			elementCount = rows * cols;
 			constants->setConstantValue(&cols, MTL::DataTypeUInt, NS::UInteger(0));
 			constants->setConstantValue(&sourceRowStride, MTL::DataTypeUInt, NS::UInteger(1));
-			constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
+			if (destinationStrided)
+			{
+				constants->setConstantValue(&destinationRowStride, MTL::DataTypeUInt, NS::UInteger(2));
+				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
+			} else {
+				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
+			}
 		}
 
 		NS::String* swiftName = NS::String::string("strided_copy", NS::UTF8StringEncoding);

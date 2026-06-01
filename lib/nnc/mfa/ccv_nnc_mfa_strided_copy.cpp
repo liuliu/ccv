@@ -15,6 +15,7 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
 	CCV_NNC_MFA_PRECONDITION(tensors[0] != tensors[1]);
 	CCV_NNC_MFA_PRECONDITION(params.rows > 0 && params.cols > 0);
+	CCV_NNC_MFA_PRECONDITION(params.source_row_stride >= params.cols && params.destination_row_stride >= params.cols);
 
 	StridedCopyDescriptor descriptor;
 	if (params.data_type == MTL::DataTypeHalf) {
@@ -28,9 +29,12 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 	descriptor.rows = params.rows;
 	descriptor.cols = params.cols;
 	descriptor.sourceRowStride = params.source_row_stride;
+	descriptor.destinationRowStride = params.destination_row_stride;
+	descriptor.destinationStrided = params.destination_row_stride != params.cols;
 	const size_t dataTypeSize = params.data_type == MTL::DataTypeFloat ? 4 : 2;
 	descriptor.vectorized = (params.cols % 4 == 0 &&
 		params.source_row_stride % 4 == 0 &&
+		params.destination_row_stride % 4 == 0 &&
 		tensor_offsets[0] % (dataTypeSize * 4) == 0 &&
 		tensor_offsets[1] % (dataTypeSize * 4) == 0) ? 1 : 0;
 
