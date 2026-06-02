@@ -290,6 +290,8 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 	ssize_t data_size;
 	if (CCV_GET_DATA_TYPE(params.datatype) == CCV_QX)
 	{
+		if (count <= 0)
+			return 0;
 		const int qx_datatype = (params.datatype & 0xff) << 12;
 		const int qx_subtype = params.datatype & 0xf00;
 		if (qx_subtype >= 0x400 && qx_subtype <= 0x800)
