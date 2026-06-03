@@ -27,7 +27,7 @@ static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_p
 	const size_t data_size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, rows * cols, cols);
 	const size_t tensor_data_size = ccv_nnc_tensor_data_size_without_padding(params);
 	uint8_t* const compressed = (uint8_t*)ccmalloc(data_size);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, format, imatrix, compressed, data_size);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, format, imatrix, cols, compressed, data_size);
 	*size_matches = (data_size == output_size && data_size == tensor_data_size);
 	float dequantized[rows * cols];
 	ccv_nnc_dequantize_8i_rowwise_x(compressed, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, cols, format, dequantized, rows * cols);
@@ -61,7 +61,7 @@ TEST_CASE("quantize float to row-wise int8 and dequantize on CPU losslessly")
 		for (j = 0; j < 8; j++)
 			values[i * 8 + j] = q[j] * scales[i];
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 4, 8)), 0);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
 	REQUIRE_EQ(144, output_size, "output size should match");
 	float dequantized[32];
 	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 32);
@@ -76,7 +76,7 @@ TEST_CASE("quantize float to row-wise int8 with lower MSE than absmax scale")
 		-1.533835, -0.690122, -0.371144, -0.208764
 	};
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 1, 8)), 0);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, 0,
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, 0, 0,
 		tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
 	float dequantized[8];
 	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 8);
@@ -105,9 +105,9 @@ TEST_CASE("quantize float to row-wise int8 with imatrix-weighted scale")
 	float imatrix[8] = {0, 1, 1, 1, 1, 1, 1, 1};
 	ccv_nnc_tensor_t* const unweighted_tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 1, 8)), 0);
 	ccv_nnc_tensor_t* const weighted_tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 1, 8)), 0);
-	const size_t unweighted_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, 0,
+	const size_t unweighted_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, 0, 0,
 		unweighted_tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(unweighted_tensor->info));
-	const size_t weighted_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, imatrix,
+	const size_t weighted_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 8, 8, imatrix, 8,
 		weighted_tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(weighted_tensor->info));
 	float unweighted[8];
 	float weighted[8];
@@ -126,6 +126,38 @@ TEST_CASE("quantize float to row-wise int8 with imatrix-weighted scale")
 	REQUIRE(weighted_sse < unweighted_sse * 0.25, "imatrix-weighted row scale should reduce weighted MSE");
 	ccv_nnc_tensor_free(unweighted_tensor);
 	ccv_nnc_tensor_free(weighted_tensor);
+}
+
+TEST_CASE("quantize float to row-wise int8 with packed imatrix slices")
+{
+	float values[16] = {
+		-49.257720, 0.349063, 0.214409, -0.305378,
+		-0.365815, 0.553977, -0.809149, 0.585139,
+		-49.257720, 0.349063, 0.214409, -0.305378,
+		-0.365815, 0.553977, -0.809149, 0.585139
+	};
+	float imatrix[16] = {
+		1, 1, 1, 1, 1, 1, 1, 1,
+		0, 1, 1, 1, 1, 1, 1, 1
+	};
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 2, 8)), 0);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16, 8, imatrix, 16,
+		tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	REQUIRE_EQ(output_size, ccv_nnc_tensor_data_size_without_padding(tensor->info), "packed imatrix quantization should fit");
+	float dequantized[16];
+	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 16);
+	double first_row_sse = 0;
+	double second_row_sse = 0;
+	int i;
+	for (i = 1; i < 8; i++)
+	{
+		const double d0 = values[i] - dequantized[i];
+		const double d1 = values[8 + i] - dequantized[8 + i];
+		first_row_sse += d0 * d0;
+		second_row_sse += d1 * d1;
+	}
+	REQUIRE(second_row_sse < first_row_sse * 0.25, "second row should use the second imatrix slice");
+	ccv_nnc_tensor_free(tensor);
 }
 
 TEST_CASE("quantize float to row-wise-x int8 formats and dequantize on CPU")
@@ -179,7 +211,7 @@ TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")
 	ccv_float_to_bfloat(values_f32, values_bf16, 32);
 	memcpy(expected_bf16, values_bf16, sizeof(expected_bf16));
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, 4, 8)), 0);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values_bf16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values_bf16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
 	REQUIRE_EQ(136, output_size, "output size should match");
 	uint16_t dequantized[32];
 	ccv_nnc_dequantize_8i_rowwise(tensor->data.u8, CCV_16BF, CCV_TENSOR_CPU_MEMORY, output_size, 8, dequantized, 32);
@@ -198,7 +230,7 @@ TEST_CASE("quantize float to row-wise int8 and dequantize on GPU losslessly")
 		for (j = 0; j < 8; j++)
 			values[i * 8 + j] = q[j] * scales[i];
 	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, 4, 8)), 0);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 8, 0, 0, tensor->data.u8, ccv_nnc_tensor_data_size_without_padding(tensor->info));
 	ccv_nnc_tensor_t* const g_tensor = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 32F, 4, 8)), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(g_tensor), 0);
 	ccv_nnc_tensor_t* const gv_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4, 8), 0);

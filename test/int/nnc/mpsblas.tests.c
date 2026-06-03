@@ -487,7 +487,7 @@ static int _mps_forward_ane_rowwise_gemm_stream_sync_validate(double* const max_
 	_mps_forward_ane_stream_fill_half(hlhs_new->data.f16, m_dim, writer_k, 1, 1);
 	_mps_forward_ane_stream_fill_half(hrhs_new->data.f16, k_dim, writer_k, 1, 0);
 	_mps_forward_na_gemm_fill_half(hw_dense->data.f16, n_dim, k_dim, 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw_dense->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw_dense->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 	{
 		ccv_nnc_stream_context_free(stream_context);
@@ -801,7 +801,7 @@ static void _mps_forward_scaled_gemm_quantized_reference(const int datatype, con
 	const ccv_nnc_tensor_param_t qparams = ccv_nnc_tensor_8i_rowwise(params);
 	const size_t qsize = ccv_nnc_tensor_data_size_without_padding(qparams);
 	uint8_t* const qdata = (uint8_t*)ccmalloc(qsize);
-	const size_t encoded = ccv_nnc_quantize_8i_rowwise(data, datatype, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, qdata, qsize);
+	const size_t encoded = ccv_nnc_quantize_8i_rowwise(data, datatype, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, 0, qdata, qsize);
 	void* dequantized = 0;
 	if (datatype == CCV_16F || datatype == CCV_16BF)
 		dequantized = ccmalloc(sizeof(uint16_t) * rows * cols);
@@ -953,7 +953,7 @@ static int _mps_forward_scaled_gemm_validate_shape(const int datatype, const int
 		_mps_forward_scaled_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
 	void* const w_dense = ccmalloc(CCV_GET_DATA_TYPE_SIZE(datatype) * n_dim * k_dim);
 	_mps_forward_scaled_gemm_fill_matrix(datatype, w_dense, n_dim, k_dim, 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w_dense, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w_dense, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 	{
 		ccfree(w_dense);
@@ -1111,7 +1111,7 @@ static int _mps_forward_scaled_gemm_validate_batched(const int datatype, const i
 		_mps_forward_scaled_gemm_fill_matrix_batched(datatype, w_dense, batch_dim, n_dim, k_dim, 0);
 	else
 		_mps_forward_scaled_gemm_fill_matrix(datatype, w_dense, n_dim, k_dim, 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w_dense, datatype, CCV_TENSOR_CPU_MEMORY, w_batch_dim * n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w_dense, datatype, CCV_TENSOR_CPU_MEMORY, w_batch_dim * n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 	{
 		ccfree(w_dense);
@@ -1264,7 +1264,7 @@ static int _mps_forward_scaled_gemm_compare_dense_format(const int datatype, con
 	_mps_forward_scaled_gemm_fill_matrix(datatype, hwd->data.u8, n_dim, k_dim, 0);
 	if (use_bias)
 		_mps_forward_scaled_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
-	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, format, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
 	if (format)
@@ -1417,7 +1417,7 @@ static int _mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(const i
 		_mps_forward_scaled_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
 		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, n_dim, bias_ref);
 	}
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
 	if (use_bias)
@@ -1580,7 +1580,7 @@ static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const 
 	}
 	memcpy(hindices->data.i32, indices_data, sizeof(int) * segments);
 	memcpy(hcounts->data.i32, counts_data, sizeof(int) * segments);
-	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, format, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
 	if (format)
@@ -3032,7 +3032,7 @@ TEST_CASE("mps dequantize row-wise 8i half precision")
 	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
 	ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, rows * cols);
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
 	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f16, rows * cols);
@@ -3068,7 +3068,7 @@ TEST_CASE("mps dequantize row-wise 8i float precision")
 	for (i = 0; i < rows * cols; i++)
 		source->data.f32[i] = ((i * 17) % 53 - 26) / 64.0f;
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(32F, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
 	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f32, rows * cols);
@@ -3099,7 +3099,7 @@ TEST_CASE("mps dequantize row-wise 8i bfloat precision")
 	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
 	ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, rows * cols);
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, rows, cols)), 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
 	ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16BF, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f16, rows * cols);
@@ -3145,7 +3145,7 @@ TEST_CASE("mps dequantize row-wise 8i bfloat precision large shapes")
 		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
 		ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, rows * cols);
 		ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16BF, rows, cols)), 0);
-		const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, (size_t)rows * cols, cols, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise(source->data.f16, CCV_16BF, CCV_TENSOR_CPU_MEMORY, (size_t)rows * cols, cols, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "quantized row-wise 8i size should match");
 		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16BF, rows, cols), 0);
 		ccv_nnc_dequantize_8i_rowwise(q->data.u8, CCV_16BF, CCV_TENSOR_CPU_MEMORY, qsize, cols, expected->data.f16, (size_t)rows * cols);
@@ -6735,7 +6735,7 @@ TEST_CASE("scaled dot product attention + row-wise 8i unify head with mps")
 		hw_dense->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
 	for (i = 0; i < K; i++)
 		hbias->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw_dense->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, K * K, K, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw_dense->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, K * K, K, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(hwq->info), "row-wise 8i weight quantization should fit the output tensor");
 	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);
 	ccv_nnc_tensor_t* const gk = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, H, D), 0);

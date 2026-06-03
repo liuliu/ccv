@@ -202,6 +202,27 @@ static inline double _ccv_nnc_8i_rowwise_weight(const float* const imatrix, cons
 	return imatrix ? ccv_max((double)imatrix[j], 0.) : 1.;
 }
 
+static inline int _ccv_nnc_8i_rowwise_imatrix_is_valid(const float* const imatrix, const size_t imatrix_length, const size_t row_length, const size_t row_count)
+{
+	if (!imatrix)
+		return 1;
+	if (imatrix_length < row_length || imatrix_length % row_length != 0)
+		return 0;
+	const size_t imatrix_slices = imatrix_length / row_length;
+	return imatrix_slices > 0 && row_count % imatrix_slices == 0;
+}
+
+static inline const float* _ccv_nnc_8i_rowwise_imatrix_for_row(const float* const imatrix, const size_t imatrix_length, const size_t row_length, const size_t row_count, const size_t row_idx)
+{
+	if (!imatrix)
+		return 0;
+	const size_t imatrix_slices = imatrix_length / row_length;
+	if (imatrix_slices == 1)
+		return imatrix;
+	const size_t rows_per_slice = row_count / imatrix_slices;
+	return imatrix + (row_idx / rows_per_slice) * row_length;
+}
+
 typedef struct {
 	int q[32];
 	int q8[32];
@@ -1117,13 +1138,15 @@ static void _ccv_nnc_8i_rowwise_packed_decode_group(const uint8_t* const input, 
 	}
 }
 
-CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, void* output, const size_t output_length)
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 	assert(row_length > 0);
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
+	if (!_ccv_nnc_8i_rowwise_imatrix_is_valid(imatrix, imatrix_length, row_length, row_count))
+		return 0;
 	const size_t group_size = _ccv_nnc_8i_rowwise_x_group_size(format);
 	const int group_bits = _ccv_nnc_8i_rowwise_x_group_bits(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
@@ -1178,13 +1201,14 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			double* const weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
 			int* const q8 = (int*)ccmalloc(sizeof(int) * padded_row_length);
 			const size_t row_start = i * row_length;
+			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, i);
 			_ccv_nnc_8i_rowwise_packed_read_row(input, datatype, row_start, row_length, padded_row_length, row);
 			double max_abs = 0;
 			size_t j;
 			for (j = 0; j < row_length; j++)
 			{
 				max_abs = ccv_max(max_abs, fabs(row[j]));
-				weights[j] = _ccv_nnc_8i_rowwise_weight(imatrix, j);
+				weights[j] = _ccv_nnc_8i_rowwise_weight(row_imatrix, j);
 			}
 			for (; j < padded_row_length; j++)
 				weights[j] = 0;
@@ -1561,13 +1585,15 @@ static double _ccv_nnc_quantize_8i_rowwise_64f(const double* const row, const si
 	return best_scale;
 }
 
-CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const float* const imatrix, void* output, const size_t output_length)
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const float* const imatrix, const size_t imatrix_length, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 	assert(row_length > 0);
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
+	if (!_ccv_nnc_8i_rowwise_imatrix_is_valid(imatrix, imatrix_length, row_length, row_count))
+		return 0;
 	const size_t scale_offset = (input_length + 127) & -128;
 	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	assert(output_length >= scale_offset + scale_size);
@@ -1579,7 +1605,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16f(f16 + row_start, row_length, imatrix, q + row_start);
+			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, (size_t)i);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16f(f16 + row_start, row_length, row_imatrix, q + row_start);
 			ccv_float_to_half_precision(&scale_f, scales + i, 1);
 		} parallel_endfor
 	} else if (datatype == CCV_16BF) {
@@ -1587,7 +1614,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		uint16_t* const scales = (uint16_t*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16bf(bf16 + row_start, row_length, imatrix, q + row_start);
+			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, (size_t)i);
+			const float scale_f = _ccv_nnc_quantize_8i_rowwise_16bf(bf16 + row_start, row_length, row_imatrix, q + row_start);
 			ccv_float_to_bfloat(&scale_f, scales + i, 1);
 		} parallel_endfor
 	} else if (datatype == CCV_32F) {
@@ -1595,7 +1623,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		float* const scales = (float*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			scales[i] = _ccv_nnc_quantize_8i_rowwise_32f(f32 + row_start, row_length, imatrix, q + row_start);
+			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, (size_t)i);
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_32f(f32 + row_start, row_length, row_imatrix, q + row_start);
 		} parallel_endfor
 	} else {
 		assert(datatype == CCV_64F);
@@ -1603,7 +1632,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise(const void* input, const int
 		double* const scales = (double*)(u8 + scale_offset);
 		parallel_for(i, (int)row_count) {
 			const size_t row_start = (size_t)i * row_length;
-			scales[i] = _ccv_nnc_quantize_8i_rowwise_64f(f64 + row_start, row_length, imatrix, q + row_start);
+			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, (size_t)i);
+			scales[i] = _ccv_nnc_quantize_8i_rowwise_64f(f64 + row_start, row_length, row_imatrix, q + row_start);
 		} parallel_endfor
 	}
 	return scale_offset + scale_size;
