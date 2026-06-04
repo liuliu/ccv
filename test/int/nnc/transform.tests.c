@@ -36,6 +36,37 @@ TEST_CASE("data conversion from float to half precision")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("mps data conversion skips empty tensors")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const empty_a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 0, 128), 0);
+	ccv_nnc_tensor_t* const empty_b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 128), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 128), 0);
+	int i;
+	for (i = 0; i < 128; i++)
+		ha->data.f32[i] = (float)i / 128;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 128), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 128), 0);
+	ccv_nnc_cmd_t move = CMD_DATA_TRANSFER_FORWARD();
+	move.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_t cast = CMD_DATATYPE_CONVERSION_FORWARD();
+	cast.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cast, ccv_nnc_no_hint, 0, TENSOR_LIST(empty_a, a), TENSOR_LIST(empty_b, b), 0), "empty datatype conversion should be skipped");
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 128), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 128), 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(expected), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(short, (short*)expected->data.f16, (short*)hb->data.f16, 128, 1, "non-empty conversion should still run");
+	ccv_nnc_tensor_free(empty_a);
+	ccv_nnc_tensor_free(empty_b);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(expected);
+}
+
 TEST_CASE("data conversion from double to half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF));

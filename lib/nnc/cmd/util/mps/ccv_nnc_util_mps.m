@@ -489,6 +489,20 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 {
 	assert(output_size <= input_size);
 	int i;
+	int executable_output_size = 0;
+	for (i = 0; i < output_size; i++)
+	{
+		const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[i];
+		ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
+		assert(a != b); // Cannot do inplace transform.
+		assert(a->info.format == b->info.format);
+		assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
+		const size_t length = ccv_nnc_tensor_count(a->info);
+		assert(length == ccv_nnc_tensor_count(b->info));
+		executable_output_size += length > 0;
+	}
+	if (executable_output_size == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;
@@ -505,6 +519,8 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			assert(a != b); // Cannot do inplace transform.
 			assert(a->info.format == b->info.format);
 			assert(CCV_TENSOR_GET_DEVICE_ID(a->info.type) == CCV_TENSOR_GET_DEVICE_ID(b->info.type));
+			if (ccv_nnc_tensor_count(a->info) == 0)
+				continue;
 
 			if (use_mfa) {
 				if (a->info.datatype != CCV_16F && a->info.datatype != CCV_32F && a->info.datatype != CCV_16BF) {
@@ -532,6 +548,9 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			{
 				const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 				ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
+				const size_t length = ccv_nnc_tensor_count(a->info);
+				if (length == 0)
+					continue;
 				uint32_t mtl_original_data_type = UINT32_MAX;
 				uint32_t mtl_data_type = UINT32_MAX;
 				if (use_mfa) {
@@ -574,7 +593,6 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 						}
 					}
 				}
-				const size_t length = ccv_nnc_tensor_count(a->info);
 				ccv_nnc_mfa_cast_params_t params = {
 					.original_data_type = mtl_original_data_type,
 					.data_type = mtl_data_type,
@@ -600,6 +618,8 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			{
 				const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 				ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
+				if (ccv_nnc_tensor_count(a->info) == 0)
+					continue;
 				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 				if (CCV_IS_TENSOR_VIEW(a)) // Only allocate on-demand MPSGraph if a is a tensor view.
 				{
