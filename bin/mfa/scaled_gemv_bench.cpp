@@ -112,6 +112,7 @@ constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
 
 constexpr FormatInfo kPackedFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_Q5_K, "q5_k" },
+  { CCV_NNC_QX_8I_ROWWISE_Q6_K, "q6_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
@@ -260,6 +261,7 @@ uint32_t rowwise_x_group_size(const uint32_t format)
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
       return 32;
+    case CCV_NNC_QX_8I_ROWWISE_Q6_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 8;
@@ -273,6 +275,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
       return 88;
+    case CCV_NNC_QX_8I_ROWWISE_Q6_K:
+      return 52;
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
       return 72;
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -320,6 +324,13 @@ std::vector<uint8_t> make_packed_rowwise_x(
     for (uint32_t g = 0; g < groups; ++g) {
       const size_t metadata_bit = (size_t)g * group_bits + 32;
       for (uint32_t b = 0; b < 10; ++b)
+        packed[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
+    }
+  } else if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
+    const uint32_t groups = rows * groups_per_row;
+    for (uint32_t g = 0; g < groups; ++g) {
+      const size_t metadata_bit = (size_t)g * group_bits + 48;
+      for (uint32_t b = 0; b < 4; ++b)
         packed[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
     }
   }
@@ -966,7 +977,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q5_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }

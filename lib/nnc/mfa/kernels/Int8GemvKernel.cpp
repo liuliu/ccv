@@ -200,6 +200,530 @@ kernel void int8_gemv(
 )";
 }
 
+static void append_q6_helpers(std::string& shader)
+{
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+inline ulong q6_payload(device const uchar* data, const uint group_index)
+{
+  const uint bit_offset = group_index * 52u;
+  const uint byte_offset = bit_offset >> 3;
+  const uint shift = bit_offset & 7u;
+  const ulong value =
+    (ulong)data[byte_offset] |
+    ((ulong)data[byte_offset + 1] << 8) |
+    ((ulong)data[byte_offset + 2] << 16) |
+    ((ulong)data[byte_offset + 3] << 24) |
+    ((ulong)data[byte_offset + 4] << 32) |
+    ((ulong)data[byte_offset + 5] << 40) |
+    ((ulong)data[byte_offset + 6] << 48);
+  return value >> shift;
+}
+
+inline ulong q6_pair_payload0(device const uchar* p)
+{
+  return
+    (ulong)p[0] |
+    ((ulong)p[1] << 8) |
+    ((ulong)p[2] << 16) |
+    ((ulong)p[3] << 24) |
+    ((ulong)p[4] << 32) |
+    ((ulong)p[5] << 40) |
+    ((ulong)p[6] << 48);
+}
+
+inline ulong q6_pair_payload1(device const uchar* p)
+{
+  const ulong value =
+    (ulong)p[6] |
+    ((ulong)p[7] << 8) |
+    ((ulong)p[8] << 16) |
+    ((ulong)p[9] << 24) |
+    ((ulong)p[10] << 32) |
+    ((ulong)p[11] << 40) |
+    ((ulong)p[12] << 48);
+  return value >> 4;
+}
+
+inline float4 q6_values(const ulong payload, const uint lane)
+{
+  const uint4 q = uint4(
+    (uint)((payload >> ((lane + 0u) * 6u)) & 63ul),
+    (uint)((payload >> ((lane + 1u) * 6u)) & 63ul),
+    (uint)((payload >> ((lane + 2u) * 6u)) & 63ul),
+    (uint)((payload >> ((lane + 3u) * 6u)) & 63ul));
+  return float4(int4(q << 26u) >> 26);
+}
+
+inline float q2_signed_value(const uint q)
+{
+  return (q & 2u) ? (float)((int)q - 4) : (float)q;
+}
+)";
+}
+
+static void append_q6_m3_kernel(std::string& shader, const bool fusedBias)
+{
+  shader += R"(
+inline float2 q6_dot2_payload(const ulong payload, const float4 y00, const float4 y01, const float4 y10, const float4 y11)
+{
+  const float m = (float)(((payload >> 48u) & 3ul) + 1ul);
+  const float b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  const float4 v0 = q6_values(payload, 0) * m + float4(b);
+  const float4 v1 = q6_values(payload, 4) * m + float4(b);
+  return float2(
+    dot(v0, y00) + dot(v1, y01),
+    dot(v0, y10) + dot(v1, y11));
+}
+
+inline float q6_dot_payload(const ulong payload, const float4 y0, const float4 y1)
+{
+  const float m = (float)(((payload >> 48u) & 3ul) + 1ul);
+  const float b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  const float4 v0 = q6_values(payload, 0) * m + float4(b);
+  const float4 v1 = q6_values(payload, 4) * m + float4(b);
+  return dot(v0, y0) + dot(v1, y1);
+}
+
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+  if (fusedBias) {
+    shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+  }
+  shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+  shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+  shader += R"(;
+  constexpr uint S = )";
+  shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+  shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  device const real4* y0 = (device const real4*)src1;
+  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y2 = (device const real4*)(src1 + ncols * 2);
+  device const real* scales = (device const real*)(src0 + scale_offset);
+  threadgroup float partials[6][32];
+
+  float sum00 = 0;
+  float sum01 = 0;
+  float sum10 = 0;
+  float sum11 = 0;
+  float sum20 = 0;
+  float sum21 = 0;
+  const uint group_stride = S * 32;
+  if ((groups_per_row & 1u) == 0u) {
+    const uint pairs_per_row = groups_per_row >> 1;
+    for (uint g = sgitg * 32 + tiisg; g < pairs_per_row; g += group_stride) {
+      const uint yv_base = g * 4;
+      const float4 y00 = float4(y0[yv_base + 0]);
+      const float4 y01 = float4(y0[yv_base + 1]);
+      const float4 y02 = float4(y0[yv_base + 2]);
+      const float4 y03 = float4(y0[yv_base + 3]);
+      const float4 y10 = float4(y1[yv_base + 0]);
+      const float4 y11 = float4(y1[yv_base + 1]);
+      const float4 y12 = float4(y1[yv_base + 2]);
+      const float4 y13 = float4(y1[yv_base + 3]);
+      const float4 y20 = float4(y2[yv_base + 0]);
+      const float4 y21 = float4(y2[yv_base + 1]);
+      const float4 y22 = float4(y2[yv_base + 2]);
+      const float4 y23 = float4(y2[yv_base + 3]);
+      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      const ulong payload00 = q6_pair_payload0(p0);
+      const ulong payload01 = q6_pair_payload1(p0);
+      const float2 dot00 = q6_dot2_payload(payload00, y00, y01, y10, y11);
+      const float2 dot01 = q6_dot2_payload(payload01, y02, y03, y12, y13);
+      sum00 += dot00.x + dot01.x;
+      sum10 += dot00.y + dot01.y;
+      sum20 += q6_dot_payload(payload00, y20, y21) + q6_dot_payload(payload01, y22, y23);
+      if (active1) {
+        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        const ulong payload10 = q6_pair_payload0(p1);
+        const ulong payload11 = q6_pair_payload1(p1);
+        const float2 dot10 = q6_dot2_payload(payload10, y00, y01, y10, y11);
+        const float2 dot11 = q6_dot2_payload(payload11, y02, y03, y12, y13);
+        sum01 += dot10.x + dot11.x;
+        sum11 += dot10.y + dot11.y;
+        sum21 += q6_dot_payload(payload10, y20, y21) + q6_dot_payload(payload11, y22, y23);
+      }
+    }
+  } else {
+    for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
+      const uint yv_base = g * 2;
+      const float4 y00 = float4(y0[yv_base + 0]);
+      const float4 y01 = float4(y0[yv_base + 1]);
+      const float4 y10 = float4(y1[yv_base + 0]);
+      const float4 y11 = float4(y1[yv_base + 1]);
+      const float4 y20 = float4(y2[yv_base + 0]);
+      const float4 y21 = float4(y2[yv_base + 1]);
+      const ulong payload0 = q6_payload(src0, (rb + 0) * groups_per_row + g);
+      const float2 dot0 = q6_dot2_payload(payload0, y00, y01, y10, y11);
+      sum00 += dot0.x;
+      sum10 += dot0.y;
+      sum20 += q6_dot_payload(payload0, y20, y21);
+      if (active1) {
+        const ulong payload1 = q6_payload(src0, (rb + 1) * groups_per_row + g);
+        const float2 dot1 = q6_dot2_payload(payload1, y00, y01, y10, y11);
+        sum01 += dot1.x;
+        sum11 += dot1.y;
+        sum21 += q6_dot_payload(payload1, y20, y21);
+      }
+    }
+  }
+
+  if (sgitg == 0) {
+    partials[0][tiisg] = 0;
+    partials[1][tiisg] = 0;
+    partials[2][tiisg] = 0;
+    partials[3][tiisg] = 0;
+    partials[4][tiisg] = 0;
+    partials[5][tiisg] = 0;
+  }
+  const float lane_sum00 = simd_sum(sum00);
+  const float lane_sum01 = simd_sum(sum01);
+  const float lane_sum10 = simd_sum(sum10);
+  const float lane_sum11 = simd_sum(sum11);
+  const float lane_sum20 = simd_sum(sum20);
+  const float lane_sum21 = simd_sum(sum21);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum00;
+    partials[1][sgitg] = lane_sum01;
+    partials[2][sgitg] = lane_sum10;
+    partials[3][sgitg] = lane_sum11;
+    partials[4][sgitg] = lane_sum20;
+    partials[5][sgitg] = lane_sum21;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    const float all_sum00 = simd_sum(partials[0][tiisg]);
+    const float all_sum01 = simd_sum(partials[1][tiisg]);
+    const float all_sum10 = simd_sum(partials[2][tiisg]);
+    const float all_sum11 = simd_sum(partials[3][tiisg]);
+    const float all_sum20 = simd_sum(partials[4][tiisg]);
+    const float all_sum21 = simd_sum(partials[5][tiisg]);
+    if (tiisg == 0) {
+      const float scale = (float)scales[rb + 0];
+      float value0 = all_sum00 * scale;
+      float value1 = all_sum10 * scale;
+      float value2 = all_sum20 * scale;
+)";
+  if (fusedBias) {
+    shader += R"(
+      const float biasv = (float)bias[rb + 0];
+      value0 += biasv;
+      value1 += biasv;
+      value2 += biasv;
+)";
+  }
+  shader += R"(
+      dst[rb + 0] = (real)value0;
+      dst[nrows + rb + 0] = (real)value1;
+      dst[nrows * 2 + rb + 0] = (real)value2;
+    }
+    if (tiisg == 1 && active1) {
+      const float scale = (float)scales[rb + 1];
+      float value0 = all_sum01 * scale;
+      float value1 = all_sum11 * scale;
+      float value2 = all_sum21 * scale;
+)";
+  if (fusedBias) {
+    shader += R"(
+      const float biasv = (float)bias[rb + 1];
+      value0 += biasv;
+      value1 += biasv;
+      value2 += biasv;
+)";
+  }
+  shader += R"(
+      dst[rb + 1] = (real)value0;
+      dst[nrows + rb + 1] = (real)value1;
+      dst[nrows * 2 + rb + 1] = (real)value2;
+    }
+  }
+}
+)";
+}
+
+static void append_q6_m2_kernel(std::string& shader, const bool fusedBias)
+{
+  shader += R"(
+inline float2 q6_dot2_payload(const ulong payload, const float4 y00, const float4 y01, const float4 y10, const float4 y11)
+{
+  const float m = (float)(((payload >> 48u) & 3ul) + 1ul);
+  const float b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  const float4 v0 = q6_values(payload, 0) * m + float4(b);
+  const float4 v1 = q6_values(payload, 4) * m + float4(b);
+  return float2(
+    dot(v0, y00) + dot(v1, y01),
+    dot(v0, y10) + dot(v1, y11));
+}
+
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+  if (fusedBias) {
+    shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+  }
+  shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+  shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+  shader += R"(;
+  constexpr uint S = )";
+  shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+  shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  device const real4* y0 = (device const real4*)src1;
+  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real* scales = (device const real*)(src0 + scale_offset);
+  threadgroup float partials[4][32];
+
+  float sum00 = 0;
+  float sum01 = 0;
+  float sum10 = 0;
+  float sum11 = 0;
+  const uint group_stride = S * 32;
+  if ((groups_per_row & 1u) == 0u) {
+    const uint pairs_per_row = groups_per_row >> 1;
+    for (uint g = sgitg * 32 + tiisg; g < pairs_per_row; g += group_stride) {
+      const uint yv_base = g * 4;
+      const float4 y00 = float4(y0[yv_base + 0]);
+      const float4 y01 = float4(y0[yv_base + 1]);
+      const float4 y02 = float4(y0[yv_base + 2]);
+      const float4 y03 = float4(y0[yv_base + 3]);
+      const float4 y10 = float4(y1[yv_base + 0]);
+      const float4 y11 = float4(y1[yv_base + 1]);
+      const float4 y12 = float4(y1[yv_base + 2]);
+      const float4 y13 = float4(y1[yv_base + 3]);
+      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      const ulong payload00 = q6_pair_payload0(p0);
+      const ulong payload01 = q6_pair_payload1(p0);
+      const float2 dot00 = q6_dot2_payload(payload00, y00, y01, y10, y11);
+      const float2 dot01 = q6_dot2_payload(payload01, y02, y03, y12, y13);
+      sum00 += dot00.x + dot01.x;
+      sum10 += dot00.y + dot01.y;
+      if (active1) {
+        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        const ulong payload10 = q6_pair_payload0(p1);
+        const ulong payload11 = q6_pair_payload1(p1);
+        const float2 dot10 = q6_dot2_payload(payload10, y00, y01, y10, y11);
+        const float2 dot11 = q6_dot2_payload(payload11, y02, y03, y12, y13);
+        sum01 += dot10.x + dot11.x;
+        sum11 += dot10.y + dot11.y;
+      }
+    }
+  } else {
+    for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
+      const uint yv_base = g * 2;
+      const float4 y00 = float4(y0[yv_base + 0]);
+      const float4 y01 = float4(y0[yv_base + 1]);
+      const float4 y10 = float4(y1[yv_base + 0]);
+      const float4 y11 = float4(y1[yv_base + 1]);
+      const ulong payload0 = q6_payload(src0, (rb + 0) * groups_per_row + g);
+      const float2 dot0 = q6_dot2_payload(payload0, y00, y01, y10, y11);
+      sum00 += dot0.x;
+      sum10 += dot0.y;
+      if (active1) {
+        const ulong payload1 = q6_payload(src0, (rb + 1) * groups_per_row + g);
+        const float2 dot1 = q6_dot2_payload(payload1, y00, y01, y10, y11);
+        sum01 += dot1.x;
+        sum11 += dot1.y;
+      }
+    }
+  }
+
+  if (sgitg == 0) {
+    partials[0][tiisg] = 0;
+    partials[1][tiisg] = 0;
+    partials[2][tiisg] = 0;
+    partials[3][tiisg] = 0;
+  }
+  const float lane_sum00 = simd_sum(sum00);
+  const float lane_sum01 = simd_sum(sum01);
+  const float lane_sum10 = simd_sum(sum10);
+  const float lane_sum11 = simd_sum(sum11);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum00;
+    partials[1][sgitg] = lane_sum01;
+    partials[2][sgitg] = lane_sum10;
+    partials[3][sgitg] = lane_sum11;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    const float all_sum00 = simd_sum(partials[0][tiisg]);
+    const float all_sum01 = simd_sum(partials[1][tiisg]);
+    const float all_sum10 = simd_sum(partials[2][tiisg]);
+    const float all_sum11 = simd_sum(partials[3][tiisg]);
+    if (tiisg == 0) {
+      const float scale = (float)scales[rb + 0];
+      float value0 = all_sum00 * scale;
+      float value1 = all_sum10 * scale;
+)";
+  if (fusedBias) {
+    shader += R"(
+      const float biasv = (float)bias[rb + 0];
+      value0 += biasv;
+      value1 += biasv;
+)";
+  }
+  shader += R"(
+      dst[rb + 0] = (real)value0;
+      dst[nrows + rb + 0] = (real)value1;
+    }
+    if (tiisg == 1 && active1) {
+      const float scale = (float)scales[rb + 1];
+      float value0 = all_sum01 * scale;
+      float value1 = all_sum11 * scale;
+)";
+  if (fusedBias) {
+    shader += R"(
+      const float biasv = (float)bias[rb + 1];
+      value0 += biasv;
+      value1 += biasv;
+)";
+  }
+  shader += R"(
+      dst[rb + 1] = (real)value0;
+      dst[nrows + rb + 1] = (real)value1;
+    }
+  }
+}
+)";
+}
+
+static void append_q6_m1_kernel(std::string& shader, const bool fusedBias)
+{
+  shader += R"(
+inline float q6_dot_payload(const ulong payload, const float4 y0, const float4 y1)
+{
+  const float m = (float)(((payload >> 48u) & 3ul) + 1ul);
+  const float b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  const float4 v0 = q6_values(payload, 0) * m + float4(b);
+  const float4 v1 = q6_values(payload, 4) * m + float4(b);
+  return dot(v0, y0) + dot(v1, y1);
+}
+
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+  if (fusedBias) {
+    shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+  }
+  shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+  shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+  shader += R"(;
+  constexpr uint S = )";
+  shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+  shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  device const real4* y4 = (device const real4*)src1;
+  device const real* scales = (device const real*)(src0 + scale_offset);
+  threadgroup float partials[ROWS][32];
+
+  float sum0 = 0;
+  float sum1 = 0;
+  const uint group_stride = S * 32;
+  if ((groups_per_row & 1u) == 0u) {
+    const uint pairs_per_row = groups_per_row >> 1;
+    for (uint g = sgitg * 32 + tiisg; g < pairs_per_row; g += group_stride) {
+      const uint yv_base = g * 4;
+      const float4 y0 = float4(y4[yv_base + 0]);
+      const float4 y1 = float4(y4[yv_base + 1]);
+      const float4 y2 = float4(y4[yv_base + 2]);
+      const float4 y3 = float4(y4[yv_base + 3]);
+      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      sum0 += q6_dot_payload(q6_pair_payload0(p0), y0, y1);
+      sum0 += q6_dot_payload(q6_pair_payload1(p0), y2, y3);
+      if (active1) {
+        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        sum1 += q6_dot_payload(q6_pair_payload0(p1), y0, y1);
+        sum1 += q6_dot_payload(q6_pair_payload1(p1), y2, y3);
+      }
+    }
+  } else {
+    for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
+      const uint yv_base = g * 2;
+      const float4 y0 = float4(y4[yv_base + 0]);
+      const float4 y1 = float4(y4[yv_base + 1]);
+      sum0 += q6_dot_payload(q6_payload(src0, (rb + 0) * groups_per_row + g), y0, y1);
+      if (active1)
+        sum1 += q6_dot_payload(q6_payload(src0, (rb + 1) * groups_per_row + g), y0, y1);
+    }
+  }
+
+  if (sgitg == 0) {
+    partials[0][tiisg] = 0;
+    partials[1][tiisg] = 0;
+  }
+  const float lane_sum0 = simd_sum(sum0);
+  const float lane_sum1 = simd_sum(sum1);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum0;
+    partials[1][sgitg] = lane_sum1;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    const float all_sum0 = simd_sum(partials[0][tiisg]);
+    const float all_sum1 = simd_sum(partials[1][tiisg]);
+    if (tiisg == 0) {
+      float value = all_sum0 * (float)scales[rb + 0];
+)";
+  if (fusedBias) {
+    shader += R"(
+      value += (float)bias[rb + 0];
+)";
+  }
+  shader += R"(
+      dst[rb + 0] = (real)value;
+    }
+    if (tiisg == 1 && active1) {
+      float value = all_sum1 * (float)scales[rb + 1];
+)";
+  if (fusedBias) {
+    shader += R"(
+      value += (float)bias[rb + 1];
+)";
+  }
+  shader += R"(
+      dst[rb + 1] = (real)value;
+    }
+  }
+}
+)";
+}
+
 }
 
 Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device) {
@@ -221,6 +745,16 @@ Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device*
 std::string Int8GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   if (format != 0) {
+    if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
+      append_q6_helpers(shader);
+      if (mrows == 3)
+        append_q6_m3_kernel(shader, fusedBias);
+      else if (mrows == 2)
+        append_q6_m2_kernel(shader, fusedBias);
+      else
+        append_q6_m1_kernel(shader, fusedBias);
+      return shader;
+    }
     if (mrows == 3) {
       if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K) {
         shader += R"(

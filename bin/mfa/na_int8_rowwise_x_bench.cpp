@@ -72,6 +72,7 @@ struct ValidationStats {
 
 constexpr FormatInfo kFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_Q5_K, "q5_k" },
+  { CCV_NNC_QX_8I_ROWWISE_Q6_K, "q6_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q4_K, "q4_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q3_K, "q3_k" },
   { CCV_NNC_QX_8I_ROWWISE_Q2_K, "q2_k" },
@@ -360,6 +361,7 @@ uint32_t rowwise_x_group_size(const uint32_t format)
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
       return 32;
+    case CCV_NNC_QX_8I_ROWWISE_Q6_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
       return 8;
@@ -373,6 +375,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
       return 88;
+    case CCV_NNC_QX_8I_ROWWISE_Q6_K:
+      return 52;
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
       return 72;
     case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -414,6 +418,17 @@ std::vector<uint8_t> make_synthetic_packed(
   const size_t scale_bytes = (size_t)config.N * sizeof(uint16_t);
   if (x_scale_offset + scale_bytes <= b_x.size() && b_scale_offset + scale_bytes <= b_rowwise.size())
     std::memcpy(b_x.data() + x_scale_offset, b_rowwise.data() + b_scale_offset, scale_bytes);
+  if (format.value == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
+    const uint32_t group_size = rowwise_x_group_size(format.value);
+    const uint32_t group_bits = rowwise_x_group_bits(format.value);
+    const uint32_t groups_per_row = (config.K + group_size - 1) / group_size;
+    const uint32_t groups = config.N * groups_per_row;
+    for (uint32_t g = 0; g < groups; ++g) {
+      const size_t metadata_bit = (size_t)g * group_bits + 48;
+      for (uint32_t b = 0; b < 4; ++b)
+        b_x[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
+    }
+  }
   return b_x;
 }
 
@@ -426,6 +441,12 @@ uint32_t read_bits(const uint8_t* const data, const size_t bit_offset, const uin
   for (uint32_t i = 0; i < byte_count; ++i)
     value |= (uint64_t)data[byte_offset + i] << (i * 8);
   return (uint32_t)((value >> shift) & ((uint64_t(1) << bits) - 1));
+}
+
+int sign_extend(const uint32_t value, const uint32_t bits)
+{
+  const uint32_t sign = 1u << (bits - 1);
+  return (value & sign) ? (int)value - (int)(1u << bits) : (int)value;
 }
 
 int iq2_value(const uint64_t* const grid, const uint32_t index, const uint32_t lane)
@@ -466,6 +487,16 @@ void decode_group(const uint8_t* const input, const size_t group_index, const ui
       const int m = (int)read_bits(input, bit, 3) + 1;
       const int b = (int)read_bits(input, bit + 3, 5) - 16;
       for (uint32_t j = 0; j < 16; ++j)
+        q8[j] = q[j] * m + b;
+      break;
+    }
+    case CCV_NNC_QX_8I_ROWWISE_Q6_K: {
+      int q[8];
+      for (uint32_t j = 0; j < 8; ++j, bit += 6)
+        q[j] = sign_extend(read_bits(input, bit, 6), 6);
+      const int m = (int)read_bits(input, bit, 2) + 1;
+      const int b = sign_extend(read_bits(input, bit + 2, 2), 2);
+      for (uint32_t j = 0; j < 8; ++j)
         q8[j] = q[j] * m + b;
       break;
     }
@@ -740,6 +771,7 @@ int main(int argc, char** argv)
       CCV_TENSOR_CPU_MEMORY,
       weights_half.size(),
       config.K,
+      nullptr,
       0,
       b_rowwise.data(),
       b_rowwise.size());
@@ -813,6 +845,7 @@ int main(int argc, char** argv)
           config.K,
           format.value,
           nullptr,
+          0,
           b_x.data(),
           b_x.size());
       if (x_written > b_x.size()) {

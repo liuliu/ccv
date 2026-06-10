@@ -239,6 +239,7 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 			return 16;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
 			return 32;
+		case CCV_NNC_QX_8I_ROWWISE_Q6_K:
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			return 8;
@@ -268,6 +269,8 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 			return 28;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
 			return 64;
+		case CCV_NNC_QX_8I_ROWWISE_Q6_K:
+			return 52;
 		default:
 			assert(0);
 			return 0;

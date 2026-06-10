@@ -1801,6 +1801,7 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int formats[] = {
 		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
 		CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q3_K,
 		CCV_NNC_QX_8I_ROWWISE_Q2_K,
@@ -1959,6 +1960,7 @@ TEST_CASE("mps forward gemv with packed row-wise 8i weight scaled gemv")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int formats[] = {
 		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
 		CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q3_K,
 		CCV_NNC_QX_8I_ROWWISE_Q2_K,

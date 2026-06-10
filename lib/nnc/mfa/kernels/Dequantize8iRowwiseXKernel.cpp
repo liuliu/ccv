@@ -94,8 +94,26 @@ std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 using namespace metal;
 )";
 
-	if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
+	if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
 		shader += R"(
+inline ulong packed52_payload(device const uchar* data, const uint group_index)
+{
+  const uint bit_offset = group_index * 52u;
+  const uint byte_offset = bit_offset >> 3;
+  const uint shift = bit_offset & 7u;
+  const ulong value =
+    (ulong)data[byte_offset] |
+    ((ulong)data[byte_offset + 1] << 8) |
+    ((ulong)data[byte_offset + 2] << 16) |
+    ((ulong)data[byte_offset + 3] << 24) |
+    ((ulong)data[byte_offset + 4] << 32) |
+    ((ulong)data[byte_offset + 5] << 40) |
+    ((ulong)data[byte_offset + 6] << 48);
+  return value >> shift;
+}
+)";
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
+			shader += R"(
 inline ulong packed42_payload(device const uchar* data, const uint group_index)
 {
   const uint bit_offset = group_index * 42u;
@@ -169,8 +187,8 @@ inline int iq3xxs_value(const uint index, const uint lane)
 	}
 
 	switch (format) {
-		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
-			shader += R"(
+			case CCV_NNC_QX_8I_ROWWISE_Q5_K:
+				shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
   device const uchar* p = source + group_index * 11u;
@@ -197,9 +215,31 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
   q8[15] = ((int)((hi >> 11) & 31u) - 16) * m + b;
 }
 )";
-			break;
-		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
-			shader += R"(
+				break;
+			case CCV_NNC_QX_8I_ROWWISE_Q6_K:
+				shader += R"(
+inline int q6_signed_value(const uint q)
+{
+  return (q & 32u) ? (int)q - 64 : (int)q;
+}
+
+inline int q2_signed_value(const uint q)
+{
+  return (q & 2u) ? (int)q - 4 : (int)q;
+}
+
+inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+{
+  const ulong payload = packed52_payload(source, group_index);
+  const int m = (int)((payload >> 48u) & 3ul) + 1;
+  const int b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  for (uint j = 0; j < 8; ++j)
+    q8[j] = q6_signed_value((uint)((payload >> (j * 6u)) & 63ul)) * m + b;
+}
+)";
+				break;
+			case CCV_NNC_QX_8I_ROWWISE_Q4_K:
+				shader += R"(
 inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
 {
   device const uchar* p = source + group_index * 9u;
@@ -429,10 +469,10 @@ inline int4 signed_iq3xxs_values_i4(const uint index, const uint signs, const ui
     (signs & (1u << (sign_lane + 3u))) ? -mag.w : mag.w);
 }
 
-)";
-	}
-	if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
-		shader += R"(
+	)";
+		}
+		if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
+			shader += R"(
 inline int4 q5_values(const ulong lo, const uint lane, const int m, const int b)
 {
   return (int4(
@@ -482,9 +522,37 @@ inline void decode_store_group(device const uchar* source, const uint group_inde
   }
 }
 
-)";
-	} else if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K) {
-		shader += R"(
+	)";
+		} else if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
+			shader += R"(
+inline int4 q6_values_i4(const ulong payload, const uint lane, const int m, const int b)
+{
+  return int4(
+    q6_signed_value((uint)((payload >> ((lane + 0u) * 6u)) & 63ul)),
+    q6_signed_value((uint)((payload >> ((lane + 1u) * 6u)) & 63ul)),
+    q6_signed_value((uint)((payload >> ((lane + 2u) * 6u)) & 63ul)),
+    q6_signed_value((uint)((payload >> ((lane + 3u) * 6u)) & 63ul))) * int4(m) + int4(b);
+}
+
+inline void decode_store_group(device const uchar* source, const uint group_index, device uchar* destination, const uint destination_offset, const uint col_base)
+{
+  const ulong payload = packed52_payload(source, group_index);
+  const int m = (int)((payload >> 48u) & 3ul) + 1;
+  const int b = q2_signed_value((uint)((payload >> 50u) & 3ul));
+  if (((row_length & 3u) == 0u) && col_base + 8u <= row_length) {
+    device char4* destination4 = reinterpret_cast<device char4*>(destination + destination_offset);
+    destination4[0] = q8_char4(q6_values_i4(payload, 0, m, b));
+    destination4[1] = q8_char4(q6_values_i4(payload, 4, m, b));
+  } else {
+    int q8[16] = {0};
+    decode_group(source, group_index, q8);
+    store_q8_scalar(destination, destination_offset, col_base, q8);
+  }
+}
+
+	)";
+		} else if (format == CCV_NNC_QX_8I_ROWWISE_Q4_K) {
+			shader += R"(
 inline int4 q4_values(device const uchar* p, const uint offset, const int m, const int b)
 {
   const uint q0 = p[offset];
