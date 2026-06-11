@@ -1779,6 +1779,31 @@ TEST_CASE("mps forward gemm with row-wise 8i weight ANE stream ordering")
 	REQUIRE(max_rel < 2e-3, "ANE row-wise 8i GEMM should respect queued Metal writer work before quant/evaluate, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
+TEST_CASE("mps forward gemm with loadM flag")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	double max_abs_scaled = 0;
+	double max_rel_scaled = 0;
+	const int status_scaled = _mps_forward_scaled_gemm_validate_shape(CCV_16F, 0, 257, 384, 128, &max_abs_scaled, &max_rel_scaled);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	double max_abs_generic = 0;
+	double max_rel_generic = 0;
+	const int status_generic = _mps_forward_scaled_gemm_compare_dense(CCV_16F, 0, 257, 384, 128, &max_abs_generic, &max_rel_generic);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	REQUIRE_EQ(status_scaled, 0, "loadM scaled GEMM validation should run");
+	REQUIRE(max_rel_scaled < 2e-3, "loadM scaled GEMM should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs_scaled, max_rel_scaled);
+	REQUIRE_EQ(status_generic, 0, "loadM generic GEMM fallback validation should run");
+	REQUIRE(max_rel_generic < 2e-3, "loadM generic GEMM fallback should match dense GPU fp16 reference, max_abs=%g max_rel=%g", max_abs_generic, max_rel_generic);
+}
+
 TEST_CASE("mps segmented gemm with row-wise 8i weight NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

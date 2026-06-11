@@ -4,10 +4,20 @@
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
 
+static uint32_t groupM(const uint32_t M) noexcept {
+  return (M >= 4096) ? 4096 : 0;
+}
+
 bool GEMMDescriptor::operator==(const GEMMDescriptor& rhs) const {
+  auto lhsMatrixDimensions = matrixDimensions;
+  auto rhsMatrixDimensions = rhs.matrixDimensions;
+  if (loadM && !transposeState[0]) {
+    lhsMatrixDimensions[0] = groupM(lhsMatrixDimensions[0]);
+    rhsMatrixDimensions[0] = groupM(rhsMatrixDimensions[0]);
+  }
   return
   (batchDimension == rhs.batchDimension) &&
-  simd_all(matrixDimensions == rhs.matrixDimensions) &&
+  simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
   simd_all(leadingDimensions.value_or(simd::uint3(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint3(UINT32_MAX))) &&
   simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
@@ -22,7 +32,7 @@ std::size_t std::hash<GEMMDescriptor>::operator()(const GEMMDescriptor& hash) co
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, hash.batchDimension);
-  combine_32(seed, hash.matrixDimensions[0]);
+  combine_32(seed, (hash.loadM && !hash.transposeState[0]) ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   if (hash.leadingDimensions.has_value()) {

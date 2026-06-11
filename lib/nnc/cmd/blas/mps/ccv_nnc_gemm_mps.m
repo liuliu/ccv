@@ -320,6 +320,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_ane_rowwise_compatible_batch = is_mfa_compatible_batch && B_batch_size == 1;
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		const int load_m = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 		const int is_mfa_gemv = !is_batched && ((((a_rows == 1) || (!is_transpose_a && (a_rows == 2 || a_rows == 3))) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
@@ -487,6 +488,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
 				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
 				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+				.loadM = load_m,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemm(context, params);
 			const size_t scratch_offset = ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(params);
@@ -618,6 +620,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
 				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
 				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+				.loadM = load_m && !is_transpose_a,
 			};
 			mtl_buffer_t* scratch = 0;
 			const size_t scratch_offset = ccv_nnc_mfa_gemm_reserved_scratch_size(params);
@@ -974,6 +977,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		// MFA uses the convention C = A * B.
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		const int load_m = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && is_same_batch && !bias && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM);
 
@@ -1010,6 +1014,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						.batch_stride_b = g_batch_size > 1 ? g_rows * w_cols : 0,
 						.batch_stride_c = h_batch_size > 1 ? w_rows * g_rows : 0,
 						.batch_stride_d = 0,
+						.loadM = 0,
 					};
 					ccv_nnc_mfa_prepare_gemm(context, params);
 					h_params = params;
@@ -1032,6 +1037,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						.batch_stride_b = w_batch_size > 1 ? w_rows * w_cols : 0,
 						.batch_stride_c = h_batch_size > 1 ? g_rows * w_rows : 0,
 						.batch_stride_d = 0,
+						.loadM = load_m,
 					};
 					ccv_nnc_mfa_prepare_gemm(context, params);
 					h_params = params;
@@ -1062,6 +1068,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						.batch_stride_b = a_batch_size > 1 ? dw_rows * g_rows : 0,
 						.batch_stride_c = dw_batch_size > 1 ? dw_cols * dw_rows : 0,
 						.batch_stride_d = 0,
+						.loadM = 0,
 					};
 					ccv_nnc_mfa_prepare_gemm(context, params);
 					dw_params = params;
@@ -1084,6 +1091,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						.batch_stride_b = g_batch_size > 1 ? dw_cols * g_rows : 0,
 						.batch_stride_c = dw_batch_size > 1 ? dw_rows * dw_cols : 0,
 						.batch_stride_d = 0,
+						.loadM = load_m && is_transpose_a,
 					};
 					ccv_nnc_mfa_prepare_gemm(context, params);
 					dw_params = params;

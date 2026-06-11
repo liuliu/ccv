@@ -113,7 +113,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const uint32_t batchStrideBScale = batchStrides[1] > 0 ? N : 0;
     const bool quantizeActivation = (strcmp(functionNameString, "quantize_activation") == 0);
     const uint32_t batchStrideA = quantizeActivation ? batchStrideSourceA : batchStridePackedA;
-    if (!this->loadM || quantizeActivation)
+    if (!this->loadM)
       constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));

@@ -89,6 +89,7 @@ static NAMatMulSmallMDescriptor _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(c
   CCV_NNC_MFA_PRECONDITION(_ccv_nnc_mfa_gemm_memory_precisions(params, &desc.memoryPrecisions));
   desc.useBias = params.fused_bias;
   desc.batchDimension = params.batch_dimension;
+  desc.loadM = params.loadM;
   return desc;
 }
 
@@ -425,7 +426,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     gemmDesc.leadingDimensions = std::nullopt;
     gemmDesc.loadPreviousC = false;
     gemmDesc.useBias = params.fused_bias;
-    gemmDesc.loadM = false;
+    gemmDesc.loadM = params.loadM;
     gemmDesc.supportIndirectCommandBuffers = false;
   
     gemmDesc.batchDimension = params.batch_dimension;
@@ -467,6 +468,9 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     }
     for (int i = 0; i < num_tensors; ++i) {
       encoder->setBuffer(tensors[i], tensor_offsets[i], i);
+    }
+    if (gemmDesc.loadM) {
+      encoder->setBytes(&params.M, sizeof(params.M), num_tensors);
     }
   
     // Calculate the grid size.

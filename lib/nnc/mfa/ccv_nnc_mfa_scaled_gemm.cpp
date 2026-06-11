@@ -66,6 +66,7 @@ static NAInt8MatMulSmallMDescriptor make_na_int8_matmul_small_m_descriptor(ccv_n
   desc.ioPrecision = io_precision(params.data_type);
   desc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
   desc.useBias = params.fused_bias;
+  desc.loadM = params.loadM;
   return desc;
 }
 
@@ -114,6 +115,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   matmulDesc.batchDimension = params.batch_dimension;
   matmulDesc.ioPrecision = io_precision(params.data_type);
   matmulDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
+  matmulDesc.loadM = params.loadM;
   if (params.batch_dimension > 1) {
     simd::uint4 batchStrides;
     batchStrides[0] = params.batch_stride_a;
@@ -121,6 +123,8 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     batchStrides[2] = params.batch_stride_c;
     batchStrides[3] = params.batch_stride_d;
     matmulDesc.batchStrides = batchStrides;
+    matmulDesc.packedABatchStride = params.M * params.K;
+    matmulDesc.aScaleBatchStride = params.M;
   } else {
     matmulDesc.batchStrides = std::nullopt;
   }
@@ -159,6 +163,9 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
     encoder->setBuffer(scratch, 0, 1);
     encoder->setBuffer(scratch, a_layout.scale_offset, 2);
+    if (matmulDesc.loadM) {
+      encoder->setBytes(&params.M, sizeof(params.M), 3);
+    }
     encoder->dispatchThreadgroups(
         MTL::Size(params.M, 1, params.batch_dimension),
         MTL::Size(kernel->activationQuantizeThreads, 1, 1));
@@ -233,6 +240,8 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->setBuffer(tensors[1], tensor_offsets[1] + b_scale_offset, 4);
     if (num_tensors >= 4)
       encoder->setBuffer(tensors[3], tensor_offsets[3], 5);
+    if (matmulDesc.loadM)
+      encoder->setBytes(&params.M, sizeof(params.M), params.fused_bias ? 6 : 5);
     encoder->dispatchThreadgroups(
         kernel->threadgroupsPerGrid(params.M, params.N, params.batch_dimension),
         MTL::Size(kernel->threadgroupSize(matmulPipeline.get()), 1, 1));
