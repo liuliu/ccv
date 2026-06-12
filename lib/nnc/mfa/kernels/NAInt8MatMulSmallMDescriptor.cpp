@@ -8,7 +8,6 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
 {
   NS::Error* error = nil;
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
-  CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
 static size_t align_up(const size_t value, const size_t alignment) noexcept
@@ -157,7 +156,8 @@ std::pair<NAInt8MatMulSmallMKernelDescriptor, PipelineValue<NAInt8MatMulSmallMKe
       binaryArchiveMiss = true;
     }
     if (binaryArchiveMiss && binaryArchiveToWrite != nullptr) {
-      binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+      NS::Error* archiveError = nil;
+      binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
       serializeBinaries(binaryArchiveToWrite, pathToWrite);
     }
     CCV_NNC_MFA_CHECK_ERROR(error);

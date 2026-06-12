@@ -87,7 +87,8 @@ std::pair<NAConv3DKernelDescriptor, PipelineValue<NAConv3DKernel> *> NAConv3DDes
       pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
       CCV_NNC_MFA_CHECK_ERROR(error);
       if (binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+        NS::Error* archiveError = nil;
+        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
         serializeBinaries(binaryArchiveToWrite, pathToWrite);
       }
     }
@@ -114,7 +115,8 @@ std::pair<NAConv3DKernelDescriptor, PipelineValue<NAConv3DKernel> *> NAConv3DDes
       pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
       CCV_NNC_MFA_CHECK_ERROR(error);
       if (binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+        NS::Error* archiveError = nil;
+        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
         serializeBinaries(binaryArchiveToWrite, pathToWrite);
       }
     }

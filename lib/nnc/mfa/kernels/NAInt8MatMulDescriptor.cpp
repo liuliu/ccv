@@ -10,7 +10,6 @@ namespace {
 static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std::string& pathToWrite) noexcept {
   NS::Error *error = nil;
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
-  CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
 static uint32_t groupM(const uint32_t M) noexcept {
@@ -141,7 +140,8 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
       error = nil;
       pipeline = device->newComputePipelineState(pipelineDescriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
       if (binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(pipelineDescriptor.get(), &error);
+        NS::Error* archiveError = nil;
+        binaryArchiveToWrite->addComputePipelineFunctions(pipelineDescriptor.get(), &archiveError);
         serializeBinaries(binaryArchiveToWrite, pathToWrite);
       }
     }

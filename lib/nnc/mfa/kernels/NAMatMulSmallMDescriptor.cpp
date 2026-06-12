@@ -168,7 +168,8 @@ std::pair<NAMatMulSmallMKernelDescriptor, PipelineValue<NAMatMulSmallMKernel>*> 
       binaryArchiveMiss = true;
     }
     if (binaryArchiveMiss && binaryArchiveToWrite != nullptr) {
-      binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+      NS::Error* archiveError = nil;
+      binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
       serializeBinaries(binaryArchiveToWrite, pathToWrite);
     }
     CCV_NNC_MFA_CHECK_ERROR(error);

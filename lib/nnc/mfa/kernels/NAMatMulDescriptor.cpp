@@ -168,8 +168,9 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
         binaryArchiveMiss = true;
       }
       if (binaryArchiveMiss && binaryArchiveToWrite != nullptr) {
-        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
-        binaryArchiveToWrite->addComputePipelineFunctions(secondDesc.get(), &error);
+        NS::Error* archiveError = nil;
+        binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
+        binaryArchiveToWrite->addComputePipelineFunctions(secondDesc.get(), &archiveError);
         serializeBinaries(binaryArchiveToWrite, pathToWrite);
       }
       return std::pair(pipeline, second);
@@ -186,7 +187,8 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
         error = nil;
         pipeline = device->newComputePipelineState(descriptor.get(), MTL::PipelineOptionNone, nullptr, &error);
         if (binaryArchiveToWrite != nullptr) {
-          binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &error);
+          NS::Error* archiveError = nil;
+          binaryArchiveToWrite->addComputePipelineFunctions(descriptor.get(), &archiveError);
           serializeBinaries(binaryArchiveToWrite, pathToWrite);
         }
       }
