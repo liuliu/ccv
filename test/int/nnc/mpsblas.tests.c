@@ -623,6 +623,58 @@ static void _mps_sdpa_round_to_datatype(const int datatype, const float* const v
 	ccfree(data);
 }
 
+static int _mps_dequantize_8i_rowwise_x_compare(const int datatype, const int format, const int rows, const int cols, const double tolerance, double* const max_abs_ref)
+{
+	ccv_nnc_tensor_param_t host_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { rows, cols, 0 },
+	};
+	ccv_nnc_tensor_param_t gpu_params = host_params;
+	gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, host_params, 0);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, format), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_params, 0);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
+	_mps_forward_na_gemm_fill_signed(datatype, source->data.u8, rows, cols, 1);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)rows * cols, cols, format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	int status = 0;
+	if (qsize != ccv_nnc_tensor_data_size_without_padding(q->info))
+	{
+		status = -1;
+		goto cleanup;
+	}
+	ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, cols, format, expected->data.u8, (size_t)rows * cols);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+	ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatype, CCV_TENSOR_GPU_MEMORY, qsize, cols, format, gout->data.u8, (size_t)rows * cols);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	float* const expected_f32 = (float*)ccmalloc(sizeof(float) * (size_t)rows * cols);
+	float* const actual_f32 = (float*)ccmalloc(sizeof(float) * (size_t)rows * cols);
+	_mps_forward_scaled_gemm_to_float(datatype, expected->data.u8, rows * cols, expected_f32);
+	_mps_forward_scaled_gemm_to_float(datatype, actual->data.u8, rows * cols, actual_f32);
+	double max_abs = 0;
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		max_abs = ccv_max(max_abs, fabs((double)expected_f32[i] - (double)actual_f32[i]));
+	if (max_abs > tolerance)
+		status = 1;
+	if (max_abs_ref)
+		*max_abs_ref = max_abs;
+	ccfree(actual_f32);
+	ccfree(expected_f32);
+cleanup:
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+	return status;
+}
+
 static int _mps_sdpa_attention_sinks_compare(const int datatype, const int force_generic, const int gpu_flags, const int B, const int R, const int C, const int Hq, const int Hk, const int D, const int is_causal, const int sink_count, const int sliding_window, const float tolerance, float* const max_abs_ref, float* const max_relative_ref, int* const max_idx_ref, float* const expected_ref, float* const actual_ref)
 {
 	const int q_count = B * R * Hq * D;
@@ -1896,6 +1948,45 @@ TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")
 	}
 	REQUIRE_EQ(status16bf, 0, "fallback row-wise 8i GEMM validation should run");
 	REQUIRE(max_rel < 5e-3, "fallback row-wise 8i GEMM should match dense GPU bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward gemm with packed row-wise 8i-x weight fallback fp dequantize")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+	};
+	int status[sizeof(formats) / sizeof(formats[0])];
+	double max_abs[sizeof(formats) / sizeof(formats[0])];
+	double max_rel[sizeof(formats) / sizeof(formats[0])];
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	int i;
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		max_abs[i] = 0;
+		max_rel[i] = 0;
+		status[i] = _mps_forward_scaled_gemm_compare_dense_format(CCV_16F, 0, 257, 384, 128, formats[i], &max_abs[i], &max_rel[i]);
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		REQUIRE_EQ(status[i], 0, "fallback packed row-wise 8i-x GEMM validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel[i] < 2e-3, "fallback packed row-wise 8i-x GEMM should match GPU fp16 reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs[i], max_rel[i]);
+	}
 }
 
 TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv")
@@ -3196,6 +3287,50 @@ TEST_CASE("mps dequantize row-wise 8i bfloat precision large shapes")
 		ccv_nnc_tensor_free(q);
 		ccv_nnc_tensor_free(source);
 		ccfree(values);
+	}
+}
+
+TEST_CASE("mps dequantize packed row-wise 8i-x half precision all formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+	};
+	int i;
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		double max_abs = 0;
+		const int status = _mps_dequantize_8i_rowwise_x_compare(CCV_16F, formats[i], 17, 130, 1e-3, &max_abs);
+		REQUIRE_EQ(status, 0, "GPU packed row-wise 8i-x fp16 dequantize should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+	}
+}
+
+TEST_CASE("mps dequantize packed row-wise 8i-x float and bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+	};
+	int i;
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		double max_abs = 0;
+		int status = _mps_dequantize_8i_rowwise_x_compare(CCV_32F, formats[i], 13, 131, 1e-5, &max_abs);
+		REQUIRE_EQ(status, 0, "GPU packed row-wise 8i-x fp32 dequantize should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+		max_abs = 0;
+		status = _mps_dequantize_8i_rowwise_x_compare(CCV_16BF, formats[i], 13, 131, 1e-2, &max_abs);
+		REQUIRE_EQ(status, 0, "GPU packed row-wise 8i-x bf16 dequantize should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
 	}
 }
 

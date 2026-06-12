@@ -23,6 +23,8 @@ extern "C" {
 #include "nnc/mfa/ccv_nnc_mfa_error.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseDescriptor.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseKernel.hpp"
+#include "nnc/mfa/kernels/Dequantize8iRowwiseXFPDescriptor.hpp"
+#include "nnc/mfa/kernels/Dequantize8iRowwiseXFPKernel.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseXDescriptor.hpp"
 #include "nnc/mfa/kernels/Dequantize8iRowwiseXKernel.hpp"
 #include "nnc/mfa/kernels/DeviceProperties.hpp"
@@ -223,6 +225,33 @@ double run_rowwise_fp16_dequant_once(
   for (int i = 0; i < repeats; ++i)
     encoder->dispatchThreadgroups(
         pipeline->kernel->gridSize(descriptor.length),
+        pipeline->kernel->threadgroupSize);
+  encoder->endEncoding();
+  command_buffer->commit();
+  command_buffer->waitUntilCompleted();
+  if (command_buffer->status() != MTL::CommandBufferStatusCompleted)
+    return 0;
+  return (command_buffer->GPUEndTime() - command_buffer->GPUStartTime()) / repeats;
+}
+
+double run_x_fp_dequant_once(
+    MTL::CommandQueue* const command_queue,
+    PipelineValue<Dequantize8iRowwiseXFPKernel>* const pipeline,
+    const Dequantize8iRowwiseXFPDescriptor& descriptor,
+    MTL::Buffer* const source,
+    MTL::Buffer* const destination,
+    const int repeats = 1)
+{
+  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  encoder->setComputePipelineState(pipeline->pipeline.get());
+  encoder->useResource(source, MTL::ResourceUsageRead);
+  encoder->useResource(destination, MTL::ResourceUsageWrite);
+  encoder->setBuffer(source, 0, 0);
+  encoder->setBuffer(destination, 0, 1);
+  for (int i = 0; i < repeats; ++i)
+    encoder->dispatchThreadgroups(
+        pipeline->kernel->gridSize(descriptor.totalGroups()),
         pipeline->kernel->threadgroupSize);
   encoder->endEncoding();
   command_buffer->commit();
@@ -863,6 +892,15 @@ int main(int argc, char** argv)
     auto dequant_pipeline = std::unique_ptr<PipelineValue<Dequantize8iRowwiseXKernel>>(
         dequant_descriptor.findKernel(device.get(), DeviceProperties(), nullptr, nullptr, "", &dequant_cache).second);
 
+    Dequantize8iRowwiseXFPDescriptor fp_dequant_descriptor;
+    fp_dequant_descriptor.format = format.value;
+    fp_dequant_descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+    fp_dequant_descriptor.rowLength = config.K;
+    fp_dequant_descriptor.length = config.N * config.K;
+    std::unordered_map<Dequantize8iRowwiseXFPKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXFPKernel>> fp_dequant_cache;
+    auto fp_dequant_pipeline = std::unique_ptr<PipelineValue<Dequantize8iRowwiseXFPKernel>>(
+        fp_dequant_descriptor.findKernel(device.get(), DeviceProperties(), nullptr, nullptr, "", &fp_dequant_cache).second);
+
     ValidationStats validation;
     if (!config.skip_validation) {
       (void)run_dequant_once(command_queue.get(), dequant_pipeline.get(), dequant_descriptor, b_x_buffer.get(), b_x_dequant.get());
@@ -897,6 +935,15 @@ int main(int argc, char** argv)
           dequant_descriptor,
           b_x_buffer.get(),
           b_x_dequant.get(),
+          config.dequant_repeats);
+    }, config.dequant_repeats);
+    const TimingStats fp_dequant_stats = benchmark(config, [&]() {
+      return run_x_fp_dequant_once(
+          command_queue.get(),
+          fp_dequant_pipeline.get(),
+          fp_dequant_descriptor,
+          b_x_buffer.get(),
+          b_fp16_dequant.get(),
           config.dequant_repeats);
     }, config.dequant_repeats);
     const TimingStats combined_stats = benchmark(config, [&]() {
@@ -936,6 +983,8 @@ int main(int argc, char** argv)
     print_stats("x_rowwise_matmul_wall", x_rowwise_stats.wall);
     print_stats("x_dequant_gpu", dequant_stats.gpu);
     print_stats("x_dequant_wall", dequant_stats.wall);
+    print_stats("x_fp_dequant_gpu", fp_dequant_stats.gpu);
+    print_stats("x_fp_dequant_wall", fp_dequant_stats.wall);
     print_stats("x_dequant_matmul_gpu", combined_stats.gpu);
     print_stats("x_dequant_matmul_wall", combined_stats.wall);
     if (rowwise_stats.wall.median_seconds > 0 && combined_stats.wall.median_seconds > 0) {
@@ -955,6 +1004,14 @@ int main(int argc, char** argv)
     if (rowwise_fp16_dequant_stats.wall.median_seconds > 0 && dequant_stats.wall.median_seconds > 0) {
       std::cout << " x_dequant_vs_rowwise_fp16_wall_pct="
                 << (dequant_stats.wall.median_seconds / rowwise_fp16_dequant_stats.wall.median_seconds) * 100.0;
+    }
+    if (rowwise_fp16_dequant_stats.gpu.median_seconds > 0 && fp_dequant_stats.gpu.median_seconds > 0) {
+      std::cout << " x_fp_dequant_vs_rowwise_fp16_gpu_pct="
+                << (fp_dequant_stats.gpu.median_seconds / rowwise_fp16_dequant_stats.gpu.median_seconds) * 100.0;
+    }
+    if (rowwise_fp16_dequant_stats.wall.median_seconds > 0 && fp_dequant_stats.wall.median_seconds > 0) {
+      std::cout << " x_fp_dequant_vs_rowwise_fp16_wall_pct="
+                << (fp_dequant_stats.wall.median_seconds / rowwise_fp16_dequant_stats.wall.median_seconds) * 100.0;
     }
     if (x_rowwise_stats.wall.median_seconds > 0 && combined_stats.wall.median_seconds > 0) {
       const double overhead = combined_stats.wall.median_seconds - x_rowwise_stats.wall.median_seconds;

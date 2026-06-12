@@ -36,6 +36,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_mps_queue_watermark(void);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, void* const command_buffer);
+void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
 int ccv_nnc_mps_tensor_fast_fence_mark_pending(ccv_nnc_tensor_t* const tensor);
 int ccv_nnc_mps_tensor_fast_fence_pending(const ccv_nnc_tensor_t* const tensor);

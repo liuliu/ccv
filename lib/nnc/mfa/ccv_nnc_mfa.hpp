@@ -16,6 +16,7 @@ extern "C" {
 #include "ccv_nnc_mfa_depalettize.hpp"
 #include "ccv_nnc_mfa_dequantize_8i_rowwise.hpp"
 #include "ccv_nnc_mfa_dequantize_8i_rowwise_x.hpp"
+#include "ccv_nnc_mfa_dequantize_8i_rowwise_x_fp.hpp"
 #include "ccv_nnc_mfa_index_select_8i_rowwise.hpp"
 #include "ccv_nnc_mfa_adam.hpp"
 #include "ccv_nnc_mfa_cmul.hpp"
