@@ -41,7 +41,8 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	assert(b_nd <= 2);
 	if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
 	{
-		assert((a->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE);
+		const int a_qx_subtype = a->info.datatype & 0xf00;
+		assert(a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
 		assert(a_nd == 2);
 		assert(b_nd == 2);
 		assert(indices->info.datatype == CCV_32S);
@@ -56,13 +57,6 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 		const uint32_t mtl_data_type = _ccv_nnc_mps_index_select_mtl_data_type(a_datatype);
 		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 		assert(ccv_nnc_mfa_context_supported(context));
-		const ccv_nnc_mfa_index_select_8i_rowwise_params_t params = {
-			.data_type = mtl_data_type,
-			.row_length = (uint64_t)a->info.dim[1],
-			.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
-			.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
-		};
-		ccv_nnc_mfa_prepare_index_select_8i_rowwise(context, params);
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 		mtl_buffer_t* tensors[4] = {
 			(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)a),
@@ -75,7 +69,27 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 			(size_t)mpgetoffset((ccv_nnc_tensor_t*)indices),
 			(size_t)mpgetoffset((ccv_nnc_tensor_t*)b),
 		};
-		ccv_nnc_mfa_encode_index_select_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
+		if (a_qx_subtype == CCV_NNC_QX_8I_ROWWISE)
+		{
+			const ccv_nnc_mfa_index_select_8i_rowwise_params_t params = {
+				.data_type = mtl_data_type,
+				.row_length = (uint64_t)a->info.dim[1],
+				.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
+				.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
+			};
+			ccv_nnc_mfa_prepare_index_select_8i_rowwise(context, params);
+			ccv_nnc_mfa_encode_index_select_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
+		} else {
+			const ccv_nnc_mfa_index_select_8i_rowwise_x_params_t params = {
+				.data_type = mtl_data_type,
+				.format = (uint32_t)a->info.reserved,
+				.row_length = (uint64_t)a->info.dim[1],
+				.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
+				.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
+			};
+			ccv_nnc_mfa_prepare_index_select_8i_rowwise_x(context, params);
+			ccv_nnc_mfa_encode_index_select_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
+		}
 		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		return CCV_NNC_EXEC_SUCCESS;
 	}

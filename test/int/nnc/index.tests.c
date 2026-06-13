@@ -5,6 +5,7 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
+#include <math.h>
 
 TEST_SETUP()
 {
@@ -319,6 +320,94 @@ TEST_CASE("gpu index select forward with 32s tensor")
 	ccv_nnc_tensor_free(a);
 }
 
+static int _mps_index_select_8i_rowwise_x_compare(const int datatype, const int format, const int rows, const int cols, const int selected, const double tolerance, double* const max_abs_ref)
+{
+	ccv_nnc_tensor_param_t host_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { rows, cols, 0 },
+	};
+	ccv_nnc_tensor_param_t output_params = host_params;
+	output_params.dim[0] = selected;
+	ccv_nnc_tensor_param_t gpu_params = host_params;
+	gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_param_t gpu_output_params = output_params;
+	gpu_output_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, host_params, 0);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, format), 0);
+	ccv_nnc_tensor_t* const dequantized = ccv_nnc_tensor_new(0, host_params, 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, output_params, 0);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_output_params, 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, output_params, 0);
+	const size_t count = (size_t)rows * cols;
+	float* const values = ccmalloc(sizeof(float) * count);
+	size_t i;
+	for (i = 0; i < count; i++)
+		values[i] = ((int)((i * 31 + format * 7) % 257) - 128) / 67.0f;
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, count);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, count);
+	else
+		memcpy(source->data.f32, values, sizeof(float) * count);
+	int j;
+	for (j = 0; j < selected; j++)
+		indices->data.i32[j] = (j * 17 + 11) % rows;
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	int status = 0;
+	if (qsize != ccv_nnc_tensor_data_size_without_padding(q->info))
+	{
+		status = -1;
+		goto cleanup;
+	}
+	ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, cols, format, dequantized->data.u8, count);
+	const size_t row_bytes = (size_t)cols * CCV_GET_DATA_TYPE_SIZE(datatype);
+	for (j = 0; j < selected; j++)
+		memcpy(expected->data.u8 + (size_t)j * row_bytes, dequantized->data.u8 + (size_t)indices->data.i32[j] * row_bytes, row_bytes);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, indices), TENSOR_LIST(gq, gindices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+	const size_t output_count = (size_t)selected * cols;
+	float* const expected_f32 = ccmalloc(sizeof(float) * output_count);
+	float* const actual_f32 = ccmalloc(sizeof(float) * output_count);
+	if (datatype == CCV_16F)
+	{
+		ccv_half_precision_to_float((uint16_t*)expected->data.f16, expected_f32, output_count);
+		ccv_half_precision_to_float((uint16_t*)actual->data.f16, actual_f32, output_count);
+	} else if (datatype == CCV_16BF) {
+		ccv_bfloat_to_float((uint16_t*)expected->data.f16, expected_f32, output_count);
+		ccv_bfloat_to_float((uint16_t*)actual->data.f16, actual_f32, output_count);
+	} else {
+		memcpy(expected_f32, expected->data.f32, sizeof(float) * output_count);
+		memcpy(actual_f32, actual->data.f32, sizeof(float) * output_count);
+	}
+	double max_abs = 0;
+	for (i = 0; i < output_count; i++)
+		max_abs = ccv_max(max_abs, fabs((double)expected_f32[i] - (double)actual_f32[i]));
+	if (max_abs > tolerance)
+		status = 1;
+	if (max_abs_ref)
+		*max_abs_ref = max_abs;
+	ccfree(actual_f32);
+	ccfree(expected_f32);
+cleanup:
+	ccfree(values);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(gq);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(dequantized);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(source);
+	return status;
+}
+
 TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -450,6 +539,50 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with bfloat output")
 	ccv_nnc_tensor_free(q);
 	ccv_nnc_tensor_free(source);
 	ccfree(values);
+}
+
+TEST_CASE("mps index select packed row-wise 8i-x half precision all formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+	};
+	int i;
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		double max_abs = 0;
+		const int status = _mps_index_select_8i_rowwise_x_compare(CCV_16F, formats[i], 17, 130, 11, 1e-3, &max_abs);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp16 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+	}
+}
+
+TEST_CASE("mps index select packed row-wise 8i-x float and bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+	};
+	int i;
+	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
+	{
+		double max_abs = 0;
+		int status = _mps_index_select_8i_rowwise_x_compare(CCV_32F, formats[i], 13, 131, 7, 1e-5, &max_abs);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp32 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+		max_abs = 0;
+		status = _mps_index_select_8i_rowwise_x_compare(CCV_16BF, formats[i], 13, 131, 7, 1e-2, &max_abs);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x bf16 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+	}
 }
 
 TEST_CASE("index select backward with half precision")
