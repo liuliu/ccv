@@ -97,11 +97,11 @@ using namespace metal;
 
 	if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
 		shader += R"(
-inline ulong packed52_payload(device const uchar* data, const uint group_index)
+inline ulong packed52_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 52u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 52ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -115,11 +115,11 @@ inline ulong packed52_payload(device const uchar* data, const uint group_index)
 )";
 	} else if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
 			shader += R"(
-inline ulong packed42_payload(device const uchar* data, const uint group_index)
+inline ulong packed42_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 42u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 42ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -132,11 +132,11 @@ inline ulong packed42_payload(device const uchar* data, const uint group_index)
 )";
 	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
 		shader += R"(
-inline uint packed21_payload(device const uchar* data, const uint group_index)
+inline uint packed21_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 21u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 21ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -147,11 +147,11 @@ inline uint packed21_payload(device const uchar* data, const uint group_index)
 )";
 	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
 		shader += R"(
-inline uint packed28_payload(device const uchar* data, const uint group_index)
+inline uint packed28_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 28u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 28ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -190,9 +190,9 @@ inline int iq3xxs_value(const uint index, const uint lane)
 	switch (format) {
 			case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 				shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
-  device const uchar* p = source + group_index * 11u;
+  device const uchar* p = source + group_index * 11ul;
   const ulong lo =
     (ulong)p[0] |
     ((ulong)p[1] << 8) |
@@ -229,7 +229,7 @@ inline int q2_signed_value(const uint q)
   return (q & 2u) ? (int)q - 4 : (int)q;
 }
 
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
   const ulong payload = packed52_payload(source, group_index);
   const int m = (int)((payload >> 48u) & 3ul) + 1;
@@ -241,9 +241,9 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 				break;
 			case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 				shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
-  device const uchar* p = source + group_index * 9u;
+  device const uchar* p = source + group_index * 9ul;
   const int m = (int)(p[8] & 15u) + 1;
   const int b = (int)(p[8] >> 4) - 8;
   for (uint j = 0; j < 8; ++j) {
@@ -264,9 +264,9 @@ inline void q3_values(const uint q, const uint base, const int m, const int b, t
   q8[base + 3] = ((int)((q >> 9) & 7u) - 4) * m + b;
 }
 
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
-  device const uchar* p = source + group_index * 7u;
+  device const uchar* p = source + group_index * 7ul;
   const uint lo =
     (uint)p[0] |
     ((uint)p[1] << 8) |
@@ -287,7 +287,7 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q2_K:
 			shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
   const ulong payload = packed42_payload(source, group_index);
   const uint q = (uint)payload;
@@ -300,7 +300,7 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 			shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
   const ulong payload = packed42_payload(source, group_index);
   const uint grid0 = (uint)(payload & 1023u);
@@ -320,7 +320,7 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 constant int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
 
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
   const uint payload = packed21_payload(source, group_index);
   const uint grid0 = payload & 511u;
@@ -337,9 +337,9 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			shader += R"(
 constant int q2_xxs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
 
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
-  device const uchar* p = source + group_index * 8u;
+  device const uchar* p = source + group_index * 8ul;
   const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
   const int scale = q2_xxs_scales[p[7] >> 4];
   for (uint sg = 0; sg < 4; ++sg) {
@@ -356,9 +356,9 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
 			shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
-  device const uchar* p = source + group_index * 7u;
+  device const uchar* p = source + group_index * 7ul;
   const uint grid0 = (uint)p[0] | (((uint)p[1] & 1u) << 8);
   const uint grid1 = ((uint)p[1] >> 1) | (((uint)p[2] & 3u) << 7);
   const uint grid2 = ((uint)p[2] >> 2) | (((uint)p[3] & 7u) << 6);
@@ -378,7 +378,7 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
 			shader += R"(
-inline void decode_group(device const uchar* source, const uint group_index, thread int* q8)
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
 {
   const uint payload = packed28_payload(source, group_index);
   const uint grid0 = payload & 255u;
@@ -399,7 +399,7 @@ inline void decode_group(device const uchar* source, const uint group_index, thr
 	}
 
 	shader += R"(
-inline void store_q8_scalar(device const uchar* source, device uchar* destination, const uint destination_offset, const uint col_base, const uint source_row, thread int* q8)
+inline void store_q8_scalar(device const uchar* source, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row, thread int* q8)
 {
   device const real* scales = reinterpret_cast<device const real*>(source + input_scale_offset);
   device real* destination_d = reinterpret_cast<device real*>(destination);
@@ -413,7 +413,7 @@ inline void store_q8_scalar(device const uchar* source, device uchar* destinatio
 
 )";
 	shader += R"(
-inline void decode_store_group(device const uchar* source, const uint group_index, device uchar* destination, const uint destination_offset, const uint col_base, const uint source_row)
+inline void decode_store_group(device const uchar* source, const ulong group_index, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row)
 {
 )";
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
@@ -443,8 +443,8 @@ kernel void index_select_8i_rowwise_x(
   const uint group = x - output_row * groups_per_row;
   const uint col_base = group * group_size;
   const uint source_row = (uint)indices[output_row];
-  const uint source_group_index = source_row * groups_per_row + group;
-  decode_store_group(source, source_group_index, destination, output_row * row_length + col_base, col_base, source_row);
+  const ulong source_group_index = (ulong)source_row * groups_per_row + group;
+  decode_store_group(source, source_group_index, destination, (ulong)output_row * row_length + col_base, col_base, source_row);
 }
 )";
 	return shader;
@@ -463,7 +463,7 @@ std::string IndexSelect8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant uint input_scale_offset [[function_constant(4)]];\n";
+	defines += "constant ulong input_scale_offset [[function_constant(4)]];\n";
 	defines += "constant uint output_groups [[function_constant(6)]];\n";
 	return defines;
 }

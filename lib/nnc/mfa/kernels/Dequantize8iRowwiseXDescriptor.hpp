@@ -33,8 +33,8 @@ struct Dequantize8iRowwiseXDescriptor {
 	uint32_t groupsPerRow() const noexcept;
 	uint32_t groupBits() const noexcept;
 	uint32_t totalGroups() const noexcept;
-	uint32_t inputScaleOffset() const noexcept;
-	uint32_t outputScaleOffset() const noexcept;
+		uint64_t inputScaleOffset() const noexcept;
+		uint64_t outputScaleOffset() const noexcept;
 	uint32_t scaleBytes() const noexcept;
 	uint32_t dispatchItems() const noexcept;
 
@@ -55,8 +55,8 @@ struct Dequantize8iRowwiseXSelectedDescriptor {
 	uint32_t groupsPerRow() const noexcept;
 	uint32_t groupBits() const noexcept;
 	uint32_t groupsPerExpert() const noexcept;
-	uint32_t inputScaleOffset() const noexcept;
-	uint32_t outputScaleOffset() const noexcept;
+		uint64_t inputScaleOffset() const noexcept;
+		uint64_t outputScaleOffset() const noexcept;
 	uint32_t scaleBytesPerExpert() const noexcept;
 	uint32_t dispatchItemsPerExpert() const noexcept;
 

@@ -59,9 +59,9 @@ static ccv_nnc_mfa_activation_quant_layout_t activation_quant_layout(ccv_nnc_mfa
   };
 }
 
-static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols) noexcept
+static size_t rowwise_8i_scale_offset(const size_t rows, const size_t cols) noexcept
 {
-  return align_up((size_t)rows * cols * sizeof(int8_t), 128);
+  return align_up(rows * cols * sizeof(int8_t), 128);
 }
 
 static ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t plan_layout(ccv_nnc_mfa_segmented_scaled_gemm_params_t params) noexcept
@@ -134,7 +134,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   const ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t p_layout = plan_layout(params);
   auto scratch = context->request_scratch(p_layout.scratch_bytes);
-  const size_t b_scale_offset = rowwise_8i_scale_offset(params.segments * params.N, params.K);
+  const size_t b_scale_offset = rowwise_8i_scale_offset((size_t)params.segments * params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();

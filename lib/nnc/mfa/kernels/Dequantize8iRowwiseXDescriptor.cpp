@@ -8,7 +8,7 @@
 
 namespace {
 
-static uint32_t align_up_32(const uint32_t value, const uint32_t alignment) noexcept
+static uint64_t align_up_64(const uint64_t value, const uint64_t alignment) noexcept
 {
 	return (value + alignment - 1) & ~(alignment - 1);
 }
@@ -83,14 +83,14 @@ uint32_t Dequantize8iRowwiseXDescriptor::totalGroups() const noexcept {
 	return rowCount() * groupsPerRow();
 }
 
-uint32_t Dequantize8iRowwiseXDescriptor::inputScaleOffset() const noexcept {
+uint64_t Dequantize8iRowwiseXDescriptor::inputScaleOffset() const noexcept {
 	const uint64_t payloadBits = (uint64_t)totalGroups() * groupBits();
-	const uint32_t payloadBytes = (uint32_t)((payloadBits + 7) / 8);
-	return align_up_32(payloadBytes, 128);
+	const uint64_t payloadBytes = (payloadBits + 7) / 8;
+	return align_up_64(payloadBytes, 128);
 }
 
-uint32_t Dequantize8iRowwiseXDescriptor::outputScaleOffset() const noexcept {
-	return align_up_32(length, 128);
+uint64_t Dequantize8iRowwiseXDescriptor::outputScaleOffset() const noexcept {
+	return align_up_64(length, 128);
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::scaleBytes() const noexcept {
@@ -135,16 +135,16 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		const uint32_t rowLength = this->rowLength;
 		const uint32_t groupSize = this->groupSize();
 		const uint32_t groupsPerRow = this->groupsPerRow();
-		const uint32_t inputScaleOffset = this->inputScaleOffset();
-		const uint32_t outputScaleOffset = this->outputScaleOffset();
+		const uint64_t inputScaleOffset = this->inputScaleOffset();
+		const uint64_t outputScaleOffset = this->outputScaleOffset();
 		const uint32_t totalGroups = this->totalGroups();
 		const uint32_t scaleBytes = this->scaleBytes();
 		const uint32_t dispatchItems = this->dispatchItems();
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeUInt, NS::UInteger(4));
-		constants->setConstantValue(&outputScaleOffset, MTL::DataTypeUInt, NS::UInteger(5));
+		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeULong, NS::UInteger(4));
+		constants->setConstantValue(&outputScaleOffset, MTL::DataTypeULong, NS::UInteger(5));
 		constants->setConstantValue(&totalGroups, MTL::DataTypeUInt, NS::UInteger(6));
 		constants->setConstantValue(&scaleBytes, MTL::DataTypeUInt, NS::UInteger(7));
 		constants->setConstantValue(&dispatchItems, MTL::DataTypeUInt, NS::UInteger(8));
@@ -209,14 +209,14 @@ uint32_t Dequantize8iRowwiseXSelectedDescriptor::groupsPerExpert() const noexcep
 	return rowsPerExpert * groupsPerRow();
 }
 
-uint32_t Dequantize8iRowwiseXSelectedDescriptor::inputScaleOffset() const noexcept {
+uint64_t Dequantize8iRowwiseXSelectedDescriptor::inputScaleOffset() const noexcept {
 	const uint64_t payloadBits = (uint64_t)expertCount * groupsPerExpert() * groupBits();
-	const uint32_t payloadBytes = (uint32_t)((payloadBits + 7) / 8);
-	return align_up_32(payloadBytes, 128);
+	const uint64_t payloadBytes = (payloadBits + 7) / 8;
+	return align_up_64(payloadBytes, 128);
 }
 
-uint32_t Dequantize8iRowwiseXSelectedDescriptor::outputScaleOffset() const noexcept {
-	return align_up_32((uint32_t)((uint64_t)expertCount * rowsPerExpert * rowLength), 128);
+uint64_t Dequantize8iRowwiseXSelectedDescriptor::outputScaleOffset() const noexcept {
+	return align_up_64((uint64_t)expertCount * rowsPerExpert * rowLength, 128);
 }
 
 uint32_t Dequantize8iRowwiseXSelectedDescriptor::scaleBytesPerExpert() const noexcept {
@@ -262,8 +262,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		const uint32_t rowLength = this->rowLength;
 		const uint32_t groupSize = this->groupSize();
 		const uint32_t groupsPerRow = this->groupsPerRow();
-		const uint32_t inputScaleOffset = this->inputScaleOffset();
-		const uint32_t outputScaleOffset = this->outputScaleOffset();
+		const uint64_t inputScaleOffset = this->inputScaleOffset();
+		const uint64_t outputScaleOffset = this->outputScaleOffset();
 		const uint32_t groupsPerExpert = this->groupsPerExpert();
 		const uint32_t scaleBytesPerExpert = this->scaleBytesPerExpert();
 		const uint32_t dispatchItemsPerExpert = this->dispatchItemsPerExpert();
@@ -273,8 +273,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeUInt, NS::UInteger(4));
-		constants->setConstantValue(&outputScaleOffset, MTL::DataTypeUInt, NS::UInteger(5));
+		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeULong, NS::UInteger(4));
+		constants->setConstantValue(&outputScaleOffset, MTL::DataTypeULong, NS::UInteger(5));
 		constants->setConstantValue(&groupsPerExpert, MTL::DataTypeUInt, NS::UInteger(9));
 		constants->setConstantValue(&scaleBytesPerExpert, MTL::DataTypeUInt, NS::UInteger(10));
 		constants->setConstantValue(&dispatchItemsPerExpert, MTL::DataTypeUInt, NS::UInteger(11));

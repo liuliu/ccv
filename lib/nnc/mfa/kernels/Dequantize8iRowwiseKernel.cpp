@@ -93,6 +93,6 @@ std::string Dequantize8iRowwiseKernel::createConstants() const noexcept {
 	defines += "constant ushort threadgroup_size = 256;\n";
 	defines += "constant uint row_units [[function_constant(0)]];\n";
 	defines += "constant uint element_count [[function_constant(1)]];\n";
-	defines += "constant uint scale_offset [[function_constant(2)]];\n";
+	defines += "constant ulong scale_offset [[function_constant(2)]];\n";
 	return defines;
 }

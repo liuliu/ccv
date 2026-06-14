@@ -38,7 +38,7 @@ struct IndexSelect8iRowwiseXDescriptor {
 	uint32_t groupBits() const noexcept;
 	uint32_t inputGroups() const noexcept;
 	uint32_t outputGroups() const noexcept;
-	uint32_t inputScaleOffset() const noexcept;
+		uint64_t inputScaleOffset() const noexcept;
 
 	std::pair<IndexSelect8iRowwiseXKernelDescriptor, PipelineValue<IndexSelect8iRowwiseXKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<IndexSelect8iRowwiseXKernelDescriptor, std::unique_ptr<IndexSelect8iRowwiseXKernel>> *const libraryCache) const noexcept;
 };

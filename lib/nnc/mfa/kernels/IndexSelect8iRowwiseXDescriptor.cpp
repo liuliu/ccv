@@ -6,7 +6,7 @@
 
 namespace {
 
-static uint32_t align_up_32(const uint32_t value, const uint32_t alignment) noexcept
+static uint64_t align_up_64(const uint64_t value, const uint64_t alignment) noexcept
 {
 	return (value + alignment - 1) & ~(alignment - 1);
 }
@@ -90,10 +90,10 @@ uint32_t IndexSelect8iRowwiseXDescriptor::outputGroups() const noexcept {
 	return outputRowCount() * groupsPerRow();
 }
 
-uint32_t IndexSelect8iRowwiseXDescriptor::inputScaleOffset() const noexcept {
+uint64_t IndexSelect8iRowwiseXDescriptor::inputScaleOffset() const noexcept {
 	const uint64_t payloadBits = (uint64_t)inputGroups() * groupBits();
-	const uint32_t payloadBytes = (uint32_t)((payloadBits + 7) / 8);
-	return align_up_32(payloadBytes, 128);
+	const uint64_t payloadBytes = (payloadBits + 7) / 8;
+	return align_up_64(payloadBytes, 128);
 }
 
 std::size_t std::hash<IndexSelect8iRowwiseXDescriptor>::operator()(const IndexSelect8iRowwiseXDescriptor& hash) const noexcept {
@@ -132,12 +132,12 @@ std::pair<IndexSelect8iRowwiseXKernelDescriptor, PipelineValue<IndexSelect8iRoww
 		const uint32_t rowLength = this->rowLength;
 		const uint32_t groupSize = this->groupSize();
 		const uint32_t groupsPerRow = this->groupsPerRow();
-		const uint32_t inputScaleOffset = this->inputScaleOffset();
+			const uint64_t inputScaleOffset = this->inputScaleOffset();
 		const uint32_t outputGroups = this->outputGroups();
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-		constants->setConstantValue(&inputScaleOffset, MTL::DataTypeUInt, NS::UInteger(4));
+			constants->setConstantValue(&inputScaleOffset, MTL::DataTypeULong, NS::UInteger(4));
 		constants->setConstantValue(&outputGroups, MTL::DataTypeUInt, NS::UInteger(6));
 
 		NS::String* swiftName = NS::String::string("index_select_8i_rowwise_x", NS::UTF8StringEncoding);

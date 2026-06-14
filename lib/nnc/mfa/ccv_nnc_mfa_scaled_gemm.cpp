@@ -54,9 +54,9 @@ static ccv_nnc_mfa_activation_quant_layout_t activation_quant_layout(ccv_nnc_mfa
   };
 }
 
-static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols) noexcept
+static size_t rowwise_8i_scale_offset(const size_t rows, const size_t cols) noexcept
 {
-  return align_up((size_t)rows * cols * sizeof(int8_t), 128);
+  return align_up(rows * cols * sizeof(int8_t), 128);
 }
 
 static NAInt8MatMulSmallMDescriptor make_na_int8_matmul_small_m_descriptor(ccv_nnc_mfa_scaled_gemm_params_t params) noexcept
@@ -153,7 +153,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   }
   auto scratch = context->request_scratch(scratch_bytes);
   const uint32_t b_batches = (params.batch_dimension > 1 && params.batch_stride_b > 0) ? params.batch_dimension : 1;
-  const size_t b_scale_offset = rowwise_8i_scale_offset(b_batches * params.N, params.K);
+  const size_t b_scale_offset = rowwise_8i_scale_offset((size_t)b_batches * params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();

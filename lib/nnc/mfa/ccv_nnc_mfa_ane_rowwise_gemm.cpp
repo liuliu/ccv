@@ -94,9 +94,9 @@ static uint32_t rowwise_padded_total_rows(const ccv_nnc_mfa_ane_rowwise_gemm_par
   return pad_ane_rows(rowwise_total_rows(params));
 }
 
-static size_t rowwise_8i_scale_offset(const uint32_t rows, const uint32_t cols)
+static size_t rowwise_8i_scale_offset(const size_t rows, const size_t cols)
 {
-  return align_up((size_t)rows * cols * sizeof(int8_t), 128);
+  return align_up(rows * cols * sizeof(int8_t), 128);
 }
 
 typedef struct {
@@ -910,7 +910,7 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
   mtl_buffer_t* const bias = params.fused_bias ? tensors[3] : nullptr;
   mtl_buffer_t* const scratch = context->request_scratch(a_layout.scratch_bytes);
   const uint32_t b_batches = (rowwise_batch_dimension(params) > 1 && params.batch_stride_b > 0) ? rowwise_batch_dimension(params) : 1;
-  const size_t weight_scale_offset = tensor_offsets[1] + rowwise_8i_scale_offset(b_batches * params.N, params.K);
+  const size_t weight_scale_offset = tensor_offsets[1] + rowwise_8i_scale_offset((size_t)b_batches * params.N, params.K);
   const size_t bias_offset = params.fused_bias ? tensor_offsets[3] : 0;
 
   char fence_error_buffer[1024] = {};

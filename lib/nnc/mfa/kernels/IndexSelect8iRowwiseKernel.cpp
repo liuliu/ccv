@@ -50,7 +50,7 @@ kernel void index_select_8i_rowwise(
   const int source_row = indices[dest_row];
   device const real *scales = (device const real*)((device const uchar*)source + scale_offset);
   const real scale = scales[source_row];
-  const char4 q = source[source_row * row_units + col];
+  const char4 q = source[(ulong)source_row * row_units + col];
   destination[x] = real4((real)q.x, (real)q.y, (real)q.z, (real)q.w) * scale;
 }
 		)";
@@ -74,7 +74,7 @@ kernel void index_select_8i_rowwise(
   const uint col = x - dest_row * row_units;
   const int source_row = indices[dest_row];
   device const real *scales = (device const real*)((device const uchar*)source + scale_offset);
-  destination[x] = (real)source[source_row * row_units + col] * scales[source_row];
+  destination[x] = (real)source[(ulong)source_row * row_units + col] * scales[source_row];
 }
 		)";
 	}
@@ -99,6 +99,6 @@ std::string IndexSelect8iRowwiseKernel::createConstants() const noexcept {
 	defines += "constant ushort threadgroup_size = 256;\n";
 	defines += "constant uint row_units [[function_constant(0)]];\n";
 	defines += "constant uint element_count [[function_constant(1)]];\n";
-	defines += "constant uint scale_offset [[function_constant(2)]];\n";
+	defines += "constant ulong scale_offset [[function_constant(2)]];\n";
 	return defines;
 }

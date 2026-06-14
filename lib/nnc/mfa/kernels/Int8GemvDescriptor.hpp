@@ -46,7 +46,7 @@ struct Int8GemvDescriptor {
   uint32_t groupSize() const noexcept;
   uint32_t groupsPerRow() const noexcept;
   uint32_t groupBits() const noexcept;
-  uint32_t inputScaleOffset() const noexcept;
+	  uint64_t inputScaleOffset() const noexcept;
 
   std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept;
 };

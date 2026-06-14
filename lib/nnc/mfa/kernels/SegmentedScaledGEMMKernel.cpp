@@ -124,7 +124,7 @@ kernel void segmented_scaled_gemm(
   const uint global_row = record.row_offset + local_row;
 
   A_buf += global_row * K;
-  B_buf += record.expert * (N * K) + N_block_start * K;
+  B_buf += record.expert * (ulong)(N * K) + N_block_start * K;
   C_buf += global_row * N + N_block_start;
   A_scale_buf += global_row;
   B_scale_buf += record.expert * N + N_block_start;

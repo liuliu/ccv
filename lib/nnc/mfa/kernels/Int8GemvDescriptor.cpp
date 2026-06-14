@@ -79,10 +79,10 @@ uint32_t Int8GemvDescriptor::groupBits() const noexcept {
   }
 }
 
-uint32_t Int8GemvDescriptor::inputScaleOffset() const noexcept {
+uint64_t Int8GemvDescriptor::inputScaleOffset() const noexcept {
   const uint64_t payloadBits = (uint64_t)nrows * groupsPerRow() * groupBits();
-  const uint32_t payloadBytes = (uint32_t)((payloadBits + 7) / 8);
-  return (payloadBytes + 127) & ~127u;
+  const uint64_t payloadBytes = (payloadBits + 7) / 8;
+  return (payloadBytes + 127) & ~UINT64_C(127);
 }
 
 std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDescriptor::findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept {
@@ -108,12 +108,12 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    const uint32_t scaleOffset = format == 0 ? (uint32_t)(((uint64_t)nrows * ncols + 127) & ~UINT64_C(127)) : inputScaleOffset();
+    const uint64_t scaleOffset = format == 0 ? (((uint64_t)nrows * ncols + 127) & ~UINT64_C(127)) : inputScaleOffset();
     const uint32_t groupSize = this->groupSize();
     const uint32_t groupsPerRow = this->groupsPerRow();
     constants->setConstantValue(&ncols, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(1));
-    constants->setConstantValue(&scaleOffset, MTL::DataTypeUInt, NS::UInteger(2));
+    constants->setConstantValue(&scaleOffset, MTL::DataTypeULong, NS::UInteger(2));
     constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(4));
 

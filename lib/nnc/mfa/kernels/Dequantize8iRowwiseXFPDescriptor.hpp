@@ -35,7 +35,7 @@ struct Dequantize8iRowwiseXFPDescriptor {
 	uint32_t groupsPerRow() const noexcept;
 	uint32_t groupBits() const noexcept;
 	uint32_t totalGroups() const noexcept;
-	uint32_t inputScaleOffset() const noexcept;
+		uint64_t inputScaleOffset() const noexcept;
 
 	std::pair<Dequantize8iRowwiseXFPKernelDescriptor, PipelineValue<Dequantize8iRowwiseXFPKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Dequantize8iRowwiseXFPKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXFPKernel>> *const libraryCache) const noexcept;
 };

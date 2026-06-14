@@ -114,12 +114,12 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
     const uint yv_base = (g * group_size) >> 2;
-    const float3 dot0 = dot_group(src0, (rb + 0) * groups_per_row + g, y0, y1, y2, yv_base);
+    const float3 dot0 = dot_group(src0, (ulong)(rb + 0) * groups_per_row + g, y0, y1, y2, yv_base);
     sum00 += dot0.x;
     sum10 += dot0.y;
     sum20 += dot0.z;
     if (active1) {
-      const float3 dot1 = dot_group(src0, (rb + 1) * groups_per_row + g, y0, y1, y2, yv_base);
+      const float3 dot1 = dot_group(src0, (ulong)(rb + 1) * groups_per_row + g, y0, y1, y2, yv_base);
       sum01 += dot1.x;
       sum11 += dot1.y;
       sum21 += dot1.z;
@@ -206,11 +206,11 @@ static void append_q6_helpers(std::string& shader)
 #include <metal_stdlib>
 using namespace metal;
 
-inline ulong q6_payload(device const uchar* data, const uint group_index)
+inline ulong q6_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 52u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 52ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -339,7 +339,7 @@ kernel void int8_gemv(
       const float4 y21 = float4(y2[yv_base + 1]);
       const float4 y22 = float4(y2[yv_base + 2]);
       const float4 y23 = float4(y2[yv_base + 3]);
-      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      device const uchar* p0 = src0 + ((ulong)(rb + 0) * pairs_per_row + g) * 13ul;
       const ulong payload00 = q6_pair_payload0(p0);
       const ulong payload01 = q6_pair_payload1(p0);
       const float2 dot00 = q6_dot2_payload(payload00, y00, y01, y10, y11);
@@ -348,7 +348,7 @@ kernel void int8_gemv(
       sum10 += dot00.y + dot01.y;
       sum20 += q6_dot_payload(payload00, y20, y21) + q6_dot_payload(payload01, y22, y23);
       if (active1) {
-        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        device const uchar* p1 = src0 + ((ulong)(rb + 1) * pairs_per_row + g) * 13ul;
         const ulong payload10 = q6_pair_payload0(p1);
         const ulong payload11 = q6_pair_payload1(p1);
         const float2 dot10 = q6_dot2_payload(payload10, y00, y01, y10, y11);
@@ -367,13 +367,13 @@ kernel void int8_gemv(
       const float4 y11 = float4(y1[yv_base + 1]);
       const float4 y20 = float4(y2[yv_base + 0]);
       const float4 y21 = float4(y2[yv_base + 1]);
-      const ulong payload0 = q6_payload(src0, (rb + 0) * groups_per_row + g);
+      const ulong payload0 = q6_payload(src0, (ulong)(rb + 0) * groups_per_row + g);
       const float2 dot0 = q6_dot2_payload(payload0, y00, y01, y10, y11);
       sum00 += dot0.x;
       sum10 += dot0.y;
       sum20 += q6_dot_payload(payload0, y20, y21);
       if (active1) {
-        const ulong payload1 = q6_payload(src0, (rb + 1) * groups_per_row + g);
+        const ulong payload1 = q6_payload(src0, (ulong)(rb + 1) * groups_per_row + g);
         const float2 dot1 = q6_dot2_payload(payload1, y00, y01, y10, y11);
         sum01 += dot1.x;
         sum11 += dot1.y;
@@ -515,7 +515,7 @@ kernel void int8_gemv(
       const float4 y11 = float4(y1[yv_base + 1]);
       const float4 y12 = float4(y1[yv_base + 2]);
       const float4 y13 = float4(y1[yv_base + 3]);
-      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      device const uchar* p0 = src0 + ((ulong)(rb + 0) * pairs_per_row + g) * 13ul;
       const ulong payload00 = q6_pair_payload0(p0);
       const ulong payload01 = q6_pair_payload1(p0);
       const float2 dot00 = q6_dot2_payload(payload00, y00, y01, y10, y11);
@@ -523,7 +523,7 @@ kernel void int8_gemv(
       sum00 += dot00.x + dot01.x;
       sum10 += dot00.y + dot01.y;
       if (active1) {
-        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        device const uchar* p1 = src0 + ((ulong)(rb + 1) * pairs_per_row + g) * 13ul;
         const ulong payload10 = q6_pair_payload0(p1);
         const ulong payload11 = q6_pair_payload1(p1);
         const float2 dot10 = q6_dot2_payload(payload10, y00, y01, y10, y11);
@@ -539,12 +539,12 @@ kernel void int8_gemv(
       const float4 y01 = float4(y0[yv_base + 1]);
       const float4 y10 = float4(y1[yv_base + 0]);
       const float4 y11 = float4(y1[yv_base + 1]);
-      const ulong payload0 = q6_payload(src0, (rb + 0) * groups_per_row + g);
+      const ulong payload0 = q6_payload(src0, (ulong)(rb + 0) * groups_per_row + g);
       const float2 dot0 = q6_dot2_payload(payload0, y00, y01, y10, y11);
       sum00 += dot0.x;
       sum10 += dot0.y;
       if (active1) {
-        const ulong payload1 = q6_payload(src0, (rb + 1) * groups_per_row + g);
+        const ulong payload1 = q6_payload(src0, (ulong)(rb + 1) * groups_per_row + g);
         const float2 dot1 = q6_dot2_payload(payload1, y00, y01, y10, y11);
         sum01 += dot1.x;
         sum11 += dot1.y;
@@ -662,11 +662,11 @@ kernel void int8_gemv(
       const float4 y1 = float4(y4[yv_base + 1]);
       const float4 y2 = float4(y4[yv_base + 2]);
       const float4 y3 = float4(y4[yv_base + 3]);
-      device const uchar* p0 = src0 + ((rb + 0) * pairs_per_row + g) * 13u;
+      device const uchar* p0 = src0 + ((ulong)(rb + 0) * pairs_per_row + g) * 13ul;
       sum0 += q6_dot_payload(q6_pair_payload0(p0), y0, y1);
       sum0 += q6_dot_payload(q6_pair_payload1(p0), y2, y3);
       if (active1) {
-        device const uchar* p1 = src0 + ((rb + 1) * pairs_per_row + g) * 13u;
+        device const uchar* p1 = src0 + ((ulong)(rb + 1) * pairs_per_row + g) * 13ul;
         sum1 += q6_dot_payload(q6_pair_payload0(p1), y0, y1);
         sum1 += q6_dot_payload(q6_pair_payload1(p1), y2, y3);
       }
@@ -676,9 +676,9 @@ kernel void int8_gemv(
       const uint yv_base = g * 2;
       const float4 y0 = float4(y4[yv_base + 0]);
       const float4 y1 = float4(y4[yv_base + 1]);
-      sum0 += q6_dot_payload(q6_payload(src0, (rb + 0) * groups_per_row + g), y0, y1);
+      sum0 += q6_dot_payload(q6_payload(src0, (ulong)(rb + 0) * groups_per_row + g), y0, y1);
       if (active1)
-        sum1 += q6_dot_payload(q6_payload(src0, (rb + 1) * groups_per_row + g), y0, y1);
+        sum1 += q6_dot_payload(q6_payload(src0, (ulong)(rb + 1) * groups_per_row + g), y0, y1);
     }
   }
 
@@ -772,9 +772,9 @@ inline float4 q4_nibbles(device const uchar* p, const uint offset)
     (float)(q1 >> 4));
 }
 
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 9;
+  device const uchar* p = source + group_index * 9ul;
   const int m = (int)(p[8] & 15u) + 1;
   const int b = (int)(p[8] >> 4) - 8;
   const float mf = (float)m;
@@ -841,9 +841,9 @@ inline float4 q5_values3(const uint q1, const uint q2)
     (float)((q2 >> 11) & 31u));
 }
 
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 11u;
+  device const uchar* p = source + group_index * 11ul;
   const uint3 q = q5_words(p);
   const int m = (int)((q.z >> 16) & 7u) + 1;
   const int b = (int)((q.z >> 19) & 31u) - 16;
@@ -888,9 +888,9 @@ inline float4 q3_values(const uint q)
     (float)((q >> 9) & 7u));
 }
 
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 7;
+  device const uchar* p = source + group_index * 7ul;
   const uint2 payload = q3_payload(p);
   const int m = (int)((payload.y >> 16) & 31u) + 1;
   const int b = (((int)((payload.y >> 21) & 7u) - 4) << 1);
@@ -914,11 +914,11 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
 #include <metal_stdlib>
 using namespace metal;
 
-inline ulong q2_payload(device const uchar* data, const uint group_index)
+inline ulong q2_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 42u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 42ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -939,7 +939,7 @@ inline float4 q2_values(const uint qbits, const uint offset)
     (float)((q >> 6) & 3u));
 }
 
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
   const ulong payload = q2_payload(source, group_index);
   const uint qbits = (uint)payload;
@@ -982,11 +982,11 @@ using namespace metal;
 )";
         if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
           shader += R"(
-inline ulong iq2s_payload(device const uchar* data, const uint group_index)
+inline ulong iq2s_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 42u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 42ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -999,11 +999,11 @@ inline ulong iq2s_payload(device const uchar* data, const uint group_index)
 )";
         } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
           shader += R"(
-inline uint iq2xs_payload(device const uchar* data, const uint group_index)
+inline uint iq2xs_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 21u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 21ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -1014,11 +1014,11 @@ inline uint iq2xs_payload(device const uchar* data, const uint group_index)
 )";
         } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
           shader += R"(
-inline uint iq3xxs_payload(device const uchar* data, const uint group_index)
+inline uint iq3xxs_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 28u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 28ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -1103,9 +1103,9 @@ inline float4 signed_iq3xxs_values(const uint index, const uint signs, const uin
         switch (format) {
           case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
             shader += R"(
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 8u;
+  device const uchar* p = source + group_index * 8ul;
   const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
   const uint scale_base = ((uint)p[7] >> 4) << 9;
   const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
@@ -1133,7 +1133,7 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
   const ulong payload = iq2s_payload(source, group_index);
   const uint grid0 = (uint)(payload & 1023u);
@@ -1155,7 +1155,7 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
             shader += R"(
 constant int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
 
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
   const uint payload = iq2xs_payload(source, group_index);
   const uint grid0 = payload & 511u;
@@ -1172,9 +1172,9 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
             shader += R"(
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 7;
+  device const uchar* p = source + group_index * 7ul;
   const uint grid0 = (uint)p[0] | (((uint)p[1] & 1u) << 8);
   const uint grid1 = ((uint)p[1] >> 1) | (((uint)p[2] & 3u) << 7);
   const uint grid2 = ((uint)p[2] >> 2) | (((uint)p[3] & 7u) << 6);
@@ -1194,7 +1194,7 @@ inline float3 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
             shader += R"(
-inline float3 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
+inline float3 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, device const real4* y2, const uint yv_base)
 {
   const uint payload = iq3xxs_payload(source, group_index);
   const uint grid0 = payload & 255u;
@@ -1310,7 +1310,7 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
     const uint yv_base = g * 4;
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 11u;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 11ul;
     const uint3 q0 = q5_words(p0);
     const int m0 = (int)((q0.z >> 16) & 7u) + 1;
     const int b0 = (int)((q0.z >> 19) & 31u) - 16;
@@ -1333,7 +1333,7 @@ kernel void int8_gemv(
     sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) + o0 * ysum0;
     sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) + o0 * ysum1;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 11u;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 11ul;
       const uint3 q1 = q5_words(p1);
       const int m1 = (int)((q1.z >> 16) & 7u) + 1;
       const int b1 = (int)((q1.z >> 19) & 31u) - 16;
@@ -1445,7 +1445,7 @@ kernel void int8_gemv(
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
     const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 11u;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 11ul;
     const uint3 q0 = q5_words(p0);
     const int m0 = (int)((q0.z >> 16) & 7u) + 1;
     const int b0 = (int)((q0.z >> 19) & 31u) - 16;
@@ -1457,7 +1457,7 @@ kernel void int8_gemv(
     sum0 += m0f * dot(q5_values3(q0.y, q0.z), y3);
     sum0 += offset0 * ysum;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 11u;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 11ul;
       const uint3 q1 = q5_words(p1);
       const int m1 = (int)((q1.z >> 16) & 7u) + 1;
       const int b1 = (int)((q1.z >> 19) & 31u) - 16;
@@ -1572,7 +1572,7 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
     const uint yv_base = g * 4;
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 9;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 9ul;
     const int m0 = (int)(p0[8] & 15u) + 1;
     const int b0 = (int)(p0[8] >> 4) - 8;
     const float m0f = (float)m0;
@@ -1594,7 +1594,7 @@ kernel void int8_gemv(
     sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) + o0 * ysum0;
     sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) + o0 * ysum1;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 9;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 9ul;
       const int m1 = (int)(p1[8] & 15u) + 1;
       const int b1 = (int)(p1[8] >> 4) - 8;
       const float m1f = (float)m1;
@@ -1704,7 +1704,7 @@ kernel void int8_gemv(
     const float4 y1 = float4(y4[yv_base + 1]);
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 9;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 9ul;
     const int m0 = (int)(p0[8] & 15u) + 1;
     const int b0 = (int)(p0[8] >> 4) - 8;
     const float m0f = (float)m0;
@@ -1716,7 +1716,7 @@ kernel void int8_gemv(
     sum0 += m0f * dot(q4_nibbles(p0, 6), y3);
     sum0 += offset0 * ysum;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 9;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 9ul;
       const int m1 = (int)(p1[8] & 15u) + 1;
       const int b1 = (int)(p1[8] >> 4) - 8;
       const float m1f = (float)m1;
@@ -1850,7 +1850,7 @@ kernel void int8_gemv(
     const float4 y13 = float4(y1[yv_base + 3]);
     const float ysum0 = vec_sum(y00) + vec_sum(y01) + vec_sum(y02) + vec_sum(y03);
     const float ysum1 = vec_sum(y10) + vec_sum(y11) + vec_sum(y12) + vec_sum(y13);
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 7;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 7ul;
     const uint2 payload0 = q3_payload(p0);
     const int m0 = (int)((payload0.y >> 16) & 31u) + 1;
     const int b0 = (((int)((payload0.y >> 21) & 7u) - 4) << 1);
@@ -1863,7 +1863,7 @@ kernel void int8_gemv(
     sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) + o0 * ysum0;
     sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) + o0 * ysum1;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 7;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 7ul;
       const uint2 payload1 = q3_payload(p1);
       const int m1 = (int)((payload1.y >> 16) & 31u) + 1;
       const int b1 = (((int)((payload1.y >> 21) & 7u) - 4) << 1);
@@ -1975,7 +1975,7 @@ kernel void int8_gemv(
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
     const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
-    device const uchar* p0 = src0 + ((rb + 0) * groups_per_row + g) * 7;
+    device const uchar* p0 = src0 + ((ulong)(rb + 0) * groups_per_row + g) * 7ul;
     const uint2 payload0 = q3_payload(p0);
     const int m0 = (int)((payload0.y >> 16) & 31u) + 1;
     const int b0 = (((int)((payload0.y >> 21) & 7u) - 4) << 1);
@@ -1987,7 +1987,7 @@ kernel void int8_gemv(
     sum0 += m0f * dot(q3_values((payload0.y >> 4) & 0xfffu), y3);
     sum0 += offset0 * ysum;
     if (active1) {
-      device const uchar* p1 = src0 + ((rb + 1) * groups_per_row + g) * 7;
+      device const uchar* p1 = src0 + ((ulong)(rb + 1) * groups_per_row + g) * 7ul;
       const uint2 payload1 = q3_payload(p1);
       const int m1 = (int)((payload1.y >> 16) & 31u) + 1;
       const int b1 = (((int)((payload1.y >> 21) & 7u) - 4) << 1);
@@ -2054,11 +2054,11 @@ inline float vec_sum(const float4 v)
   return v.x + v.y + v.z + v.w;
 }
 
-inline ulong q2_payload(device const uchar* data, const uint group_index)
+inline ulong q2_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 42u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 42ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -2126,7 +2126,7 @@ kernel void int8_gemv(
     const float4 y13 = float4(y1[yv_base + 3]);
     const float ysum0 = vec_sum(y00) + vec_sum(y01) + vec_sum(y02) + vec_sum(y03);
     const float ysum1 = vec_sum(y10) + vec_sum(y11) + vec_sum(y12) + vec_sum(y13);
-    const ulong payload0 = q2_payload(src0, (rb + 0) * groups_per_row + g);
+    const ulong payload0 = q2_payload(src0, (ulong)(rb + 0) * groups_per_row + g);
     const uint qbits0 = (uint)payload0;
     const uint m0 = (uint)((payload0 >> 32) & 63u) + 1;
     const uint z0 = (uint)((payload0 >> 38) & 15u) << 3;
@@ -2139,7 +2139,7 @@ kernel void int8_gemv(
     sum00 += m0f * (dot(q00, y00) + dot(q01, y01) + dot(q02, y02) + dot(q03, y03)) - z0f * ysum0;
     sum10 += m0f * (dot(q00, y10) + dot(q01, y11) + dot(q02, y12) + dot(q03, y13)) - z0f * ysum1;
     if (active1) {
-      const ulong payload1 = q2_payload(src0, (rb + 1) * groups_per_row + g);
+      const ulong payload1 = q2_payload(src0, (ulong)(rb + 1) * groups_per_row + g);
       const uint qbits1 = (uint)payload1;
       const uint m1 = (uint)((payload1 >> 32) & 63u) + 1;
       const uint z1 = (uint)((payload1 >> 38) & 15u) << 3;
@@ -2251,7 +2251,7 @@ kernel void int8_gemv(
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
     const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
-    const ulong payload0 = q2_payload(src0, (rb + 0) * groups_per_row + g);
+    const ulong payload0 = q2_payload(src0, (ulong)(rb + 0) * groups_per_row + g);
     const uint qbits0 = (uint)payload0;
     const uint m0 = (uint)((payload0 >> 32) & 63u) + 1;
     const uint z0 = (uint)((payload0 >> 38) & 15u) << 3;
@@ -2262,7 +2262,7 @@ kernel void int8_gemv(
     sum0 += m0f * dot(q2_values(qbits0, 24), y3);
     sum0 -= (float)z0 * ysum;
     if (active1) {
-      const ulong payload1 = q2_payload(src0, (rb + 1) * groups_per_row + g);
+      const ulong payload1 = q2_payload(src0, (ulong)(rb + 1) * groups_per_row + g);
       const uint qbits1 = (uint)payload1;
       const uint m1 = (uint)((payload1 >> 32) & 63u) + 1;
       const uint z1 = (uint)((payload1 >> 38) & 15u) << 3;
@@ -2341,9 +2341,9 @@ inline float4 signed_iq3xxs_values(const uint index, const uint signs, const uin
 )";
       if (mrows == 2) {
         shader += R"(
-inline float2 dot_pair(device const uchar* source, const uint pair_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_pair(device const uchar* source, const ulong pair_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
-  device const uchar* p = source + pair_index * 7;
+  device const uchar* p = source + pair_index * 7ul;
   const float scale0 = (float)((p[3] & 15u) + 1u);
   const float4 v0 = signed_iq3xxs_values((uint)p[0], (uint)p[2], 0, scale0);
   const float4 v1 = signed_iq3xxs_values((uint)p[1], (uint)p[2], 4, scale0);
@@ -2394,11 +2394,11 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < pairs_per_row; g += group_stride) {
     const uint yv_base = g * 4;
-    const float2 dot0 = dot_pair(src0, (rb + 0) * pairs_per_row + g, y0, y1, yv_base);
+    const float2 dot0 = dot_pair(src0, (ulong)(rb + 0) * pairs_per_row + g, y0, y1, yv_base);
     sum00 += dot0.x;
     sum10 += dot0.y;
     if (active1) {
-      const float2 dot1 = dot_pair(src0, (rb + 1) * pairs_per_row + g, y0, y1, yv_base);
+      const float2 dot1 = dot_pair(src0, (ulong)(rb + 1) * pairs_per_row + g, y0, y1, yv_base);
       sum01 += dot1.x;
       sum11 += dot1.y;
     }
@@ -2464,9 +2464,9 @@ kernel void int8_gemv(
 )";
       } else {
         shader += R"(
-inline float dot_pair(device const uchar* source, const uint pair_index, device const real4* y4, const uint yv_base)
+inline float dot_pair(device const uchar* source, const ulong pair_index, device const real4* y4, const uint yv_base)
 {
-  device const uchar* p = source + pair_index * 7;
+  device const uchar* p = source + pair_index * 7ul;
   const float scale0 = (float)((p[3] & 15u) + 1u);
   const float4 v0 = signed_iq3xxs_values((uint)p[0], (uint)p[2], 0, scale0);
   const float4 v1 = signed_iq3xxs_values((uint)p[1], (uint)p[2], 4, scale0);
@@ -2512,9 +2512,9 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < pairs_per_row; g += group_stride) {
     const uint yv_base = g * 4;
-    sum0 += dot_pair(src0, (rb + 0) * pairs_per_row + g, y4, yv_base);
+    sum0 += dot_pair(src0, (ulong)(rb + 0) * pairs_per_row + g, y4, yv_base);
     if (active1)
-      sum1 += dot_pair(src0, (rb + 1) * pairs_per_row + g, y4, yv_base);
+      sum1 += dot_pair(src0, (ulong)(rb + 1) * pairs_per_row + g, y4, yv_base);
   }
 
   if (sgitg == 0) {
@@ -2582,11 +2582,11 @@ using namespace metal;
 )";
       if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
         shader += R"(
-inline ulong iq2s_payload(device const uchar* data, const uint group_index)
+inline ulong iq2s_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 42u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 42ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const ulong value =
     (ulong)data[byte_offset] |
     ((ulong)data[byte_offset + 1] << 8) |
@@ -2599,11 +2599,11 @@ inline ulong iq2s_payload(device const uchar* data, const uint group_index)
 )";
       } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
         shader += R"(
-inline uint iq2xs_payload(device const uchar* data, const uint group_index)
+inline uint iq2xs_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 21u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 21ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -2614,11 +2614,11 @@ inline uint iq2xs_payload(device const uchar* data, const uint group_index)
 )";
       } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
         shader += R"(
-inline uint iq3xxs_payload(device const uchar* data, const uint group_index)
+inline uint iq3xxs_payload(device const uchar* data, const ulong group_index)
 {
-  const uint bit_offset = group_index * 28u;
-  const uint byte_offset = bit_offset >> 3;
-  const uint shift = bit_offset & 7u;
+  const ulong bit_offset = (ulong)group_index * 28ul;
+  const ulong byte_offset = bit_offset >> 3;
+  const uint shift = (uint)(bit_offset & 7ul);
   const uint value =
     (uint)data[byte_offset] |
     ((uint)data[byte_offset + 1] << 8) |
@@ -2704,9 +2704,9 @@ inline float4 signed_iq3xxs_values(const uint index, const uint signs, const uin
         switch (format) {
           case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
             shader += R"(
-inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 8u;
+  device const uchar* p = source + group_index * 8ul;
   const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
   const uint scale_base = ((uint)p[7] >> 4) << 9;
   const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
@@ -2733,7 +2733,7 @@ inline float2 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
-inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
   const ulong payload = iq2s_payload(source, group_index);
   const uint grid0 = (uint)(payload & 1023u);
@@ -2754,7 +2754,7 @@ inline float2 dot_group(device const uchar* source, const uint group_index, devi
             shader += R"(
 constant int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
 
-inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
   const uint payload = iq2xs_payload(source, group_index);
   const uint grid0 = payload & 511u;
@@ -2770,9 +2770,9 @@ inline float2 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
             shader += R"(
-inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 7;
+  device const uchar* p = source + group_index * 7ul;
   const uint grid0 = (uint)p[0] | (((uint)p[1] & 1u) << 8);
   const uint grid1 = ((uint)p[1] >> 1) | (((uint)p[2] & 3u) << 7);
   const uint grid2 = ((uint)p[2] >> 2) | (((uint)p[3] & 7u) << 6);
@@ -2791,7 +2791,7 @@ inline float2 dot_group(device const uchar* source, const uint group_index, devi
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
             shader += R"(
-inline float2 dot_group(device const uchar* source, const uint group_index, device const real4* y0, device const real4* y1, const uint yv_base)
+inline float2 dot_group(device const uchar* source, const ulong group_index, device const real4* y0, device const real4* y1, const uint yv_base)
 {
   const uint payload = iq3xxs_payload(source, group_index);
   const uint grid0 = payload & 255u;
@@ -2845,11 +2845,11 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
     const uint yv_base = (g * group_size) >> 2;
-    const float2 dot0 = dot_group(src0, (rb + 0) * groups_per_row + g, y0, y1, yv_base);
+    const float2 dot0 = dot_group(src0, (ulong)(rb + 0) * groups_per_row + g, y0, y1, yv_base);
     sum00 += dot0.x;
     sum10 += dot0.y;
     if (active1) {
-      const float2 dot1 = dot_group(src0, (rb + 1) * groups_per_row + g, y0, y1, yv_base);
+      const float2 dot1 = dot_group(src0, (ulong)(rb + 1) * groups_per_row + g, y0, y1, yv_base);
       sum01 += dot1.x;
       sum11 += dot1.y;
     }
@@ -2917,9 +2917,9 @@ kernel void int8_gemv(
         switch (format) {
           case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
             shader += R"(
-inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+inline float dot_group(device const uchar* source, const ulong group_index, device const real4* y4, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 8u;
+  device const uchar* p = source + group_index * 8ul;
   const uint sign_codes = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | (((uint)p[7] & 15u) << 24);
   const uint scale_base = ((uint)p[7] >> 4) << 9;
   const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
@@ -2944,7 +2944,7 @@ inline float dot_group(device const uchar* source, const uint group_index, devic
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
             shader += R"(
-inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+inline float dot_group(device const uchar* source, const ulong group_index, device const real4* y4, const uint yv_base)
 {
   const ulong payload = iq2s_payload(source, group_index);
   const uint grid0 = (uint)(payload & 1023u);
@@ -2963,7 +2963,7 @@ inline float dot_group(device const uchar* source, const uint group_index, devic
             shader += R"(
 constant int q2_xs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
 
-inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+inline float dot_group(device const uchar* source, const ulong group_index, device const real4* y4, const uint yv_base)
 {
   const uint payload = iq2xs_payload(source, group_index);
   const uint grid0 = payload & 511u;
@@ -2977,9 +2977,9 @@ inline float dot_group(device const uchar* source, const uint group_index, devic
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
             shader += R"(
-inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+inline float dot_group(device const uchar* source, const ulong group_index, device const real4* y4, const uint yv_base)
 {
-  device const uchar* p = source + group_index * 7;
+  device const uchar* p = source + group_index * 7ul;
   const uint grid0 = (uint)p[0] | (((uint)p[1] & 1u) << 8);
   const uint grid1 = ((uint)p[1] >> 1) | (((uint)p[2] & 3u) << 7);
   const uint grid2 = ((uint)p[2] >> 2) | (((uint)p[3] & 7u) << 6);
@@ -2996,7 +2996,7 @@ inline float dot_group(device const uchar* source, const uint group_index, devic
             break;
           case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
             shader += R"(
-inline float dot_group(device const uchar* source, const uint group_index, device const real4* y4, const uint yv_base)
+inline float dot_group(device const uchar* source, const ulong group_index, device const real4* y4, const uint yv_base)
 {
   const uint payload = iq3xxs_payload(source, group_index);
   const uint grid0 = payload & 255u;
@@ -3045,9 +3045,9 @@ kernel void int8_gemv(
   const uint group_stride = S * 32;
   for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += group_stride) {
     const uint yv_base = (g * group_size) >> 2;
-    sum0 += dot_group(src0, (rb + 0) * groups_per_row + g, y4, yv_base);
+    sum0 += dot_group(src0, (ulong)(rb + 0) * groups_per_row + g, y4, yv_base);
     if (active1)
-      sum1 += dot_group(src0, (rb + 1) * groups_per_row + g, y4, yv_base);
+      sum1 += dot_group(src0, (ulong)(rb + 1) * groups_per_row + g, y4, yv_base);
   }
 
   if (sgitg == 0) {
@@ -3129,8 +3129,8 @@ kernel void int8_gemv(
   device const real4* y2 = (device const real4*)(src1 + ncols * 2);
   threadgroup float partials[6][32];
   device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
-  device const char4* x0 = (device const char4*)((device const char*)src0 + (rb + 0) * ncols);
-  device const char4* x1 = (device const char4*)((device const char*)src0 + (rb + 1) * ncols);
+  device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
+  device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
   float sum00 = 0;
   float sum01 = 0;
@@ -3287,8 +3287,8 @@ kernel void int8_gemv(
   device const real4* y1 = (device const real4*)(src1 + ncols);
   threadgroup float partials[4][32];
   device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
-  device const char4* x0 = (device const char4*)((device const char*)src0 + (rb + 0) * ncols);
-  device const char4* x1 = (device const char4*)((device const char*)src0 + (rb + 1) * ncols);
+  device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
+  device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
   float sum00 = 0;
   float sum01 = 0;
@@ -3419,8 +3419,8 @@ kernel void int8_gemv(
   device const real4* y4 = (device const real4*)src1;
   threadgroup float partials[ROWS][32];
   device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
-  device const char4* x0 = (device const char4*)((device const char*)src0 + (rb + 0) * ncols);
-  device const char4* x1 = (device const char4*)((device const char*)src0 + (rb + 1) * ncols);
+  device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
+  device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
   float sum0 = 0;
   float sum1 = 0;
@@ -3517,7 +3517,7 @@ std::string Int8GemvKernel::createConstants() const noexcept {
   defines += "\n";
   defines += "constant uint nrows [[function_constant(1)]];";
   defines += "\n";
-  defines += "constant uint scale_offset [[function_constant(2)]];";
+  defines += "constant ulong scale_offset [[function_constant(2)]];";
   defines += "\n";
   if (format != 0) {
     defines += "constant uint group_size [[function_constant(3)]];";
