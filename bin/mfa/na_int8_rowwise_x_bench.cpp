@@ -195,6 +195,8 @@ double run_dequant_once(
   encoder->useResource(destination, MTL::ResourceUsageWrite);
   encoder->setBuffer(source, 0, 0);
   encoder->setBuffer(destination, 0, 1);
+  encoder->setBuffer(source, descriptor.inputScaleOffset(), 2);
+  encoder->setBuffer(destination, descriptor.outputScaleOffset(), 3);
   for (int i = 0; i < repeats; ++i)
     encoder->dispatchThreadgroups(
         pipeline->kernel->gridSize(descriptor.dispatchItems()),
@@ -222,6 +224,7 @@ double run_rowwise_fp16_dequant_once(
   encoder->useResource(destination, MTL::ResourceUsageWrite);
   encoder->setBuffer(source, 0, 0);
   encoder->setBuffer(destination, 0, 1);
+  encoder->setBuffer(source, rowwise_8i_scale_offset(descriptor.length / descriptor.rowLength, descriptor.rowLength), 2);
   for (int i = 0; i < repeats; ++i)
     encoder->dispatchThreadgroups(
         pipeline->kernel->gridSize(descriptor.length),
@@ -249,6 +252,7 @@ double run_x_fp_dequant_once(
   encoder->useResource(destination, MTL::ResourceUsageWrite);
   encoder->setBuffer(source, 0, 0);
   encoder->setBuffer(destination, 0, 1);
+  encoder->setBuffer(source, descriptor.inputScaleOffset(), 2);
   for (int i = 0; i < repeats; ++i)
     encoder->dispatchThreadgroups(
         pipeline->kernel->gridSize(descriptor.totalGroups()),
@@ -315,6 +319,8 @@ double run_dequant_matmul_once(
     encoder->useResource(b_rowwise_scratch, MTL::ResourceUsageWrite);
     encoder->setBuffer(b_x, 0, 0);
     encoder->setBuffer(b_rowwise_scratch, 0, 1);
+    encoder->setBuffer(b_x, dequant_descriptor.inputScaleOffset(), 2);
+    encoder->setBuffer(b_rowwise_scratch, dequant_descriptor.outputScaleOffset(), 3);
     encoder->dispatchThreadgroups(
         dequant_pipeline->kernel->gridSize(dequant_descriptor.dispatchItems()),
         dequant_pipeline->kernel->threadgroupSize);

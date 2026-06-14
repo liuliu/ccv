@@ -31,6 +31,8 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise(ccv_nnc_mfa_context_t* context, cc
 	}
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.length = (uint32_t)params.length;
+	const size_t scale_buffer_offset = ((size_t)params.length + 127) & ~(size_t)127;
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(2));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto& shaderCache = context->kernel_cache;

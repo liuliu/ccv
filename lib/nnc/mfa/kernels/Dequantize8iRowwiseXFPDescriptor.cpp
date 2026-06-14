@@ -122,12 +122,10 @@ std::pair<Dequantize8iRowwiseXFPKernelDescriptor, PipelineValue<Dequantize8iRoww
 		const uint32_t rowLength = this->rowLength;
 		const uint32_t groupSize = this->groupSize();
 		const uint32_t groupsPerRow = this->groupsPerRow();
-			const uint64_t inputScaleOffset = this->inputScaleOffset();
 		const uint32_t totalGroups = this->totalGroups();
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-			constants->setConstantValue(&inputScaleOffset, MTL::DataTypeULong, NS::UInteger(4));
 		constants->setConstantValue(&totalGroups, MTL::DataTypeUInt, NS::UInteger(6));
 
 		NS::String* swiftName = NS::String::string("dequantize_8i_rowwise_x_fp", NS::UTF8StringEncoding);

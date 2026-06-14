@@ -399,9 +399,8 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 	}
 
 	shader += R"(
-inline void store_q8_scalar(device const uchar* source, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row, thread int* q8)
+inline void store_q8_scalar(device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row, thread int* q8)
 {
-  device const real* scales = reinterpret_cast<device const real*>(source + input_scale_offset);
   device real* destination_d = reinterpret_cast<device real*>(destination);
   const real scale = scales[source_row];
   for (uint j = 0; j < group_size; ++j) {
@@ -413,7 +412,7 @@ inline void store_q8_scalar(device const uchar* source, device uchar* destinatio
 
 )";
 	shader += R"(
-inline void decode_store_group(device const uchar* source, const ulong group_index, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row)
+inline void decode_store_group(device const uchar* source, const ulong group_index, device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row)
 {
 )";
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
@@ -422,7 +421,7 @@ inline void decode_store_group(device const uchar* source, const ulong group_ind
 		shader += "  int q8[16] = {0};\n";
 	shader += R"(
   decode_group(source, group_index, q8);
-  store_q8_scalar(source, destination, destination_offset, col_base, source_row, q8);
+  store_q8_scalar(scales, destination, destination_offset, col_base, source_row, q8);
 }
 
 )";
@@ -432,6 +431,7 @@ kernel void index_select_8i_rowwise_x(
   device const uchar* source [[buffer(0)]],
   device const int* indices [[buffer(1)]],
   device uchar* destination [[buffer(2)]],
+  device const real* scales [[buffer(3)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -444,7 +444,7 @@ kernel void index_select_8i_rowwise_x(
   const uint col_base = group * group_size;
   const uint source_row = (uint)indices[output_row];
   const ulong source_group_index = (ulong)source_row * groups_per_row + group;
-  decode_store_group(source, source_group_index, destination, (ulong)output_row * row_length + col_base, col_base, source_row);
+  decode_store_group(source, source_group_index, scales, destination, (ulong)output_row * row_length + col_base, col_base, source_row);
 }
 )";
 	return shader;
@@ -463,7 +463,6 @@ std::string IndexSelect8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant ulong input_scale_offset [[function_constant(4)]];\n";
 	defines += "constant uint output_groups [[function_constant(6)]];\n";
 	return defines;
 }

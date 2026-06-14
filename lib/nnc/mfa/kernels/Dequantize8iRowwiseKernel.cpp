@@ -37,6 +37,7 @@ using namespace metal;
 kernel void dequantize_8i_rowwise(
   device const char4 *source [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
+  device const real *scales [[buffer(2)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -45,7 +46,6 @@ kernel void dequantize_8i_rowwise(
   if (x >= element_count)
     return;
   const uint row = x / row_units;
-  device const real *scales = (device const real*)((device const uchar*)source + scale_offset);
   const real scale = scales[row];
   const char4 q = source[x];
   destination[x] = real4((real)q.x, (real)q.y, (real)q.z, (real)q.w) * scale;
@@ -59,6 +59,7 @@ using namespace metal;
 kernel void dequantize_8i_rowwise(
   device const char *source [[buffer(0)]],
   device real *destination [[buffer(1)]],
+  device const real *scales [[buffer(2)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -67,7 +68,6 @@ kernel void dequantize_8i_rowwise(
   if (x >= element_count)
     return;
   const uint row = x / row_units;
-  device const real *scales = (device const real*)((device const uchar*)source + scale_offset);
   destination[x] = (real)source[x] * scales[row];
 }
 		)";
@@ -93,6 +93,5 @@ std::string Dequantize8iRowwiseKernel::createConstants() const noexcept {
 	defines += "constant ushort threadgroup_size = 256;\n";
 	defines += "constant uint row_units [[function_constant(0)]];\n";
 	defines += "constant uint element_count [[function_constant(1)]];\n";
-	defines += "constant ulong scale_offset [[function_constant(2)]];\n";
 	return defines;
 }

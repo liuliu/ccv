@@ -72,6 +72,8 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(ccv_nnc_mfa_context_t* context, 
 	descriptor.scaleSize = scale_size_for_data_type(params.data_type);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.length = (uint32_t)params.length;
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
+	encoder->setBuffer(tensors[1], tensor_offsets[1] + (size_t)descriptor.outputScaleOffset(), NS::UInteger(3));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto& shaderCache = context->kernel_cache;
@@ -137,6 +139,8 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(0));
 	encoder->setBuffer(tensors[4], tensor_offsets[4] + scratch_layout.active_experts_offset, NS::UInteger(1));
 	encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(2));
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(3));
+	encoder->setBuffer(tensors[3], tensor_offsets[3] + (size_t)descriptor.outputScaleOffset(), NS::UInteger(4));
 
 	encoder->dispatchThreadgroups(tensors[4], tensor_offsets[4] + scratch_layout.dispatch_offset, kernel->threadgroupSize);
 	command_batch->finishCommand(encoder);

@@ -104,6 +104,7 @@ struct Pipelines {
   Dequantize8iRowwiseXKernel* dequant_x_kernel = nullptr;
   NS::SharedPtr<MTL::ComputePipelineState> dequant_x;
   NS::SharedPtr<MTL::ComputePipelineState> scaled_x;
+  uint32_t packed_format = 0;
   uint32_t dequant_x_dispatch_items = 0;
   uint32_t gemv_rows_per_threadgroup = 0;
 };
@@ -296,6 +297,20 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
   }
 }
 
+size_t rowwise_scale_offset(const Shape shape)
+{
+  return align_up((size_t)shape.rows * shape.cols, 128);
+}
+
+size_t rowwise_x_scale_offset(const uint32_t format, const Shape shape)
+{
+  const uint32_t group_size = rowwise_x_group_size(format);
+  const uint32_t group_bits = rowwise_x_group_bits(format);
+  const uint32_t groups_per_row = ceil_div(shape.cols, group_size);
+  const size_t payload_bits = (size_t)shape.rows * groups_per_row * group_bits;
+  return align_up((payload_bits + 7) / 8, 128);
+}
+
 template <typename T>
 std::vector<uint8_t> make_packed_rowwise_x(
     const std::vector<uint8_t>& rowwise,
@@ -403,6 +418,7 @@ Pipelines create_pipelines(
   pipelines.dequant = dequant_value->pipeline;
   pipelines.scaled = scaled_value->pipeline;
   if (dequant_x_value) {
+    pipelines.packed_format = packed_format;
     pipelines.dequant_x_kernel = dequant_x_value->kernel;
     pipelines.dequant_x = dequant_x_value->pipeline;
     Dequantize8iRowwiseXDescriptor dequant_x_desc;
@@ -500,6 +516,7 @@ void encode_dequant(
   encoder->setComputePipelineState(pipelines.dequant.get());
   encoder->setBuffer(quantized, 0, 0);
   encoder->setBuffer(dense, 0, 1);
+  encoder->setBuffer(quantized, rowwise_scale_offset(shape), 2);
   encoder->dispatchThreadgroups(
       pipelines.dequant_kernel->gridSize(shape.rows * shape.cols),
       MTL::Size(256, 1, 1));
@@ -518,8 +535,9 @@ void encode_scaled_gemv(
   encoder->setBuffer(quantized, 0, 0);
   encoder->setBuffer(vector, 0, 1);
   encoder->setBuffer(output, 0, 2);
+  encoder->setBuffer(quantized, rowwise_scale_offset(shape), 3);
   if (bias)
-    encoder->setBuffer(bias, 0, 3);
+    encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
       MTL::Size(ceil_div(shape.rows, kInt8GemvRowsPerThreadgroup), 1, 1),
       MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
@@ -535,6 +553,8 @@ void encode_dequant_x(
   encoder->setComputePipelineState(pipelines.dequant_x.get());
   encoder->setBuffer(quantized, 0, 0);
   encoder->setBuffer(rowwise, 0, 1);
+  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 2);
+  encoder->setBuffer(rowwise, rowwise_scale_offset(shape), 3);
   encoder->dispatchThreadgroups(
       pipelines.dequant_x_kernel->gridSize(pipelines.dequant_x_dispatch_items),
       MTL::Size(256, 1, 1));
@@ -553,8 +573,9 @@ void encode_scaled_x_gemv(
   encoder->setBuffer(quantized, 0, 0);
   encoder->setBuffer(vector, 0, 1);
   encoder->setBuffer(output, 0, 2);
+  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 3);
   if (bias)
-    encoder->setBuffer(bias, 0, 3);
+    encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
       MTL::Size(ceil_div(shape.rows, kInt8GemvRowsPerThreadgroup), 1, 1),
       MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));

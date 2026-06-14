@@ -399,9 +399,8 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 	}
 
 	shader += R"(
-inline void store_q8_scalar(device const uchar* source, device uchar* destination, const ulong destination_offset, const uint col_base, thread int* q8)
+inline void store_q8_scalar(device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base, thread int* q8)
 {
-  device const real* scales = reinterpret_cast<device const real*>(source + input_scale_offset);
   device real* destination_d = reinterpret_cast<device real*>(destination);
   const uint row = destination_offset / row_length;
   const real scale = scales[row];
@@ -414,7 +413,7 @@ inline void store_q8_scalar(device const uchar* source, device uchar* destinatio
 
 )";
 	shader += R"(
-inline void decode_store_group(device const uchar* source, const ulong group_index, device uchar* destination, const ulong destination_offset, const uint col_base)
+inline void decode_store_group(device const uchar* source, const ulong group_index, device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base)
 {
 )";
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
@@ -423,7 +422,7 @@ inline void decode_store_group(device const uchar* source, const ulong group_ind
 		shader += "  int q8[16] = {0};\n";
 	shader += R"(
   decode_group(source, group_index, q8);
-  store_q8_scalar(source, destination, destination_offset, col_base, q8);
+  store_q8_scalar(scales, destination, destination_offset, col_base, q8);
 }
 
 )";
@@ -432,6 +431,7 @@ inline void decode_store_group(device const uchar* source, const ulong group_ind
 kernel void dequantize_8i_rowwise_x_fp(
   device const uchar* source [[buffer(0)]],
   device uchar* destination [[buffer(1)]],
+  device const real* scales [[buffer(2)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -442,7 +442,7 @@ kernel void dequantize_8i_rowwise_x_fp(
   const uint row = x / groups_per_row;
   const uint group = x - row * groups_per_row;
   const uint col_base = group * group_size;
-  decode_store_group(source, x, destination, (ulong)row * row_length + col_base, col_base);
+  decode_store_group(source, x, scales, destination, (ulong)row * row_length + col_base, col_base);
 }
 )";
 	return shader;
@@ -461,7 +461,6 @@ std::string Dequantize8iRowwiseXFPKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant ulong input_scale_offset [[function_constant(4)]];\n";
 	defines += "constant uint total_groups [[function_constant(6)]];\n";
 	return defines;
 }

@@ -44,10 +44,8 @@ std::pair<Dequantize8iRowwiseKernelDescriptor, PipelineValue<Dequantize8iRowwise
 		auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
 		const uint32_t rowUnits = vectorized() ? (rowLength / 4) : rowLength;
 		const uint32_t elementCount = vectorized() ? (length / 4) : length;
-			const uint64_t scaleOffset = ((uint64_t)length + 127) & ~UINT64_C(127);
-			constants->setConstantValue(&rowUnits, MTL::DataTypeUInt, NS::UInteger(0));
-			constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(1));
-			constants->setConstantValue(&scaleOffset, MTL::DataTypeULong, NS::UInteger(2));
+		constants->setConstantValue(&rowUnits, MTL::DataTypeUInt, NS::UInteger(0));
+		constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(1));
 
 		NS::String* swiftName = NS::String::string("dequantize_8i_rowwise", NS::UTF8StringEncoding);
 		NS::Error* error = nil;

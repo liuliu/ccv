@@ -785,6 +785,8 @@ inline void decode_store_group(device const uchar* source, const ulong group_ind
 kernel void dequantize_8i_rowwise_x(
   device const uchar* source [[buffer(0)]],
   device uchar* destination [[buffer(1)]],
+  device const uchar* input_scales [[buffer(2)]],
+  device uchar* output_scales [[buffer(3)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -799,13 +801,15 @@ kernel void dequantize_8i_rowwise_x(
     decode_store_group(source, x, destination, (ulong)row * row_length + col_base, col_base);
   }
   if (x < scale_bytes)
-    destination[output_scale_offset + x] = source[input_scale_offset + x];
+    output_scales[x] = input_scales[x];
 }
 
 kernel void dequantize_8i_rowwise_x_selected(
   device const uchar* source [[buffer(0)]],
   device const uint* active_experts [[buffer(1)]],
   device uchar* destination [[buffer(2)]],
+  device const uchar* input_scales [[buffer(3)]],
+  device uchar* output_scales [[buffer(4)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
@@ -825,8 +829,8 @@ kernel void dequantize_8i_rowwise_x_selected(
     decode_store_group(source, (ulong)expert * groups_per_expert + x, destination, destination_row * row_length + col_base, col_base);
   }
   if (x < scale_bytes_per_expert) {
-    destination[output_scale_offset + (ulong)expert * scale_bytes_per_expert + x] =
-      source[input_scale_offset + (ulong)expert * scale_bytes_per_expert + x];
+    output_scales[(ulong)expert * scale_bytes_per_expert + x] =
+      input_scales[(ulong)expert * scale_bytes_per_expert + x];
   }
 }
 
@@ -863,8 +867,6 @@ std::string Dequantize8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant ulong input_scale_offset [[function_constant(4)]];\n";
-	defines += "constant ulong output_scale_offset [[function_constant(5)]];\n";
 	defines += "constant uint total_groups [[function_constant(6)]];\n";
 	defines += "constant uint scale_bytes [[function_constant(7)]];\n";
 	defines += "constant uint dispatch_items [[function_constant(8)]];\n";

@@ -80,10 +80,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
   if (fusedBias) {
     shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
   }
   shader += R"(
@@ -102,7 +103,6 @@ kernel void int8_gemv(
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
   device const real4* y2 = (device const real4*)(src1 + ncols * 2);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[6][32];
 
   float sum00 = 0;
@@ -291,10 +291,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
   if (fusedBias) {
     shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
   }
   shader += R"(
@@ -313,7 +314,6 @@ kernel void int8_gemv(
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
   device const real4* y2 = (device const real4*)(src1 + ncols * 2);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[6][32];
 
   float sum00 = 0;
@@ -474,10 +474,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
   if (fusedBias) {
     shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
   }
   shader += R"(
@@ -495,7 +496,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -628,10 +628,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
   if (fusedBias) {
     shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
   }
   shader += R"(
@@ -648,7 +649,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -1279,10 +1279,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1300,7 +1301,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -1412,10 +1412,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1432,7 +1433,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -1541,10 +1541,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1562,7 +1563,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -1672,10 +1672,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1692,7 +1693,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -1809,10 +1809,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1830,7 +1831,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -1942,10 +1942,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -1962,7 +1963,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -2085,10 +2085,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -2106,7 +2107,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -2218,10 +2218,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -2238,7 +2239,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -2362,10 +2362,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -2384,7 +2385,6 @@ kernel void int8_gemv(
   const uint pairs_per_row = groups_per_row >> 1;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -2483,10 +2483,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -2504,7 +2505,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   const uint pairs_per_row = groups_per_row >> 1;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -2814,10 +2814,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -2835,7 +2836,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -3017,10 +3017,11 @@ kernel void int8_gemv(
   device const uchar *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
         }
         shader += R"(
@@ -3037,7 +3038,6 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
-  device const real* scales = (device const real*)(src0 + scale_offset);
   threadgroup float partials[ROWS][32];
 
   float sum0 = 0;
@@ -3105,10 +3105,11 @@ kernel void int8_gemv(
   device const char *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
     if (fusedBias) {
       shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
     }
     shader += R"(
@@ -3128,7 +3129,6 @@ kernel void int8_gemv(
   device const real4* y1 = (device const real4*)(src1 + ncols);
   device const real4* y2 = (device const real4*)(src1 + ncols * 2);
   threadgroup float partials[6][32];
-  device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
   device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
   device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
@@ -3264,10 +3264,11 @@ kernel void int8_gemv(
   device const char *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
     if (fusedBias) {
       shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
     }
     shader += R"(
@@ -3286,7 +3287,6 @@ kernel void int8_gemv(
   device const real4* y0 = (device const real4*)src1;
   device const real4* y1 = (device const real4*)(src1 + ncols);
   threadgroup float partials[4][32];
-  device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
   device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
   device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
@@ -3397,10 +3397,11 @@ kernel void int8_gemv(
   device const char *src0 [[buffer(0)]],
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
 )";
   if (fusedBias) {
     shader += R"(
-  device const real *bias [[buffer(3)]],
+  device const real *bias [[buffer(4)]],
 )";
   }
   shader += R"(
@@ -3418,7 +3419,6 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   device const real4* y4 = (device const real4*)src1;
   threadgroup float partials[ROWS][32];
-  device const real* scales = (device const real*)((device const uchar*)src0 + scale_offset);
   device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
   device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
 
@@ -3516,8 +3516,6 @@ std::string Int8GemvKernel::createConstants() const noexcept {
   defines += "constant uint ncols [[function_constant(0)]];";
   defines += "\n";
   defines += "constant uint nrows [[function_constant(1)]];";
-  defines += "\n";
-  defines += "constant ulong scale_offset [[function_constant(2)]];";
   defines += "\n";
   if (format != 0) {
     defines += "constant uint group_size [[function_constant(3)]];";

@@ -35,6 +35,8 @@ void ccv_nnc_mfa_encode_index_select_8i_rowwise(ccv_nnc_mfa_context_t* context, 
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.inputLength = (uint32_t)params.input_length;
 	descriptor.outputLength = (uint32_t)params.output_length;
+	const size_t scale_buffer_offset = ((size_t)params.input_length + 127) & ~(size_t)127;
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(3));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto& shaderCache = context->kernel_cache;

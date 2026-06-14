@@ -108,12 +108,10 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    const uint64_t scaleOffset = format == 0 ? (((uint64_t)nrows * ncols + 127) & ~UINT64_C(127)) : inputScaleOffset();
     const uint32_t groupSize = this->groupSize();
     const uint32_t groupsPerRow = this->groupsPerRow();
     constants->setConstantValue(&ncols, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(1));
-    constants->setConstantValue(&scaleOffset, MTL::DataTypeULong, NS::UInteger(2));
     constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(4));
 

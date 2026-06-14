@@ -34,7 +34,6 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
-    encoder->setBuffer(tensors[num_tensors], tensor_offsets[num_tensors], NS::UInteger(num_tensors));
     num_tensors += 1;
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
@@ -50,6 +49,7 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.nrows = params.nrows;
   descriptor.ncols = params.ncols;
+  const size_t scale_buffer_offset = params.format == 0 ? (((size_t)params.nrows * params.ncols + 127) & ~(size_t)127) : (size_t)descriptor.inputScaleOffset();
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -57,6 +57,14 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   auto pipelineValue = shaderCache.findKernel<Int8GemvKernel, Int8GemvDescriptor, Int8GemvKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();
   auto pipeline = pipelineValue->pipeline;
+
+  encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(0));
+  encoder->setBuffer(tensors[1], tensor_offsets[1], NS::UInteger(1));
+  encoder->setBuffer(tensors[2], tensor_offsets[2], NS::UInteger(2));
+  encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(3));
+  if (num_tensors == 4) {
+    encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(4));
+  }
 
   encoder->setComputePipelineState(pipeline.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
