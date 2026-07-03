@@ -326,7 +326,8 @@ void _ccv_nnc_tensor_set_cpu_ref_f16(ccv_nnc_tensor_view_t* const a, const float
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
 		// Super optimal case, just do one for-loop for sum.
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			a->data.f16[x].v = h;
 		return;
@@ -397,7 +398,8 @@ void _ccv_nnc_tensor_set_cpu_ref_bf16(ccv_nnc_tensor_view_t* const a, const floa
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
 		// Super optimal case, just do one for-loop for sum.
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			a->data.f16[x].v = h;
 		return;
@@ -466,7 +468,8 @@ void _ccv_nnc_tensor_set_cpu_ref_f32(ccv_nnc_tensor_view_t* const a, const float
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
 		// Super optimal case, just do one for-loop for sum.
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			a->data.f32[x] = b;
 		return;
@@ -535,7 +538,8 @@ void _ccv_nnc_tensor_set_cpu_ref_f64(ccv_nnc_tensor_view_t* const a, const doubl
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
 		// Super optimal case, just do one for-loop for sum.
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			a->data.f64[x] = b;
 		return;
@@ -604,7 +608,8 @@ void _ccv_nnc_tensor_set_cpu_ref_i32(ccv_nnc_tensor_view_t* const a, const int b
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
 		// Super optimal case, just do one for-loop for sum.
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			a->data.i32[x] = b;
 		return;
@@ -1297,7 +1302,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_32F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_half_precision_to_float((uint16_t*)a->data.f16, b->data.f32, tensor_count);
 		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_32F) {
@@ -1305,14 +1310,15 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
-			int i;
+			size_t i;
 			for (i = 0; i < tensor_count; i++)
 				b->data.f32[i] = (float)a->data.f64[i];
 		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_64F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
+			size_t i;
 			for (i = 0; i < tensor_count; i++)
 				b->data.f64[i] = (double)a->data.f32[i];
 		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_16F) {
@@ -1324,7 +1330,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_64F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_half_precision_to_double((uint16_t*)a->data.f16, b->data.f64, tensor_count);
 		} else if (a->info.datatype == CCV_16F && b->info.datatype == CCV_16BF) {
@@ -1336,7 +1342,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_16F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_bfloat_to_half_precision((uint16_t*)a->data.f16, (uint16_t*)b->data.f16, tensor_count);
 		} else if (a->info.datatype == CCV_32F && b->info.datatype == CCV_16BF) {
@@ -1348,7 +1354,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_32F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_bfloat_to_float((uint16_t*)a->data.f16, b->data.f32, tensor_count);
 		} else if (a->info.datatype == CCV_64F && b->info.datatype == CCV_16BF) {
@@ -1360,7 +1366,7 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		} else if (a->info.datatype == CCV_16BF && b->info.datatype == CCV_64F) {
 			assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 			assert(CCV_IS_TENSOR_CONTIGUOUS(b));
-			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 			assert(tensor_count == ccv_nnc_tensor_count(b->info));
 			ccv_bfloat_to_double((uint16_t*)a->data.f16, b->data.f64, tensor_count);
 		}
@@ -1407,8 +1413,9 @@ static void _ccv_nnc_masked_fill_cpu_ref_f(const float p, const float q, ccv_nnc
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && a_check_dim && b_check_dim)
 	{
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 		// Super optimal case, just do one for-loop for sum.
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			c->data.f32[x] = (b->data.f32[x] == p) ? q : a->data.f32[x];
 		return;
@@ -1496,8 +1503,9 @@ static void _ccv_nnc_masked_fill_cpu_ref_s(const int p, const float q, ccv_nnc_t
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && a_check_dim && b_check_dim)
 	{
-		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		const size_t tensor_count = ccv_nnc_tensor_count(a->info);
 		// Super optimal case, just do one for-loop for sum.
+		size_t x;
 		for (x = 0; x < tensor_count; x++)
 			c->data.f32[x] = (b->data.i32[x] == p) ? q : a->data.f32[x];
 		return;
