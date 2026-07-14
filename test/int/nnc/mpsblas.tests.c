@@ -1989,6 +1989,25 @@ TEST_CASE("mps forward gemm with packed row-wise 8i-x weight fallback fp dequant
 	}
 }
 
+TEST_CASE("mps forward gemm with packed Q6K weight at checkpoint row width")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	double max_abs_4608 = 0;
+	double max_rel_4608 = 0;
+	const int status_4608 = _mps_forward_scaled_gemm_compare_dense_format(CCV_16F, 0, 16, 384, 4608, CCV_NNC_QX_8I_ROWWISE_Q6_K, &max_abs_4608, &max_rel_4608);
+	double max_abs_6144 = 0;
+	double max_rel_6144 = 0;
+	const int status_6144 = _mps_forward_scaled_gemm_compare_dense_format(CCV_16F, 0, 16, 384, 6144, CCV_NNC_QX_8I_ROWWISE_Q6_K, &max_abs_6144, &max_rel_6144);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	REQUIRE_EQ(status_4608, 0, "Ideogram-width packed Q6K GEMM validation should run");
+	REQUIRE(max_rel_4608 < 2e-3, "Ideogram-width packed Q6K GEMM should match dequantized dense GPU reference, max_abs=%g max_rel=%g", max_abs_4608, max_rel_4608);
+	REQUIRE_EQ(status_6144, 0, "Krea-width packed Q6K GEMM validation should run");
+	REQUIRE(max_rel_6144 < 2e-3, "Krea-width packed Q6K GEMM should match dequantized dense GPU reference, max_abs=%g max_rel=%g", max_abs_6144, max_rel_6144);
+}
+
 TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

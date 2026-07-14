@@ -70,6 +70,10 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(ccv_nnc_mfa_context_t* context, 
 	Dequantize8iRowwiseXDescriptor descriptor;
 	descriptor.format = params.format;
 	descriptor.scaleSize = scale_size_for_data_type(params.data_type);
+	CCV_NNC_MFA_PRECONDITION(params.row_length <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.length <= UINT32_MAX);
+	const uint64_t row_count = params.row_length > 0 ? params.length / params.row_length : 0;
+	CCV_NNC_MFA_PRECONDITION(row_count <= UINT32_MAX / descriptor.scaleSize);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.length = (uint32_t)params.length;
 	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
@@ -105,6 +109,14 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	Dequantize8iRowwiseXSelectedDescriptor descriptor;
 	descriptor.format = params.format;
 	descriptor.scaleSize = scale_size_for_data_type(params.data_type);
+	CCV_NNC_MFA_PRECONDITION(params.row_length <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.rows_per_expert <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.expert_count <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.segment_count <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.rows_per_expert == 0 || params.expert_count <= UINT32_MAX / params.rows_per_expert);
+	const uint64_t row_count = params.expert_count * params.rows_per_expert;
+	CCV_NNC_MFA_PRECONDITION(params.row_length == 0 || row_count <= UINT32_MAX / params.row_length);
+	CCV_NNC_MFA_PRECONDITION(row_count <= UINT32_MAX / descriptor.scaleSize);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.rowsPerExpert = (uint32_t)params.rows_per_expert;
 	descriptor.expertCount = (uint32_t)params.expert_count;
