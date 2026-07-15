@@ -51,6 +51,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     descriptor.H = params.H;
     descriptor.K = params.K;
     descriptor.isCausal = params.is_causal != 0;
+    descriptor.slidingWindow = params.sliding_window;
     descriptor.sinkHeadStride = params.sink_head_stride;
     descriptor.scale = params.scale;
   };

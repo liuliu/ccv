@@ -195,6 +195,7 @@ constant uint H [[function_constant(3)]];
 constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
+constant uint sliding_window [[function_constant(8)]];
 
 constant uint K_edge = {{HEAD_DIMENSION}}u + 1u - {{DIM_BLOCK}}u;
 constant float log2_e = 1.442695041f;
@@ -273,15 +274,21 @@ kernel void sparse_indexed_attention(
       cO3[i] = 0;
     }
   }
+  uint dense_start = 0;
   uint dense_end = dense_rows;
   if (is_causal) {
     const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
     dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
+    if (sliding_window > 0 && dense_end > sliding_window) {
+      dense_start = dense_end - sliding_window;
+    }
   }
-  const uint dense_edge = dense_end >= {{DENSE_BLOCK_COLUMNS}}u ? dense_end + 1u - {{DENSE_BLOCK_COLUMNS}}u : 0u;
-  const uint dense_remainder = dense_end % {{DENSE_BLOCK_COLUMNS}}u;
+  const uint dense_count = dense_end - dense_start;
+  const uint dense_full_count = (dense_count / {{DENSE_BLOCK_COLUMNS}}u) * {{DENSE_BLOCK_COLUMNS}}u;
+  const uint dense_remainder = dense_count - dense_full_count;
   const float dot_scale = scale * log2_e;
-  for (uint c = 0; c < dense_edge; c += {{DENSE_BLOCK_COLUMNS}}u) {
+  for (uint off = 0; off < dense_full_count; off += {{DENSE_BLOCK_COLUMNS}}u) {
+    const uint c = dense_start + off;
     #pragma clang loop unroll(full)
     for (ushort i = 0; i < cS.get_capacity(); ++i) {
       if (cS.is_valid_element(i)) {
@@ -368,7 +375,7 @@ kernel void sparse_indexed_attention(
     }
   }
   if (dense_remainder > 0) {
-    const uint c = dense_end - dense_remainder;
+    const uint c = dense_start + dense_full_count;
     #pragma clang loop unroll(full)
     for (ushort i = 0; i < cS.get_capacity(); ++i) {
       if (cS.is_valid_element(i)) {
@@ -521,6 +528,7 @@ constant uint K [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
+constant uint sliding_window [[function_constant(8)]];
 
 constant uint K_edge = {{HEAD_DIMENSION}}u + 1u - {{DIM_BLOCK}}u;
 constant float log2_e = 1.442695041f;
@@ -586,12 +594,16 @@ kernel void sparse_indexed_attention(
     }
   }
   const float dot_scale = scale * log2_e;
+  uint dense_start = 0;
   uint dense_end = dense_rows;
   if (is_causal) {
     const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
     dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
+    if (sliding_window > 0 && dense_end > sliding_window) {
+      dense_start = dense_end - sliding_window;
+    }
   }
-  for (uint dense_base = 0; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
+  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK}}u, dense_end - dense_base);
     for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS}}u) {
       row_ids[j] = dense_base + j;
@@ -784,6 +796,7 @@ constant uint K [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
+constant uint sliding_window [[function_constant(8)]];
 
 constant float log2_e = 1.442695041f;
 
@@ -842,12 +855,16 @@ kernel void sparse_indexed_attention(
     }
   }
   const float dot_scale = scale * log2_e;
+  uint dense_start = 0;
   uint dense_end = dense_rows;
   if (is_causal) {
     const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
     dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
+    if (sliding_window > 0 && dense_end > sliding_window) {
+      dense_start = dense_end - sliding_window;
+    }
   }
-  for (uint dense_base = 0; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
+  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK_D128}}u, dense_end - dense_base);
     for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS_D128}}u) {
       row_ids[j] = dense_base + j;

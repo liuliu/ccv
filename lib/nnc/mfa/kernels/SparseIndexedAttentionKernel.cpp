@@ -48,6 +48,7 @@ constant uint K [[function_constant(5)]];
 constant bool is_causal [[function_constant(6)]];
 constant uint sink_head_stride [[function_constant(7)]];
 constant float scale [[function_constant(8)]];
+constant uint sliding_window [[function_constant(9)]];
 
 constant float log2_e = 1.442695041f;
 constant float scale_log2e = scale * log2_e;
@@ -87,14 +88,18 @@ kernel void sparse_indexed_attention(
   float row_m = -INFINITY;
   float row_s = 0;
 
+  uint dense_start = 0;
   uint dense_end = dense_rows;
   if (is_causal) {
     int visible = int(dense_rows) - int(T) + int(t) + 1;
     visible = max(visible, 0);
     visible = min(visible, int(dense_rows));
     dense_end = uint(visible);
+    if (sliding_window > 0 && dense_end > sliding_window) {
+      dense_start = dense_end - sliding_window;
+    }
   }
-  for (uint row0 = 0; row0 < dense_end; row0 += {{ROWS_PER_BLOCK}}u) {
+  for (uint row0 = dense_start; row0 < dense_end; row0 += {{ROWS_PER_BLOCK}}u) {
     const uint rows = min({{ROWS_PER_BLOCK}}u, dense_end - row0);
     for (uint off = uint(tid); off < rows * D; off += {{THREADS}}u) {
       const uint row = off / D;

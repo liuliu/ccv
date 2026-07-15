@@ -12,7 +12,11 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	assert(input_size == 6 || input_size == 7);
 	assert(output_size == 1);
 	const int attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
+	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
+	const int sliding_window = cmd.info.sparse_indexed_attention.sliding_window;
 	if ((attention_sinks != 0) != (input_size == 7))
+		return CCV_NNC_EXEC_INVALID;
+	if (sliding_window < 0 || (sliding_window > 0 && !is_causal))
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const dense_k = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -122,8 +126,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			.D = (uint32_t)D,
 			.K = (uint32_t)K,
 			.scale = cmd.info.sparse_indexed_attention.scale,
-			.is_causal = (uint8_t)(cmd.info.sparse_indexed_attention.is_causal != 0),
+			.is_causal = (uint8_t)(is_causal != 0),
 			.attention_sinks = (uint8_t)(attention_sinks != 0),
+			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,
 			.variant = variant,
 		};

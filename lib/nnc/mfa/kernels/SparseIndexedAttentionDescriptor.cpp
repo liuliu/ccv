@@ -15,6 +15,7 @@ bool SparseIndexedAttentionDescriptor::operator==(const SparseIndexedAttentionDe
   D == rhs.D &&
   K == rhs.K &&
   isCausal == rhs.isCausal &&
+  slidingWindow == rhs.slidingWindow &&
   sinkHeadStride == rhs.sinkHeadStride &&
   scale == rhs.scale;
 }
@@ -26,6 +27,7 @@ std::size_t std::hash<SparseIndexedAttentionDescriptor>::operator()(const Sparse
   combine_64(seed, pack_64(simd::uint2 { hash.denseRows, hash.sparseRows }));
   combine_64(seed, pack_64(simd::uint2 { hash.H, hash.D }));
   combine_64(seed, pack_64(simd::uint2 { hash.K, hash.sinkHeadStride }));
+  combine_32(seed, hash.slidingWindow);
   combine_32(seed, pack_32(simd::ushort2 { (unsigned short)(hash.attentionSinks ? 1 : 0), (unsigned short)(hash.isCausal ? 1 : 0) }));
   combine_32(seed, reinterpret_cast<const uint32_t&>(hash.scale));
   return seed;
@@ -60,6 +62,7 @@ std::pair<SparseIndexedAttentionKernelDescriptor, PipelineValue<SparseIndexedAtt
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(6));
     constants->setConstantValue(&sinkHeadStride, MTL::DataTypeUInt, NS::UInteger(7));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(8));
+    constants->setConstantValue(&slidingWindow, MTL::DataTypeUInt, NS::UInteger(9));
     NS::String* swiftName = NS::String::string("sparse_indexed_attention", NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));

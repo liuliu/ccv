@@ -42,7 +42,11 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	assert(input_size == 6 || input_size == 7);
 	assert(output_size == 1);
 	const int attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
+	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
+	const int sliding_window = cmd.info.sparse_indexed_attention.sliding_window;
 	if ((attention_sinks != 0) != (input_size == 7))
+		return CCV_NNC_EXEC_INVALID;
+	if (sliding_window < 0 || (sliding_window > 0 && !is_causal))
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const dense_k = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -109,10 +113,10 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	}
 	double* const acc = (double*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(double) * D, CCV_TENSOR_CPU_MEMORY);
 	const float scale = cmd.info.sparse_indexed_attention.scale;
-	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
 	int t, h, d, r, i;
 	for (t = 0; t < T; t++)
 	{
+		int dense_start = 0;
 		int dense_end = dense_rows;
 		if (is_causal)
 		{
@@ -121,6 +125,8 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 				dense_end = 0;
 			else if (dense_end > dense_rows)
 				dense_end = dense_rows;
+			if (sliding_window > 0 && dense_end > sliding_window)
+				dense_start = dense_end - sliding_window;
 		}
 		for (h = 0; h < H; h++)
 		{
@@ -128,7 +134,7 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			double maxval = -DBL_MAX;
 			double sumval = 0;
 			const float* const q_ptr = q->data.f32 + (t * H + h) * D;
-			for (r = 0; r < dense_end; r++)
+			for (r = dense_start; r < dense_end; r++)
 				_ccv_nnc_sparse_indexed_attention_attend_row(q_ptr, dense_k->data.f32 + r * D, dense_v->data.f32 + r * D, D, scale, &maxval, &sumval, acc);
 			const int* const index_ptr = indices->data.i32 + t * K;
 			for (i = 0; i < K; i++)

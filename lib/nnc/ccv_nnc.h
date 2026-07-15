@@ -315,6 +315,7 @@ typedef struct {
 			float scale; /**< [sparse_indexed_attention.scale] The scale we multiple to the dot product of Q & K. */
 			int is_causal; /**< [sparse_indexed_attention.is_causal] Whether to apply tail-aligned causal visibility to the dense K/V rows. */
 			int attention_sinks; /**< [sparse_indexed_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
+			int sliding_window; /**< [sparse_indexed_attention.sliding_window] Causal sliding-window size for dense K/V rows, including the current token. 0 disables sliding-window attention. */
 		} sparse_indexed_attention;
 		struct {
 			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */

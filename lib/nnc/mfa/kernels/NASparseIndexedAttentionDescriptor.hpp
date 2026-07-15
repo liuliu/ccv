@@ -20,6 +20,7 @@ struct NASparseIndexedAttentionDescriptor {
   uint32_t H = 0;
   uint32_t K = 0;
   bool isCausal = false;
+  uint32_t slidingWindow = 0;
   uint32_t sinkHeadStride = 0;
   float scale = 1;
   NASparseIndexedAttentionVariant variant = NASparseIndexedAttentionVariant::Threadgroup16;
