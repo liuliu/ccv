@@ -2673,6 +2673,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_gated_delta_copy(const ccv_cnnp_model_t* cons
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	int conjugate;
 } ccv_cnnp_model_cmul_t;
 
 static void _ccv_cnnp_cmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -2685,7 +2686,8 @@ static void _ccv_cnnp_cmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic
 	for (i = 0; i < 2; i++)
 		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t mul = CMD_CMUL_FORWARD();
+	ccv_nnc_cmd_t mul = CMD_CMUL_FORWARD();
+	mul.info.cmul.conjugate = ((ccv_cnnp_model_cmul_t*)super)->conjugate;
 	ccv_nnc_hint_tensor_auto(mul, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	ccv_nnc_graph_exec_symbol_new(graph, mul, inputs, input_size, outputs, output_size, "cmul");
@@ -2698,20 +2700,23 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_cmul_isa = {
 	.copy = _ccv_cnnp_cmul_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_cmul(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_cmul(const int conjugate, const char* const name)
 {
+	assert(conjugate == 0 || conjugate == 1);
 	ccv_cnnp_model_cmul_t* const model_cmul = (ccv_cnnp_model_cmul_t*)cccalloc(1, sizeof(ccv_cnnp_model_cmul_t));
 	model_cmul->super.isa = &ccv_cnnp_cmul_isa;
 	model_cmul->super.input_size = 2;
 	model_cmul->super.outputs = &model_cmul->output;
 	model_cmul->super.output_size = 1;
+	model_cmul->conjugate = conjugate;
 	ccv_cnnp_model_copy_name(&model_cmul->super, name);
 	return (ccv_cnnp_model_t*)model_cmul;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_cmul_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_cmul(super->name);
+	const ccv_cnnp_model_cmul_t* const self = (const ccv_cnnp_model_cmul_t*)super;
+	return ccv_cnnp_cmul(self->conjugate, super->name);
 }
 
 // MARK - Transpose Layer

@@ -158,6 +158,9 @@ __global__ void _ccv_nnc_cmul_float_kernel_2d_0(const int astride, const int bst
 
 static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	// The conjugating forward path is currently implemented by CPU and Metal backends.
+	if (cmd.info.cmul.conjugate)
+		return CCV_NNC_EXEC_INVALID;
 	assert(input_size == 2);
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
@@ -567,6 +570,9 @@ __global__ void _ccv_nnc_cmul_conj_float_kernel(const size_t count, const NUM1* 
 
 static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	// The conjugating backward path is currently implemented by CPU and Metal backends.
+	if (cmd.info.cmul.conjugate)
+		return CCV_NNC_EXEC_INVALID;
 	int gdim[CCV_NNC_MAX_DIM_ALLOC];
 	int no_broadcasting = 1;
 	if (outputs[0])

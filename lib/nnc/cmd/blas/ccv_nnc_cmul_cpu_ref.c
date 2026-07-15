@@ -307,7 +307,10 @@ void _ccv_nnc_conj_forw_cpu_ref(ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_v
 static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
-	_ccv_nnc_cmul_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
+	if (cmd.info.cmul.conjugate)
+		_ccv_nnc_cmul_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
+	else
+		_ccv_nnc_cmul_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -329,26 +332,44 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_tensor_view_get_broadcast_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim);
 		no_broadcasting = no_broadcasting && (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim));
 	}
-	// We compute with the conjugation of the gradient output similar to PyTorch: https://pytorch.org/docs/stable/notes/autograd.html#autograd-for-complex-numbers
-	// Note that in the absence of gradient output, we simply compute the conjugation of the other input.
+	// For c = a * b, the gradients are g * conj(b) and g * conj(a).
+	// For c = a * conj(b), the gradients are g * b and a * conj(g).
 	if (no_broadcasting)
 	{
 		if (outputs[0])
 		{
 			if (inputs[0] == 0)
-				_ccv_nnc_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+			{
+				if (cmd.info.cmul.conjugate)
+					_ccv_nnc_tensor_transfer_cpu_ref_f32((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+				else
+					_ccv_nnc_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
+			}
+			else if (cmd.info.cmul.conjugate)
+				_ccv_nnc_cmul_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
 			else
 				_ccv_nnc_cmul_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
 		}
 		if (output_size > 1 && outputs[1])
 		{
 			if (inputs[0] == 0)
-				_ccv_nnc_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[1]);
+			{
+				if (cmd.info.cmul.conjugate)
+					_ccv_nnc_tensor_transfer_cpu_ref_f32((ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[1]);
+				else
+					_ccv_nnc_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[1]);
+			}
+			else if (cmd.info.cmul.conjugate)
+				_ccv_nnc_cmul_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[1]);
 			else
 				_ccv_nnc_cmul_conj_forw_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[1]);
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
+	// Conjugating backward with broadcasting requires reduction with the asymmetric
+	// formulas above. Do not silently use the ordinary cmul gradient.
+	if (cmd.info.cmul.conjugate)
+		return CCV_NNC_EXEC_INVALID;
 	int adim[CCV_NNC_MAX_DIM_ALLOC];
 	int bdim[CCV_NNC_MAX_DIM_ALLOC];
 	int astride[CCV_NNC_MAX_DIM_ALLOC];
@@ -522,4 +543,3 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CMUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_cmul_back;
 }
-

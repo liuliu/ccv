@@ -72,7 +72,7 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
-				.conjugate = 0,
+				.conjugate = cmd.info.cmul.conjugate,
 				.data_type_a = a_mtl_data_type,
 				.data_type_b = b_mtl_data_type,
 				.data_type_c = c_mtl_data_type,
@@ -209,8 +209,16 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				mps_b = [graph reshapeTensor:mps_b withShape:b_shape name:nil];
 				[b_shape release];
 				NSArray<MPSGraphTensor*>* mps_b_splits = [graph splitTensor:mps_b numSplits:2 axis:nd name:nil];
-				MPSGraphTensor* mps_c_0 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
-				MPSGraphTensor* mps_c_1 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] name:nil];
+				MPSGraphTensor* mps_c_0;
+				MPSGraphTensor* mps_c_1;
+				if (cmd.info.cmul.conjugate)
+				{
+					mps_c_0 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+					mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+				} else {
+					mps_c_0 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+					mps_c_1 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] name:nil];
+				}
 				NSMutableArray<NSNumber*>* c_shape = [NSMutableArray new];
 				for (i = 0; i < nd; i++)
 					[c_shape addObject:@(c->info.dim[i])];
@@ -302,7 +310,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
-				.conjugate = 1,
+				.conjugate = !cmd.info.cmul.conjugate,
 				.data_type_a = g_mtl_data_type,
 				.data_type_b = UINT32_MAX,
 				.data_type_c = UINT32_MAX,
@@ -401,8 +409,10 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 				if (a && d)
 				{
-					params.data_type_a = g_mtl_data_type;
-					params.data_type_b = a_mtl_data_type;
+					// For a * conj(b), dB is a * conj(g), so swap the operands.
+					params.conjugate = 1;
+					params.data_type_a = cmd.info.cmul.conjugate ? a_mtl_data_type : g_mtl_data_type;
+					params.data_type_b = cmd.info.cmul.conjugate ? g_mtl_data_type : a_mtl_data_type;
 					params.data_type_c = d_mtl_data_type;
 					const size_t count = ccv_nnc_tensor_count(d->info);
 					if (ccv_nnc_tensor_count(g->info) == count && ccv_nnc_tensor_count(a->info) == count) {
@@ -472,14 +482,14 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					ccv_nnc_mfa_prepare_cmul(context, params);
 
 					mtl_buffer_t* tensors[4] = {
-						mpgetbuffer(g), // gradient
-						mpgetbuffer(a), // source
+						mpgetbuffer(cmd.info.cmul.conjugate ? a : g),
+						mpgetbuffer(cmd.info.cmul.conjugate ? g : a),
 						mpgetbuffer(d), // destination
 						NULL,
 					};
 					size_t tensor_offsets[3] = {
-						g->dataof,
-						a->dataof,
+						(cmd.info.cmul.conjugate ? a : g)->dataof,
+						(cmd.info.cmul.conjugate ? g : a)->dataof,
 						d->dataof
 					};
 					ccv_nnc_mfa_encode_cmul(context, params, command_batch, tensors, tensor_offsets);
@@ -537,8 +547,16 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						mps_b = [graph reshapeTensor:mps_b withShape:b_shape name:nil];
 						[b_shape release];
 						NSArray<MPSGraphTensor*>* mps_b_splits = [graph splitTensor:mps_b numSplits:2 axis:nd name:nil];
-						MPSGraphTensor* mps_c_0 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
-						MPSGraphTensor* mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+						MPSGraphTensor* mps_c_0;
+						MPSGraphTensor* mps_c_1;
+						if (cmd.info.cmul.conjugate)
+						{
+							mps_c_0 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+							mps_c_1 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] name:nil];
+						} else {
+							mps_c_0 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+							mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+						}
 						NSMutableArray<NSNumber*>* c_shape = [NSMutableArray new];
 						for (i = 0; i < nd; i++)
 							[c_shape addObject:@(c->info.dim[i])];
@@ -601,7 +619,11 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						[b_shape release];
 						NSArray<MPSGraphTensor*>* mps_b_splits = [graph splitTensor:mps_b numSplits:2 axis:nd name:nil];
 						MPSGraphTensor* mps_c_0 = [graph additionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
-						MPSGraphTensor* mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
+						MPSGraphTensor* mps_c_1;
+						if (cmd.info.cmul.conjugate)
+							mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_b_splits[1] secondaryTensor:mps_a_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_b_splits[0] secondaryTensor:mps_a_splits[1] name:nil] name:nil];
+						else
+							mps_c_1 = [graph subtractionWithPrimaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[1] secondaryTensor:mps_b_splits[0] name:nil] secondaryTensor:[graph multiplicationWithPrimaryTensor:mps_a_splits[0] secondaryTensor:mps_b_splits[1] name:nil] name:nil];
 						NSMutableArray<NSNumber*>* c_shape = [NSMutableArray new];
 						for (i = 0; i < nd; i++)
 							[c_shape addObject:@(d->info.dim[i])];

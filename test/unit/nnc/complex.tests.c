@@ -61,6 +61,44 @@ TEST_CASE("compare cmul with gemm computed result")
 	ccv_nnc_tensor_free(gemm_z);
 }
 
+TEST_CASE("conjugating cmul computes asymmetric gradients")
+{
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8), 0);
+	ccv_nnc_tensor_t* const da = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8), 0);
+	ccv_nnc_tensor_t* const db = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8), 0);
+	const float g_data[8] = {1, 2, -3, 4, 0.5f, -0.25f, 10, -2};
+	const float a_data[8] = {5, 6, 7, -8, -2, 0.5f, 0.25f, 3};
+	const float b_data[8] = {-4, 3, 2, 9, 1.5f, -2, 7, 0.125f};
+	memcpy(g->data.f32, g_data, sizeof(g_data));
+	memcpy(a->data.f32, a_data, sizeof(a_data));
+	memcpy(b->data.f32, b_data, sizeof(b_data));
+	float expected_da[8];
+	float expected_db[8];
+	int i;
+	for (i = 0; i < 8; i += 2)
+	{
+		expected_da[i] = g_data[i] * b_data[i] - g_data[i + 1] * b_data[i + 1];
+		expected_da[i + 1] = g_data[i] * b_data[i + 1] + g_data[i + 1] * b_data[i];
+		expected_db[i] = a_data[i] * g_data[i] + a_data[i + 1] * g_data[i + 1];
+		expected_db[i + 1] = a_data[i + 1] * g_data[i] - a_data[i] * g_data[i + 1];
+	}
+	ccv_nnc_cmd_t cmd = CMD_CMUL_BACKWARD();
+	cmd.info.cmul.conjugate = 1;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b), TENSOR_LIST(da, db), 0), "conjugating cmul backward should run");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, da->data.f32, expected_da, 8, 1e-6, "dA should equal g * b");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, db->data.f32, expected_db, 8, 1e-6, "dB should equal a * conj(g)");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(0, a, b), TENSOR_LIST(da, db), 0), "conjugating cmul backward should support an implicit unit gradient");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, da->data.f32, b_data, 8, 1e-6, "implicit-unit dA should equal b");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, db->data.f32, a_data, 8, 1e-6, "implicit-unit dB should equal a");
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(da);
+	ccv_nnc_tensor_free(db);
+}
+
 TEST_CASE("compare cmul gradient with gemm computed result")
 {
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();

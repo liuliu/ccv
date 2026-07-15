@@ -225,6 +225,9 @@ typedef struct {
 			int flags; /**< [blas.flags] Auxiliary flags to enable certain features for BLAS operation. */
 		} blas;
 		struct {
+			int conjugate; /**< [cmul.conjugate] Whether to conjugate the right-hand complex operand. */
+		} cmul;
+		struct {
 			float trim0; /**< [label_smoothing.trim0] The smoothed label for 0. */
 			float trim1; /**< [label_smoothing.trim1] The smoothed label for 1. */
 		} label_smoothing;
@@ -4815,10 +4818,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const char* const name);
 /**
  * Multiply two input tensors together as if these are complex numbers.
+ * @param conjugate Whether to conjugate the right-hand input before multiplication.
  * @param name The unique name of the model.
  * @return A model that can be applied with two inputs, and generate output that is a product of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmul(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmul(const int conjugate, const char* const name);
 /**
  * A matrix transpose model.
  * @param axis_a The axis to be exchanged with axis_b
