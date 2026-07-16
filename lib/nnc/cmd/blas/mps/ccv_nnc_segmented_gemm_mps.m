@@ -18,6 +18,7 @@ typedef struct {
 	int subtype;
 	ccv_nnc_mfa_depalettize_params_t depalettize_params;
 	ccv_nnc_mfa_dequantize_8i_rowwise_params_t dequantize_8i_rowwise_params;
+	ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t dequantize_8i_rowwise_x_fp_params;
 } ccv_nnc_mfa_qx_decode_params_t;
 
 static size_t _ccv_nnc_qx_dense_data_size(const ccv_nnc_tensor_param_t params)
@@ -26,7 +27,7 @@ static size_t _ccv_nnc_qx_dense_data_size(const ccv_nnc_tensor_param_t params)
 	ccv_nnc_tensor_param_t dense_params = params;
 	dense_params.datatype = (params.datatype & 0xff) << 12;
 	dense_params.reserved = 0;
-	if ((subtype >= 0x400 && subtype <= 0x800) || subtype == CCV_NNC_QX_8I_ROWWISE)
+	if ((subtype >= 0x400 && subtype <= 0x800) || subtype == CCV_NNC_QX_8I_ROWWISE || subtype == CCV_NNC_QX_8I_ROWWISE_X)
 		return ccv_nnc_tensor_data_size(dense_params);
 	assert(0);
 	return 0;
@@ -55,6 +56,14 @@ static ccv_nnc_mfa_qx_decode_params_t _ccv_nnc_mfa_qx_decode_params(const ccv_nn
 			.row_length = (uint64_t)params.dim[nd - 1],
 			.length = (uint64_t)ccv_nnc_tensor_count(params),
 		};
+	} else if (subtype == CCV_NNC_QX_8I_ROWWISE_X) {
+		const int nd = ccv_nnc_tensor_nd(params.dim);
+		decode_params.dequantize_8i_rowwise_x_fp_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t){
+			.data_type = mtl_data_type,
+			.format = (uint32_t)params.reserved,
+			.row_length = (uint64_t)params.dim[nd - 1],
+			.length = (uint64_t)ccv_nnc_tensor_count(params),
+		};
 	} else {
 		assert(0);
 	}
@@ -67,6 +76,8 @@ static void _ccv_nnc_mfa_prepare_qx_decode(ccv_nnc_mfa_context_t* const context,
 		ccv_nnc_mfa_prepare_depalettize(context, params.depalettize_params);
 	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE)
 		ccv_nnc_mfa_prepare_dequantize_8i_rowwise(context, params.dequantize_8i_rowwise_params);
+	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE_X)
+		ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, params.dequantize_8i_rowwise_x_fp_params);
 	else {
 		assert(0);
 	}
@@ -87,6 +98,8 @@ static void _ccv_nnc_mfa_encode_qx_decode(ccv_nnc_mfa_context_t* const context, 
 		ccv_nnc_mfa_encode_depalettize(context, params.depalettize_params, command_batch, tensors, tensor_offsets);
 	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE)
 		ccv_nnc_mfa_encode_dequantize_8i_rowwise(context, params.dequantize_8i_rowwise_params, command_batch, tensors, tensor_offsets);
+	else if (params.subtype == CCV_NNC_QX_8I_ROWWISE_X)
+		ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(context, params.dequantize_8i_rowwise_x_fp_params, command_batch, tensors, tensor_offsets);
 	else {
 		assert(0);
 	}
@@ -267,10 +280,10 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 
 		size_t a_data_size = 0;
-		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			a_data_size = _ccv_nnc_qx_dense_data_size(a->info);
 		size_t w_data_size = 0;
-		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			w_data_size = _ccv_nnc_qx_dense_data_size(w->info);
 		const uint32_t w_8i_rowwise_rows = (uint32_t)((size_t)w_batch_size * b_cols);
 		const uint32_t w_8i_rowwise_cols = (uint32_t)w_rows;
@@ -305,8 +318,6 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 
 		assert(is_mfa_supported);
-		if (w_8i_rowwise_x_format && !use_segmented_scaled_gemm)
-			return CCV_NNC_EXEC_INVALID;
 		if (use_segmented_scaled_gemm)
 		{
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
@@ -408,7 +419,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		mtl_buffer_t* a_data = mpgetbuffer((ccv_nnc_tensor_t*)a);
 		size_t a_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)a);
 		ccv_nnc_mfa_qx_decode_params_t a_decode_params;
-		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 		{
 			a_decode_params = _ccv_nnc_mfa_qx_decode_params(a->info, mtl_data_type);
 			_ccv_nnc_mfa_prepare_qx_decode(context, a_decode_params);
@@ -418,7 +429,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 		size_t w_dataof = (size_t)mpgetoffset((ccv_nnc_tensor_t*)w);
 		ccv_nnc_mfa_qx_decode_params_t w_decode_params;
-		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 		{
 			w_decode_params = _ccv_nnc_mfa_qx_decode_params(w->info, mtl_data_type);
 			_ccv_nnc_mfa_prepare_qx_decode(context, w_decode_params);
@@ -427,9 +438,9 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			_ccv_nnc_mfa_encode_qx_decode(context, a_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)a), a->dataof, (mtl_buffer_t*)scratch, scratch_offset);
-		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE))
+		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			_ccv_nnc_mfa_encode_qx_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, (mtl_buffer_t*)scratch, a_data_size + scratch_offset);
 		mtl_buffer_t* bias_buffer = NULL;
 		if (bias) {

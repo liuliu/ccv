@@ -1644,10 +1644,11 @@ static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const 
 	const uint64_t old_flags = ccv_nnc_flags();
 	if (force_fallback)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	int exec_status;
 	if (use_bias)
-		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
 	else
-		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
 	if (force_fallback && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
@@ -1721,7 +1722,7 @@ static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const 
 	ccv_nnc_tensor_free(hcounts);
 	ccv_nnc_tensor_free(hindices);
 	ccv_nnc_tensor_free(ha);
-	return 0;
+	return exec_status;
 }
 
 static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use_bias, const int force_fallback, double* const max_abs_ref, double* const max_rel_ref)
@@ -1896,6 +1897,43 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")
 		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16F, 0, 0, formats[i], &max_abs, &max_rel), 0, "segmented row-wise 8i-x NA validation should run for format=%d", formats[i]);
 		REQUIRE(max_rel < 3e-3, "segmented row-wise 8i-x fp16 should match selected-decode quantized reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
 	}
+}
+
+TEST_CASE("mps segmented gemm with row-wise 8i-x weight fallback dequantize")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		double max_abs = 0;
+		double max_rel = 0;
+		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16F, 0, 1, formats[i], &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i-x fp16 should match dense reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
+	}
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_32F, 0, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x fp32 validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i-x fp32 should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16BF, 0, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x bf16 validation should run");
+	REQUIRE(max_rel < 6e-3, "segmented fallback row-wise 8i-x bf16 should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	max_abs = 0;
+	max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16F, 1, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x validation with bias should run");
+	REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i-x fp16 with bias should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i weight and bias fallback dequantize")
