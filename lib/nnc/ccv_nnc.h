@@ -321,6 +321,11 @@ typedef struct {
 			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */
 		} walsh_hadamard_transform;
 		struct {
+			int count; /**< [hyper_connection.count] Number of hyper-connection streams. */
+			int sinkhorn_iterations; /**< [hyper_connection.sinkhorn_iterations] Number of alternating Sinkhorn column normalizations. */
+			float epsilon; /**< [hyper_connection.epsilon] Numerical epsilon used by the gates and Sinkhorn normalization. */
+		} hyper_connection;
+		struct {
 			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
 			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
 		} pad;
@@ -4803,6 +4808,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
  * @return A model that can be applied with one input, and generate output that is the Walsh-Hadamard transform of the input.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_walsh_hadamard_transform(const float scale, const char* const name);
+/**
+ * Hyper-connection split, fused pre-weighted residual reduction, or expansion.
+ * Split produces pre weights, post weights and combination weights. Split-weighted-sum produces post weights,
+ * combination weights and the pre-weighted residual. Expand computes post * block + transpose(combination) * residual.
+ * @param count Number of hyper-connection streams.
+ * @param sinkhorn_iterations Number of Sinkhorn normalization iterations.
+ * @param epsilon Numerical epsilon used by the gates and Sinkhorn normalization.
+ * @param operation 0 for split, 1 for split-weighted-sum, or 2 for expand.
+ * @param name The unique name of the model.
+ * @return A model that accepts three or four inputs and generates one or three outputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, const int sinkhorn_iterations, const float epsilon, const int operation, const char* const name);
 /**
  * Rotate the last dimension of the input tensor by half.
  * @param name The unique name of the model.

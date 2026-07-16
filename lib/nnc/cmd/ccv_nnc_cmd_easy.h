@@ -153,6 +153,10 @@
 #define CMD_HISTOGRAM_LOG(...) CMD_HISTOGRAM_LOG_X_SEL(CMD_HISTOGRAM_LOG_X_F, ##__VA_ARGS__, CMD_HISTOGRAM_LOG_X_3, CMD_HISTOGRAM_LOG_X_F, CMD_HISTOGRAM_LOG_X_F, CMD_HISTOGRAM_LOG_X_0)(__VA_ARGS__)
 // CCV_NNC_HISTOGRAM_FORWARD
 #define CMD_HISTOGRAM_BINS() ccv_nnc_cmd(CCV_NNC_HISTOGRAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.histogram={.type=CCV_NNC_HISTOGRAM_BINS}}), 0)
+// CCV_NNC_HYPER_CONNECTION_FORWARD
+#define CMD_HYPER_CONNECTION_FORWARD(_count, _sinkhorn_iterations, _epsilon) ccv_nnc_cmd(CCV_NNC_HYPER_CONNECTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.hyper_connection={.count=(_count),.sinkhorn_iterations=(_sinkhorn_iterations),.epsilon=(_epsilon)}}), 0)
+// CCV_NNC_HYPER_CONNECTION_BACKWARD
+#define CMD_HYPER_CONNECTION_BACKWARD(_count, _sinkhorn_iterations, _epsilon) ccv_nnc_cmd(CCV_NNC_HYPER_CONNECTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.hyper_connection={.count=(_count),.sinkhorn_iterations=(_sinkhorn_iterations),.epsilon=(_epsilon)}}), 0)
 // CCV_NNC_INDEX_SELECT_FORWARD
 #define CMD_INDEX_SELECT_FORWARD() ccv_nnc_cmd(CCV_NNC_INDEX_SELECT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_INDEX_SELECT_BACKWARD

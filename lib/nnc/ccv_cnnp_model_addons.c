@@ -2615,6 +2615,67 @@ static ccv_cnnp_model_t* _ccv_cnnp_walsh_hadamard_transform_copy(const ccv_cnnp_
 	return ccv_cnnp_walsh_hadamard_transform(self->scale, self->super.name);
 }
 
+// MARK - Hyper Connection Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t outputs[3];
+	int count;
+	int sinkhorn_iterations;
+	float epsilon;
+	int operation;
+} ccv_cnnp_model_hyper_connection_t;
+
+static void _ccv_cnnp_hyper_connection_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_hyper_connection_build] -\n");
+	const ccv_cnnp_model_hyper_connection_t* const self = (const ccv_cnnp_model_hyper_connection_t*)super;
+	assert(input_size == (self->operation == 0 ? 3 : 4));
+	assert(output_size == (self->operation == 2 ? 1 : 3));
+	ccv_nnc_tensor_param_t input_params[4];
+	int i;
+	for (i = 0; i < input_size; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_tensor_param_t output_params[3];
+	const ccv_nnc_cmd_t hyper_connection = CMD_HYPER_CONNECTION_FORWARD(self->count, self->sinkhorn_iterations, self->epsilon);
+	ccv_nnc_hint_tensor_auto(hyper_connection, input_params, input_size, ccv_nnc_no_hint, output_params, output_size);
+	for (i = 0; i < output_size; i++)
+		outputs[i] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
+	ccv_nnc_graph_exec_symbol_new(graph, hyper_connection, inputs, input_size, outputs, output_size, "hyper_connection");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_hyper_connection_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_hyper_connection_isa = {
+	.build = _ccv_cnnp_hyper_connection_build,
+	.copy = _ccv_cnnp_hyper_connection_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_hyper_connection(const int count, const int sinkhorn_iterations, const float epsilon, const int operation, const char* const name)
+{
+	assert(count > 0 && count <= 16);
+	assert(sinkhorn_iterations > 0);
+	assert(epsilon >= 0);
+	assert(operation >= 0 && operation <= 2);
+	ccv_cnnp_model_hyper_connection_t* const model_hyper_connection = (ccv_cnnp_model_hyper_connection_t*)cccalloc(1, sizeof(ccv_cnnp_model_hyper_connection_t));
+	model_hyper_connection->super.isa = &ccv_cnnp_hyper_connection_isa;
+	model_hyper_connection->super.input_size = operation == 0 ? 3 : 4;
+	model_hyper_connection->super.outputs = model_hyper_connection->outputs;
+	model_hyper_connection->super.output_size = operation == 2 ? 1 : 3;
+	model_hyper_connection->count = count;
+	model_hyper_connection->sinkhorn_iterations = sinkhorn_iterations;
+	model_hyper_connection->epsilon = epsilon;
+	model_hyper_connection->operation = operation;
+	ccv_cnnp_model_copy_name(&model_hyper_connection->super, name);
+	return (ccv_cnnp_model_t*)model_hyper_connection;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_hyper_connection_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_hyper_connection_t* const self = (const ccv_cnnp_model_hyper_connection_t*)super;
+	return ccv_cnnp_hyper_connection(self->count, self->sinkhorn_iterations, self->epsilon, self->operation, self->super.name);
+}
+
 // MARK - Gated Delta Layer
 
 typedef struct {
