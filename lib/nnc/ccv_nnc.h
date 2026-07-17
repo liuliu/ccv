@@ -659,7 +659,8 @@ static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 enum {
-	CCV_NNC_TENSOR_MEMORY_MAP_EAGER = 0x1, /**< Load tensor mapped directly. */
+	CCV_NNC_TENSOR_MEMORY_MAP_EAGER = 0x0, /**< Load tensor mapped directly. This is the default behavior. */
+	CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE = 0x1, /**< Map the whole backing file once and share the mapping across eager Metal tensor loads. */
 	CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND = 0x2, /**< Defer tensor map until read on supported devices. */
 };
 /**

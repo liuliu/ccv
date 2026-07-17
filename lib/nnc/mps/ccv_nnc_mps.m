@@ -11,6 +11,7 @@
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
+#import <sys/stat.h>
 #import <sys/utsname.h>
 #import <sys/mman.h>
 #import <mach/vm_page_size.h>
@@ -29,6 +30,11 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @property (nonatomic, copy) NSString* path;
 @property (nonatomic, assign) NSUInteger size;
 @property (nonatomic, assign) NSUInteger offset;
+@end
+
+@interface MTLWholeFileMapping: NSObject
+@property (nonatomic, assign) void* base;
+@property (nonatomic, assign) NSUInteger size;
 @end
 
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
@@ -341,6 +347,60 @@ void* mpobjcreate(void* ptr, off_t offset, size_t size)
 @implementation MTLFileBackedBuffer
 @end
 
+@implementation MTLWholeFileMapping
+
+- (void)dealloc
+{
+	if (_base && _size)
+		munmap(_base, _size);
+	[super dealloc];
+}
+
+@end
+
+static MTLWholeFileMapping* _ccv_nnc_mps_whole_file_mapping(const char* const file, const size_t required_size, const off_t offset)
+{
+	static dispatch_once_t once;
+	static NSMapTable* mappings;
+	static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
+	dispatch_once(&once, ^{
+		mappings = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsWeakMemory capacity:1];
+	});
+	int fd = open(file, O_RDONLY, 0);
+	if (fd < 0)
+		return nil;
+	struct stat status;
+	if (fstat(fd, &status) != 0 || status.st_size <= 0 || (uint64_t)status.st_size > NSUIntegerMax || offset < 0 ||
+		(uint64_t)offset > (uint64_t)status.st_size || required_size > (uint64_t)status.st_size - (uint64_t)offset)
+	{
+		close(fd);
+		return nil;
+	}
+	NSString* const key = [NSString stringWithFormat:@"%llu:%llu:%llu",
+		(unsigned long long)status.st_dev,
+		(unsigned long long)status.st_ino,
+		(unsigned long long)status.st_size];
+	os_unfair_lock_lock(&lock);
+	MTLWholeFileMapping* mapping = [[mappings objectForKey:key] retain];
+	if (!mapping)
+	{
+		void* const base = mmap(0, status.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+		if (base != MAP_FAILED)
+		{
+			madvise(base, status.st_size, MADV_NORMAL);
+			mapping = [MTLWholeFileMapping new];
+			mapping.base = base;
+			mapping.size = status.st_size;
+			[mappings setObject:mapping forKey:key];
+		}
+	}
+	os_unfair_lock_unlock(&lock);
+	close(fd);
+	return mapping;
+}
+
+static char _ccv_nnc_mps_whole_file_mapping_owner_key;
+
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 {
 	id obj = (id)tensor->data.u8;
@@ -381,6 +441,8 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset, const in
 	@autoreleasepool {
 		if (flags & CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND)
 		{
+			// ON_DEMAND takes precedence over WHOLE_FILE. Combining the two is not
+			// specialized yet and retains the existing per-range lazy behavior.
 			MTLFileBackedBuffer* fileBackedBuffer = [MTLFileBackedBuffer new];
 			fileBackedBuffer.path = @(file);
 			fileBackedBuffer.size = size;
@@ -388,6 +450,22 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset, const in
 			assert(offset % vm_page_size == 0);
 			return (void*)fileBackedBuffer;
 		} else {
+			if ((flags & CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MMAP_MTL_BUFFER))
+			{
+				MTLWholeFileMapping* const mapping = _ccv_nnc_mps_whole_file_mapping(file, size, offset);
+				if (mapping)
+				{
+					void* const bufptr = (unsigned char*)mapping.base + offset;
+					unsigned char* const aligned_ptr = (unsigned char*)((uintptr_t)bufptr & -vm_page_size);
+					assert(aligned_ptr == bufptr);
+					id obj = [ccv_nnc_default_device() newBufferWithBytesNoCopy:bufptr length:size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
+					if (obj)
+						objc_setAssociatedObject(obj, &_ccv_nnc_mps_whole_file_mapping_owner_key, mapping, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+					[mapping release];
+					if (obj)
+						return obj;
+				}
+			}
 			int fd = open(file, O_RDONLY, 0);
 			void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, offset);
 			close(fd);
