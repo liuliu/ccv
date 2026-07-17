@@ -62,6 +62,10 @@
 #define CMD_COMPRESSION_LSSC_FORWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMPRESSION_LSSC_BACKWARD
 #define CMD_COMPRESSION_LSSC_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_CONFORM_DATA_FORMAT_FORWARD
+#define CMD_CONFORM_DATA_FORMAT_FORWARD(_datatype, _preserved_tail) ccv_nnc_cmd(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.conform_data_format={.datatype=(_datatype),.preserved_tail=(_preserved_tail)}}), 0)
+// CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD
+#define CMD_CONFORM_DATA_FORMAT_BACKWARD(_datatype, _preserved_tail) ccv_nnc_cmd(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.conform_data_format={.datatype=(_datatype),.preserved_tail=(_preserved_tail)}}), 0)
 // CCV_NNC_CONVOLUTION_FORWARD
 #define CMD_CONVOLUTION_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 // CCV_NNC_CONVOLUTION_BACKWARD

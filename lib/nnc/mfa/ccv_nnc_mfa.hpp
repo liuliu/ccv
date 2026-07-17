@@ -21,6 +21,7 @@ extern "C" {
 #include "ccv_nnc_mfa_index_select_8i_rowwise_x.hpp"
 #include "ccv_nnc_mfa_adam.hpp"
 #include "ccv_nnc_mfa_cmul.hpp"
+#include "ccv_nnc_mfa_conform_data_format.hpp"
 #include "ccv_nnc_mfa_gelu.hpp"
 #include "ccv_nnc_mfa_gemm.hpp"
 #include "ccv_nnc_mfa_scaled_gemm.hpp"

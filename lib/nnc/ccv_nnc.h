@@ -99,6 +99,10 @@ enum {
 };
 
 enum {
+	CCV_NNC_FP8_E4M3 = 1, /**< FP8 E4M3 finite-numbers format with a maximum finite magnitude of 448. */
+};
+
+enum {
 	CCV_NNC_PAD_ZERO = 0, /**< Pad 0s. */
 	CCV_NNC_PAD_REPLICATE = 1, /**< Pad by replicating the edge, (a, b) to (a, a, b). */
 	CCV_NNC_PAD_REFLECT = 2, /**< Pad by reflecting the edge, (a, b) to (b, a, b). */
@@ -325,6 +329,10 @@ typedef struct {
 			int sinkhorn_iterations; /**< [hyper_connection.sinkhorn_iterations] Number of alternating Sinkhorn column normalizations. */
 			float epsilon; /**< [hyper_connection.epsilon] Numerical epsilon used by the gates and Sinkhorn normalization. */
 		} hyper_connection;
+		struct {
+			int datatype; /**< [conform_data_format.datatype] The data format to emulate while retaining Float32 storage. */
+			int preserved_tail; /**< [conform_data_format.preserved_tail] Number of values at the end of each row to leave unchanged. */
+		} conform_data_format;
 		struct {
 			int type; /**< [pad.type] The type of pad, can be either zeros or replicating edge. */
 			int end[CCV_NNC_MAX_DIM_ALLOC]; /**< [pad.end] Work together with size.dim. size.dim is how much to add at the beginning and pad.end is how much to add at the end. */
