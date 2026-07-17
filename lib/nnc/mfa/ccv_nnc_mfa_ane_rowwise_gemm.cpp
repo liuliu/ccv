@@ -799,6 +799,7 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
   char error_buffer[1024] = {};
   ccv_nnc_mfa_ane_rowwise_coreml_program_t* const program =
       ccv_nnc_mfa_ane_rowwise_coreml_find_or_create_program(
+          cache,
           rowwise_padded_total_rows(params),
           params.N,
           params.K,
@@ -889,6 +890,7 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
   char error_buffer[1024] = {};
   ccv_nnc_mfa_ane_rowwise_coreml_program_t* const program =
       ccv_nnc_mfa_ane_rowwise_coreml_find_or_create_program(
+          cache,
           rowwise_padded_total_rows(ane_params),
           params.N,
           params.K,

@@ -209,7 +209,7 @@ struct ProgramKeyHash {
   }
 };
 
-static std::unordered_map<ProgramKey, std::unique_ptr<CompiledProgram>, ProgramKeyHash> g_program_cache;
+using ProgramCache = std::unordered_map<ProgramKey, std::unique_ptr<CompiledProgram>, ProgramKeyHash>;
 
 struct CachedSurface {
   size_t width;
@@ -870,6 +870,8 @@ static std::unique_ptr<CompiledProgram> compile_program(
 
 struct ccv_nnc_mfa_ane_rowwise_coreml_cache_s {
   mtl_device_t* device = nullptr;
+  // Scope compiled CoreML models to the MFA context so graph GC can release them.
+  ProgramCache program_cache;
   SharedScratch scratch;
   FastFence fast_fence;
   SurfaceCache activation_surface_cache;
@@ -897,6 +899,7 @@ void ccv_nnc_mfa_ane_rowwise_coreml_cache_destroy(ccv_nnc_mfa_ane_rowwise_coreml
 {
   if (!cache)
     return;
+  cache->program_cache.clear();
   destroy_shared_scratch(&cache->scratch);
   destroy_fast_fence(&cache->fast_fence);
   destroy_surface_cache(&cache->activation_surface_cache);
@@ -998,26 +1001,31 @@ mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(
 }
 
 ccv_nnc_mfa_ane_rowwise_coreml_program_t* ccv_nnc_mfa_ane_rowwise_coreml_find_or_create_program(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
     uint32_t padded_M,
     uint32_t N,
     uint32_t K,
     char* error_out,
     size_t error_out_size)
 {
+  if (!cache) {
+    set_error(error_out, error_out_size, "ANE rowwise cache is not initialized");
+    return nullptr;
+  }
   const ProgramKey key = {
     .M = padded_M,
     .N = N,
     .K = K,
   };
-  auto it = g_program_cache.find(key);
-  if (it == g_program_cache.end()) {
+  auto it = cache->program_cache.find(key);
+  if (it == cache->program_cache.end()) {
     std::string error;
     std::unique_ptr<CompiledProgram> program = compile_program(padded_M, N, K, &error);
     if (!program) {
       set_error(error_out, error_out_size, error);
       return nullptr;
     }
-    it = g_program_cache.emplace(key, std::move(program)).first;
+    it = cache->program_cache.emplace(key, std::move(program)).first;
   }
   auto* const handle = new ccv_nnc_mfa_ane_rowwise_coreml_program_t();
   handle->program = it->second.get();

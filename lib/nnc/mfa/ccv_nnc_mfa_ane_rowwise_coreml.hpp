@@ -34,6 +34,7 @@ mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
 
 ccv_nnc_mfa_ane_rowwise_coreml_program_t* ccv_nnc_mfa_ane_rowwise_coreml_find_or_create_program(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
     uint32_t padded_M,
     uint32_t N,
     uint32_t K,
