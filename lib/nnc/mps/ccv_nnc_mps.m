@@ -384,7 +384,7 @@ static MTLWholeFileMapping* _ccv_nnc_mps_whole_file_mapping(const char* const fi
 	MTLWholeFileMapping* mapping = [[mappings objectForKey:key] retain];
 	if (!mapping)
 	{
-		void* const base = mmap(0, status.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+		void* const base = mmap(0, status.st_size, PROT_READ, MAP_SHARED, fd, 0);
 		if (base != MAP_FAILED)
 		{
 			madvise(base, status.st_size, MADV_NORMAL);

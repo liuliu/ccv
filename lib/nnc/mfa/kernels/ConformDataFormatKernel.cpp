@@ -27,25 +27,56 @@ constant uint row_count [[function_constant(0)]];
 constant uint head_dim [[function_constant(1)]];
 constant uint preserved_tail [[function_constant(2)]];
 
-inline float round_ties_to_even(const float x)
-{
-  const float lower = floor(x);
-  const float fraction = x - lower;
-  if (fraction < 0.5f)
-    return lower;
-  if (fraction > 0.5f)
-    return lower + 1.0f;
-  return fmod(lower, 2.0f) == 0.0f ? lower : lower + 1.0f;
+constant float conform_e4m3_exp_scale[16] = {
+  0.0f, 0.015625f, 0.03125f, 0.0625f,
+  0.125f, 0.25f, 0.5f, 1.0f,
+  2.0f, 4.0f, 8.0f, 16.0f,
+  32.0f, 64.0f, 128.0f, 256.0f,
+};
+
+static inline float conform_e4m3_value(int i) {
+    const int exp  = (i >> 3) & 0x0f;
+    const int mant = i & 0x07;
+    return exp == 0
+        ? float(mant) * 0.001953125f
+        : (1.0f + float(mant) * 0.125f) * conform_e4m3_exp_scale[exp];
 }
 
-inline float conform_e4m3(const float x)
-{
-  const float magnitude = min(abs(x), 448.0f);
-  if (magnitude == 0.0f)
-    return 0.0f;
-  const float step = magnitude < 0.015625f ? 0.001953125f : exp2(floor(log2(magnitude)) - 3.0f);
-  const float dequantized = min(round_ties_to_even(magnitude / step) * step, 448.0f);
-  return x < 0.0f ? -dequantized : dequantized;
+static inline float conform_e4m3(float x) {
+    const float sign = x < 0.0f ? -1.0f : 1.0f;
+    const float ax = min(abs(x), 448.0f);
+
+    int lo = 0;
+    int hi = 126;
+    while (lo < hi) {
+        const int mid = (lo + hi + 1) >> 1;
+        if (conform_e4m3_value(mid) <= ax) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+
+    int best = lo;
+    if (best < 126) {
+        const float best_diff = abs(ax - conform_e4m3_value(best));
+        const float next_diff = abs(ax - conform_e4m3_value(best + 1));
+        if (next_diff < best_diff || (next_diff == best_diff && ((best + 1) & 1) == 0 && (best & 1) != 0)) {
+            best = best + 1;
+        }
+    }
+
+    return sign * conform_e4m3_value(best);
+}
+
+// x is positive and normal: partial_max has a 1e-4 floor, and finite Float32
+// values remain normal after division by 448. The exponent field therefore
+// encodes floor(log2(x)); a nonzero mantissa advances it to ceil(log2(x)).
+static inline float ceil_power_of_two(float x) {
+    const uint bits = as_type<uint>(x);
+    const uint exponent = bits & 0x7f800000u;
+    const uint mantissa = bits & 0x007fffffu;
+    return as_type<float>(exponent + (mantissa != 0 ? 0x00800000u : 0u));
 }
 
 kernel void conform_data_format(
@@ -75,7 +106,7 @@ kernel void conform_data_format(
     partial_max[0] = max(max(partial_max[0], partial_max[1]), 1.0e-4f);
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
-  const float scale = exp2(ceil(log2(partial_max[0] / 448.0f)));
+  const float scale = ceil_power_of_two(partial_max[0] / 448.0f);
   destination[index] = conform_e4m3(clamp(value / scale, -448.0f, 448.0f)) * scale;
 
   if (block_in_row == 0)
