@@ -1368,7 +1368,9 @@ void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, cons
 	assert(output_length % row_length == 0);
 	if (memory_type != CCV_TENSOR_CPU_MEMORY)
 	{
-#ifdef HAVE_MPS
+#ifdef HAVE_CUDA
+		ccv_nnc_compat_dequantize_8i_rowwise_x_fp(input, datatype, input_length, row_length, format, output, output_length, 0);
+#elif defined(HAVE_MPS)
 		assert(datatype != CCV_64F);
 		ccv_nnc_mps_dequantize_8i_rowwise_x(input, datatype, input_length, row_length, format, output, output_length, 0);
 #else

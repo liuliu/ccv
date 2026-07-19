@@ -244,6 +244,124 @@ TEST_CASE("quantize float to row-wise int8 and dequantize on GPU losslessly")
 	ccv_nnc_tensor_free(tensor);
 }
 
+#ifdef HAVE_CUDA
+TEST_CASE("quantize and dequantize packed row-wise int8-x on CUDA for all formats and datatypes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	const int datatypes[] = {
+		CCV_16F,
+		CCV_16BF,
+		CCV_32F,
+		CCV_64F,
+	};
+	const int row_lengths[] = {
+		128,
+		130,
+		131,
+		132,
+		1,
+	};
+	const int row_counts[] = {
+		11,
+		11,
+		11,
+		11,
+		65536,
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int s;
+	for (s = 0; s < sizeof(row_lengths) / sizeof(row_lengths[0]); s++)
+	{
+		const int rows = row_counts[s];
+		const int cols = row_lengths[s];
+		const size_t count = (size_t)rows * cols;
+		float* const values = ccmalloc(sizeof(float) * count);
+		size_t i;
+		for (i = 0; i < count; i++)
+			values[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 16 - 8);
+		int d;
+		const int datatype_count = rows > 65535 ? 1 : sizeof(datatypes) / sizeof(datatypes[0]);
+		for (d = 0; d < datatype_count; d++)
+		{
+			ccv_nnc_tensor_param_t dense_params = CPU_TENSOR_NHWC(32F, rows, cols);
+			dense_params.datatype = datatypes[d];
+			ccv_nnc_tensor_param_t gpu_dense_params = dense_params;
+			gpu_dense_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, dense_params, 0);
+			if (datatypes[d] == CCV_16F)
+				ccv_float_to_half_precision(values, (uint16_t*)source->data.f16, count);
+			else if (datatypes[d] == CCV_16BF)
+				ccv_float_to_bfloat(values, (uint16_t*)source->data.f16, count);
+			else if (datatypes[d] == CCV_32F)
+				memcpy(source->data.f32, values, sizeof(float) * count);
+			else {
+				for (i = 0; i < count; i++)
+					source->data.f64[i] = values[i];
+			}
+			int f;
+			const int format_count = rows > 65535 ? 1 : sizeof(formats) / sizeof(formats[0]);
+			for (f = 0; f < format_count; f++)
+			{
+				const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(dense_params, formats[f]);
+				ccv_nnc_tensor_param_t gpu_q_params = q_params;
+				gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "packed row-wise int8-x size should match");
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, dense_params, 0);
+				ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, qsize, cols, formats[f], expected->data.u8, count);
+				ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_dense_params, 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, dense_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+				ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, qsize, cols, formats[f], gout->data.u8, count);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+				if (datatypes[d] == CCV_16F || datatypes[d] == CCV_16BF) {
+					float* const expected_f32 = ccmalloc(sizeof(float) * count);
+					float* const actual_f32 = ccmalloc(sizeof(float) * count);
+					if (datatypes[d] == CCV_16F)
+					{
+						ccv_half_precision_to_float((uint16_t*)expected->data.f16, expected_f32, count);
+						ccv_half_precision_to_float((uint16_t*)actual->data.f16, actual_f32, count);
+						REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, count, 1e-2, "CUDA packed row-wise int8-x half output should match CPU");
+					} else {
+						ccv_bfloat_to_float((uint16_t*)expected->data.f16, expected_f32, count);
+						ccv_bfloat_to_float((uint16_t*)actual->data.f16, actual_f32, count);
+						REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, count, 1e-1, "CUDA packed row-wise int8-x bfloat output should match CPU");
+					}
+					ccfree(actual_f32);
+					ccfree(expected_f32);
+				} else if (datatypes[d] == CCV_32F) {
+					REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, count, 1e-6, "CUDA packed row-wise int8-x output should match CPU");
+				} else {
+					REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, expected->data.f64, actual->data.f64, count, 1e-12, "CUDA packed row-wise int8-x output should match CPU");
+				}
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(gout);
+				ccv_nnc_tensor_free(gq);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(q);
+			}
+			ccv_nnc_tensor_free(source);
+		}
+		ccfree(values);
+	}
+}
+#endif
+
 TEST_CASE("quantize double to 4-bit and dequantize on GPU losslessly")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));

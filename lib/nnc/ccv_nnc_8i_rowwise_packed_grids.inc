@@ -1,6 +1,11 @@
 // Generated from ggml/src/ggml-common.h IQ grids for ccv row-wise-x int8 quantization.
 
-static const uint16_t ccv_nnc_8i_rowwise_packed_iq2xxs_grid[256] = {
+#ifndef CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST
+#define CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST static const
+#define CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST_DEFINED
+#endif
+
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint16_t ccv_nnc_8i_rowwise_packed_iq2xxs_grid[256] = {
     0x0000, 0x0002, 0x0005, 0x0008, 0x000a, 0x0011, 0x0014, 0x0020,
     0x0022, 0x0028, 0x002a, 0x0041, 0x0044, 0x0050, 0x0058, 0x0061,
     0x0064, 0x0080, 0x0082, 0x008a, 0x00a2, 0x0101, 0x0104, 0x0110,
@@ -35,7 +40,7 @@ static const uint16_t ccv_nnc_8i_rowwise_packed_iq2xxs_grid[256] = {
     0xa002, 0xa050, 0xa085, 0xa109, 0xa200, 0xa418, 0xa850, 0xa904,
 };
 
-static const uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[128] = {
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[128] = {
     0x00, 0x81, 0x82, 0x03, 0x84, 0x05, 0x06, 0x87, 0x88, 0x09, 0x0a, 0x8b, 0x0c, 0x8d, 0x8e, 0x0f,
     0x90, 0x11, 0x12, 0x93, 0x14, 0x95, 0x96, 0x17, 0x18, 0x99, 0x9a, 0x1b, 0x9c, 0x1d, 0x1e, 0x9f,
     0xa0, 0x21, 0x22, 0xa3, 0x24, 0xa5, 0xa6, 0x27, 0x28, 0xa9, 0xaa, 0x2b, 0xac, 0x2d, 0x2e, 0xaf,
@@ -46,7 +51,7 @@ static const uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[128] = {
     0xf0, 0x71, 0x72, 0xf3, 0x74, 0xf5, 0xf6, 0x77, 0x78, 0xf9, 0xfa, 0x7b, 0xfc, 0x7d, 0x7e, 0xff,
 };
 
-static const uint64_t ccv_nnc_8i_rowwise_packed_iq2xs_grid[512] = {
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint64_t ccv_nnc_8i_rowwise_packed_iq2xs_grid[512] = {
     0x0808080808080808, 0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
     0x0808080808082b2b, 0x0808080808190819, 0x0808080808191908, 0x080808080819192b,
     0x0808080808192b19, 0x08080808082b0808, 0x08080808082b082b, 0x08080808082b1919,
@@ -177,7 +182,7 @@ static const uint64_t ccv_nnc_8i_rowwise_packed_iq2xs_grid[512] = {
     0x2b2b2b2b082b2b08, 0x2b2b2b2b082b2b2b, 0x2b2b2b2b2b190819, 0x2b2b2b2b2b2b2b2b,
 };
 
-static const uint64_t ccv_nnc_8i_rowwise_packed_iq2s_grid[1024] = {
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint64_t ccv_nnc_8i_rowwise_packed_iq2s_grid[1024] = {
     0x0808080808080808, 0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
     0x0808080808082b2b, 0x0808080808190819, 0x0808080808191908, 0x080808080819192b,
     0x0808080808192b19, 0x08080808082b0808, 0x08080808082b082b, 0x08080808082b1919,
@@ -436,7 +441,7 @@ static const uint64_t ccv_nnc_8i_rowwise_packed_iq2s_grid[1024] = {
     0x2b2b2b2b082b082b, 0x2b2b2b2b082b2b08, 0x2b2b2b2b2b082b08, 0x2b2b2b2b2b2b2b2b,
 };
 
-static const uint32_t ccv_nnc_8i_rowwise_packed_iq3xxs_grid[256] = {
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint32_t ccv_nnc_8i_rowwise_packed_iq3xxs_grid[256] = {
     0x04040404, 0x04040414, 0x04040424, 0x04040c0c, 0x04040c1c, 0x04040c3e, 0x04041404, 0x04041414,
     0x04041c0c, 0x04042414, 0x04043e1c, 0x04043e2c, 0x040c040c, 0x040c041c, 0x040c0c04, 0x040c0c14,
     0x040c140c, 0x040c142c, 0x040c1c04, 0x040c1c14, 0x040c240c, 0x040c2c24, 0x040c3e04, 0x04140404,
@@ -471,7 +476,7 @@ static const uint32_t ccv_nnc_8i_rowwise_packed_iq3xxs_grid[256] = {
     0x3e1c1c1c, 0x3e1c3404, 0x3e24140c, 0x3e24240c, 0x3e2c0404, 0x3e2c0414, 0x3e2c1424, 0x3e341c04,
 };
 
-static const uint32_t ccv_nnc_8i_rowwise_packed_iq3s_grid[512] = {
+CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST uint32_t ccv_nnc_8i_rowwise_packed_iq3s_grid[512] = {
     0x01010101, 0x01010103, 0x01010105, 0x0101010b, 0x0101010f, 0x01010301, 0x01010303, 0x01010305,
     0x01010309, 0x0101030d, 0x01010501, 0x01010503, 0x0101050b, 0x01010707, 0x01010901, 0x01010905,
     0x0101090b, 0x0101090f, 0x01010b03, 0x01010b07, 0x01010d01, 0x01010d05, 0x01010f03, 0x01010f09,
@@ -537,3 +542,8 @@ static const uint32_t ccv_nnc_8i_rowwise_packed_iq3s_grid[512] = {
     0x0f050701, 0x0f050b03, 0x0f070105, 0x0f070705, 0x0f07070b, 0x0f070b07, 0x0f090103, 0x0f09010b,
     0x0f090307, 0x0f090501, 0x0f090b01, 0x0f0b0505, 0x0f0b0905, 0x0f0d0105, 0x0f0d0703, 0x0f0f0101,
 };
+
+#ifdef CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST_DEFINED
+#undef CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST_DEFINED
+#undef CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST
+#endif

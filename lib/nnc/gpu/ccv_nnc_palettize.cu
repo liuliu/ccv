@@ -321,6 +321,575 @@ __global__ void _ccv_nnc_q8_fast_s4(const int number_in_blocks, const uint8_t* c
 	}
 }
 
+// CUDA kernels cannot access the host-only static const grids emitted by default,
+// so include the shared tables with device storage in this translation unit.
+#define CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST static __device__ const
+#include "../ccv_nnc_8i_rowwise_packed_grids.inc"
+#undef CCV_NNC_8I_ROWWISE_PACKED_GRID_CONST
+
+static __device__ __forceinline__ uint32_t _ccv_nnc_8i_rowwise_x_read_bits(const uint8_t* const input, const size_t bit_offset, const int bits)
+{
+	const size_t byte_offset = bit_offset >> 3;
+	const int shift = bit_offset & 7;
+	const uint32_t value = (uint32_t)input[byte_offset] |
+		((uint32_t)input[byte_offset + 1] << 8) |
+		((uint32_t)input[byte_offset + 2] << 16);
+	return (value >> shift) & ((1u << bits) - 1);
+}
+
+typedef struct {
+	const uint8_t* input;
+	size_t bit_offset;
+
+	__device__ __forceinline__ uint32_t read(const int offset, const int bits) const
+	{
+		return _ccv_nnc_8i_rowwise_x_read_bits(input, bit_offset + offset, bits);
+	}
+} _ccv_nnc_8i_rowwise_x_global_bits_t;
+
+template<int FORMAT, typename BITS>
+static __device__ __forceinline__ int _ccv_nnc_8i_rowwise_x_decode(const BITS& bits, const int lane)
+{
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K)
+	{
+		const int q = (int)bits.read(lane * 5, 5) - 16;
+		const int m = (int)bits.read(80, 3) + 1;
+		const int b = (int)bits.read(83, 5) - 16;
+		return q * m + b;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K)
+	{
+		const int uq = (int)bits.read(lane * 6, 6);
+		const int q = (uq ^ 32) - 32;
+		const int m = (int)bits.read(48, 2) + 1;
+		const int ub = (int)bits.read(50, 2);
+		const int b = (ub ^ 2) - 2;
+		return q * m + b;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K)
+	{
+		const int q = (int)bits.read(lane * 4, 4) - 8;
+		const int m = (int)bits.read(64, 4) + 1;
+		const int b = (int)bits.read(68, 4) - 8;
+		return q * m + b;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K)
+	{
+		const int q = (int)bits.read(lane * 3, 3) - 4;
+		const int m = (int)bits.read(48, 5) + 1;
+		const int b = ((int)bits.read(53, 3) - 4) * 2;
+		return q * m + b;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K)
+	{
+		const int q = (int)bits.read(lane * 2, 2);
+		const int m = (int)bits.read(32, 6) + 1;
+		const int z = (int)bits.read(38, 4) * 8;
+		return q * m - z;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+	{
+		const int grid_lane = lane & 7;
+		const int grid_index = (int)bits.read(lane >= 8 ? 10 : 0, 10);
+		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2s_grid[grid_index];
+		const int mag0 = (int)((grid >> (grid_lane * 8)) & 0xff) >> 3;
+		const int scale = (int)bits.read(36, 6) + 1;
+		const int mag = ccv_min(mag0 * scale, 127);
+		const int negative = (int)bits.read(20 + lane, 1);
+		return negative ? -mag : mag;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
+	{
+		const int grid_index = (int)bits.read(0, 9);
+		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2xs_grid[grid_index];
+		const int mag0 = (int)((grid >> (lane * 8)) & 0xff) >> 3;
+		const int scale_code = (int)bits.read(17, 4);
+		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
+		const int mag = ccv_min(mag0 * scale, 127);
+		const int negative = (int)bits.read(9 + lane, 1);
+		return negative ? -mag : mag;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+	{
+		const int subgroup = lane >> 3;
+		const int grid_lane = lane & 7;
+		const int grid_index = (int)bits.read(subgroup * 8, 8);
+		const uint16_t grid = ccv_nnc_8i_rowwise_packed_iq2xxs_grid[grid_index];
+		const int mag0 = 1 + (int)((grid >> (grid_lane * 2)) & 3) * 2;
+		const int scale_code = (int)bits.read(60, 4);
+		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
+		const int mag = ccv_min(mag0 * scale, 127);
+		const int sign_code = (int)bits.read(32 + subgroup * 7, 7);
+		const uint8_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[sign_code];
+		return (signs & (1u << grid_lane)) ? -mag : mag;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S)
+	{
+		const int subgroup = lane >> 2;
+		const int grid_lane = lane & 3;
+		const int grid_index = (int)bits.read(subgroup * 9, 9);
+		const uint32_t grid = ccv_nnc_8i_rowwise_packed_iq3s_grid[grid_index];
+		const int mag0 = (int)((grid >> (grid_lane * 8)) & 0xff);
+		const int scale = (int)bits.read(52, 4) + 1;
+		const int mag = ccv_min(mag0 * scale, 127);
+		const int negative = (int)bits.read(36 + lane, 1);
+		return negative ? -mag : mag;
+	}
+	const int subgroup = lane >> 2;
+	const int grid_lane = lane & 3;
+	const int grid_index = (int)bits.read(subgroup * 8, 8);
+	const uint32_t grid = ccv_nnc_8i_rowwise_packed_iq3xxs_grid[grid_index];
+	const int mag0 = (int)((grid >> (grid_lane * 8)) & 0xff) >> 2;
+	const int scale = (int)bits.read(24, 4) + 1;
+	const int mag = ccv_min(mag0 * scale, 127);
+	const int negative = (int)bits.read(16 + lane, 1);
+	return negative ? -mag : mag;
+}
+
+template<int FORMAT, typename BITS>
+static __device__ __forceinline__ int _ccv_nnc_8i_rowwise_x_decode_q_k(const BITS& bits, const int lane, const unsigned int mask, const int first_lane)
+{
+	int params = 0;
+	if (lane == 0)
+	{
+		if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K)
+			params = (int)bits.read(80, 3) | ((int)bits.read(83, 5) << 8);
+		else if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K)
+			params = (int)bits.read(48, 2) | ((int)bits.read(50, 2) << 8);
+		else if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K)
+			params = (int)bits.read(64, 4) | ((int)bits.read(68, 4) << 8);
+		else if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K)
+			params = (int)bits.read(48, 5) | ((int)bits.read(53, 3) << 8);
+		else
+			params = (int)bits.read(32, 6) | ((int)bits.read(38, 4) << 8);
+	}
+	params = __shfl_sync(mask, params, first_lane);
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K)
+		return ((int)bits.read(lane * 5, 5) - 16) * ((params & 0xff) + 1) + ((params >> 8) - 16);
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K)
+	{
+		const int uq = (int)bits.read(lane * 6, 6);
+		return ((uq ^ 32) - 32) * ((params & 0xff) + 1) + (((params >> 8) ^ 2) - 2);
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K)
+		return ((int)bits.read(lane * 4, 4) - 8) * ((params & 0xff) + 1) + ((params >> 8) - 8);
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K)
+		return ((int)bits.read(lane * 3, 3) - 4) * ((params & 0xff) + 1) + ((params >> 8) - 4) * 2;
+	return (int)bits.read(lane * 2, 2) * ((params & 0xff) + 1) - (params >> 8) * 8;
+}
+
+template<int FORMAT, typename BITS>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const BITS& bits, const int lane, int* const values)
+{
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+	{
+		const int grid_index = (int)bits.read(lane >= 8 ? 10 : 0, 10);
+		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2s_grid[grid_index];
+		const int scale = (int)bits.read(36, 6) + 1;
+		const int signs = (int)bits.read(20 + lane, 8);
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+		{
+			const int mag0 = (int)((grid >> (i * 8)) & 0xff) >> 3;
+			const int mag = ccv_min(mag0 * scale, 127);
+			values[i] = signs & (1 << i) ? -mag : mag;
+		}
+		return;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
+	{
+		const int grid_index = (int)bits.read(0, 9);
+		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2xs_grid[grid_index];
+		const int scale_code = (int)bits.read(17, 4);
+		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
+		const int signs = (int)bits.read(9, 8);
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+		{
+			const int mag0 = (int)((grid >> (i * 8)) & 0xff) >> 3;
+			const int mag = ccv_min(mag0 * scale, 127);
+			values[i] = signs & (1 << i) ? -mag : mag;
+		}
+		return;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+	{
+		const int subgroup = lane >> 3;
+		const int grid_index = (int)bits.read(subgroup * 8, 8);
+		const uint16_t grid = ccv_nnc_8i_rowwise_packed_iq2xxs_grid[grid_index];
+		const int scale_code = (int)bits.read(60, 4);
+		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
+		const int sign_code = (int)bits.read(32 + subgroup * 7, 7);
+		const int signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[sign_code];
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+		{
+			const int mag0 = 1 + (int)((grid >> (i * 2)) & 3) * 2;
+			const int mag = ccv_min(mag0 * scale, 127);
+			values[i] = signs & (1 << i) ? -mag : mag;
+		}
+		return;
+	}
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S)
+	{
+		const int subgroup = lane >> 2;
+		const uint32_t grid0 = ccv_nnc_8i_rowwise_packed_iq3s_grid[(int)bits.read(subgroup * 9, 9)];
+		const uint32_t grid1 = ccv_nnc_8i_rowwise_packed_iq3s_grid[(int)bits.read((subgroup + 1) * 9, 9)];
+		const int scale = (int)bits.read(52, 4) + 1;
+		const int signs = (int)bits.read(36 + lane, 8);
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+		{
+			const uint32_t grid = i < 4 ? grid0 : grid1;
+			const int mag0 = (int)((grid >> ((i & 3) * 8)) & 0xff);
+			const int mag = ccv_min(mag0 * scale, 127);
+			values[i] = signs & (1 << i) ? -mag : mag;
+		}
+		return;
+	}
+	const uint32_t grid0 = ccv_nnc_8i_rowwise_packed_iq3xxs_grid[(int)bits.read(0, 8)];
+	const uint32_t grid1 = ccv_nnc_8i_rowwise_packed_iq3xxs_grid[(int)bits.read(8, 8)];
+	const int scale = (int)bits.read(24, 4) + 1;
+	const int signs = (int)bits.read(16, 8);
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+	{
+		const uint32_t grid = i < 4 ? grid0 : grid1;
+		const int mag0 = (int)((grid >> ((i & 3) * 8)) & 0xff) >> 2;
+		const int mag = ccv_min(mag0 * scale, 127);
+		values[i] = signs & (1 << i) ? -mag : mag;
+	}
+}
+
+static __device__ __forceinline__ __half _ccv_nnc_8i_rowwise_x_mul(const __half scale, const int q)
+{
+	return __hmul(scale, __int2half_rn(q));
+}
+
+static __device__ __forceinline__ __nv_bfloat16 _ccv_nnc_8i_rowwise_x_mul(const __nv_bfloat16 scale, const int q)
+{
+	return __hmul(scale, __int2bfloat16_rn(q));
+}
+
+static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_mul(const float scale, const int q)
+{
+	return q * scale;
+}
+
+static __device__ __forceinline__ double _ccv_nnc_8i_rowwise_x_mul(const double scale, const int q)
+{
+	return q * scale;
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store2(__half* const output, const __half a, const __half b)
+{
+	*(__half2*)output = __halves2half2(a, b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store2(__nv_bfloat16* const output, const __nv_bfloat16 a, const __nv_bfloat16 b)
+{
+	*(__nv_bfloat162*)output = __halves2bfloat162(a, b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store2(float* const output, const float a, const float b)
+{
+	*(float2*)output = make_float2(a, b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store2(double* const output, const double a, const double b)
+{
+	*(double2*)output = make_double2(a, b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store4(__half* const output, const __half a, const __half b, const __half c, const __half d)
+{
+	union {
+		__half2 h;
+		uint32_t u;
+	} x, y;
+	x.h = __halves2half2(a, b);
+	y.h = __halves2half2(c, d);
+	*(uint2*)output = make_uint2(x.u, y.u);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store4(__nv_bfloat16* const output, const __nv_bfloat16 a, const __nv_bfloat16 b, const __nv_bfloat16 c, const __nv_bfloat16 d)
+{
+	union {
+		__nv_bfloat162 h;
+		uint32_t u;
+	} x, y;
+	x.h = __halves2bfloat162(a, b);
+	y.h = __halves2bfloat162(c, d);
+	*(uint2*)output = make_uint2(x.u, y.u);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store4(float* const output, const float a, const float b, const float c, const float d)
+{
+	*(float4*)output = make_float4(a, b, c, d);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store4(double* const output, const double a, const double b, const double c, const double d)
+{
+	*(double4*)output = make_double4(a, b, c, d);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store8(__half* const output, const __half* const values)
+{
+	union {
+		__half2 h;
+		uint32_t u;
+	} x[4];
+#pragma unroll
+	for (int i = 0; i < 4; i++)
+		x[i].h = __halves2half2(values[i * 2], values[i * 2 + 1]);
+	*(uint4*)output = make_uint4(x[0].u, x[1].u, x[2].u, x[3].u);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store8(__nv_bfloat16* const output, const __nv_bfloat16* const values)
+{
+	union {
+		__nv_bfloat162 h;
+		uint32_t u;
+	} x[4];
+#pragma unroll
+	for (int i = 0; i < 4; i++)
+		x[i].h = __halves2bfloat162(values[i * 2], values[i * 2 + 1]);
+	*(uint4*)output = make_uint4(x[0].u, x[1].u, x[2].u, x[3].u);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store8(float* const output, const float* const values)
+{
+	*(float4*)output = make_float4(values[0], values[1], values[2], values[3]);
+	*(float4*)(output + 4) = make_float4(values[4], values[5], values[6], values[7]);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_store8(double* const output, const double* const values)
+{
+	*(double4*)output = make_double4(values[0], values[1], values[2], values[3]);
+	*(double4*)(output + 4) = make_double4(values[4], values[5], values[6], values[7]);
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp(const size_t count, const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		const size_t row = i / row_length;
+		const size_t col = i - row * row_length;
+		const size_t group = row * groups_per_row + col / group_size;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			group * group_bits,
+		};
+		const int q = _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, col % group_size);
+		output[i] = _ccv_nnc_8i_rowwise_x_mul(scales[row], q);
+	}
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	const size_t row = blockIdx.y;
+	const size_t col = (blockIdx.x * blockDim.x + threadIdx.x) * 8;
+	if (col < row_length)
+	{
+		const size_t group = row * groups_per_row + col / group_size;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			group * group_bits,
+		};
+		const int group_lane = col % group_size;
+		const NUM scale = scales[row];
+		int decoded[8];
+		if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
+			_ccv_nnc_8i_rowwise_x_decode_iq_oct<FORMAT>(bits, group_lane, decoded);
+		else {
+#pragma unroll
+			for (int i = 0; i < 8; i++)
+				decoded[i] = _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + i);
+		}
+		NUM values[8];
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+			values[i] = _ccv_nnc_8i_rowwise_x_mul(scale, decoded[i]);
+		_ccv_nnc_8i_rowwise_x_store8(output + row * row_length + col, values);
+	}
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_quad(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	const size_t row = blockIdx.y;
+	const size_t col = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
+	if (col < row_length)
+	{
+		const size_t group = row * groups_per_row + col / group_size;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			group * group_bits,
+		};
+		const int group_lane = col % group_size;
+		const NUM scale = scales[row];
+		const NUM a = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane));
+		const NUM b = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + 1));
+		const NUM c = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + 2));
+		const NUM d = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + 3));
+		_ccv_nnc_8i_rowwise_x_store4(output + row * row_length + col, a, b, c, d);
+	}
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_pair(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	const size_t row = blockIdx.y;
+	const size_t col = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+	if (col < row_length)
+	{
+		const size_t group = row * groups_per_row + col / group_size;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			group * group_bits,
+		};
+		const int group_lane = col % group_size;
+		const NUM scale = scales[row];
+		const NUM a = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane));
+		const NUM b = _ccv_nnc_8i_rowwise_x_mul(scale, _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + 1));
+		_ccv_nnc_8i_rowwise_x_store2(output + row * row_length + col, a, b);
+	}
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	const size_t row = blockIdx.y;
+	const size_t col = blockIdx.x * blockDim.x + threadIdx.x;
+	if (col < row_length)
+	{
+		const size_t group = row * groups_per_row + col / group_size;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			group * group_bits,
+		};
+		const int group_lane = col % group_size;
+		int q;
+		if (FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ||
+			FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K)
+		{
+			const unsigned int mask = __activemask();
+			const int warp_lane = threadIdx.x & 31;
+			q = _ccv_nnc_8i_rowwise_x_decode_q_k<FORMAT>(bits, group_lane, mask, warp_lane - group_lane);
+		} else
+			q = _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane);
+		output[row * row_length + col] = _ccv_nnc_8i_rowwise_x_mul(scales[row], q);
+	}
+}
+
+template<typename NUM>
+static void _ccv_nnc_dequantize_8i_rowwise_x_fp_launch(const int format, const size_t output_length, const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output, cudaStream_t stream)
+{
+#define DISPATCH_FORMAT(case_format) \
+	case case_format: \
+		if (output_length / row_length <= 65535 && row_length % 8 == 0 && \
+			(sizeof(NUM) < 8 || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || case_format == CCV_NNC_QX_8I_ROWWISE_IQ3_S || case_format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)) \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct<case_format><<<dim3((row_length / 8 + 255) / 256, output_length / row_length), 256, 0, stream>>>(row_length, groups_per_row, input, scales, output); \
+		else if (output_length / row_length <= 65535 && row_length % 4 == 0) \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp_2d_quad<case_format><<<dim3((row_length / 4 + 255) / 256, output_length / row_length), 256, 0, stream>>>(row_length, groups_per_row, input, scales, output); \
+		else if (output_length / row_length <= 65535 && row_length % 2 == 0) \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp_2d_pair<case_format><<<dim3((row_length / 2 + 255) / 256, output_length / row_length), 256, 0, stream>>>(row_length, groups_per_row, input, scales, output); \
+		else if (output_length / row_length <= 65535) \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp_2d<case_format><<<dim3((row_length + 255) / 256, output_length / row_length), 256, 0, stream>>>(row_length, groups_per_row, input, scales, output); \
+		else \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp<case_format><<<ccv_min((output_length + 255) / 256, 4096), 256, 0, stream>>>(output_length, row_length, groups_per_row, input, scales, output); \
+		break
+	switch (format)
+	{
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q5_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q6_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q4_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q3_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q2_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+		default:
+			assert(0);
+	}
+#undef DISPATCH_FORMAT
+}
+
 static __global__ void _ccv_nnc_dequantize_8i_rowwise_f16(const size_t count, const size_t row_length, const int8_t* const input, const __half* const scales, __half* const output)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
@@ -577,6 +1146,31 @@ void ccv_nnc_compat_dequantize_8i_rowwise(const void* input, const int datatype,
 		_ccv_nnc_dequantize_8i_rowwise_f64<<<CUDA_GET_BLOCKS(output_length), CUDA_NUM_THREADS, 0, stream>>>(output_length, row_length, q, (const double*)(u8 + scale_offset), (double*)output);
 }
 
+void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	assert(row_length > 0);
+	assert(output_length % row_length == 0);
+	const size_t row_count = output_length / row_length;
+	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
+	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
+	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
+	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	assert(input_length >= scale_offset + scale_size);
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const uint8_t* const u8 = (const uint8_t*)input;
+	if (datatype == CCV_16F)
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const __half*)(u8 + scale_offset), (__half*)output, stream);
+	else if (datatype == CCV_16BF)
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const __nv_bfloat16*)(u8 + scale_offset), (__nv_bfloat16*)output, stream);
+	else if (datatype == CCV_32F)
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const float*)(u8 + scale_offset), (float*)output, stream);
+	else
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const double*)(u8 + scale_offset), (double*)output, stream);
+}
+
 void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_GET_DATA_TYPE(params.datatype) == CCV_QX);
@@ -588,6 +1182,9 @@ void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t pa
 	else if (subtype == CCV_NNC_QX_8I_ROWWISE) {
 		const int nd = ccv_nnc_tensor_nd(params.dim);
 		ccv_nnc_compat_dequantize_8i_rowwise(input, datatype, ccv_nnc_tensor_data_size_without_padding(params), params.dim[nd - 1], output, count, stream_context);
+	} else if (subtype == CCV_NNC_QX_8I_ROWWISE_X) {
+		const int nd = ccv_nnc_tensor_nd(params.dim);
+		ccv_nnc_compat_dequantize_8i_rowwise_x_fp(input, datatype, ccv_nnc_tensor_data_size_without_padding(params), params.dim[nd - 1], params.reserved, output, count, stream_context);
 	} else {
 		assert(0);
 	}

@@ -313,6 +313,69 @@ TEST_CASE("gemm no transpose with bias and row-wise int8 weights")
 	ccv_nnc_tensor_free(gc);
 }
 
+TEST_CASE("gemm no transpose with packed row-wise int8-x weights in all formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	const int m = 17;
+	const int k = 65;
+	const int n = 128;
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, k, n), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < m * k; i++)
+		a->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+	for (i = 0; i < k * n; i++)
+		b->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, k), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(ga), 0);
+	int f;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, k, n), formats[f]);
+		ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, q_params, 0);
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)k * n, n, formats[f], 0, 0, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(qb->info), "packed row-wise int8-x size should match");
+		ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, k, n), 0);
+		ccv_nnc_dequantize_8i_rowwise_x(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, n, formats[f], dq_b->data.u8, (size_t)k * n);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+		ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD();
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, dq_b), TENSOR_LIST(expected), 0);
+		ccv_nnc_tensor_param_t gpu_q_params = q_params;
+		gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		ccv_nnc_tensor_t* const gqb = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+		ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, n), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(qb), TENSOR_LIST(gqb), 0);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqb), TENSOR_LIST(gout), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, m * n, 1e-3, "result should match CPU with packed row-wise int8-x weights");
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(gout);
+		ccv_nnc_tensor_free(gqb);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(dq_b);
+		ccv_nnc_tensor_free(qb);
+	}
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("backward gemm with no transpose")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
