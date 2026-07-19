@@ -29,7 +29,7 @@ static int _ccv_nnc_swish_mul_back_bitmask(const ccv_nnc_cmd_param_t cmd, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_SWISH_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_swish_mul_cpu_ref.c, mps/ccv_nnc_swish_mul_mps.m)
+	FIND_BACKEND(ccv_nnc_swish_mul_cpu_ref.c, gpu/ccv_nnc_swish_mul_gpu_ref.cu, mps/ccv_nnc_swish_mul_mps.m)
 {
 	registry->bitmask = _ccv_nnc_swish_mul_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -37,7 +37,7 @@ REGISTER_COMMAND(CCV_NNC_SWISH_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const regist
 }
 
 REGISTER_COMMAND(CCV_NNC_SWISH_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_swish_mul_cpu_ref.c, mps/ccv_nnc_swish_mul_mps.m)
+	FIND_BACKEND(ccv_nnc_swish_mul_cpu_ref.c, gpu/ccv_nnc_swish_mul_gpu_ref.cu, mps/ccv_nnc_swish_mul_mps.m)
 {
 	registry->bitmask = _ccv_nnc_swish_mul_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
