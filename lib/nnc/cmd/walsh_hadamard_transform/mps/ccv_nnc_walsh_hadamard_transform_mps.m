@@ -72,6 +72,7 @@ static int _ccv_nnc_walsh_hadamard_transform_forw(const ccv_nnc_cmd_t cmd, const
 				.row_count = (uint32_t)(count / dim),
 				.dim = (uint32_t)dim,
 				.scale = cmd.info.walsh_hadamard_transform.scale,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_walsh_hadamard_transform(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

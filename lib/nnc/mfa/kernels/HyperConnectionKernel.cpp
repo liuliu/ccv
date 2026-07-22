@@ -1,8 +1,8 @@
 #include "HyperConnectionKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
-HyperConnectionKernel::HyperConnectionKernel(HyperConnectionKernelDescriptor, MTL::Device* const device) {
-	const char* const source = R"(
+HyperConnectionKernel::HyperConnectionKernel(HyperConnectionKernelDescriptor descriptor, MTL::Device* const device) {
+	std::string source = R"(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -126,7 +126,20 @@ kernel void hyper_connection(
 	}
 }
 )";
+	if (descriptor.loadM)
+	{
+		const std::string rowCountConstant = "constant uint row_count [[function_constant(0)]];\n";
+		const std::string::size_type rowCountConstantPosition = source.find(rowCountConstant);
+		CCV_NNC_MFA_PRECONDITION(rowCountConstantPosition != std::string::npos);
+		source.erase(rowCountConstantPosition, rowCountConstant.size());
+		const std::string::size_type argumentPosition = source.find("\tuint row [[threadgroup_position_in_grid]],");
+		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+		source.insert(argumentPosition, "\tdevice const uint* loadM [[buffer(8)]],\n");
+		const std::string::size_type rowCountPosition = source.find("\tif (row >= row_count || hc == 0 || hc > 16)");
+		CCV_NNC_MFA_PRECONDITION(rowCountPosition != std::string::npos);
+		source.insert(rowCountPosition, "\tconst uniform<uint> row_count = make_uniform(loadM[0]);\n");
+	}
 	NS::Error* error = nil;
-	library = NS::TransferPtr(device->newLibrary(NS::String::string(source, NS::UTF8StringEncoding), nil, &error));
+	library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nil, &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);
 }

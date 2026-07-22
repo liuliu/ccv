@@ -4,6 +4,7 @@
 WalshHadamardTransformKernel::WalshHadamardTransformKernel(WalshHadamardTransformKernelDescriptor descriptor, MTL::Device* const device) {
 
   memoryPrecision = descriptor.memoryPrecision;
+  loadM = descriptor.loadM;
 
   const std::string source = createSource();
 
@@ -143,6 +144,14 @@ kernel void walsh_hadamard_transform(
   }
 }
   )";
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  threadgroup accum* buffer [[threadgroup(0)]],");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint* loadM [[buffer(2)]],\n");
+    const std::string::size_type rowCountPosition = shader.find("  if (strategy == 2) {");
+    CCV_NNC_MFA_PRECONDITION(rowCountPosition != std::string::npos);
+    shader.insert(rowCountPosition, "  const uniform<uint> row_count = make_uniform(loadM[0]);\n");
+  }
   return shader;
 }
 
@@ -171,8 +180,10 @@ std::string WalshHadamardTransformKernel::createConstants() const noexcept {
   defines += "\n";
   defines += "constant float scale [[function_constant(5)]];";
   defines += "\n";
-  defines += "constant uint row_count [[function_constant(6)]];";
-  defines += "\n";
+  if (!loadM) {
+    defines += "constant uint row_count [[function_constant(6)]];";
+    defines += "\n";
+  }
   defines += "constant uint strategy [[function_constant(7)]];";
   defines += "\n";
   defines += "constant uint rows_per_threadgroup [[function_constant(8)]];";

@@ -42,6 +42,7 @@ void ccv_nnc_mfa_encode_walsh_hadamard_transform(ccv_nnc_mfa_context_t* context,
   descriptor.rowCount = params.row_count;
   descriptor.dim = params.dim;
   descriptor.scale = params.scale;
+  descriptor.loadM = params.loadM != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto &shaderCache = context->kernel_cache;
@@ -51,6 +52,8 @@ void ccv_nnc_mfa_encode_walsh_hadamard_transform(ccv_nnc_mfa_context_t* context,
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+  if (params.loadM)
+    encoder->setBytes(&params.row_count, sizeof(params.row_count), 2);
   if (tensors[0] == tensors[1]) {
     encoder->useResource(tensors[0], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
   } else {

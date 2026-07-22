@@ -9,13 +9,14 @@
 
 struct WalshHadamardTransformKernelDescriptor {
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const WalshHadamardTransformKernelDescriptor& rhs) const { return memoryPrecision == rhs.memoryPrecision; }
+  uint8_t loadM;
+  constexpr bool operator==(const WalshHadamardTransformKernelDescriptor& rhs) const { return memoryPrecision == rhs.memoryPrecision && loadM == rhs.loadM; }
 };
 
 template<>
 struct std::hash<WalshHadamardTransformKernelDescriptor>
 {
-  std::size_t operator()(const WalshHadamardTransformKernelDescriptor& hash) const noexcept { return (size_t)hash.memoryPrecision.value; }
+  std::size_t operator()(const WalshHadamardTransformKernelDescriptor& hash) const noexcept { return (size_t)hash.memoryPrecision.value | ((size_t)hash.loadM << 8); }
 };
 
 struct WalshHadamardTransformKernel;
@@ -28,6 +29,8 @@ struct WalshHadamardTransformDescriptor {
   uint32_t dim;
 
   float scale;
+
+  bool loadM;
 
   bool operator==(const WalshHadamardTransformDescriptor& rhs) const;
 

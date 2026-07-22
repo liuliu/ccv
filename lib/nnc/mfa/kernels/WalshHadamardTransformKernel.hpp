@@ -10,6 +10,8 @@ struct WalshHadamardTransformKernel {
 
   GEMMOperandPrecision memoryPrecision;
 
+  bool loadM;
+
   WalshHadamardTransformKernel(WalshHadamardTransformKernelDescriptor descriptor, MTL::Device* const device);
 
 private:

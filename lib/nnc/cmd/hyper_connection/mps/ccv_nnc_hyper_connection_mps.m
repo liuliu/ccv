@@ -42,6 +42,7 @@ static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				.count = (uint32_t)hc,
 				.hidden = hidden,
 				.operation = 2,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_hyper_connection(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -102,6 +103,7 @@ static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			.sinkhorn_iterations = (uint32_t)iterations,
 			.epsilon = cmd.info.hyper_connection.epsilon,
 			.operation = input_size == 4,
+			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 		};
 		ccv_nnc_mfa_prepare_hyper_connection(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

@@ -8,6 +8,7 @@ typedef struct {
 	uint32_t sinkhorn_iterations;
 	float epsilon;
 	uint32_t operation;
+	uint8_t loadM;
 } ccv_nnc_mfa_hyper_connection_params_t;
 
 #ifdef __cplusplus

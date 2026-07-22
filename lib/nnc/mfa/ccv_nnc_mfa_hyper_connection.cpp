@@ -19,12 +19,14 @@ void ccv_nnc_mfa_encode_hyper_connection(ccv_nnc_mfa_context_t* context, ccv_nnc
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 8);
 	HyperConnectionDescriptor descriptor {
 		params.row_count, params.count, params.hidden, params.sinkhorn_iterations,
-		params.epsilon, params.operation
+		params.epsilon, params.operation, params.loadM != 0
 	};
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto pipelineValue = context->kernel_cache.findKernel<HyperConnectionKernel, HyperConnectionDescriptor, HyperConnectionKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());
 	pool->drain();
 	encoder->setComputePipelineState(pipelineValue->pipeline.get());
+	if (params.loadM)
+		encoder->setBytes(&params.row_count, sizeof(params.row_count), 8);
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[2], MTL::ResourceUsageRead);

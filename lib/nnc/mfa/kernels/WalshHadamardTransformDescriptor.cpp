@@ -21,7 +21,8 @@ static inline uint32_t _ccv_nnc_mfa_wht_rows_per_threadgroup(MTL::Device* const 
 bool WalshHadamardTransformDescriptor::operator==(const WalshHadamardTransformDescriptor& rhs) const {
   return
   memoryPrecision == rhs.memoryPrecision &&
-  rowCount == rhs.rowCount &&
+  loadM == rhs.loadM &&
+  (loadM || rowCount == rhs.rowCount) &&
   dim == rhs.dim &&
   scale == rhs.scale;
 }
@@ -29,8 +30,9 @@ bool WalshHadamardTransformDescriptor::operator==(const WalshHadamardTransformDe
 std::size_t std::hash<WalshHadamardTransformDescriptor>::operator()(const WalshHadamardTransformDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.rowCount }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.rowCount }));
   combine_64(seed, pack_64(simd::uint2 { hash.dim, *reinterpret_cast<const uint32_t*>(&hash.scale) }));
+  combine_64(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -49,6 +51,7 @@ std::pair<WalshHadamardTransformKernelDescriptor, PipelineValue<WalshHadamardTra
 
   WalshHadamardTransformKernelDescriptor kernelDesc;
   kernelDesc.memoryPrecision = memoryPrecision;
+  kernelDesc.loadM = loadM;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
@@ -73,7 +76,8 @@ std::pair<WalshHadamardTransformKernelDescriptor, PipelineValue<WalshHadamardTra
     constants->setConstantValue(&numSteps, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&finalRadix, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(5));
-    constants->setConstantValue(&rowCount, MTL::DataTypeUInt, NS::UInteger(6));
+    if (!loadM)
+      constants->setConstantValue(&rowCount, MTL::DataTypeUInt, NS::UInteger(6));
     constants->setConstantValue(&strategy, MTL::DataTypeUInt, NS::UInteger(7));
     constants->setConstantValue(&rowsPerThreadgroup, MTL::DataTypeUInt, NS::UInteger(8));
 

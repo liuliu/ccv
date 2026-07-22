@@ -6,6 +6,7 @@ typedef struct {
   uint32_t row_count;
   uint32_t dim;
   float scale;
+  uint8_t loadM;
 } ccv_nnc_mfa_walsh_hadamard_transform_params_t;
 
 #ifdef __cplusplus
