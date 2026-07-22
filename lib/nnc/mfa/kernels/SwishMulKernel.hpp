@@ -20,6 +20,8 @@ struct SwishMulKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   float beta;
 
   float scale;

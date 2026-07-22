@@ -19,6 +19,8 @@ struct SwishKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   float beta;
 
   GEMMOperandPrecision memoryPrecision;

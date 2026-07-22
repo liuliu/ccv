@@ -5,6 +5,7 @@ typedef struct {
   uint64_t original_data_type;
   uint64_t data_type;
   uint32_t length;
+  uint8_t loadM;
 } ccv_nnc_mfa_cast_params_t;
 
 #ifdef __cplusplus

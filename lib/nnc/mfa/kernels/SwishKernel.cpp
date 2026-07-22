@@ -7,6 +7,8 @@ SwishKernel::SwishKernel(SwishKernelDescriptor descriptor, MTL::Device *const de
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   beta = descriptor.beta;
 
   memoryPrecision = descriptor.memoryPrecision;
@@ -269,6 +271,14 @@ kernel void swish(
       }
     }
   }
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(gradient ? 3 : 2) + ")]],\n");
+    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
+    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
+  }
   return shader;
 }
 
@@ -298,7 +308,7 @@ std::string SwishKernel::createConstants() const noexcept {
       defines += "\n";
     }
   }
-  if (value != 0) {
+  if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
     defines += "\n";
   }

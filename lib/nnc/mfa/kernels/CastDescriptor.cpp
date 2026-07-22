@@ -8,14 +8,16 @@ bool CastDescriptor::operator==(const CastDescriptor& rhs) const {
   fromMemoryPrecision == rhs.fromMemoryPrecision &&
   memoryPrecision == rhs.memoryPrecision &&
   value == rhs.value &&
-  length == rhs.length;
+  loadM == rhs.loadM &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<CastDescriptor>::operator()(const CastDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fromMemoryPrecision.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.length, (unsigned int)hash.value }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, (unsigned int)hash.value }));
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -37,6 +39,7 @@ std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> CastDescriptor::fin
 
   CastKernelDescriptor kernelDesc;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.fromMemoryPrecision = fromMemoryPrecision;
   kernelDesc.memoryPrecision = memoryPrecision;
 
@@ -46,14 +49,16 @@ std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> CastDescriptor::fin
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t count;
-    if (value == 0) {
-    } else if (value == 1) {
-      count = length / 4;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
-    } else {
-      count = length;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t count;
+      if (value == 0) {
+      } else if (value == 1) {
+        count = length / 4;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      } else {
+        count = length;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      }
     }
 
     NS::String* swiftName = NS::String::string("cast", NS::UTF8StringEncoding);

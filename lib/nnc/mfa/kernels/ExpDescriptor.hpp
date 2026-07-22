@@ -10,15 +10,16 @@
 
 struct ExpKernelDescriptor {
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const ExpKernelDescriptor& rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const ExpKernelDescriptor& rhs) const { return value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<ExpKernelDescriptor>
 {
   std::size_t operator()(const ExpKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.value | ((int)hash.memoryPrecision.value << 8));
+    return std::hash<int>()((int)hash.value | ((int)hash.memoryPrecision.value << 8) | ((int)hash.loadM << 16));
   }
 };
 
@@ -30,6 +31,8 @@ struct ExpDescriptor {
   GEMMOperandPrecision memoryPrecision;
 
   uint32_t length;
+
+  bool loadM;
 
   bool operator==(const ExpDescriptor& rhs) const;
 

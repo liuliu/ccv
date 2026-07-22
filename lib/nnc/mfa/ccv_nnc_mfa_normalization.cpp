@@ -109,6 +109,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     .scaleTranslationBatched = params.scale_translation_batched,
     .normalizationType = params.normalization_type,
     .reuseSavedStatistics = params.reuse_saved_statistics,
+    .loadM = static_cast<bool>(params.loadM),
     .srcBatchStride = params.src_batch_stride,
     .dstBatchStride = params.dst_batch_stride,
   };
@@ -122,6 +123,8 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+  if (params.loadM)
+    encoder->setBytes(&params.sequence_count, sizeof(params.sequence_count), 11);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
   if (num_tensors == 6) { // This is for layer norm.
@@ -161,6 +164,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   }
 
   auto grid_size = kernel->gridSize;
+  grid_size.width = params.sequence_count;
   grid_size.depth = batch_sizes[0];
   CCV_NNC_MFA_PRECONDITION(grid_size.depth > 0);
   encoder->dispatchThreadgroups(grid_size, kernel->groupSize);

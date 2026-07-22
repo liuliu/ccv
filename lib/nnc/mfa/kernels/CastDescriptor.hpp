@@ -9,15 +9,16 @@
 
 struct CastKernelDescriptor {
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision fromMemoryPrecision;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const CastKernelDescriptor &rhs) const { return value == rhs.value && fromMemoryPrecision == rhs.fromMemoryPrecision && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const CastKernelDescriptor &rhs) const { return value == rhs.value && loadM == rhs.loadM && fromMemoryPrecision == rhs.fromMemoryPrecision && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<CastKernelDescriptor>
 {
-  std::size_t operator()(const CastKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const CastKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8); }
 };
 
 struct CastKernel;
@@ -31,6 +32,8 @@ struct CastDescriptor {
 
   uint32_t length;
 
+  bool loadM;
+
   bool operator==(const CastDescriptor& rhs) const;
 
   std::pair<CastKernelDescriptor, PipelineValue<CastKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CastKernelDescriptor, std::unique_ptr<CastKernel>> *const libraryCache) const noexcept;
@@ -43,4 +46,3 @@ struct std::hash<CastDescriptor>
 };
 
 #endif
-

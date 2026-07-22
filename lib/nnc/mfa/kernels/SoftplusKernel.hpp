@@ -16,6 +16,8 @@ struct SoftplusKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   SoftplusKernel(SoftplusKernelDescriptor descriptor, MTL::Device* const device);

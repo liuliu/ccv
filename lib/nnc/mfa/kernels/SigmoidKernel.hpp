@@ -18,6 +18,8 @@ struct SigmoidKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   SigmoidKernel(SigmoidKernelDescriptor descriptor, MTL::Device* const device);

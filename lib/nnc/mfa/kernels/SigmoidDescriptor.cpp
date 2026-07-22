@@ -8,14 +8,16 @@ bool SigmoidDescriptor::operator==(const SigmoidDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   gradient == rhs.gradient &&
   value == rhs.value &&
-  length == rhs.length;
+  loadM == rhs.loadM &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<SigmoidDescriptor>::operator()(const SigmoidDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.length, (unsigned int)hash.gradient }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, (unsigned int)hash.gradient }));
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -35,20 +37,23 @@ std::pair<SigmoidKernelDescriptor, PipelineValue<SigmoidKernel> *> SigmoidDescri
   SigmoidKernelDescriptor kernelDesc;
   kernelDesc.gradient = gradient;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t count;
-    if (value == 0) {
-    } else if (value == 1) {
-      count = length / 4;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
-    } else {
-      count = length;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t count;
+      if (value == 0) {
+      } else if (value == 1) {
+        count = length / 4;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      } else {
+        count = length;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      }
     }
 
     NS::String* swiftName = NS::String::string("sigmoid", NS::UTF8StringEncoding);

@@ -11,14 +11,15 @@ struct GeluKernelDescriptor {
   uint8_t gradient;
   uint8_t tanh;
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const GeluKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision && tanh == rhs.tanh && gradient == rhs.gradient; }
+  constexpr bool operator==(const GeluKernelDescriptor &rhs) const { return value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision && tanh == rhs.tanh && gradient == rhs.gradient; }
 };
 
 template<>
 struct std::hash<GeluKernelDescriptor>
 {
-  std::size_t operator()(const GeluKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const GeluKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8); }
 };
 
 struct GeluKernel;
@@ -34,6 +35,8 @@ struct GeluDescriptor {
 
   uint32_t length;
 
+  bool loadM;
+
   bool operator==(const GeluDescriptor& rhs) const;
 
   std::pair<GeluKernelDescriptor, PipelineValue<GeluKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<GeluKernelDescriptor, std::unique_ptr<GeluKernel>> *const libraryCache) const noexcept;
@@ -46,4 +49,3 @@ struct std::hash<GeluDescriptor>
 };
 
 #endif
-

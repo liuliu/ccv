@@ -17,6 +17,8 @@ struct CastKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision fromMemoryPrecision;
 
   GEMMOperandPrecision memoryPrecision;
@@ -30,4 +32,3 @@ private:
 };
 
 #endif /* CastKernel_hpp */
-

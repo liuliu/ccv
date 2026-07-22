@@ -24,6 +24,7 @@ struct NormalizationKernel {
   uint8_t scaleTranslationBatched;
   uint8_t normalizationType;
   uint8_t reuseSavedStatistics;
+  bool loadM;
   uint32_t srcBatchStride;
   uint32_t dstBatchStride;
 

@@ -10,14 +10,15 @@
 struct AddKernelDescriptor {
   uint8_t args;
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const AddKernelDescriptor &rhs) const { return args == rhs.args && value == rhs.value && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const AddKernelDescriptor &rhs) const { return args == rhs.args && value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<AddKernelDescriptor>
 {
-  std::size_t operator()(const AddKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const AddKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8); }
 };
 
 struct AddKernel;
@@ -31,6 +32,8 @@ struct AddDescriptor {
 
   uint32_t length;
 
+  bool loadM;
+
   bool operator==(const AddDescriptor& rhs) const;
 
   std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> findKernel(MTL::Device* const device, const DeviceProperties &dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<AddKernelDescriptor, std::unique_ptr<AddKernel>> *const libraryCache) const noexcept;
@@ -43,4 +46,3 @@ struct std::hash<AddDescriptor>
 };
 
 #endif
-

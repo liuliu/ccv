@@ -11,16 +11,17 @@
 struct SwishKernelDescriptor {
   uint8_t gradient;
   uint8_t value;
+  bool loadM;
   float beta;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const SwishKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision && gradient == rhs.gradient && beta == rhs.beta; }
+  constexpr bool operator==(const SwishKernelDescriptor &rhs) const { return value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision && gradient == rhs.gradient && beta == rhs.beta; }
 };
 
 template<>
 struct std::hash<SwishKernelDescriptor>
 {
   std::size_t operator()(const SwishKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.memoryPrecision.value << 16)) ^ std::hash<float>()(hash.beta);
+    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.memoryPrecision.value << 16) | ((int)hash.loadM << 24)) ^ std::hash<float>()(hash.beta);
   }
 };
 
@@ -36,6 +37,8 @@ struct SwishDescriptor {
   GEMMOperandPrecision memoryPrecision;
 
   uint32_t length;
+
+  bool loadM;
 
   bool operator==(const SwishDescriptor& rhs) const;
 

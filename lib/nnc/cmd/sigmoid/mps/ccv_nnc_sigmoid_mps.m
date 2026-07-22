@@ -64,7 +64,8 @@ static int _ccv_nnc_sigmoid_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		if (use_mfa) {
 			ccv_nnc_mfa_sigmoid_params_t params = {
 				.gradient = 0,
-				.data_type = mtl_data_type
+				.data_type = mtl_data_type,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			const size_t count = ccv_nnc_tensor_count(a->info);
 			params.length = count;
@@ -165,7 +166,8 @@ static int _ccv_nnc_sigmoid_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		if (use_mfa) {
 			ccv_nnc_mfa_sigmoid_params_t params = {
 				.gradient = 1,
-				.data_type = mtl_data_type
+				.data_type = mtl_data_type,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			const size_t count = ccv_nnc_tensor_count(g->info);
 			params.length = count;

@@ -64,7 +64,8 @@ static int _ccv_nnc_swish_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			ccv_nnc_mfa_swish_params_t params = {
 				.gradient = 0,
 				.beta = beta,
-				.data_type = mtl_data_type
+				.data_type = mtl_data_type,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			const size_t count = ccv_nnc_tensor_count(a->info);
 			params.length = count;
@@ -199,7 +200,8 @@ static int _ccv_nnc_swish_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			ccv_nnc_mfa_swish_params_t params = {
 				.gradient = 1,
 				.beta = beta,
-				.data_type = mtl_data_type
+				.data_type = mtl_data_type,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			const size_t count = ccv_nnc_tensor_count(g->info);
 			params.length = count;

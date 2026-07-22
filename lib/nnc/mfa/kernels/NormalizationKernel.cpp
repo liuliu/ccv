@@ -28,6 +28,7 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
   scaleTranslationBatched = descriptor.scaleTranslationBatched;
   normalizationType = descriptor.normalizationType;
   reuseSavedStatistics = descriptor.reuseSavedStatistics;
+  loadM = descriptor.loadM;
   srcBatchStride = descriptor.srcBatchStride;
   dstBatchStride = descriptor.dstBatchStride;
 
@@ -318,9 +319,11 @@ kernel void normalization(
   defines += std::to_string(channelCount) + ";";
   defines += "\n";
 
-  defines += "constant uint sequence_count = ";
-  defines += std::to_string(sequenceCount) + ";";
-  defines += "\n";
+  if (!loadM) {
+    defines += "constant uint sequence_count = ";
+    defines += std::to_string(sequenceCount) + ";";
+    defines += "\n";
+  }
 
   defines += "constant float epsilon = ";
   defines += high_precision_to_string(epsilon) + ";";
@@ -371,10 +374,21 @@ kernel void normalization(
     defines += "\n";
   }
 
+  std::string shader;
   if (normalizationType == 0) {
     defines += "#define LAYER_NORMALIZATION 1\n";
-    return defines + norm_shader;
+    shader = defines + norm_shader;
+  } else {
+    defines += "#define RMSNORM 1\n";
+    shader = defines + rmsnorm_shader;
   }
-  defines += "#define RMSNORM 1\n";
-  return defines + rmsnorm_shader;
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tgid [[threadgroup_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(11)]],\n");
+    const std::string::size_type sequenceCountPosition = shader.find("  uint threadgroup_index = tgid.z * sequence_count + tgid.x;");
+    CCV_NNC_MFA_PRECONDITION(sequenceCountPosition != std::string::npos);
+    shader.insert(sequenceCountPosition, "  const uniform<uint> sequence_count = make_uniform(loadM[0]);\n");
+  }
+  return shader;
 }

@@ -12,6 +12,7 @@ struct SwishMulKernelDescriptor {
   uint8_t gradient;
   uint8_t outputMask;
   uint8_t value;
+  bool loadM;
   float beta;
   float scale;
   GEMMOperandPrecision gPrecision;
@@ -19,14 +20,14 @@ struct SwishMulKernelDescriptor {
   GEMMOperandPrecision bPrecision;
   GEMMOperandPrecision daPrecision;
   GEMMOperandPrecision dbPrecision;
-  constexpr bool operator==(const SwishMulKernelDescriptor& rhs) const { return gradient == rhs.gradient && outputMask == rhs.outputMask && value == rhs.value && beta == rhs.beta && scale == rhs.scale && gPrecision == rhs.gPrecision && aPrecision == rhs.aPrecision && bPrecision == rhs.bPrecision && daPrecision == rhs.daPrecision && dbPrecision == rhs.dbPrecision; }
+  constexpr bool operator==(const SwishMulKernelDescriptor& rhs) const { return gradient == rhs.gradient && outputMask == rhs.outputMask && value == rhs.value && loadM == rhs.loadM && beta == rhs.beta && scale == rhs.scale && gPrecision == rhs.gPrecision && aPrecision == rhs.aPrecision && bPrecision == rhs.bPrecision && daPrecision == rhs.daPrecision && dbPrecision == rhs.dbPrecision; }
 };
 
 template<>
 struct std::hash<SwishMulKernelDescriptor>
 {
   std::size_t operator()(const SwishMulKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.outputMask << 16) | ((int)hash.gPrecision.value << 24)) ^ std::hash<int>()((int)hash.aPrecision.value | ((int)hash.bPrecision.value << 8) | ((int)hash.daPrecision.value << 16) | ((int)hash.dbPrecision.value << 24)) ^ std::hash<float>()(hash.beta) ^ (std::hash<float>()(hash.scale) << 1);
+    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.outputMask << 16) | ((int)hash.gPrecision.value << 24)) ^ std::hash<int>()((int)hash.aPrecision.value | ((int)hash.bPrecision.value << 8) | ((int)hash.daPrecision.value << 16) | ((int)hash.dbPrecision.value << 24)) ^ std::hash<float>()(hash.beta) ^ (std::hash<float>()(hash.scale) << 1) ^ std::hash<bool>()(hash.loadM);
   }
 };
 
@@ -54,6 +55,8 @@ struct SwishMulDescriptor {
   GEMMOperandPrecision dbPrecision;
 
   uint32_t length;
+
+  bool loadM;
 
   bool operator==(const SwishMulDescriptor& rhs) const;
 

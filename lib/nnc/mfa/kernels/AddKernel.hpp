@@ -19,6 +19,8 @@ struct AddKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device);
@@ -30,4 +32,3 @@ private:
 };
 
 #endif /* AddKernel_hpp */
-

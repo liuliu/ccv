@@ -12,6 +12,7 @@ typedef struct {
   uint64_t g_data_type;
   uint64_t da_data_type;
   uint64_t db_data_type;
+  uint8_t loadM;
 } ccv_nnc_mfa_swish_mul_params_t;
 
 #ifdef __cplusplus

@@ -9,14 +9,16 @@ bool SwishDescriptor::operator==(const SwishDescriptor& rhs) const {
   gradient == rhs.gradient &&
   value == rhs.value &&
   beta == rhs.beta &&
-  length == rhs.length;
+  loadM == rhs.loadM &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<SwishDescriptor>::operator()(const SwishDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.length, *reinterpret_cast<const uint32_t*>(&hash.beta) }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, *reinterpret_cast<const uint32_t*>(&hash.beta) }));
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -39,6 +41,7 @@ std::pair<SwishKernelDescriptor, PipelineValue<SwishKernel> *> SwishDescriptor::
   SwishKernelDescriptor kernelDesc;
   kernelDesc.gradient = gradient;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.beta = beta;
   kernelDesc.memoryPrecision = memoryPrecision;
 
@@ -48,14 +51,16 @@ std::pair<SwishKernelDescriptor, PipelineValue<SwishKernel> *> SwishDescriptor::
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t count;
-    if (value == 0) {
-    } else if (value == 1) {
-      count = length / 4;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
-    } else {
-      count = length;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t count;
+      if (value == 0) {
+      } else if (value == 1) {
+        count = length / 4;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      } else {
+        count = length;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      }
     }
     if (beta != 1)
       constants->setConstantValue(&beta, MTL::DataTypeFloat, NS::UInteger(1));

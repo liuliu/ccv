@@ -7,14 +7,16 @@ bool SoftplusDescriptor::operator==(const SoftplusDescriptor& rhs) const {
   return
   memoryPrecision == rhs.memoryPrecision &&
   value == rhs.value &&
-  length == rhs.length;
+  loadM == rhs.loadM &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<SoftplusDescriptor>::operator()(const SoftplusDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, hash.length);
+  combine_64(seed, hash.loadM ? 0 : hash.length);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -33,20 +35,23 @@ std::pair<SoftplusKernelDescriptor, PipelineValue<SoftplusKernel>*> SoftplusDesc
 
   SoftplusKernelDescriptor kernelDesc;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t count;
-    if (value == 0) {
-    } else if (value == 1) {
-      count = length / 4;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
-    } else {
-      count = length;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t count;
+      if (value == 0) {
+      } else if (value == 1) {
+        count = length / 4;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      } else {
+        count = length;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      }
     }
 
     NS::String* swiftName = NS::String::string("softplus_forward", NS::UTF8StringEncoding);

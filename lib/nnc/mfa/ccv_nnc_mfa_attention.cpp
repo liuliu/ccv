@@ -751,7 +751,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         ccv_nnc_mfa_cast_params_t cast_params = {
           .original_data_type = MTL::DataTypeFloat,
           .data_type = attentionDesc.isBF16 ? MTL::DataTypeBFloat : MTL::DataTypeHalf,
-          .length = (uint32_t)outputElements
+          .length = (uint32_t)outputElements,
+          .loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
         };
         ccv_nnc_mfa_prepare_cast(context, cast_params);
         mtl_buffer_t* cast_tensors[3] = {
@@ -1219,7 +1220,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         ccv_nnc_mfa_cast_params_t cast_params = {
           .original_data_type = MTL::DataTypeFloat,
           .data_type = attentionDesc.isBF16 ? MTL::DataTypeBFloat : MTL::DataTypeHalf,
-          .length = hash.R * hash.D * hash.Hq * attentionDesc.batchDimension
+          .length = hash.R * hash.D * hash.Hq * attentionDesc.batchDimension,
+          .loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
         };
         ccv_nnc_mfa_prepare_cast(context, cast_params);
         mtl_buffer_t* cast_tensors[3] = {

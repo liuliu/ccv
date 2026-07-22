@@ -10,6 +10,8 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   memoryPrecision = descriptor.memoryPrecision;
 
   source = createSource();
@@ -104,7 +106,16 @@ kernel void add(
 }
   )";
   }
-  return source.ToString();
+  std::string shader = source.ToString();
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(args + 1) + ")]],\n");
+    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
+    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
+  }
+  return shader;
 }
 
 std::string AddKernel::createConstants() const noexcept {
@@ -133,7 +144,7 @@ std::string AddKernel::createConstants() const noexcept {
       defines += "\n";
     }
   }
-  if (value != 0) {
+  if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
     defines += "\n";
   }

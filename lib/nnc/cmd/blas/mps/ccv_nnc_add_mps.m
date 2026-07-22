@@ -159,6 +159,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				.args = 2,
 				.data_type = mtl_data_type,
 				.length = (uint32_t)length,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_add(context, params);
 

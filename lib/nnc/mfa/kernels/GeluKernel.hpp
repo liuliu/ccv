@@ -21,6 +21,8 @@ struct GeluKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   GeluKernel(GeluKernelDescriptor descriptor, MTL::Device *const device);
@@ -33,4 +35,3 @@ private:
 };
 
 #endif /* GeluKernel_hpp */
-

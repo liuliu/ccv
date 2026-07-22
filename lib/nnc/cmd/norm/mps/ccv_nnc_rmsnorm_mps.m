@@ -145,6 +145,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				.scale_translation_batched = scale_translation_batched,
 				.normalization_type = 2,
 				.reuse_saved_statistics = false,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 
 				.batch_dims_data = { 0 },
 				.batch_dims_scale_translation = { 0 },

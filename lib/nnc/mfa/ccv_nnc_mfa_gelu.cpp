@@ -40,8 +40,9 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
     descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
   }
   descriptor.length = params.length;
+  descriptor.loadM = params.loadM;
 
-  if (params.length % (4 * 256) == 0) {
+  if (!params.loadM && params.length % (4 * 256) == 0) {
     descriptor.value = 0;
   } else if (params.length % 4 == 0) {
     descriptor.value = 1;
@@ -86,6 +87,8 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
   } else {
     count = params.length;
   }
+  if (params.loadM)
+    encoder->setBytes(&count, sizeof(count), num_tensors);
   const int num_blocks = (count + 255) / 256;
   MTL::Size gridSize = MTL::Size(num_blocks, 1, 1);
   CCV_NNC_MFA_PRECONDITION(gridSize.depth > 0);
@@ -93,4 +96,3 @@ void ccv_nnc_mfa_encode_gelu(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gelu_pa
 
   command_batch->finishCommand(encoder);
 }
-

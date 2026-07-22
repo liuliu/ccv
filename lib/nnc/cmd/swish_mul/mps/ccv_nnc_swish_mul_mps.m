@@ -58,7 +58,8 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				.scale = scale,
 				.a_data_type = (uint64_t)a_data_type,
 				.b_data_type = (uint64_t)b_data_type,
-				.length = (uint32_t)ccv_nnc_tensor_count(a->info)
+				.length = (uint32_t)ccv_nnc_tensor_count(a->info),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_swish_mul(context, params);
 
@@ -187,6 +188,7 @@ static int _ccv_nnc_swish_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				.b_data_type = (uint64_t)b_data_type,
 				.length = (uint32_t)ccv_nnc_tensor_count(g->info),
 				.gradient = 1,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.output_mask = output_mask,
 				.g_data_type = (uint64_t)g_data_type,
 				.da_data_type = (uint64_t)(da_data_type >= 0 ? da_data_type : default_data_type),

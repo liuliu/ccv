@@ -131,6 +131,7 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 				.args = input_size,
 				.data_type = mtl_data_type,
 				.length = (uint32_t)length,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_add(context, params);
 
@@ -324,6 +325,7 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			ccv_nnc_mfa_exp_params_t params = {
 				.data_type = mtl_data_type,
 				.length = (uint32_t)ccv_nnc_tensor_count(a->info),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_exp(context, params);
 
@@ -429,6 +431,7 @@ static int _ccv_nnc_ewsoftplus_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			ccv_nnc_mfa_softplus_params_t params = {
 				.data_type = mtl_data_type,
 				.length = (uint32_t)ccv_nnc_tensor_count(a->info),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_softplus(context, params);
 

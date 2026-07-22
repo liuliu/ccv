@@ -7,6 +7,8 @@ CastKernel::CastKernel(CastKernelDescriptor descriptor, MTL::Device *const devic
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   fromMemoryPrecision = descriptor.fromMemoryPrecision;
 
   memoryPrecision = descriptor.memoryPrecision;
@@ -82,6 +84,14 @@ kernel void cast(
 }
   )";
   }
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
+    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
+    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
+  }
   return shader;
 }
 
@@ -131,7 +141,7 @@ std::string CastKernel::createConstants() const noexcept {
       defines += "\n";
     }
   }
-  if (value != 0) {
+  if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
     defines += "\n";
   }

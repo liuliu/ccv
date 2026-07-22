@@ -15,7 +15,8 @@ bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
   bPrecision == rhs.bPrecision &&
   daPrecision == rhs.daPrecision &&
   dbPrecision == rhs.dbPrecision &&
-  length == rhs.length;
+  loadM == rhs.loadM &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& hash) const noexcept {
@@ -25,7 +26,8 @@ std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& 
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gPrecision.value, (unsigned int)hash.aPrecision.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, (uint64_t)hash.length);
+  combine_64(seed, hash.loadM ? 0 : (uint64_t)hash.length);
+  combine_32(seed, hash.loadM ? 1 : 0);
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
   return seed;
 }
@@ -47,6 +49,7 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   kernelDesc.gradient = gradient;
   kernelDesc.outputMask = outputMask;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.beta = beta;
   kernelDesc.scale = scale;
   kernelDesc.gPrecision = gPrecision;
@@ -59,14 +62,16 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t count;
-    if (value == 0) {
-    } else if (value == 1) {
-      count = length / 4;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
-    } else {
-      count = length;
-      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t count;
+      if (value == 0) {
+      } else if (value == 1) {
+        count = length / 4;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      } else {
+        count = length;
+        constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+      }
     }
     if (beta != 1)
       constants->setConstantValue(&beta, MTL::DataTypeFloat, NS::UInteger(1));

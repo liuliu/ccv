@@ -6,6 +6,7 @@ typedef struct {
   float beta;
   uint64_t data_type;
   uint32_t length;
+  uint8_t loadM;
 } ccv_nnc_mfa_swish_params_t;
 
 #ifdef __cplusplus

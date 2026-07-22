@@ -16,6 +16,8 @@ struct ExpKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   ExpKernel(ExpKernelDescriptor descriptor, MTL::Device* const device);

@@ -9,6 +9,8 @@ SwishMulKernel::SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device*
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   beta = descriptor.beta;
 
   scale = descriptor.scale;
@@ -218,6 +220,15 @@ kernel void swish_mul(
 }
     )";
   }
+  if (loadM) {
+    const uint8_t countBufferIndex = gradient ? 2 + ((outputMask & 1) ? 1 : 0) + ((outputMask & 2) ? 2 : 0) : 3;
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(countBufferIndex) + ")]],\n");
+    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
+    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
+  }
   return shader;
 }
 
@@ -267,7 +278,7 @@ std::string SwishMulKernel::createConstants() const noexcept {
     define_type("realA", aPrecision, false);
     define_type("realB", bPrecision, false);
   }
-  if (value != 0) {
+  if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
     defines += "\n";
   }
