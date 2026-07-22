@@ -9,6 +9,8 @@ CMulKernel::CMulKernel(CMulKernelDescriptor descriptor, MTL::Device *const devic
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   memoryPrecisionA = descriptor.memoryPrecisionA;
 
   memoryPrecisionB = descriptor.memoryPrecisionB;
@@ -265,6 +267,32 @@ kernel void cmul(
     )";
     }
   }
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(3)]],\n");
+    const std::string::size_type bodyPosition = shader.find(value == 0 ? "  const uint idx = tpig.x;" : "  const uint x = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(bodyPosition != std::string::npos);
+    std::string runtimeConstants = "  const uniform<uint> dim0 = make_uniform(loadM[0]);\n";
+    if (value != 0) {
+      runtimeConstants += "  const uniform<uint> dim1 = make_uniform(loadM[1]);\n";
+      runtimeConstants += "  const uniform<uint> astride0 = make_uniform(loadM[2]);\n";
+      runtimeConstants += "  const uniform<uint> bstride0 = make_uniform(loadM[3]);\n";
+      runtimeConstants += "  const uniform<uint> cstride0 = make_uniform(loadM[4]);\n";
+    }
+    if (value != 0 && value != 1) {
+      runtimeConstants += "  const uniform<uint> astride1 = make_uniform(loadM[5]);\n";
+      runtimeConstants += "  const uniform<uint> bstride1 = make_uniform(loadM[6]);\n";
+      runtimeConstants += "  const uniform<uint> cstride1 = make_uniform(loadM[7]);\n";
+    }
+    if (value != 0 && value != 1 && value != 2) {
+      runtimeConstants += "  const uniform<uint> dim2 = make_uniform(loadM[8]);\n";
+      runtimeConstants += "  const uniform<uint> astride2 = make_uniform(loadM[9]);\n";
+      runtimeConstants += "  const uniform<uint> bstride2 = make_uniform(loadM[10]);\n";
+      runtimeConstants += "  const uniform<uint> cstride2 = make_uniform(loadM[11]);\n";
+    }
+    shader.insert(bodyPosition, runtimeConstants);
+  }
   return shader;
 }
 
@@ -278,38 +306,40 @@ std::string CMulKernel::createConstants() const noexcept {
   defines += "typedef " + memoryPrecisionC.name() + " dst_t;";
   defines += "\n";
 
-  defines += "constant uint dim0 [[function_constant(0)]];";
-  defines += "\n";
-  if (value != 0)
-  {
-    defines += "constant uint dim1 [[function_constant(1)]];";
+  if (!loadM) {
+    defines += "constant uint dim0 [[function_constant(0)]];";
     defines += "\n";
-    defines += "constant uint astride0 [[function_constant(2)]];";
-    defines += "\n";
-    defines += "constant uint bstride0 [[function_constant(3)]];";
-    defines += "\n";
-    defines += "constant uint cstride0 [[function_constant(4)]];";
-    defines += "\n";
-  }
-  if (value != 0 && value != 1)
-  {
-    defines += "constant uint astride1 [[function_constant(5)]];";
-    defines += "\n";
-    defines += "constant uint bstride1 [[function_constant(6)]];";
-    defines += "\n";
-    defines += "constant uint cstride1 [[function_constant(7)]];";
-    defines += "\n";
-  }
-  if (value != 0 && value != 1 && value != 2)
-  {
-    defines += "constant uint dim2 [[function_constant(8)]];";
-    defines += "\n";
-    defines += "constant uint astride2 [[function_constant(9)]];";
-    defines += "\n";
-    defines += "constant uint bstride2 [[function_constant(10)]];";
-    defines += "\n";
-    defines += "constant uint cstride2 [[function_constant(11)]];";
-    defines += "\n";
+    if (value != 0)
+    {
+      defines += "constant uint dim1 [[function_constant(1)]];";
+      defines += "\n";
+      defines += "constant uint astride0 [[function_constant(2)]];";
+      defines += "\n";
+      defines += "constant uint bstride0 [[function_constant(3)]];";
+      defines += "\n";
+      defines += "constant uint cstride0 [[function_constant(4)]];";
+      defines += "\n";
+    }
+    if (value != 0 && value != 1)
+    {
+      defines += "constant uint astride1 [[function_constant(5)]];";
+      defines += "\n";
+      defines += "constant uint bstride1 [[function_constant(6)]];";
+      defines += "\n";
+      defines += "constant uint cstride1 [[function_constant(7)]];";
+      defines += "\n";
+    }
+    if (value != 0 && value != 1 && value != 2)
+    {
+      defines += "constant uint dim2 [[function_constant(8)]];";
+      defines += "\n";
+      defines += "constant uint astride2 [[function_constant(9)]];";
+      defines += "\n";
+      defines += "constant uint bstride2 [[function_constant(10)]];";
+      defines += "\n";
+      defines += "constant uint cstride2 [[function_constant(11)]];";
+      defines += "\n";
+    }
   }
   return defines;
 }

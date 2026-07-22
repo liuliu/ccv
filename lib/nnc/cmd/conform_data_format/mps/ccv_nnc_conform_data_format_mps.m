@@ -134,6 +134,7 @@ static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_
 				.row_count = (uint32_t)rows,
 				.head_dim = (uint32_t)head_dim,
 				.preserved_tail = (uint32_t)preserved_tail,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_conform_data_format(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

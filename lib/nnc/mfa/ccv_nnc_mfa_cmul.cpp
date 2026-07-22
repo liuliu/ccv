@@ -37,6 +37,7 @@ void ccv_nnc_mfa_encode_cmul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cmul_pa
 
   CMulDescriptor descriptor;
   descriptor.conjugate = params.conjugate ? 1 : 0;
+  descriptor.loadM = params.loadM;
   descriptor.memoryPrecisionA = _ccv_nnc_mfa_cmul_precision(params.data_type_a);
   descriptor.memoryPrecisionB = _ccv_nnc_mfa_cmul_precision(params.data_type_b);
   descriptor.memoryPrecisionC = _ccv_nnc_mfa_cmul_precision(params.data_type_c);
@@ -73,6 +74,24 @@ void ccv_nnc_mfa_encode_cmul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_cmul_pa
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+
+  if (params.loadM) {
+    const uint32_t dimensionsAndStrides[12] = {
+      params.dim[0] / 2,
+      params.dim[1],
+      params.astride[0],
+      params.bstride[0],
+      params.cstride[0],
+      params.astride[1],
+      params.bstride[1],
+      params.cstride[1],
+      params.dim[2],
+      params.astride[2],
+      params.bstride[2],
+      params.cstride[2],
+    };
+    encoder->setBytes(dimensionsAndStrides, sizeof(dimensionsAndStrides), num_tensors);
+  }
 
   if (tensors[0] == tensors[2]) {
     encoder->useResource(tensors[0], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);

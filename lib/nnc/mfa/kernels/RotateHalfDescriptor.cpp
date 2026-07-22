@@ -7,7 +7,8 @@ bool RotateHalfDescriptor::operator==(const RotateHalfDescriptor& rhs) const {
   return
   memoryPrecision == rhs.memoryPrecision &&
   value == rhs.value &&
-  rowCount == rhs.rowCount &&
+  loadM == rhs.loadM &&
+  (loadM || rowCount == rhs.rowCount) &&
   dim == rhs.dim;
 }
 
@@ -15,7 +16,8 @@ std::size_t std::hash<RotateHalfDescriptor>::operator()(const RotateHalfDescript
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { hash.rowCount, hash.dim }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.dim }));
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -34,6 +36,7 @@ std::pair<RotateHalfKernelDescriptor, PipelineValue<RotateHalfKernel> *> RotateH
 
   RotateHalfKernelDescriptor kernelDesc;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =
@@ -44,7 +47,8 @@ std::pair<RotateHalfKernelDescriptor, PipelineValue<RotateHalfKernel> *> RotateH
     const uint32_t half_dim_units = vectorized ? (dim / 8) : (dim / 2);
     const uint32_t dim_units = vectorized ? (dim / 4) : dim;
     const uint32_t count = rowCount * dim_units;
-    constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM)
+      constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&dim_units, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&half_dim_units, MTL::DataTypeUInt, NS::UInteger(2));
 

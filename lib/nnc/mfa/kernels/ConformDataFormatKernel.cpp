@@ -1,8 +1,9 @@
 #include "ConformDataFormatKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
-ConformDataFormatKernel::ConformDataFormatKernel(ConformDataFormatKernelDescriptor, MTL::Device* const device)
+ConformDataFormatKernel::ConformDataFormatKernel(ConformDataFormatKernelDescriptor descriptor, MTL::Device* const device)
 {
+  loadM = descriptor.loadM;
   const std::string source = createSource();
   threadgroupSize = MTL::Size(64, 1, 1);
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -19,7 +20,7 @@ MTL::Size ConformDataFormatKernel::gridSize(const uint32_t rowCount, const uint3
 
 std::string ConformDataFormatKernel::createSource() const noexcept
 {
-  return R"(
+  std::string shader = R"(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -114,4 +115,17 @@ kernel void conform_data_format(
       destination[row_base + prefix + i] = source[row_base + prefix + i];
 }
   )";
+  if (loadM) {
+    const std::string rowCountConstant = "constant uint row_count [[function_constant(0)]];\n";
+    const std::string::size_type rowCountConstantPosition = shader.find(rowCountConstant);
+    CCV_NNC_MFA_PRECONDITION(rowCountConstantPosition != std::string::npos);
+    shader.erase(rowCountConstantPosition, rowCountConstant.size());
+    const std::string::size_type argumentPosition = shader.find("  uint block [[threadgroup_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
+    const std::string::size_type rowCountPosition = shader.find("  const uint prefix = head_dim - preserved_tail;");
+    CCV_NNC_MFA_PRECONDITION(rowCountPosition != std::string::npos);
+    shader.insert(rowCountPosition, "  const uniform<uint> row_count = make_uniform(loadM[0]);\n");
+  }
+  return shader;
 }

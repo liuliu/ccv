@@ -73,6 +73,7 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
 				.conjugate = cmd.info.cmul.conjugate,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.data_type_a = a_mtl_data_type,
 				.data_type_b = b_mtl_data_type,
 				.data_type_c = c_mtl_data_type,
@@ -311,6 +312,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (use_mfa) {
 			ccv_nnc_mfa_cmul_params_t params = {
 				.conjugate = !cmd.info.cmul.conjugate,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.data_type_a = g_mtl_data_type,
 				.data_type_b = UINT32_MAX,
 				.data_type_c = UINT32_MAX,

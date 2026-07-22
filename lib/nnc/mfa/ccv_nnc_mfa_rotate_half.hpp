@@ -5,6 +5,7 @@ typedef struct {
   uint64_t data_type;
   uint32_t row_count;
   uint32_t dim;
+  uint8_t loadM;
 } ccv_nnc_mfa_rotate_half_params_t;
 
 #ifdef __cplusplus

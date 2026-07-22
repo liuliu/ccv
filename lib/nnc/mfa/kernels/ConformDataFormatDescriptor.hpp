@@ -6,13 +6,14 @@
 #include "DeviceProperties.hpp"
 
 struct ConformDataFormatKernelDescriptor {
-  constexpr bool operator==(const ConformDataFormatKernelDescriptor&) const { return true; }
+  bool loadM;
+  constexpr bool operator==(const ConformDataFormatKernelDescriptor& rhs) const { return loadM == rhs.loadM; }
 };
 
 template<>
 struct std::hash<ConformDataFormatKernelDescriptor>
 {
-  std::size_t operator()(const ConformDataFormatKernelDescriptor&) const noexcept { return 0; }
+  std::size_t operator()(const ConformDataFormatKernelDescriptor& hash) const noexcept { return hash.loadM ? 1 : 0; }
 };
 
 struct ConformDataFormatKernel;
@@ -21,6 +22,8 @@ struct ConformDataFormatDescriptor {
   uint32_t rowCount;
   uint32_t headDim;
   uint32_t preservedTail;
+
+  bool loadM;
 
   bool operator==(const ConformDataFormatDescriptor& rhs) const;
 

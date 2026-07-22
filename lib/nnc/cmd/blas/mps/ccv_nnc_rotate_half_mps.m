@@ -73,6 +73,7 @@ static int _ccv_nnc_rotate_half_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				.data_type = mtl_data_type,
 				.row_count = (uint32_t)(count / dim),
 				.dim = dim,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_rotate_half(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

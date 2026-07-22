@@ -7,6 +7,8 @@ RotateHalfKernel::RotateHalfKernel(RotateHalfKernelDescriptor descriptor, MTL::D
 
   value = descriptor.value;
 
+  loadM = descriptor.loadM;
+
   memoryPrecision = descriptor.memoryPrecision;
 
   source = createSource();
@@ -70,6 +72,14 @@ kernel void rotate_half(
 }
     )";
   }
+  if (loadM) {
+    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
+    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
+    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
+    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
+  }
   return shader;
 }
 
@@ -93,8 +103,10 @@ std::string RotateHalfKernel::createConstants() const noexcept {
       defines += "\n";
     }
   }
-  defines += "constant uint count [[function_constant(0)]];";
-  defines += "\n";
+  if (!loadM) {
+    defines += "constant uint count [[function_constant(0)]];";
+    defines += "\n";
+  }
   defines += "constant uint dim [[function_constant(1)]];";
   defines += "\n";
   defines += "constant uint half_dim [[function_constant(2)]];";

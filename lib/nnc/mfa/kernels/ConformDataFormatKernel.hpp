@@ -9,6 +9,8 @@ struct ConformDataFormatKernel {
 
   MTL::Size threadgroupSize;
 
+  bool loadM;
+
   ConformDataFormatKernel(ConformDataFormatKernelDescriptor descriptor, MTL::Device* const device);
 
   MTL::Size gridSize(uint32_t rowCount, uint32_t headDim, uint32_t preservedTail) const noexcept;

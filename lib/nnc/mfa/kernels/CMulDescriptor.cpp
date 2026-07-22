@@ -10,10 +10,12 @@ bool CMulDescriptor::operator==(const CMulDescriptor& rhs) const {
   memoryPrecisionC == rhs.memoryPrecisionC &&
   conjugate == rhs.conjugate &&
   value == rhs.value &&
-  simd_all(stridesA == rhs.stridesA) &&
-  simd_all(stridesB == rhs.stridesB) &&
-  simd_all(stridesC == rhs.stridesC) &&
-  simd_all(dimensions == rhs.dimensions);
+  loadM == rhs.loadM &&
+  (loadM || (
+    simd_all(stridesA == rhs.stridesA) &&
+    simd_all(stridesB == rhs.stridesB) &&
+    simd_all(stridesC == rhs.stridesC) &&
+    simd_all(dimensions == rhs.dimensions)));
 }
 
 std::size_t std::hash<CMulKernelDescriptor>::operator()(const CMulKernelDescriptor& hash) const noexcept {
@@ -22,6 +24,7 @@ std::size_t std::hash<CMulKernelDescriptor>::operator()(const CMulKernelDescript
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
   combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -31,12 +34,15 @@ std::size_t std::hash<CMulDescriptor>::operator()(const CMulDescriptor& hash) co
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
   combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[0], (unsigned int)hash.stridesA[1] }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[2], (unsigned int)hash.stridesB[0] }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesB[1], (unsigned int)hash.stridesB[2] }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[0], (unsigned int)hash.stridesC[1] }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[2], (unsigned int)hash.dimensions[0] }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dimensions[1], (unsigned int)hash.dimensions[2] }));
+  combine_32(seed, hash.loadM ? 1 : 0);
+  if (!hash.loadM) {
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[0], (unsigned int)hash.stridesA[1] }));
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[2], (unsigned int)hash.stridesB[0] }));
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesB[1], (unsigned int)hash.stridesB[2] }));
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[0], (unsigned int)hash.stridesC[1] }));
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[2], (unsigned int)hash.dimensions[0] }));
+    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dimensions[1], (unsigned int)hash.dimensions[2] }));
+  }
   return seed;
 }
 
@@ -59,6 +65,7 @@ std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> CMulDescriptor::fin
   CMulKernelDescriptor kernelDesc;
   kernelDesc.conjugate = conjugate;
   kernelDesc.value = value;
+  kernelDesc.loadM = loadM;
   kernelDesc.memoryPrecisionA = memoryPrecisionA;
   kernelDesc.memoryPrecisionB = memoryPrecisionB;
   kernelDesc.memoryPrecisionC = memoryPrecisionC;
@@ -69,39 +76,41 @@ std::pair<CMulKernelDescriptor, PipelineValue<CMulKernel> *> CMulDescriptor::fin
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t dim0 = dimensions[0] / 2;
-    constants->setConstantValue(&dim0, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM) {
+      uint32_t dim0 = dimensions[0] / 2;
+      constants->setConstantValue(&dim0, MTL::DataTypeUInt, NS::UInteger(0));
 
-    if (value != 0) {
-      uint32_t dim1 = dimensions[1];
-      uint32_t astride0 = stridesA[0];
-      uint32_t bstride0 = stridesB[0];
-      uint32_t cstride0 = stridesC[0];
-      constants->setConstantValue(&dim1, MTL::DataTypeUInt, 1);
-      constants->setConstantValue(&astride0, MTL::DataTypeUInt, 2);
-      constants->setConstantValue(&bstride0, MTL::DataTypeUInt, 3);
-      constants->setConstantValue(&cstride0, MTL::DataTypeUInt, 4);
-	}
+      if (value != 0) {
+        uint32_t dim1 = dimensions[1];
+        uint32_t astride0 = stridesA[0];
+        uint32_t bstride0 = stridesB[0];
+        uint32_t cstride0 = stridesC[0];
+        constants->setConstantValue(&dim1, MTL::DataTypeUInt, 1);
+        constants->setConstantValue(&astride0, MTL::DataTypeUInt, 2);
+        constants->setConstantValue(&bstride0, MTL::DataTypeUInt, 3);
+        constants->setConstantValue(&cstride0, MTL::DataTypeUInt, 4);
+      }
 
-    if (value != 0 && value != 1) {
-      uint32_t astride1 = stridesA[1];
-      uint32_t bstride1 = stridesB[1];
-      uint32_t cstride1 = stridesC[1];
-      constants->setConstantValue(&astride1, MTL::DataTypeUInt, 5);
-      constants->setConstantValue(&bstride1, MTL::DataTypeUInt, 6);
-      constants->setConstantValue(&cstride1, MTL::DataTypeUInt, 7);
-	}
+      if (value != 0 && value != 1) {
+        uint32_t astride1 = stridesA[1];
+        uint32_t bstride1 = stridesB[1];
+        uint32_t cstride1 = stridesC[1];
+        constants->setConstantValue(&astride1, MTL::DataTypeUInt, 5);
+        constants->setConstantValue(&bstride1, MTL::DataTypeUInt, 6);
+        constants->setConstantValue(&cstride1, MTL::DataTypeUInt, 7);
+      }
 
-    if (value != 0 && value != 1 && value != 2) {
-      uint32_t dim2 = dimensions[2];
-      uint32_t astride2 = stridesA[2];
-      uint32_t bstride2 = stridesB[2];
-      uint32_t cstride2 = stridesC[2];
-      constants->setConstantValue(&dim2, MTL::DataTypeUInt, 8);
-      constants->setConstantValue(&astride2, MTL::DataTypeUInt, 9);
-      constants->setConstantValue(&bstride2, MTL::DataTypeUInt, 10);
-      constants->setConstantValue(&cstride2, MTL::DataTypeUInt, 11);
-	}
+      if (value != 0 && value != 1 && value != 2) {
+        uint32_t dim2 = dimensions[2];
+        uint32_t astride2 = stridesA[2];
+        uint32_t bstride2 = stridesB[2];
+        uint32_t cstride2 = stridesC[2];
+        constants->setConstantValue(&dim2, MTL::DataTypeUInt, 8);
+        constants->setConstantValue(&astride2, MTL::DataTypeUInt, 9);
+        constants->setConstantValue(&bstride2, MTL::DataTypeUInt, 10);
+        constants->setConstantValue(&cstride2, MTL::DataTypeUInt, 11);
+      }
+    }
 
     NS::String* swiftName = NS::String::string("cmul", NS::UTF8StringEncoding);
     NS::Error* error = nil;

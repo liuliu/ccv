@@ -9,14 +9,15 @@
 
 struct RotateHalfKernelDescriptor {
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const RotateHalfKernelDescriptor &rhs) const { return value == rhs.value && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const RotateHalfKernelDescriptor &rhs) const { return value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<RotateHalfKernelDescriptor>
 {
-  std::size_t operator()(const RotateHalfKernelDescriptor& hash) const noexcept { return (size_t)hash.value; }
+  std::size_t operator()(const RotateHalfKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.memoryPrecision.value << 8) | ((size_t)hash.loadM << 16); }
 };
 
 struct RotateHalfKernel;
@@ -29,6 +30,8 @@ struct RotateHalfDescriptor {
   uint32_t rowCount;
 
   uint32_t dim;
+
+  bool loadM;
 
   bool operator==(const RotateHalfDescriptor& rhs) const;
 

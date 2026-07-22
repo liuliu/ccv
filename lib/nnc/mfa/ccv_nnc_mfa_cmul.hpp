@@ -3,6 +3,7 @@
 
 typedef struct {
   uint8_t conjugate;
+  uint8_t loadM;
   uint64_t data_type_a;
   uint64_t data_type_b;
   uint64_t data_type_c;

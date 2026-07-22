@@ -19,6 +19,8 @@ struct CMulKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecisionA;
 
   GEMMOperandPrecision memoryPrecisionB;

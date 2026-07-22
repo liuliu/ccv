@@ -5,6 +5,7 @@ typedef struct {
   uint32_t row_count;
   uint32_t head_dim;
   uint32_t preserved_tail;
+  uint8_t loadM;
 } ccv_nnc_mfa_conform_data_format_params_t;
 
 #ifdef __cplusplus

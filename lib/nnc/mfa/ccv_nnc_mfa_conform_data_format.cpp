@@ -22,6 +22,7 @@ void ccv_nnc_mfa_encode_conform_data_format(ccv_nnc_mfa_context_t* context, ccv_
   descriptor.rowCount = params.row_count;
   descriptor.headDim = params.head_dim;
   descriptor.preservedTail = params.preserved_tail;
+  descriptor.loadM = params.loadM;
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
@@ -31,6 +32,8 @@ void ccv_nnc_mfa_encode_conform_data_format(ccv_nnc_mfa_context_t* context, ccv_
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+  if (params.loadM)
+    encoder->setBytes(&params.row_count, sizeof(params.row_count), numTensors);
   if (tensors[0] == tensors[1]) {
     encoder->useResource(tensors[0], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
   } else {

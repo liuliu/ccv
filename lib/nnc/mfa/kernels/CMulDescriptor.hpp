@@ -10,11 +10,13 @@
 struct CMulKernelDescriptor {
   uint8_t conjugate;
   uint8_t value;
+  bool loadM;
   GEMMOperandPrecision memoryPrecisionA;
   GEMMOperandPrecision memoryPrecisionB;
   GEMMOperandPrecision memoryPrecisionC;
   constexpr bool operator==(const CMulKernelDescriptor &rhs) const {
     return value == rhs.value &&
+      loadM == rhs.loadM &&
       memoryPrecisionA == rhs.memoryPrecisionA &&
       memoryPrecisionB == rhs.memoryPrecisionB &&
       memoryPrecisionC == rhs.memoryPrecisionC &&
@@ -34,6 +36,8 @@ struct CMulDescriptor {
   uint8_t conjugate;
 
   uint8_t value;
+
+  bool loadM;
 
   GEMMOperandPrecision memoryPrecisionA;
 

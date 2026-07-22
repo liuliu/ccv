@@ -16,6 +16,8 @@ struct RotateHalfKernel {
 
   uint8_t value;
 
+  bool loadM;
+
   GEMMOperandPrecision memoryPrecision;
 
   RotateHalfKernel(RotateHalfKernelDescriptor descriptor, MTL::Device *const device);

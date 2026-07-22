@@ -33,6 +33,7 @@ void ccv_nnc_mfa_encode_rotate_half(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   }
   descriptor.rowCount = params.row_count;
   descriptor.dim = params.dim;
+  descriptor.loadM = params.loadM;
   descriptor.value = (params.dim % 8 == 0) ? 0 : 1;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
@@ -44,6 +45,11 @@ void ccv_nnc_mfa_encode_rotate_half(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+  const int vectorized = (descriptor.value == 0);
+  const uint32_t dim_units = vectorized ? (params.dim / 4) : params.dim;
+  const uint32_t count = params.row_count * dim_units;
+  if (params.loadM)
+    encoder->setBytes(&count, sizeof(count), num_tensors);
   if (tensors[0] == tensors[1]) {
     encoder->useResource(tensors[0], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
   } else {
@@ -51,9 +57,6 @@ void ccv_nnc_mfa_encode_rotate_half(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
   }
 
-  const int vectorized = (descriptor.value == 0);
-  const uint32_t dim_units = vectorized ? (params.dim / 4) : params.dim;
-  const uint32_t count = params.row_count * dim_units;
   const int num_blocks = (count + 255) / 256;
   MTL::Size gridSize = MTL::Size(num_blocks, 1, 1);
   CCV_NNC_MFA_PRECONDITION(gridSize.depth > 0);

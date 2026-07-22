@@ -7,7 +7,8 @@
 bool ConformDataFormatDescriptor::operator==(const ConformDataFormatDescriptor& rhs) const
 {
   return
-  rowCount == rhs.rowCount &&
+  loadM == rhs.loadM &&
+  (loadM || rowCount == rhs.rowCount) &&
   headDim == rhs.headDim &&
   preservedTail == rhs.preservedTail;
 }
@@ -16,14 +17,16 @@ std::size_t std::hash<ConformDataFormatDescriptor>::operator()(const ConformData
 {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { hash.rowCount, hash.headDim }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.headDim }));
   combine_32(seed, hash.preservedTail);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
 std::pair<ConformDataFormatKernelDescriptor, PipelineValue<ConformDataFormatKernel>*> ConformDataFormatDescriptor::findKernel(MTL::Device* const device, const DeviceProperties&, NS::Array* const, MTL::BinaryArchive* const, const std::string&, std::unordered_map<ConformDataFormatKernelDescriptor, std::unique_ptr<ConformDataFormatKernel>>* const libraryCache) const noexcept
 {
   ConformDataFormatKernelDescriptor kernelDescriptor;
+  kernelDescriptor.loadM = loadM;
   ConformDataFormatKernel* kernel;
   auto iterator = libraryCache->find(kernelDescriptor);
   if (iterator != libraryCache->end()) {
@@ -34,7 +37,8 @@ std::pair<ConformDataFormatKernelDescriptor, PipelineValue<ConformDataFormatKern
   }
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-  constants->setConstantValue(&rowCount, MTL::DataTypeUInt, NS::UInteger(0));
+  if (!loadM)
+    constants->setConstantValue(&rowCount, MTL::DataTypeUInt, NS::UInteger(0));
   constants->setConstantValue(&headDim, MTL::DataTypeUInt, NS::UInteger(1));
   constants->setConstantValue(&preservedTail, MTL::DataTypeUInt, NS::UInteger(2));
   NS::String* functionName = NS::String::string("conform_data_format", NS::UTF8StringEncoding);
