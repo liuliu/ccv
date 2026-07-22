@@ -12,6 +12,7 @@ typedef struct {
   uint32_t beta_data_type;
   uint32_t state_checkpoint_count;
   uint8_t log_decay;
+  uint8_t loadM;
 } ccv_nnc_mfa_gated_delta_params_t;
 
 #ifdef __cplusplus

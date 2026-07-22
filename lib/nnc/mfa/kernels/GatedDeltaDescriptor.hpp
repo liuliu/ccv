@@ -12,13 +12,14 @@ struct GatedDeltaKernelDescriptor {
   bool stateCheckpointing;
   GEMMOperandPrecision inputMemoryPrecision;
   GEMMOperandPrecision betaMemoryPrecision;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && stateCheckpointing == rhs.stateCheckpointing && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision; }
+  bool loadM;
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && stateCheckpointing == rhs.stateCheckpointing && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision && loadM == rhs.loadM; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16) | ((size_t)hash.stateCheckpointing << 24); }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16) | ((size_t)hash.stateCheckpointing << 24) | ((size_t)hash.loadM << 25); }
 };
 
 struct GatedDeltaKernel;
@@ -43,6 +44,8 @@ struct GatedDeltaDescriptor {
   GEMMOperandPrecision betaMemoryPrecision;
 
   bool logDecay;
+
+  bool loadM;
 
   bool operator==(const GatedDeltaDescriptor& rhs) const;
 

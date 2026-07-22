@@ -31,6 +31,7 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 	descriptor.sourceRowStride = params.source_row_stride;
 	descriptor.destinationRowStride = params.destination_row_stride;
 	descriptor.destinationStrided = params.destination_row_stride != params.cols;
+	descriptor.loadM = params.loadM;
 	const size_t dataTypeSize = params.data_type == MTL::DataTypeFloat ? 4 : 2;
 	descriptor.vectorized = (params.cols % 4 == 0 &&
 		params.source_row_stride % 4 == 0 &&
@@ -50,6 +51,10 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
+	if (params.loadM) {
+		const uint32_t elementCount = descriptor.vectorized ? params.rows * params.cols / 4 : params.rows * params.cols;
+		encoder->setBytes(&elementCount, sizeof(elementCount), 2);
+	}
 
 	const MTL::Size gridSize = kernel->gridSize(params.rows, params.cols);
 	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);

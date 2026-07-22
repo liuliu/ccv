@@ -10,8 +10,9 @@
 struct StridedCopyKernelDescriptor {
 	uint8_t vectorized;
 	uint8_t destinationStrided;
+	uint8_t loadM;
 	GEMMOperandPrecision memoryPrecision;
-	constexpr bool operator==(const StridedCopyKernelDescriptor& rhs) const { return vectorized == rhs.vectorized && destinationStrided == rhs.destinationStrided && memoryPrecision == rhs.memoryPrecision; }
+	constexpr bool operator==(const StridedCopyKernelDescriptor& rhs) const { return vectorized == rhs.vectorized && destinationStrided == rhs.destinationStrided && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
@@ -19,7 +20,7 @@ struct std::hash<StridedCopyKernelDescriptor>
 {
 	std::size_t operator()(const StridedCopyKernelDescriptor& hash) const noexcept
 	{
-		return std::hash<int>()((int)hash.vectorized | ((int)hash.destinationStrided << 8) | ((int)hash.memoryPrecision.value << 16));
+		return std::hash<int>()((int)hash.vectorized | ((int)hash.destinationStrided << 8) | ((int)hash.memoryPrecision.value << 16) | ((int)hash.loadM << 24));
 	}
 };
 
@@ -39,6 +40,8 @@ struct StridedCopyDescriptor {
 	uint32_t destinationRowStride;
 
 	uint8_t destinationStrided;
+
+	bool loadM;
 
 	bool operator==(const StridedCopyDescriptor& rhs) const;
 

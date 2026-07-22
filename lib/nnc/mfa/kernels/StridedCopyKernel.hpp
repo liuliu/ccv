@@ -11,6 +11,8 @@ struct StridedCopyKernel {
 
 	uint8_t destinationStrided;
 
+	bool loadM;
+
 	GEMMOperandPrecision memoryPrecision;
 
 	MTL::Size threadgroupSize;

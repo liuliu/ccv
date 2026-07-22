@@ -5,6 +5,7 @@ StridedCopyKernel::StridedCopyKernel(StridedCopyKernelDescriptor descriptor, MTL
 {
 	vectorized = descriptor.vectorized;
 	destinationStrided = descriptor.destinationStrided;
+	loadM = descriptor.loadM;
 	memoryPrecision = descriptor.memoryPrecision;
 
 	const std::string source = createSource();
@@ -75,6 +76,14 @@ kernel void strided_copy(
 }
 		)";
 	}
+	if (loadM) {
+		const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
+		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
+		const std::string::size_type elementCountPosition = shader.find("  const uint x = tpig.x;");
+		CCV_NNC_MFA_PRECONDITION(elementCountPosition != std::string::npos);
+		shader.insert(elementCountPosition, "  const uniform<uint> element_count = make_uniform(loadM[0]);\n");
+	}
 	return shader;
 }
 
@@ -106,6 +115,7 @@ std::string StridedCopyKernel::createConstants() const noexcept
 		if (destinationStrided)
 			defines += "constant uint destination_row_stride [[function_constant(2)]];\n";
 	}
-	defines += destinationStrided ? "constant uint element_count [[function_constant(3)]];\n" : "constant uint element_count [[function_constant(2)]];\n";
+	if (!loadM)
+		defines += destinationStrided ? "constant uint element_count [[function_constant(3)]];\n" : "constant uint element_count [[function_constant(2)]];\n";
 	return defines;
 }

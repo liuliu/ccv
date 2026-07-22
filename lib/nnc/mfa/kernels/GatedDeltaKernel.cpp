@@ -6,6 +6,7 @@ GatedDeltaKernel::GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::D
   stateCheckpointing = descriptor.stateCheckpointing;
   inputMemoryPrecision = descriptor.inputMemoryPrecision;
   betaMemoryPrecision = descriptor.betaMemoryPrecision;
+  loadM = descriptor.loadM;
 
   source = createSource();
 
@@ -25,6 +26,12 @@ unsigned short GatedDeltaKernel::createThreadgroupMemoryAllocation() const noexc
 }
 
 std::string GatedDeltaKernel::createSource() const noexcept {
+  const std::string sequenceLengthConstant = loadM ? "" : R"(constant uint T [[function_constant(1)]];
+)";
+  const std::string loadMArgument = loadM ? R"(  const device uint* loadM [[buffer(8)]],
+)" : "";
+  const std::string loadMValue = loadM ? R"(  const uniform<uint> T = make_uniform(loadM[0]);
+)" : "";
   const std::string checkpointConstants = stateCheckpointing ? R"(constant uint state_checkpoint_count [[function_constant(9)]];
 )" : "";
   const std::string historyCountConstant = stateCheckpointing ? R"(constant uint state_history_count = state_checkpoint_count + 1;
@@ -68,8 +75,7 @@ typedef )" + inputMemoryPrecision.name() + R"( input_t;
 typedef )" + betaMemoryPrecision.name() + R"( beta_t;
 
 constant uint B [[function_constant(0)]];
-constant uint T [[function_constant(1)]];
-constant uint Hk [[function_constant(2)]];
+)" + sequenceLengthConstant + R"(constant uint Hk [[function_constant(2)]];
 constant uint Hv [[function_constant(3)]];
 constant uint Dk [[function_constant(4)]];
 constant uint Dv [[function_constant(5)]];
@@ -88,12 +94,12 @@ kernel void gated_delta(
   device const float* state_in [[buffer(5)]],
   device input_t* y [[buffer(6)]],
   device float* state_out [[buffer(7)]],
-
+)" + loadMArgument + R"(
   uint3 group [[threadgroup_position_in_grid]],
   uint3 tid [[thread_position_in_threadgroup]],
   ushort lane_id [[thread_index_in_simdgroup]]
 ) {
-  const uint dv = group.y * dv_per_threadgroup + tid.y;
+)" + loadMValue + R"(  const uint dv = group.y * dv_per_threadgroup + tid.y;
   if (!value_dim_multiple_of_4 && dv >= Dv) {
     return;
   }

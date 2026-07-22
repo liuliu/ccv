@@ -7,6 +7,7 @@ typedef struct {
 	uint32_t cols;
 	uint32_t source_row_stride;
 	uint32_t destination_row_stride;
+	uint8_t loadM;
 } ccv_nnc_mfa_strided_copy_params_t;
 
 #ifdef __cplusplus

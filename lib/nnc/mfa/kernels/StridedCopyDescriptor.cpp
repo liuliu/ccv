@@ -9,7 +9,8 @@ bool StridedCopyDescriptor::operator==(const StridedCopyDescriptor& rhs) const
 	return
 	memoryPrecision == rhs.memoryPrecision &&
 	vectorized == rhs.vectorized &&
-	rows == rhs.rows &&
+	loadM == rhs.loadM &&
+	(loadM || rows == rhs.rows) &&
 	cols == rhs.cols &&
 	sourceRowStride == rhs.sourceRowStride &&
 	destinationStrided == rhs.destinationStrided &&
@@ -21,11 +22,12 @@ std::size_t std::hash<StridedCopyDescriptor>::operator()(const StridedCopyDescri
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
 	combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.vectorized }));
-	combine_64(seed, pack_64(simd::uint2 { hash.rows, hash.cols }));
+	combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rows, hash.cols }));
 	combine_32(seed, hash.sourceRowStride);
 	combine_32(seed, hash.destinationStrided);
 	if (hash.destinationStrided)
 		combine_32(seed, hash.destinationRowStride);
+	combine_32(seed, hash.loadM ? 1 : 0);
 	return seed;
 }
 
@@ -46,6 +48,7 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 	StridedCopyKernelDescriptor kernelDesc;
 	kernelDesc.vectorized = vectorized;
 	kernelDesc.destinationStrided = destinationStrided;
+	kernelDesc.loadM = loadM;
 	kernelDesc.memoryPrecision = memoryPrecision;
 
 	auto createPipeline =
@@ -63,8 +66,9 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 			{
 				const uint32_t destinationRowStrideUnits = destinationRowStride / 4;
 				constants->setConstantValue(&destinationRowStrideUnits, MTL::DataTypeUInt, NS::UInteger(2));
-				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
-			} else {
+				if (!loadM)
+					constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
+			} else if (!loadM) {
 				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
 			}
 		} else {
@@ -74,8 +78,9 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 			if (destinationStrided)
 			{
 				constants->setConstantValue(&destinationRowStride, MTL::DataTypeUInt, NS::UInteger(2));
-				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
-			} else {
+				if (!loadM)
+					constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(3));
+			} else if (!loadM) {
 				constants->setConstantValue(&elementCount, MTL::DataTypeUInt, NS::UInteger(2));
 			}
 		}

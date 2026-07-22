@@ -347,6 +347,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 							.cols = cols,
 							.source_row_stride = source_row_stride,
 							.destination_row_stride = destination_row_stride,
+							.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 						};
 						mtl_buffer_t* tensors[3] = {
 							buffer_a,

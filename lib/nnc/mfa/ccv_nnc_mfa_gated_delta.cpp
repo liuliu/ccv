@@ -33,6 +33,7 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.inputMemoryPrecision = params.data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.betaMemoryPrecision = params.beta_data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.beta_data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.logDecay = params.log_decay != 0;
+  descriptor.loadM = params.loadM != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -43,6 +44,9 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
+  if (params.loadM) {
+    encoder->setBytes(&params.sequence_length, sizeof(params.sequence_length), 8);
+  }
   encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
   int i;
   for (i = 0; i < 6; i++) {

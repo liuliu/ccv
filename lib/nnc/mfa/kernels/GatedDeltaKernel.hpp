@@ -22,6 +22,8 @@ struct GatedDeltaKernel {
 
   GEMMOperandPrecision betaMemoryPrecision;
 
+  bool loadM;
+
   GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
