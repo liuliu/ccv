@@ -10,13 +10,15 @@ struct SegmentedScaledGEMMKernelDescriptor {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool loadM;
 
   SegmentedScaledGEMMKernelDescriptor() = delete;
   SegmentedScaledGEMMKernelDescriptor(
       simd::ushort3 blockDimensions,
       uint16_t executionSIMDGroups,
       GEMMOperandPrecision ioPrecision,
-      bool useBias) noexcept;
+      bool useBias,
+      bool loadM) noexcept;
 
   bool operator==(const SegmentedScaledGEMMKernelDescriptor& rhs) const;
 };

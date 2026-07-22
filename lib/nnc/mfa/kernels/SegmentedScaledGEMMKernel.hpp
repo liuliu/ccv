@@ -13,6 +13,7 @@ struct SegmentedScaledGEMMKernel {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool loadM;
 
   NS::SharedPtr<MTL::Library> library;
   std::string source;

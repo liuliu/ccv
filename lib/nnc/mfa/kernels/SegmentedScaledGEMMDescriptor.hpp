@@ -14,6 +14,7 @@ struct SegmentedScaledGEMMDescriptor {
   GEMMOperandPrecision ioPrecision;
   simd::uint4 matrixDimensions; // M, N, K, segments.
   bool useBias;
+  bool loadM;
 
   bool operator==(const SegmentedScaledGEMMDescriptor& rhs) const;
 

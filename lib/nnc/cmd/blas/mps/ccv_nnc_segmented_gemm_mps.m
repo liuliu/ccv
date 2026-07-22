@@ -328,6 +328,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				.originalM = (uint32_t)b_rows,
 				.fused_bias = (bias ? 1 : 0),
 				.use_neural_accelerators = 1,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.segments = w_batch_size,
 			};
 			ccv_nnc_mfa_prepare_segmented_scaled_gemm(context, params);

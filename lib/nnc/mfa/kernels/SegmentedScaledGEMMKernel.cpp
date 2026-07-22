@@ -11,6 +11,7 @@ SegmentedScaledGEMMKernel::SegmentedScaledGEMMKernel(
   executionSIMDGroups = descriptor.executionSIMDGroups;
   ioPrecision = descriptor.ioPrecision;
   useBias = descriptor.useBias;
+  loadM = descriptor.loadM;
 
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -235,5 +236,18 @@ kernel void segmented_scaled_gemm(
   }
 }
 )";
-  return source.ToString();
+  std::string shader = source.ToString();
+  if (loadM) {
+    const std::string maxTileRecordsConstant = "constant uint max_tile_records [[function_constant(6)]];\n";
+    const std::string::size_type maxTileRecordsConstantPosition = shader.find(maxTileRecordsConstant);
+    CCV_NNC_MFA_PRECONDITION(maxTileRecordsConstantPosition != std::string::npos);
+    shader.erase(maxTileRecordsConstantPosition, maxTileRecordsConstant.size());
+    const std::string::size_type argumentPosition = shader.find("    uint tid [[thread_index_in_threadgroup]])");
+    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+    shader.insert(argumentPosition, "    const device uint* loadM [[buffer(4)]],\n");
+    const std::string::size_type maxTileRecordsPosition = shader.find("  if (tid != 0)");
+    CCV_NNC_MFA_PRECONDITION(maxTileRecordsPosition != std::string::npos);
+    shader.insert(maxTileRecordsPosition, "  const uniform<uint> max_tile_records = make_uniform(loadM[0]);\n");
+  }
+  return shader;
 }

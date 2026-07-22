@@ -1525,15 +1525,23 @@ static float _mps_segmented_scaled_gemm_bias_value(const int segment, const int 
 	return (float)(((segment * 5 + col * 3) % 29) - 14) / 256.0f;
 }
 
-static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const int use_bias, const int force_fallback, const int format, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, double* const max_abs_ref, double* const max_rel_ref)
 {
-	const int total_m = 384;
 	const int n_dim = 128;
 	const int k_dim = 256;
 	const int segments = format ? 4 : 3;
-	const int counts_data_3[] = {129, 131, 124};
+	const int counts_data_3[] = {
+		ccv_min(total_m, 129),
+		ccv_min(ccv_max(total_m - 129, 0), 131),
+		ccv_max(total_m - 260, 0),
+	};
 	const int indices_data_3[] = {1, 0, 2};
-	const int counts_data_4[] = {129, 0, 131, 124};
+	const int counts_data_4[] = {
+		ccv_min(total_m, 129),
+		0,
+		ccv_min(ccv_max(total_m - 129, 0), 131),
+		ccv_max(total_m - 260, 0),
+	};
 	const int indices_data_4[] = {2, 1, 0, 3};
 	const int* const counts_data = format ? counts_data_4 : counts_data_3;
 	const int* const indices_data = format ? indices_data_4 : indices_data_3;
@@ -1725,6 +1733,11 @@ static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const 
 	return exec_status;
 }
 
+static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const int use_bias, const int force_fallback, const int format, double* const max_abs_ref, double* const max_rel_ref)
+{
+	return _mps_segmented_scaled_gemm_validate_format_shape(datatype, use_bias, force_fallback, format, 384, max_abs_ref, max_rel_ref);
+}
+
 static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use_bias, const int force_fallback, double* const max_abs_ref, double* const max_rel_ref)
 {
 	return _mps_segmented_scaled_gemm_validate_format(datatype, use_bias, force_fallback, 0, max_abs_ref, max_rel_ref);
@@ -1872,6 +1885,25 @@ TEST_CASE("mps segmented gemm with row-wise 8i weight NA")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16BF, 0, 0, &max_abs, &max_rel), 0, "segmented row-wise 8i NA validation should run");
 	REQUIRE(max_rel < 6e-3, "segmented row-wise 8i NA bf16 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm with row-wise 8i weight loadM")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	double small_max_abs = 0;
+	double small_max_rel = 0;
+	const int small_status = _mps_segmented_scaled_gemm_validate_format_shape(CCV_16F, 0, 0, 0, 257, &small_max_abs, &small_max_rel);
+	double large_max_abs = 0;
+	double large_max_rel = 0;
+	const int large_status = _mps_segmented_scaled_gemm_validate_format_shape(CCV_16F, 0, 0, 0, 1537, &large_max_abs, &large_max_rel);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	REQUIRE_EQ(small_status, 0, "small loadM segmented row-wise 8i validation should run");
+	REQUIRE(small_max_rel < 3e-3, "small loadM segmented row-wise 8i should match quantized reference, max_abs=%g max_rel=%g", small_max_abs, small_max_rel);
+	REQUIRE_EQ(large_status, 0, "large loadM segmented row-wise 8i validation should run");
+	REQUIRE(large_max_rel < 3e-3, "large loadM segmented row-wise 8i should match quantized reference, max_abs=%g max_rel=%g", large_max_abs, large_max_rel);
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")

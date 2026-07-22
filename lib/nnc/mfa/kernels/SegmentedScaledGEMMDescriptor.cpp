@@ -18,7 +18,11 @@ bool SegmentedScaledGEMMDescriptor::operator==(const SegmentedScaledGEMMDescript
 {
   return
     ioPrecision == rhs.ioPrecision &&
-    simd_all(matrixDimensions == rhs.matrixDimensions) &&
+    loadM == rhs.loadM &&
+    (loadM || matrixDimensions[0] == rhs.matrixDimensions[0]) &&
+    matrixDimensions[1] == rhs.matrixDimensions[1] &&
+    matrixDimensions[2] == rhs.matrixDimensions[2] &&
+    matrixDimensions[3] == rhs.matrixDimensions[3] &&
     useBias == rhs.useBias;
 }
 
@@ -27,11 +31,12 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_32(seed, (uint32_t)hash.ioPrecision.value);
-  combine_32(seed, hash.matrixDimensions[0]);
+  combine_32(seed, hash.loadM ? 0 : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   combine_32(seed, hash.matrixDimensions[3]);
   combine_32(seed, hash.useBias ? 1 : 0);
+  combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
@@ -41,7 +46,8 @@ SegmentedScaledGEMMKernelDescriptor SegmentedScaledGEMMDescriptor::kernelDescrip
       simd::ushort3 { 128, 128, 128 },
       8,
       ioPrecision,
-      useBias);
+      useBias,
+      loadM);
 }
 
 std::pair<SegmentedScaledGEMMKernelDescriptor, PipelineValue<SegmentedScaledGEMMKernel>*> SegmentedScaledGEMMDescriptor::findKernel(
@@ -67,21 +73,22 @@ std::pair<SegmentedScaledGEMMKernelDescriptor, PipelineValue<SegmentedScaledGEMM
   auto createPipeline =
   [=](SegmentedScaledGEMMKernel* kernel, const char* functionNameString) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-    const uint32_t originalM = matrixDimensions[0];
     const uint32_t N = matrixDimensions[1];
     const uint32_t K = matrixDimensions[2];
     const uint32_t segments = matrixDimensions[3];
     const uint32_t MBlock = kernel->blockDimensions[0];
     const uint32_t NBlock = kernel->blockDimensions[1];
     const uint32_t KBlock = kernel->blockDimensions[2];
-    const uint32_t maxRecords = kernel->maxTileRecords(originalM, segments);
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&segments, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&MBlock, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&NBlock, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&KBlock, MTL::DataTypeUInt, NS::UInteger(5));
-    constants->setConstantValue(&maxRecords, MTL::DataTypeUInt, NS::UInteger(6));
+    if (!loadM) {
+      const uint32_t maxRecords = kernel->maxTileRecords(matrixDimensions[0], segments);
+      constants->setConstantValue(&maxRecords, MTL::DataTypeUInt, NS::UInteger(6));
+    }
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(kernel->library->newFunction(functionName, constants.get(), &error));

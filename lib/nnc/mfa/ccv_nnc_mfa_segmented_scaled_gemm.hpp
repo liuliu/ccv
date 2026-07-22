@@ -9,6 +9,7 @@ typedef struct {
   uint32_t originalM;
   uint8_t fused_bias;
   uint8_t use_neural_accelerators;
+  uint8_t loadM;
   uint32_t segments;
 } ccv_nnc_mfa_segmented_scaled_gemm_params_t;
 

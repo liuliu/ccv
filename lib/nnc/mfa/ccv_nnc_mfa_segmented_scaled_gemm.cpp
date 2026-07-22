@@ -113,13 +113,14 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   quantizeDesc.matrixDimensions = simd::uint3 { params.originalM, params.N, params.K };
   quantizeDesc.batchStrides = std::nullopt;
   quantizeDesc.useBias = params.fused_bias;
-  quantizeDesc.loadM = false;
+  quantizeDesc.loadM = params.loadM;
   quantizeDesc.supportIndirectCommandBuffers = false;
 
   SegmentedScaledGEMMDescriptor segmentedDesc;
   segmentedDesc.ioPrecision = io_precision(params.data_type);
   segmentedDesc.matrixDimensions = simd::uint4 { params.originalM, params.N, params.K, params.segments };
   segmentedDesc.useBias = params.fused_bias;
+  segmentedDesc.loadM = params.loadM;
 
   auto &shaderCache = context->kernel_cache;
   DeviceProperties dprops = DeviceProperties();
@@ -144,6 +145,8 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
     encoder->setBuffer(scratch, 0, 1);
     encoder->setBuffer(scratch, a_layout.scale_offset, 2);
+    if (quantizeDesc.loadM)
+      encoder->setBytes(&params.originalM, sizeof(params.originalM), 3);
     encoder->dispatchThreadgroups(
         MTL::Size(params.originalM, 1, 1),
         MTL::Size(quantizeKernel->activationQuantizeThreads, 1, 1));
@@ -160,6 +163,10 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
     encoder->setBuffer(scratch, p_layout.records_offset, 2);
     encoder->setBuffer(scratch, p_layout.dispatch_offset, 3);
+    if (segmentedDesc.loadM) {
+      const uint32_t maxTileRecords = segmentedKernel->maxTileRecords(params.originalM, params.segments);
+      encoder->setBytes(&maxTileRecords, sizeof(maxTileRecords), 4);
+    }
     encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(256, 1, 1));
     command_batch->finishCommand(encoder);
   }
