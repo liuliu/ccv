@@ -17,6 +17,8 @@ WalshHadamardTransformKernel::WalshHadamardTransformKernel(WalshHadamardTransfor
 }
 
 std::string WalshHadamardTransformKernel::createSource() const noexcept {
+  const std::string loadMArgument = loadM ? "  const device uint* loadM [[buffer(2)]],\n" : "";
+  const std::string loadMValue = loadM ? "  const uniform<uint> row_count = make_uniform(loadM[0]);\n" : "";
   std::string shader = createConstants() + "\n";
   shader += R"(
 #include <metal_stdlib>
@@ -42,11 +44,11 @@ inline void walsh_hadamard_radix(thread accum* x, const uint radix)
 kernel void walsh_hadamard_transform(
   device const real* source [[buffer(0)]],
   device real* destination [[buffer(1)]],
-  threadgroup accum* buffer [[threadgroup(0)]],
+)" + loadMArgument + R"(  threadgroup accum* buffer [[threadgroup(0)]],
   uint row_group [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-  if (strategy == 2) {
+)" + loadMValue + R"(  if (strategy == 2) {
     const uint local_row = tid / dim;
     const uint lane = tid - local_row * dim;
     const uint row = row_group * rows_per_threadgroup + local_row;
@@ -144,14 +146,6 @@ kernel void walsh_hadamard_transform(
   }
 }
   )";
-  if (loadM) {
-    const std::string::size_type argumentPosition = shader.find("  threadgroup accum* buffer [[threadgroup(0)]],");
-    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-    shader.insert(argumentPosition, "  const device uint* loadM [[buffer(2)]],\n");
-    const std::string::size_type rowCountPosition = shader.find("  if (strategy == 2) {");
-    CCV_NNC_MFA_PRECONDITION(rowCountPosition != std::string::npos);
-    shader.insert(rowCountPosition, "  const uniform<uint> row_count = make_uniform(loadM[0]);\n");
-  }
   return shader;
 }
 

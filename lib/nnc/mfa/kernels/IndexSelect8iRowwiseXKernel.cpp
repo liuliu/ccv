@@ -78,6 +78,8 @@ MTL::Size IndexSelect8iRowwiseXKernel::gridSize(uint32_t length) const noexcept
 
 std::string IndexSelect8iRowwiseXKernel::createSource() const noexcept
 {
+	const std::string loadMArgument = loadM ? "  const device uint *loadM [[buffer(4)]],\n" : "";
+	const std::string loadMValue = loadM ? "  const uniform<uint> output_groups = make_uniform(loadM[0]);\n" : "";
 	std::string shader = createConstants() + "\n";
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
@@ -434,10 +436,10 @@ kernel void index_select_8i_rowwise_x(
   device uchar* destination [[buffer(2)]],
   device const real* scales [[buffer(3)]],
 
-  uint3 tgid [[threadgroup_position_in_grid]],
+)" + loadMArgument + R"(  uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-  const uint x = tgid.x * threadgroup_size + lid;
+)" + loadMValue + R"(  const uint x = tgid.x * threadgroup_size + lid;
   if (x >= output_groups)
     return;
   const uint output_row = x / groups_per_row;
@@ -448,14 +450,6 @@ kernel void index_select_8i_rowwise_x(
   decode_store_group(source, source_group_index, scales, destination, (ulong)output_row * row_length + col_base, col_base, source_row);
 }
 )";
-	if (loadM) {
-		const std::string::size_type argumentPosition = shader.find("  uint3 tgid [[threadgroup_position_in_grid]]");
-		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(4)]],\n");
-		const std::string::size_type outputGroupsPosition = shader.find("  const uint x = tgid.x * threadgroup_size + lid;");
-		CCV_NNC_MFA_PRECONDITION(outputGroupsPosition != std::string::npos);
-		shader.insert(outputGroupsPosition, "  const uniform<uint> output_groups = make_uniform(loadM[0]);\n");
-	}
 	return shader;
 }
 

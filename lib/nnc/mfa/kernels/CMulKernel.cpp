@@ -45,6 +45,28 @@ unsigned short CMulKernel::createThreadgroupMemoryAllocation() const noexcept {
 }
 
 std::string CMulKernel::createSource() const noexcept {
+  const std::string loadMArgument = loadM ? "  const device uint *loadM [[buffer(3)]],\n" : "";
+  std::string loadMValue;
+  if (loadM) {
+    loadMValue = "  const uniform<uint> dim0 = make_uniform(loadM[0]);\n";
+    if (value != 0) {
+      loadMValue += "  const uniform<uint> dim1 = make_uniform(loadM[1]);\n";
+      loadMValue += "  const uniform<uint> astride0 = make_uniform(loadM[2]);\n";
+      loadMValue += "  const uniform<uint> bstride0 = make_uniform(loadM[3]);\n";
+      loadMValue += "  const uniform<uint> cstride0 = make_uniform(loadM[4]);\n";
+    }
+    if (value != 0 && value != 1) {
+      loadMValue += "  const uniform<uint> astride1 = make_uniform(loadM[5]);\n";
+      loadMValue += "  const uniform<uint> bstride1 = make_uniform(loadM[6]);\n";
+      loadMValue += "  const uniform<uint> cstride1 = make_uniform(loadM[7]);\n";
+    }
+    if (value != 0 && value != 1 && value != 2) {
+      loadMValue += "  const uniform<uint> dim2 = make_uniform(loadM[8]);\n";
+      loadMValue += "  const uniform<uint> astride2 = make_uniform(loadM[9]);\n";
+      loadMValue += "  const uniform<uint> bstride2 = make_uniform(loadM[10]);\n";
+      loadMValue += "  const uniform<uint> cstride2 = make_uniform(loadM[11]);\n";
+    }
+  }
   std::string shader = createConstants() + "\n";
   if (conjugate) {
     if (value == 0) {
@@ -57,9 +79,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint idx = tpig.x;
+)" + loadMValue + R"(  const uint idx = tpig.x;
   if (idx >= dim0)
     return;
   const float a0 = (float)src0[idx * 2];
@@ -80,9 +102,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   if (y >= dim1 || x >= dim0)
     return;
@@ -107,9 +129,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   const uint z = tpig.z;
   if (y >= dim1 || x >= dim0)
@@ -135,9 +157,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   const uint z = tpig.z;
   if (y >= dim1 || x >= dim0)
@@ -167,9 +189,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint idx = tpig.x;
+)" + loadMValue + R"(  const uint idx = tpig.x;
   if (idx >= dim0)
     return;
   const float a0 = (float)src0[idx * 2];
@@ -190,9 +212,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   if (y >= dim1 || x >= dim0)
     return;
@@ -217,9 +239,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   const uint z = tpig.z;
   if (y >= dim1 || x >= dim0)
@@ -245,9 +267,9 @@ kernel void cmul(
   device src1_t *src1 [[buffer(1)]],
   device dst_t *destination [[buffer(2)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   const uint y = tpig.y;
   const uint z = tpig.z;
   if (y >= dim1 || x >= dim0)
@@ -266,32 +288,6 @@ kernel void cmul(
 }
     )";
     }
-  }
-  if (loadM) {
-    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
-    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(3)]],\n");
-    const std::string::size_type bodyPosition = shader.find(value == 0 ? "  const uint idx = tpig.x;" : "  const uint x = tpig.x;");
-    CCV_NNC_MFA_PRECONDITION(bodyPosition != std::string::npos);
-    std::string runtimeConstants = "  const uniform<uint> dim0 = make_uniform(loadM[0]);\n";
-    if (value != 0) {
-      runtimeConstants += "  const uniform<uint> dim1 = make_uniform(loadM[1]);\n";
-      runtimeConstants += "  const uniform<uint> astride0 = make_uniform(loadM[2]);\n";
-      runtimeConstants += "  const uniform<uint> bstride0 = make_uniform(loadM[3]);\n";
-      runtimeConstants += "  const uniform<uint> cstride0 = make_uniform(loadM[4]);\n";
-    }
-    if (value != 0 && value != 1) {
-      runtimeConstants += "  const uniform<uint> astride1 = make_uniform(loadM[5]);\n";
-      runtimeConstants += "  const uniform<uint> bstride1 = make_uniform(loadM[6]);\n";
-      runtimeConstants += "  const uniform<uint> cstride1 = make_uniform(loadM[7]);\n";
-    }
-    if (value != 0 && value != 1 && value != 2) {
-      runtimeConstants += "  const uniform<uint> dim2 = make_uniform(loadM[8]);\n";
-      runtimeConstants += "  const uniform<uint> astride2 = make_uniform(loadM[9]);\n";
-      runtimeConstants += "  const uniform<uint> bstride2 = make_uniform(loadM[10]);\n";
-      runtimeConstants += "  const uniform<uint> cstride2 = make_uniform(loadM[11]);\n";
-    }
-    shader.insert(bodyPosition, runtimeConstants);
   }
   return shader;
 }

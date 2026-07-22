@@ -28,6 +28,8 @@ MTL::Size StridedCopyKernel::gridSize(uint32_t rows, uint32_t cols) const noexce
 
 std::string StridedCopyKernel::createSource() const noexcept
 {
+	const std::string loadMArgument = loadM ? "  const device uint *loadM [[buffer(2)]],\n" : "";
+	const std::string loadMValue = loadM ? "  const uniform<uint> element_count = make_uniform(loadM[0]);\n" : "";
 	std::string shader = createConstants() + "\n";
 	if (vectorized) {
 		const char* const destinationIndex = destinationStrided ? "row * destination_row_stride_units + col" : "x";
@@ -39,9 +41,9 @@ kernel void strided_copy(
   device const real4 *source [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   if (x >= element_count)
     return;
   const uint row = x / col_units;
@@ -62,9 +64,9 @@ kernel void strided_copy(
   device const real *source [[buffer(0)]],
   device real *destination [[buffer(1)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint x = tpig.x;
+)" + loadMValue + R"(  const uint x = tpig.x;
   if (x >= element_count)
     return;
   const uint row = x / cols;
@@ -75,14 +77,6 @@ kernel void strided_copy(
 		shader += R"(] = source[row * source_row_stride + col];
 }
 		)";
-	}
-	if (loadM) {
-		const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
-		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
-		const std::string::size_type elementCountPosition = shader.find("  const uint x = tpig.x;");
-		CCV_NNC_MFA_PRECONDITION(elementCountPosition != std::string::npos);
-		shader.insert(elementCountPosition, "  const uniform<uint> element_count = make_uniform(loadM[0]);\n");
 	}
 	return shader;
 }

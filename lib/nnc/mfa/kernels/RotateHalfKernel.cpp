@@ -30,6 +30,8 @@ unsigned short RotateHalfKernel::createThreadgroupMemoryAllocation() const noexc
 }
 
 std::string RotateHalfKernel::createSource() const noexcept {
+  const std::string loadMArgument = loadM ? "  const device uint *loadM [[buffer(2)]],\n" : "";
+  const std::string loadMValue = loadM ? "  const uniform<uint> count = make_uniform(loadM[0]);\n" : "";
   std::string shader = createConstants() + "\n";
   if (value == 0) {
     shader += R"(
@@ -40,9 +42,9 @@ kernel void rotate_half(
   device real4 *src [[buffer(0)]],
   device real4 *destination [[buffer(1)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint idx = tpig.x;
+)" + loadMValue + R"(  const uint idx = tpig.x;
   if (idx >= count)
     return;
   const uint x = idx % dim;
@@ -60,9 +62,9 @@ kernel void rotate_half(
   device real *src [[buffer(0)]],
   device real *destination [[buffer(1)]],
 
-  uint3 tpig [[thread_position_in_grid]]
+)" + loadMArgument + R"(  uint3 tpig [[thread_position_in_grid]]
 ) {
-  const uint idx = tpig.x;
+)" + loadMValue + R"(  const uint idx = tpig.x;
   if (idx >= count)
     return;
   const uint x = idx % dim;
@@ -71,14 +73,6 @@ kernel void rotate_half(
   destination[idx] = src[source];
 }
     )";
-  }
-  if (loadM) {
-    const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
-    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(2)]],\n");
-    const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
-    CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
-    shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");
   }
   return shader;
 }

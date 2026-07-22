@@ -39,6 +39,9 @@ std::string SegmentedScaledGEMMKernel::createSource() const noexcept
   source.SetValue("BLOCK_K", std::to_string(blockDimensions[2]));
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("IO_TYPE", ioPrecision.name());
+  source.SetValue("MAX_TILE_RECORDS_CONSTANT", loadM ? "" : "constant uint max_tile_records [[function_constant(6)]];\n");
+  source.SetValue("LOAD_M_ARGUMENT", loadM ? "    const device uint* loadM [[buffer(4)]],\n" : "");
+  source.SetValue("LOAD_M_VALUE", loadM ? "  const uniform<uint> max_tile_records = make_uniform(loadM[0]);\n" : "");
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -60,16 +63,15 @@ constant uint segments [[function_constant(2)]];
 constant uint M_block [[function_constant(3)]];
 constant uint N_block [[function_constant(4)]];
 constant uint K_block [[function_constant(5)]];
-constant uint max_tile_records [[function_constant(6)]];
-
+{{MAX_TILE_RECORDS_CONSTANT}}
 kernel void segmented_scaled_gemm_plan(
     device const int* indices [[buffer(0)]],
     device const int* counts [[buffer(1)]],
     device TileRecord* records [[buffer(2)]],
     device uint* dispatch_args [[buffer(3)]],
-    uint tid [[thread_index_in_threadgroup]])
+{{LOAD_M_ARGUMENT}}    uint tid [[thread_index_in_threadgroup]])
 {
-  if (tid != 0)
+{{LOAD_M_VALUE}}  if (tid != 0)
     return;
   uint row_offset = 0;
   uint record_count = 0;
@@ -236,18 +238,5 @@ kernel void segmented_scaled_gemm(
   }
 }
 )";
-  std::string shader = source.ToString();
-  if (loadM) {
-    const std::string maxTileRecordsConstant = "constant uint max_tile_records [[function_constant(6)]];\n";
-    const std::string::size_type maxTileRecordsConstantPosition = shader.find(maxTileRecordsConstant);
-    CCV_NNC_MFA_PRECONDITION(maxTileRecordsConstantPosition != std::string::npos);
-    shader.erase(maxTileRecordsConstantPosition, maxTileRecordsConstant.size());
-    const std::string::size_type argumentPosition = shader.find("    uint tid [[thread_index_in_threadgroup]])");
-    CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-    shader.insert(argumentPosition, "    const device uint* loadM [[buffer(4)]],\n");
-    const std::string::size_type maxTileRecordsPosition = shader.find("  if (tid != 0)");
-    CCV_NNC_MFA_PRECONDITION(maxTileRecordsPosition != std::string::npos);
-    shader.insert(maxTileRecordsPosition, "  const uniform<uint> max_tile_records = make_uniform(loadM[0]);\n");
-  }
-  return shader;
+  return source.ToString();
 }

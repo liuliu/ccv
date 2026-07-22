@@ -29,6 +29,8 @@ unsigned short IndexSelect8iRowwiseKernel::createThreadgroupMemoryAllocation() c
 }
 
 std::string IndexSelect8iRowwiseKernel::createSource() const noexcept {
+	const std::string loadMArgument = loadM ? "  const device uint *loadM [[buffer(4)]],\n" : "";
+	const std::string loadMValue = loadM ? "  const uniform<uint> element_count = make_uniform(loadM[0]);\n" : "";
 	std::string shader = createConstants() + "\n";
 	if (vectorized) {
 		shader += R"(
@@ -41,10 +43,10 @@ kernel void index_select_8i_rowwise(
   device real4 *destination [[buffer(2)]],
   device const real *scales [[buffer(3)]],
 
-  uint3 tgid [[threadgroup_position_in_grid]],
+)" + loadMArgument + R"(  uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-  const uint x = tgid.x * threadgroup_size + lid;
+)" + loadMValue + R"(  const uint x = tgid.x * threadgroup_size + lid;
   if (x >= element_count)
     return;
   const uint dest_row = x / row_units;
@@ -66,10 +68,10 @@ kernel void index_select_8i_rowwise(
   device real *destination [[buffer(2)]],
   device const real *scales [[buffer(3)]],
 
-  uint3 tgid [[threadgroup_position_in_grid]],
+)" + loadMArgument + R"(  uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
-  const uint x = tgid.x * threadgroup_size + lid;
+)" + loadMValue + R"(  const uint x = tgid.x * threadgroup_size + lid;
   if (x >= element_count)
     return;
   const uint dest_row = x / row_units;
@@ -78,14 +80,6 @@ kernel void index_select_8i_rowwise(
   destination[x] = (real)source[(ulong)source_row * row_units + col] * scales[source_row];
 }
 		)";
-	}
-	if (loadM) {
-		const std::string::size_type argumentPosition = shader.find("  uint3 tgid [[threadgroup_position_in_grid]]");
-		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(4)]],\n");
-		const std::string::size_type elementCountPosition = shader.find("  const uint x = tgid.x * threadgroup_size + lid;");
-		CCV_NNC_MFA_PRECONDITION(elementCountPosition != std::string::npos);
-		shader.insert(elementCountPosition, "  const uniform<uint> element_count = make_uniform(loadM[0]);\n");
 	}
 	return shader;
 }
