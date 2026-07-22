@@ -9,15 +9,16 @@
 
 struct IndexSelect8iRowwiseKernelDescriptor {
 	uint8_t vectorized;
+	bool loadM;
 	GEMMOperandPrecision memoryPrecision;
-	constexpr bool operator==(const IndexSelect8iRowwiseKernelDescriptor& rhs) const { return vectorized == rhs.vectorized && memoryPrecision == rhs.memoryPrecision; }
+	constexpr bool operator==(const IndexSelect8iRowwiseKernelDescriptor& rhs) const { return vectorized == rhs.vectorized && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<IndexSelect8iRowwiseKernelDescriptor>
 {
 	std::size_t operator()(const IndexSelect8iRowwiseKernelDescriptor& hash) const noexcept {
-		return std::hash<int>()((int)hash.vectorized | ((int)hash.memoryPrecision.value << 8));
+		return std::hash<int>()((int)hash.vectorized | ((int)hash.memoryPrecision.value << 8) | ((int)hash.loadM << 16));
 	}
 };
 
@@ -28,6 +29,7 @@ struct IndexSelect8iRowwiseDescriptor {
 	uint32_t rowLength;
 	uint32_t inputLength;
 	uint32_t outputLength;
+	bool loadM;
 
 	bool operator==(const IndexSelect8iRowwiseDescriptor& rhs) const;
 

@@ -15,6 +15,7 @@ struct IndexSelect8iRowwiseKernel {
 	MTL::Size threadgroupSize;
 
 	uint8_t vectorized;
+	bool loadM;
 	GEMMOperandPrecision memoryPrecision;
 
 	IndexSelect8iRowwiseKernel(IndexSelect8iRowwiseKernelDescriptor descriptor, MTL::Device* const device);

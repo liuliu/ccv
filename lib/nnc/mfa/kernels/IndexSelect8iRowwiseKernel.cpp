@@ -3,6 +3,7 @@
 
 IndexSelect8iRowwiseKernel::IndexSelect8iRowwiseKernel(IndexSelect8iRowwiseKernelDescriptor descriptor, MTL::Device* const device) {
 	vectorized = descriptor.vectorized;
+	loadM = descriptor.loadM;
 	memoryPrecision = descriptor.memoryPrecision;
 
 	source = createSource();
@@ -78,6 +79,14 @@ kernel void index_select_8i_rowwise(
 }
 		)";
 	}
+	if (loadM) {
+		const std::string::size_type argumentPosition = shader.find("  uint3 tgid [[threadgroup_position_in_grid]]");
+		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(4)]],\n");
+		const std::string::size_type elementCountPosition = shader.find("  const uint x = tgid.x * threadgroup_size + lid;");
+		CCV_NNC_MFA_PRECONDITION(elementCountPosition != std::string::npos);
+		shader.insert(elementCountPosition, "  const uniform<uint> element_count = make_uniform(loadM[0]);\n");
+	}
 	return shader;
 }
 
@@ -98,6 +107,7 @@ std::string IndexSelect8iRowwiseKernel::createConstants() const noexcept {
 	}
 	defines += "constant ushort threadgroup_size = 256;\n";
 	defines += "constant uint row_units [[function_constant(0)]];\n";
-	defines += "constant uint element_count [[function_constant(1)]];\n";
+	if (!loadM)
+		defines += "constant uint element_count [[function_constant(1)]];\n";
 	return defines;
 }

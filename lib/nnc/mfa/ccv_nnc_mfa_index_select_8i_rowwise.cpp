@@ -35,6 +35,7 @@ void ccv_nnc_mfa_encode_index_select_8i_rowwise(ccv_nnc_mfa_context_t* context, 
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.inputLength = (uint32_t)params.input_length;
 	descriptor.outputLength = (uint32_t)params.output_length;
+	descriptor.loadM = params.loadM;
 	const size_t scale_buffer_offset = ((size_t)params.input_length + 127) & ~(size_t)127;
 	encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(3));
 
@@ -47,6 +48,10 @@ void ccv_nnc_mfa_encode_index_select_8i_rowwise(ccv_nnc_mfa_context_t* context, 
 	auto pipeline = pipelineValue->pipeline;
 
 	encoder->setComputePipelineState(pipeline.get());
+	if (params.loadM) {
+		const uint32_t elementCount = descriptor.vectorized() ? (descriptor.outputLength / 4) : descriptor.outputLength;
+		encoder->setBytes(&elementCount, sizeof(elementCount), NS::UInteger(4));
+	}
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[2], MTL::ResourceUsageWrite);

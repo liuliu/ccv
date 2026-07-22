@@ -19,7 +19,8 @@ bool IndexSelect8iRowwiseXDescriptor::operator==(const IndexSelect8iRowwiseXDesc
 	memoryPrecision == rhs.memoryPrecision &&
 	rowLength == rhs.rowLength &&
 	inputLength == rhs.inputLength &&
-	outputLength == rhs.outputLength;
+	loadM == rhs.loadM &&
+	(loadM || outputLength == rhs.outputLength);
 }
 
 uint32_t IndexSelect8iRowwiseXDescriptor::inputRowCount() const noexcept {
@@ -101,7 +102,8 @@ std::size_t std::hash<IndexSelect8iRowwiseXDescriptor>::operator()(const IndexSe
 	std::size_t seed = 0;
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.format, (uint32_t)hash.memoryPrecision.value }));
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.rowLength, hash.inputLength }));
-	seed = combine_64(seed, hash.outputLength);
+	seed = combine_64(seed, hash.loadM ? 0 : hash.outputLength);
+	seed = combine_64(seed, hash.loadM ? 1 : 0);
 	return seed;
 }
 
@@ -124,6 +126,7 @@ std::pair<IndexSelect8iRowwiseXKernelDescriptor, PipelineValue<IndexSelect8iRoww
 
 	IndexSelect8iRowwiseXKernelDescriptor kernelDesc;
 	kernelDesc.format = format;
+	kernelDesc.loadM = loadM;
 	kernelDesc.memoryPrecision = memoryPrecision;
 
 	auto createPipeline =
@@ -136,7 +139,8 @@ std::pair<IndexSelect8iRowwiseXKernelDescriptor, PipelineValue<IndexSelect8iRoww
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
-		constants->setConstantValue(&outputGroups, MTL::DataTypeUInt, NS::UInteger(6));
+		if (!loadM)
+			constants->setConstantValue(&outputGroups, MTL::DataTypeUInt, NS::UInteger(6));
 
 		NS::String* swiftName = NS::String::string("index_select_8i_rowwise_x", NS::UTF8StringEncoding);
 		NS::Error* error = nil;

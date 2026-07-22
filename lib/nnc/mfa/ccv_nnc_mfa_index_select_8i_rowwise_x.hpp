@@ -7,6 +7,7 @@ typedef struct {
 	uint64_t row_length;
 	uint64_t input_length;
 	uint64_t output_length;
+	uint8_t loadM;
 } ccv_nnc_mfa_index_select_8i_rowwise_x_params_t;
 
 #ifdef __cplusplus

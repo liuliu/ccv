@@ -60,6 +60,7 @@ static void append_compact_grid(std::string& shader, const char* const name, con
 IndexSelect8iRowwiseXKernel::IndexSelect8iRowwiseXKernel(IndexSelect8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
+	loadM = descriptor.loadM;
 	memoryPrecision = descriptor.memoryPrecision;
 	source = createSource();
 	threadgroupSize = MTL::Size(256, 1, 1);
@@ -447,6 +448,14 @@ kernel void index_select_8i_rowwise_x(
   decode_store_group(source, source_group_index, scales, destination, (ulong)output_row * row_length + col_base, col_base, source_row);
 }
 )";
+	if (loadM) {
+		const std::string::size_type argumentPosition = shader.find("  uint3 tgid [[threadgroup_position_in_grid]]");
+		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
+		shader.insert(argumentPosition, "  const device uint *loadM [[buffer(4)]],\n");
+		const std::string::size_type outputGroupsPosition = shader.find("  const uint x = tgid.x * threadgroup_size + lid;");
+		CCV_NNC_MFA_PRECONDITION(outputGroupsPosition != std::string::npos);
+		shader.insert(outputGroupsPosition, "  const uniform<uint> output_groups = make_uniform(loadM[0]);\n");
+	}
 	return shader;
 }
 
@@ -463,6 +472,7 @@ std::string IndexSelect8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint row_length [[function_constant(0)]];\n";
 	defines += "constant uint group_size [[function_constant(1)]];\n";
 	defines += "constant uint groups_per_row [[function_constant(2)]];\n";
-	defines += "constant uint output_groups [[function_constant(6)]];\n";
+	if (!loadM)
+		defines += "constant uint output_groups [[function_constant(6)]];\n";
 	return defines;
 }

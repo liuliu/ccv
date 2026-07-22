@@ -76,6 +76,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 				.row_length = (uint64_t)a->info.dim[1],
 				.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
 				.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_index_select_8i_rowwise(context, params);
 			ccv_nnc_mfa_encode_index_select_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
@@ -86,6 +87,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 				.row_length = (uint64_t)a->info.dim[1],
 				.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
 				.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_index_select_8i_rowwise_x(context, params);
 			ccv_nnc_mfa_encode_index_select_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
