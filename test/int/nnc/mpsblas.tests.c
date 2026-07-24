@@ -7133,6 +7133,104 @@ TEST_CASE("scaled dot product attention gradient with mps")
 #undef num_trials
 }
 
+TEST_CASE("scaled dot product attention grouped-query gradient with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const int B = 2;
+	const int R = 61;
+	const int C = 49;
+	const int Hq = 32;
+	const int Hk = 8;
+	const int D = 128;
+	const float scale = 1.0 / sqrt((float)D);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 10);
+
+	ccv_nnc_tensor_t* const q_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const k_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const v_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const do_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const dq_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const dk_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+	for (int i = 0; i < B * R * Hq * D; ++i)
+	{
+		q_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		do_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	}
+	for (int i = 0; i < B * C * Hk * D; ++i)
+	{
+		k_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		v_tensor->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	}
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(do_tensor, 0, 0, q_tensor, k_tensor, v_tensor), TENSOR_LIST(dq_tensor, dk_tensor, dv_tensor), 0);
+
+	ccv_nnc_tensor_t* const gpu_q_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const gpu_k_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const gpu_v_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const gpu_do_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const gpu_o_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const gpu_softmax_lse = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hq, R), 0);
+	ccv_nnc_tensor_t* const gpu_dq_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+	ccv_nnc_tensor_t* const gpu_dk_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+	ccv_nnc_tensor_t* const gpu_dv_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor, do_tensor), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, gpu_do_tensor), 0);
+
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, gpu_softmax_lse), 0);
+	for (int use_mps_graph = 0; use_mps_graph < 2; ++use_mps_graph)
+	{
+		if (use_mps_graph)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
+		else
+		{
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
+		}
+		const int status = ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_do_tensor, 0, 0, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, 0, 0, gpu_o_tensor, gpu_softmax_lse), TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), 0);
+		if (old_flags & CCV_NNC_DISABLE_MFA)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+		if (old_flags & CCV_NNC_DISABLE_MFA_ATTENTION)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
+		REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "grouped-query attention backward should execute");
+
+		ccv_nnc_tensor_t* const copy_of_gpu_dq_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const copy_of_gpu_dk_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 5e-3, "grouped-query dQ should match the CPU reference");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 1e-2, "grouped-query dK should match the CPU reference");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 1e-2, "grouped-query dV should match the CPU reference");
+		ccv_nnc_tensor_free(copy_of_gpu_dq_tensor);
+		ccv_nnc_tensor_free(copy_of_gpu_dk_tensor);
+		ccv_nnc_tensor_free(copy_of_gpu_dv_tensor);
+	}
+
+	ccv_nnc_tensor_free(q_tensor);
+	ccv_nnc_tensor_free(k_tensor);
+	ccv_nnc_tensor_free(v_tensor);
+	ccv_nnc_tensor_free(do_tensor);
+	ccv_nnc_tensor_free(dq_tensor);
+	ccv_nnc_tensor_free(dk_tensor);
+	ccv_nnc_tensor_free(dv_tensor);
+	ccv_nnc_tensor_free(gpu_q_tensor);
+	ccv_nnc_tensor_free(gpu_k_tensor);
+	ccv_nnc_tensor_free(gpu_v_tensor);
+	ccv_nnc_tensor_free(gpu_do_tensor);
+	ccv_nnc_tensor_free(gpu_o_tensor);
+	ccv_nnc_tensor_free(gpu_softmax_lse);
+	ccv_nnc_tensor_free(gpu_dq_tensor);
+	ccv_nnc_tensor_free(gpu_dk_tensor);
+	ccv_nnc_tensor_free(gpu_dv_tensor);
+}
+
 TEST_CASE("scaled dot product attention gradient with mps in half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
@@ -7148,13 +7246,14 @@ TEST_CASE("scaled dot product attention gradient with mps in half precision")
 		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
+		const int Hk_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8,  8 };
 		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 48, 96, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
 		const int C = C_candidates[trial];
 		const int Hq = Hq_candidates[trial];
-		const int Hk = Hq_candidates[trial];
+		const int Hk = Hk_candidates[trial];
 		const int D = D_candidates[trial];
 		const int is_causal = 0;
 		const float scale = 1.0 / sqrt((float)D);
@@ -7214,9 +7313,9 @@ TEST_CASE("scaled dot product attention gradient with mps in half precision")
 		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(copy_of_gpu_dq_tensor_f16, copy_of_gpu_dk_tensor_f16, copy_of_gpu_dv_tensor_f16), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
 
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 1e-3, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 3e-3, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 6e-3, "GPU computed output should be the same as CPU computed ones");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 1e-3, "scaled dot product attention dQ should be the same for trial %d", trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 6e-3, "scaled dot product attention dV should be the same for trial %d", trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 3e-3, "scaled dot product attention dK should be the same for trial %d", trial);
 
 		ccv_nnc_tensor_free(do_tensor);
 		ccv_nnc_tensor_free(gpu_do_tensor);
@@ -7265,13 +7364,14 @@ TEST_CASE("scaled dot product attention gradient with mps in bfloat precision")
 		const int R_candidates[num_trials] = { 160,  256, 128, 77, 77, 5, 160,  256, 128, 77, 77, 5 };
 		const int C_candidates[num_trials] = { 128,  128, 128, 128, 128, 5, 128,  128, 128, 128, 128, 5 };
 		const int Hq_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8, 32 };
+		const int Hk_candidates[num_trials] = {   8,  8, 8, 8, 8, 32, 8,  8, 8, 8, 8,  8 };
 		const int D_candidates[num_trials] = {  64, 40, 160, 192, 256, 128, 48, 96, 160, 192, 256, 128 };
 
 		const int B = B_candidates[trial];
 		const int R = R_candidates[trial];
 		const int C = C_candidates[trial];
 		const int Hq = Hq_candidates[trial];
-		const int Hk = Hq_candidates[trial];
+		const int Hk = Hk_candidates[trial];
 		const int D = D_candidates[trial];
 		const int is_causal = 0;
 		const float scale = 1.0 / sqrt((float)D);
@@ -7331,9 +7431,9 @@ TEST_CASE("scaled dot product attention gradient with mps in bfloat precision")
 		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(copy_of_gpu_dq_tensor_f16, copy_of_gpu_dk_tensor_f16, copy_of_gpu_dv_tensor_f16), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
 
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 5e-3, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 1e-2, "scaled dot product attention result should be the same");
-		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 2e-2, "GPU computed output should be the same as CPU computed ones");
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 5e-3, "scaled dot product attention bfloat dQ should be the same for trial %d", trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, Hq == Hk ? 2e-2 : 3e-2, "scaled dot product attention bfloat dV should be the same for trial %d", trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, Hq == Hk ? 1e-2 : 2e-2, "scaled dot product attention bfloat dK should be the same for trial %d", trial);
 
 		ccv_nnc_tensor_free(do_tensor);
 		ccv_nnc_tensor_free(gpu_do_tensor);

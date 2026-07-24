@@ -26,8 +26,8 @@ typedef struct {
   float alpha;
   uint64_t data_type;
 
-  // Since grouped queries are not supported yet, assume Q, K, V, and O all have
-  // the same batch dimensions.
+  // Q, K, V, and O share batch dimensions. Hq and Hk describe any grouping
+  // within each batch.
   uint32_t batch_dims_q[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dims_mask[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_attention_params_t;

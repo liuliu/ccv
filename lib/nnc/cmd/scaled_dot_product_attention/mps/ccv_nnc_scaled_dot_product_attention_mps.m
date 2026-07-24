@@ -682,7 +682,10 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 		dvdim[0] = dvdim[1], dvdim[1] = dvdim[2], dvdim[2] = 1;
 	}
 	assert(qdim[0] == kdim[0] && kdim[0] == vdim[0] && vdim[0] == gdim[0]);
-	assert(qdim[2] == kdim[2] && kdim[2] == vdim[2] && vdim[2] == gdim[2]);
+	assert(qdim[2] == gdim[2]);
+	assert(kdim[2] == vdim[2]);
+	assert(qdim[2] % kdim[2] == 0);
+	assert(qdim[2] >= kdim[2]);
 	assert(qdim[3] == kdim[3]);
 	assert(kdim[1] == vdim[1]);
 	assert(gdim[1] == qdim[1]);
@@ -780,7 +783,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 			assert(D == kdim[3]);
 		}
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION) && (Hq == Hk);
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION);
 		if (is_mfa_supported)
 		{
 			const int o_nd = ccv_nnc_tensor_nd(o->info.dim);
@@ -889,22 +892,57 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 				MPSGraphTensor* mps_scale = [graph constantWithScalar:scale dataType:ccv_nnc_mps_datatype(q->info.datatype)];
 				mps_q = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph transposeTensor:mps_q dimension:1 withDimension:2 name:nil] name:nil];
 				mps_k = [graph transposeTensor:mps_k dimension:1 withDimension:2 name:nil];
-				MPSGraphTensor* mps_kt = [graph transposeTensor:mps_k dimension:2 withDimension:3 name:nil];
 				mps_v = [graph transposeTensor:mps_v dimension:1 withDimension:2 name:nil];
-				MPSGraphTensor* mps_qk = [graph matrixMultiplicationWithPrimaryTensor:mps_q secondaryTensor:mps_kt name:nil];
-				MPSGraphTensor* mps_softmax = [graph softMaxWithTensor:mps_qk axis:3 name:nil];
 				mps_g = [graph transposeTensor:mps_g dimension:1 withDimension:2 name:nil];
-				MPSGraphTensor* mps_softmaxt = [graph transposeTensor:mps_softmax dimension:2 withDimension:3 name:nil];
-				MPSGraphTensor* mps_dv = [graph matrixMultiplicationWithPrimaryTensor:mps_softmaxt secondaryTensor:mps_g name:nil];
-				mps_v = [graph transposeTensor:mps_v dimension:2 withDimension:3 name:nil];
-				MPSGraphTensor* mps_dsoftmax = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_v name:nil];
-				MPSGraphTensor* mulTensor = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:mps_dsoftmax name:nil];
-				MPSGraphTensor* mulSumTensor = [graph reductionSumWithTensor:mulTensor axis:-1 name:nil];
-				MPSGraphTensor* gradSubTensor = [graph subtractionWithPrimaryTensor:mps_dsoftmax secondaryTensor:mulSumTensor name:nil];
-				MPSGraphTensor* mps_dqk = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:gradSubTensor name:nil];
-				MPSGraphTensor* mps_dq = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_k name:nil] name:nil];
-				mps_dqk = [graph transposeTensor:mps_dqk dimension:2 withDimension:3 name:nil];
-				MPSGraphTensor* mps_dk = [graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_q name:nil];
+				MPSGraphTensor* mps_dq;
+				MPSGraphTensor* mps_dk;
+				MPSGraphTensor* mps_dv;
+				if (Hq == Hk)
+				{
+					MPSGraphTensor* mps_kt = [graph transposeTensor:mps_k dimension:2 withDimension:3 name:nil];
+					MPSGraphTensor* mps_qk = [graph matrixMultiplicationWithPrimaryTensor:mps_q secondaryTensor:mps_kt name:nil];
+					MPSGraphTensor* mps_softmax = [graph softMaxWithTensor:mps_qk axis:3 name:nil];
+					MPSGraphTensor* mps_softmaxt = [graph transposeTensor:mps_softmax dimension:2 withDimension:3 name:nil];
+					mps_dv = [graph matrixMultiplicationWithPrimaryTensor:mps_softmaxt secondaryTensor:mps_g name:nil];
+					mps_v = [graph transposeTensor:mps_v dimension:2 withDimension:3 name:nil];
+					MPSGraphTensor* mps_dsoftmax = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_v name:nil];
+					MPSGraphTensor* mulTensor = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:mps_dsoftmax name:nil];
+					MPSGraphTensor* mulSumTensor = [graph reductionSumWithTensor:mulTensor axis:-1 name:nil];
+					MPSGraphTensor* gradSubTensor = [graph subtractionWithPrimaryTensor:mps_dsoftmax secondaryTensor:mulSumTensor name:nil];
+					MPSGraphTensor* mps_dqk = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:gradSubTensor name:nil];
+					mps_dq = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_k name:nil] name:nil];
+					mps_dqk = [graph transposeTensor:mps_dqk dimension:2 withDimension:3 name:nil];
+					mps_dk = [graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_q name:nil];
+				} else {
+					const int query_group_size = Hq / Hk;
+					mps_q = [graph reshapeTensor:mps_q withShape:@[@(batch_size), @(Hk), @(query_group_size), @(R), @(D)] name:nil];
+					mps_k = [graph reshapeTensor:mps_k withShape:@[@(batch_size), @(Hk), @1, @(C), @(D)] name:nil];
+					mps_v = [graph reshapeTensor:mps_v withShape:@[@(batch_size), @(Hk), @1, @(C), @(D)] name:nil];
+					mps_g = [graph reshapeTensor:mps_g withShape:@[@(batch_size), @(Hk), @(query_group_size), @(R), @(D)] name:nil];
+					MPSGraphTensor* mps_kt = [graph transposeTensor:mps_k dimension:3 withDimension:4 name:nil];
+					MPSGraphTensor* mps_qk = [graph matrixMultiplicationWithPrimaryTensor:mps_q secondaryTensor:mps_kt name:nil];
+					MPSGraphTensor* mps_softmax = [graph softMaxWithTensor:mps_qk axis:4 name:nil];
+					MPSGraphTensor* mps_vt = [graph transposeTensor:mps_v dimension:3 withDimension:4 name:nil];
+					MPSGraphTensor* mps_dsoftmax = [graph matrixMultiplicationWithPrimaryTensor:mps_g secondaryTensor:mps_vt name:nil];
+					MPSGraphTensor* mulTensor = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:mps_dsoftmax name:nil];
+					MPSGraphTensor* mulSumTensor = [graph reductionSumWithTensor:mulTensor axis:-1 name:nil];
+					MPSGraphTensor* gradSubTensor = [graph subtractionWithPrimaryTensor:mps_dsoftmax secondaryTensor:mulSumTensor name:nil];
+					MPSGraphTensor* mps_dqk = [graph multiplicationWithPrimaryTensor:mps_softmax secondaryTensor:gradSubTensor name:nil];
+					mps_dq = [graph multiplicationWithPrimaryTensor:mps_scale secondaryTensor:[graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_k name:nil] name:nil];
+					mps_dq = [graph reshapeTensor:mps_dq withShape:@[@(batch_size), @(Hq), @(R), @(D)] name:nil];
+
+					MPSGraphTensor* mps_softmaxt = [graph transposeTensor:mps_softmax dimension:3 withDimension:4 name:nil];
+					mps_softmaxt = [graph transposeTensor:mps_softmaxt dimension:2 withDimension:3 name:nil];
+					mps_softmaxt = [graph reshapeTensor:mps_softmaxt withShape:@[@(batch_size), @(Hk), @(C), @(query_group_size * R)] name:nil];
+					MPSGraphTensor* mps_g_flat = [graph reshapeTensor:mps_g withShape:@[@(batch_size), @(Hk), @(query_group_size * R), @(D)] name:nil];
+					mps_dv = [graph matrixMultiplicationWithPrimaryTensor:mps_softmaxt secondaryTensor:mps_g_flat name:nil];
+
+					mps_dqk = [graph transposeTensor:mps_dqk dimension:3 withDimension:4 name:nil];
+					mps_dqk = [graph transposeTensor:mps_dqk dimension:2 withDimension:3 name:nil];
+					mps_dqk = [graph reshapeTensor:mps_dqk withShape:@[@(batch_size), @(Hk), @(C), @(query_group_size * R)] name:nil];
+					MPSGraphTensor* mps_q_flat = [graph reshapeTensor:mps_q withShape:@[@(batch_size), @(Hk), @(query_group_size * R), @(D)] name:nil];
+					mps_dk = [graph matrixMultiplicationWithPrimaryTensor:mps_dqk secondaryTensor:mps_q_flat name:nil];
+				}
 				mps_dq = [graph transposeTensor:mps_dq dimension:1 withDimension:2 name:nil];
 				[resultTensors addObject:mps_dq];
 				mps_dk = [graph transposeTensor:mps_dk dimension:1 withDimension:2 name:nil];

@@ -20,6 +20,7 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
   slidingWindow == rhs.slidingWindow &&
+  groupedQuery == rhs.groupedQuery &&
   type == rhs.type;
 }
 
@@ -34,6 +35,7 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
   }
   combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, hash.slidingWindow);
+  combine_32(seed, hash.groupedQuery ? 1 : 0);
   return seed;
 }
 
@@ -45,7 +47,7 @@ AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensio
 AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked) noexcept
   : AttentionKernelDescriptor(blockDimensions, cacheState, headDimension, memoryPrecisions, preferAsyncCache, preferAsyncLoad, registerPrecisions, transposeState, leadingDimensions, type, isCausal, masked, false) {}
 
-AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked, bool isVarlen, bool attentionSinks, uint32_t slidingWindow) noexcept {
+AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensions, AttentionOperands<bool> cacheState, unsigned short headDimension, AttentionOperands<GEMMOperandPrecision> memoryPrecisions, bool preferAsyncCache, bool preferAsyncLoad, AttentionOperands<GEMMOperandPrecision> registerPrecisions, AttentionOperands<bool> transposeState, AttentionOperands<bool> leadingDimensions, AttentionKernelType type, bool isCausal, bool masked, bool isVarlen, bool attentionSinks, uint32_t slidingWindow, bool groupedQuery) noexcept {
   this->blockDimensions = blockDimensions;
   this->cacheState = cacheState;
   this->headDimension = headDimension;
@@ -61,4 +63,5 @@ AttentionKernelDescriptor::AttentionKernelDescriptor(simd::ushort3 blockDimensio
   this->isVarlen = isVarlen;
   this->attentionSinks = attentionSinks;
   this->slidingWindow = slidingWindow;
+  this->groupedQuery = groupedQuery;
 }

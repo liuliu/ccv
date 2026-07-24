@@ -6,7 +6,7 @@ extern "C" {
 }
 
 MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept {
-  if (descriptor.slidingWindow > 0) {
+  if (descriptor.slidingWindow > 0 || descriptor.groupedQuery) {
     return 0;
   }
   if (transposeState[AttentionOperand::Q].value_or(true) ||

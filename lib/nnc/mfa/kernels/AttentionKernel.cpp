@@ -531,6 +531,11 @@ kernel void generate_attention_block_mask(
     source.SetValue("DISPATCH_DIMENSION", "C");
     break;
   }
+  source.SetValue(
+      "DISPATCH_HEADS",
+      type.value == AttentionKernelType::backwardKeyValue ?
+          "(Hq / H_Hk_ratio)" :
+          "Hq");
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("PARALLELIZATION_GROUP_OFFSET", parallelizationGroupOffsetValue());
   source.SetValue("PARALLELIZATION_DIMENSION", (type.value == AttentionKernelType::forward && isVarlen) ? "R" : parallelizationDimensionValue());
@@ -542,7 +547,7 @@ kernel void generate_attention_block_mask(
       ushort lane_id [[thread_index_in_simdgroup]]
     ) {
       ushort2 morton_offset = morton_order(lane_id);
-      gid = { gid.x % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}), (gid.x / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}})) % Hq, gid.x / (Hq * (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}))};
+      gid = { gid.x % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}), (gid.x / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}})) % {{DISPATCH_HEADS}}, gid.x / ({{DISPATCH_HEADS}} * (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}))};
       uint parallelization_group_offset = gid.x;
       parallelization_group_offset *= {{BLOCK_DIMENSIONS_PARALLELIZATION}};
       
@@ -675,23 +680,37 @@ std::string AttentionKernel::operandLocationWithHeadOffsetValue(AttentionOperand
   CodeWriter source;
   source.SetValue("OPERAND", operand.name());
   if (operand.value == AttentionOperand::L || operand.value == AttentionOperand::D) {
-    source += "{{OPERAND}} + (gid.z * Hq + gid.y) * R\\";
+    source.SetValue(
+        "HEAD_INDEX",
+        type.value == AttentionKernelType::backwardKeyValue ?
+            "gid.y * H_Hk_ratio" :
+            "gid.y");
+    source += "{{OPERAND}} + (gid.z * Hq + {{HEAD_INDEX}}) * R\\";
   } else {
     source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
-    if (operand.value == AttentionOperand::K || operand.value == AttentionOperand::V || operand.value == AttentionOperand::dK || operand.value == AttentionOperand::dV) {
-      if (!transposed(operand)) {
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / H_Hk_ratio * {{HEAD_DIMENSION}}\\";
-      } else {
-        source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y / H_Hk_ratio * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
-      }
+    const bool isKeyValue =
+        operand.value == AttentionOperand::K ||
+        operand.value == AttentionOperand::V ||
+        operand.value == AttentionOperand::dK ||
+        operand.value == AttentionOperand::dV;
+    if (type.value == AttentionKernelType::backwardKeyValue) {
+      source.SetValue(
+          "HEAD_INDEX",
+          isKeyValue ?
+              "gid.y" :
+              "gid.y * H_Hk_ratio");
     } else {
-      if (!transposed(operand)) {
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}}\\";
-      } else {
-        source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
-        source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + gid.y * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
-      }
+      source.SetValue(
+          "HEAD_INDEX",
+          isKeyValue ?
+              "gid.y / H_Hk_ratio" :
+              "gid.y");
+    }
+    if (!transposed(operand)) {
+      source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + {{HEAD_INDEX}} * {{HEAD_DIMENSION}}\\";
+    } else {
+      source.SetValue("SEQUENCE_LENGTH", sequenceLength(operand));
+      source += "{{OPERAND}} + gid.z * {{OPERAND}}_batch_stride + {{HEAD_INDEX}} * {{HEAD_DIMENSION}} * {{SEQUENCE_LENGTH}}\\";
     }
   }
   return source.ToString();
@@ -1052,27 +1071,45 @@ std::string AttentionKernel::loopBackwardKeyValue() const noexcept {
   source.SetValue("VDOT", VdOT);
   source.SetValue("D_SOFTMAX", softmax(true));
   source.SetValue("DSTQ", dSTQ);
+  source.SetValue(
+      "Q_HEAD_STRIDE",
+      transposed(AttentionOperand::Q) ?
+          std::to_string(headDimension) + " * R" :
+          std::to_string(headDimension));
+  source.SetValue(
+      "DO_HEAD_STRIDE",
+      transposed(AttentionOperand::dO) ?
+          std::to_string(headDimension) + " * R" :
+          std::to_string(headDimension));
   source += R"(
 
-  // Outer loop over the traversal dimension.
-  for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
-    // S^T = K * Q^T
-    {{KQT}}
+  // One workgroup owns a key-value head and accumulates all query heads that
+  // share it before storing dK and dV.
+  for (uint query_head_group = 0; query_head_group < H_Hk_ratio; ++query_head_group) {
+    // Outer loop over the traversal dimension.
+    for (uint r = 0; r < R; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+      // S^T = K * Q^T
+      {{KQT}}
 
-    // P^T = exp(S^T - L)
-    {{SOFTMAX}}
+      // P^T = exp(S^T - L)
+      {{SOFTMAX}}
 
-    // dV += P^T * dO
-    {{PTDO}}
+      // dV += P^T * dO
+      {{PTDO}}
 
-    // dP^T = V * dO^T
-    {{VDOT}}
+      // dP^T = V * dO^T
+      {{VDOT}}
 
-    // dS^T = P^T * (dP^T - D) * scaleFactor
-    {{D_SOFTMAX}}
+      // dS^T = P^T * (dP^T - D) * scaleFactor
+      {{D_SOFTMAX}}
 
-    // dK += dS^T * Q
-    {{DSTQ}}
+      // dK += dS^T * Q
+      {{DSTQ}}
+    }
+    Q += {{Q_HEAD_STRIDE}};
+    dO += {{DO_HEAD_STRIDE}};
+    L += R;
+    D += R;
   }
 
 )";
@@ -1686,7 +1723,13 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
 	    CodeWriter source;
 	    source.SetValue("ALLOCATE_ACCUMULATOR", allocateAccumulator(descriptor));
 	    source.SetValue("TRAVERSAL_OFFSET", traversalOffsetValue());
-	    source.SetValue("ACCUMULATOR_IS_UNINITIALIZED", (type.value == AttentionKernelType::forward && masked) ? "first_accumulation" : traversalOffsetValue() + " == 0");
+	    source.SetValue(
+	        "ACCUMULATOR_IS_UNINITIALIZED",
+	        (type.value == AttentionKernelType::forward && masked) ?
+	            "first_accumulation" :
+	            (type.value == AttentionKernelType::backwardKeyValue ?
+	                "(query_head_group == 0 && " + traversalOffsetValue() + " == 0)" :
+	                traversalOffsetValue() + " == 0"));
 	    source.SetValue("INITIALIZE_ACCUMULATOR", initializeAccumulator(descriptor));
     if (cached(C)) {
       source.SetValue("LOAD_ACCUMULATOR", "");
