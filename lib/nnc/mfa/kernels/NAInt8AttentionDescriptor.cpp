@@ -80,7 +80,7 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       type == AttentionKernelType::forward ?
       (matrixDimensions[2] > 192 ? 16 : 4) :
       (splitHeadBackwardKeyValue ?
-          16 :
+          (Hq > Hk ? 8 : 16) :
           4);
   const uint16_t vMeanThreads =
       matrixDimensions[1] <= 20480 ?

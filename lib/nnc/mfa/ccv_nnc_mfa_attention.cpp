@@ -770,7 +770,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const bool use_na_int8_backward =
         params.use_neural_accelerators &&
         params.use_quantized_attention &&
-        hash.Hq == hash.Hk &&
+        hash.Hk > 0 &&
+        hash.Hq >= hash.Hk &&
+        (hash.Hq % hash.Hk) == 0 &&
         hash.D <= 128 &&
         (hash.D % 8) == 0 &&
         tensors[3] &&
@@ -992,7 +994,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       }
       const bool use_na_backward =
         params.use_neural_accelerators &&
-        hash.Hq == hash.Hk &&
+        hash.Hk > 0 &&
+        hash.Hq >= hash.Hk &&
+        (hash.Hq % hash.Hk) == 0 &&
         hash.D <= 128 &&
         (hash.D % 8) == 0;
       if (use_na_backward) {

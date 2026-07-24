@@ -1080,6 +1080,7 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
+  source.SetValue("QUERY_HEAD_RATIO", std::to_string(Hq / Hk));
   if (Hq != Hk) {
     source.SetValue("H_HK_RATIO", " / " + std::to_string(Hq / Hk));
   } else {
@@ -1155,12 +1156,12 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   dO_buf += tgid.z * dO_batch_stride;
   dV_buf += tgid.z * dV_batch_stride;
   dK_buf += tgid.z * dK_batch_stride;
-  L_buf += (tgid.z * Hq + tgid.y) * R;
-  D_buf += (tgid.z * Hq + tgid.y) * R;
-  Q_scale_buf += tgid.z * Q_scale_batch_stride + tgid.y * Q_scale_tiles;
-  K_scale_buf += tgid.z * K_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / KV_scale_tile_size;
-  V_scale_buf += tgid.z * V_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / KV_scale_tile_size;
-  dO_scale_buf += tgid.z * dO_scale_batch_stride + tgid.y * Q_scale_tiles;
+  L_buf += (tgid.z * Hq + tgid.y * {{QUERY_HEAD_RATIO}}) * R;
+  D_buf += (tgid.z * Hq + tgid.y * {{QUERY_HEAD_RATIO}}) * R;
+  Q_scale_buf += tgid.z * Q_scale_batch_stride + tgid.y * {{QUERY_HEAD_RATIO}} * Q_scale_tiles;
+  K_scale_buf += tgid.z * K_scale_batch_stride + tgid.y * K_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / KV_scale_tile_size;
+  V_scale_buf += tgid.z * V_scale_batch_stride + tgid.y * K_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / KV_scale_tile_size;
+  dO_scale_buf += tgid.z * dO_scale_batch_stride + tgid.y * {{QUERY_HEAD_RATIO}} * Q_scale_tiles;
 )";
     break;
   }
@@ -1519,6 +1520,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_HEAD", std::to_string(blockDimensions[2]));
+  source.SetValue("QUERY_HEAD_RATIO", std::to_string(Hq / Hk));
   source.SetValue("DOT_SCALE", dot_product_scale(scale));
   source.SetValue("DOT_SCALE_DERIVATIVE", dot_product_scale(scale, true));
   if (blockDimensions[2] % 32 == 0) {
@@ -1545,8 +1547,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   threadgroup int8_t *V_shared_buf = K_shared_buf + {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   auto K_shared = tensor<threadgroup int8_t, dextents<int32_t, 2>, tensor_inline>(K_shared_buf, extents<int32_t, {{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
   auto V_shared = tensor<threadgroup int8_t, dextents<int32_t, 2>, tensor_inline>(V_shared_buf, extents<int32_t, {{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
-  auto mQ_0 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
-  auto mdO_0 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  const uint query_head_start = tgid.y * {{QUERY_HEAD_RATIO}};
+  auto mQ_0 = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}}, 0);
+  auto mdO_0 = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}}, 0);
   auto mK_0 = K_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(0, 0);
   auto mV_0 = V_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(0, 0);
   auto cST = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mK_0), decltype(mQ_0), int32_t>();
@@ -1565,8 +1568,8 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       if (i > 0) {
         source += R"(
-  auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
-  auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
+  auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
+  auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
   auto mK_{{LOOP_INDEX}} = K_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>( {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
   auto mV_{{LOOP_INDEX}} = V_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>( {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, 0);
 )";
@@ -1611,6 +1614,13 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
+  #pragma clang loop unroll(disable)
+  for (uint query_head_offset = 0; query_head_offset < {{QUERY_HEAD_RATIO}}; ++query_head_offset) {
+    const uint query_head = query_head_start + query_head_offset;
+    const device {{L_MEMORY_NAME}}* L = L_buf + query_head_offset * R;
+    const device {{D_MEMORY_NAME}}* D = D_buf + query_head_offset * R;
+    const device float* Q_scale = Q_scale_buf + query_head_offset * Q_scale_tiles;
+    const device float* dO_scale_ptr = dO_scale_buf + query_head_offset * Q_scale_tiles;
   for (uint r = 0; r < KV_R_edge; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
@@ -1619,16 +1629,16 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
+    const float q_scale = Q_scale[r / Q_scale_tile_size];
+    const float dO_scale = dO_scale_ptr[r / Q_scale_tile_size];
     const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
-    auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
-    auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+    auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+    auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
     matmul_kqt_op.run(mK_{{LOOP_INDEX}}, mQ_{{LOOP_INDEX}}, cST);
     matmul_kqt_op.run(mV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
 )";
@@ -1638,10 +1648,10 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
       if (cP_q.is_valid_element(k)) {
         auto idx = cP_q.get_multidimensional_index(k);
-        const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
+        const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
         const int quantized = (int)rint(P * 127.0f);
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
-        const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
+        const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
         cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
       }
     }
@@ -1673,16 +1683,16 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
+    const float q_scale = Q_scale[(R - KV_R_remainder) / Q_scale_tile_size];
+    const float dO_scale = dO_scale_ptr[(R - KV_R_remainder) / Q_scale_tile_size];
     const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
-    auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
-    auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+    auto mQ_{{LOOP_INDEX}} = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
+    auto mdO_{{LOOP_INDEX}} = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, r);
     matmul_kqt_op.run(mK_{{LOOP_INDEX}}, mQ_{{LOOP_INDEX}}, cST);
     matmul_kqt_op.run(mV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
 )";
@@ -1696,10 +1706,10 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cP_q[k] = 0;
           cDS[k] = 0;
         } else {
-          const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
+          const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
           const int quantized = (int)rint(P * 127.0f);
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
-          const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
+          const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
           cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
         }
       }
@@ -1722,6 +1732,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     source += R"(
       }
     }
+  }
   }
   auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
   auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
@@ -1767,8 +1778,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   threadgroup int8_t *V_shared_buf = K_shared_buf + {{HEAD_DIMENSION}} * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   auto K_shared = tensor<threadgroup int8_t, dextents<int32_t, 2>, tensor_inline>(K_shared_buf, extents<int32_t, {{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
   auto V_shared = tensor<threadgroup int8_t, dextents<int32_t, 2>, tensor_inline>(V_shared_buf, extents<int32_t, {{HEAD_DIMENSION}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>());
-  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
-  auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, 0);
+  const uint query_head_start = tgid.y * {{QUERY_HEAD_RATIO}};
+  auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}}, 0);
+  auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head_start * {{HEAD_DIMENSION}}, 0);
   auto mK = K_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(0, 0);
   auto mV = V_shared.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(0, 0);
   auto cST = matmul_kqt_op.get_destination_cooperative_tensor<decltype(mK), decltype(mQ), int32_t>();
@@ -1806,6 +1818,13 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
+  #pragma clang loop unroll(disable)
+  for (uint query_head_offset = 0; query_head_offset < {{QUERY_HEAD_RATIO}}; ++query_head_offset) {
+    const uint query_head = query_head_start + query_head_offset;
+    const device {{L_MEMORY_NAME}}* L = L_buf + query_head_offset * R;
+    const device {{D_MEMORY_NAME}}* D = D_buf + query_head_offset * R;
+    const device float* Q_scale = Q_scale_buf + query_head_offset * Q_scale_tiles;
+    const device float* dO_scale_ptr = dO_scale_buf + query_head_offset * Q_scale_tiles;
   for (uint r = 0; r < KV_R_edge; r += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
@@ -1814,21 +1833,21 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[r / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[r / Q_scale_tile_size];
+    const float q_scale = Q_scale[r / Q_scale_tile_size];
+    const float dO_scale = dO_scale_ptr[r / Q_scale_tile_size];
     const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
-    auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
-    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
+    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
       if (cP_q.is_valid_element(k)) {
         auto idx = cP_q.get_multidimensional_index(k);
-        const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
+        const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
         const int quantized = (int)rint(P * 127.0f);
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
-        const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
+        const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
         cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
       }
     }
@@ -1850,11 +1869,11 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDP[k] = 0;
       }
     }
-    const float q_scale = Q_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
-    const float dO_scale = dO_scale_buf[(R - KV_R_remainder) / Q_scale_tile_size];
+    const float q_scale = Q_scale[(R - KV_R_remainder) / Q_scale_tile_size];
+    const float dO_scale = dO_scale_ptr[(R - KV_R_remainder) / Q_scale_tile_size];
     const float dO_scale_recip_127 = dO_scale * (1.0f / 127.0f);
-    auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
-    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y * {{HEAD_DIMENSION}}, r);
+    auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
+    auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
     matmul_kqt_op.run(mV, mdO, cDP);
     #pragma clang loop unroll(full)
@@ -1865,10 +1884,10 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cP_q[k] = 0;
           cDS[k] = 0;
         } else {
-          const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L_buf[r + idx[0]]);
+          const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
           const int quantized = (int)rint(P * 127.0f);
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
-          const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D_buf[r + idx[0]]);
+          const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
           cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
         }
       }
@@ -1881,6 +1900,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
         cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * dO_scale_recip_127);
       }
     }
+  }
   }
   auto dK = dK_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
   auto dV = dV_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hk) + tgid.y * {{HEAD_DIMENSION}};
